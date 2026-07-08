@@ -1,0 +1,628 @@
+esphome:
+  name: autodarts-led
+  friendly_name: autodarts-led
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  # use_address: <device-ip>   # optional: fixed address for OTA updates
+  power_save_mode: none
+  output_power: 8.5dB
+  networks:
+  - ssid: !secret wifi_ssid
+    password: !secret wifi_password
+    hidden: true
+    # manual_ip:
+    #   static_ip: 192.168.1.45
+    #   gateway: 192.168.1.1
+    #   subnet: 255.255.255.0
+  fast_connect: true
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Autodarts-Led Fallback Hotspot"
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+spi:
+  clk_pin: GPIO6
+  mosi_pin: GPIO7
+
+sensor:
+  - platform: homeassistant
+    id: ad_turn_score
+    entity_id: sensor.autodarts_turn_score
+    internal: true
+
+  - platform: homeassistant
+    id: ad_remaining
+    entity_id: sensor.autodarts_remaining
+
+  - platform: homeassistant
+    id: ad_throw_1_points
+    entity_id: sensor.autodarts_throw_1_points
+
+  - platform: homeassistant
+    id: ad_throw_2_points
+    entity_id: sensor.autodarts_throw_2_points
+
+  - platform: homeassistant
+    id: ad_throw_3_points
+    entity_id: sensor.autodarts_throw_3_points
+
+  - platform: homeassistant
+    id: ad_last_dart_number
+    entity_id: sensor.autodarts_last_dart_number
+
+  - platform: homeassistant
+    id: ad_player_index
+    entity_id: sensor.autodarts_player_index
+    on_value:
+      then:
+        - lambda: |-
+            int current = (int) id(ad_player_index).state;
+            if (id(matrix_last_player_index) != -1 && current != id(matrix_last_player_index)) {
+              id(matrix_last_player_change_ms) = millis();
+            }
+            id(matrix_last_player_index) = current;
+
+  - platform: homeassistant
+    id: ad_throw_seq
+    entity_id: sensor.autodarts_throw_seq
+    on_value:
+      then:
+        - logger.log:
+            level: DEBUG
+            format: "throw_seq changed -> %.0f"
+            args: ["x"]
+
+        - script.execute: process_throw_event
+
+text_sensor:
+  - platform: homeassistant
+    id: ad_status
+    entity_id: sensor.ad_tux_status
+    on_value:
+      then:
+        - lambda: |-
+            std::string s = id(ad_status).state.c_str();
+            for (char &c : s) c = tolower((unsigned char)c);
+
+            if (s == "takeout" || s == "takeout finished") {
+              id(matrix_last_takeout_ms) = millis();
+            }
+        - logger.log:
+            format: "ad_status = %s"
+            args: ["id(ad_status).state.c_str()"]
+
+  - platform: homeassistant
+    id: ad_last_event
+    entity_id: sensor.autodarts_last_event
+    on_value:
+      then:
+        - logger.log:
+            level: DEBUG
+            format: "last_event = %s"
+            args: ["id(ad_last_event).state.c_str()"]
+        - lambda: |-
+            std::string e = id(ad_last_event).state.c_str();
+            for (char &c : e) c = tolower((unsigned char)c);
+
+            if (e == "busted") {
+              id(matrix_last_bust_ms) = millis();
+            }
+            if (e == "game-won" || e == "match-won") {
+              id(matrix_last_win_ms) = millis();
+            }
+            if (e == "takeout" || e == "takeout-finished") {
+              id(matrix_last_takeout_ms) = millis();
+            }
+
+binary_sensor:
+  - platform: homeassistant
+    id: ad_match_started
+    entity_id: binary_sensor.autodarts_match_started_binary
+
+  - platform: homeassistant
+    id: ad_turn_active
+    entity_id: binary_sensor.autodarts_turn_active
+
+  - platform: homeassistant
+    id: ad_last_is_miss
+    entity_id: binary_sensor.autodarts_miss
+
+globals:
+  - id: matrix_last_hit_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_player_change_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_player_index
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: matrix_last_miss_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_bust_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_win_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_takeout_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: cached_turn_score
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # DEBUG
+  - id: dbg_last_seq
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  - id: dbg_last_dart
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  - id: dbg_last_miss
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+script:
+  - id: process_throw_event
+    mode: restart
+    then:
+      - delay: 40ms
+      - lambda: |-
+          int seq = id(ad_throw_seq).has_state() ? (int) id(ad_throw_seq).state : -1;
+          int dart = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : -1;
+          bool miss = id(ad_last_is_miss).has_state() && id(ad_last_is_miss).state;
+
+          id(dbg_last_seq) = seq;
+          id(dbg_last_dart) = dart;
+          id(dbg_last_miss) = miss;
+
+          ESP_LOGD("autodarts", "process_throw_event: seq=%d dart=%d miss=%d", seq, dart, miss);
+
+          if (miss) {
+            id(matrix_last_miss_ms) = millis();
+            ESP_LOGD("autodarts", "matrix -> MISS animation");
+          } else {
+            id(matrix_last_hit_ms) = millis();
+            ESP_LOGD("autodarts", "matrix -> HIT animation");
+          }
+
+display:
+  # Matrix
+  - platform: max7219digit
+    id: autodarts_matrix
+    cs_pin: GPIO5
+    num_chips: 1
+    intensity: 1
+    update_interval: 80ms
+    lambda: |-
+      it.clear();
+      const uint32_t now = millis();
+
+      bool match_on = id(ad_match_started).has_state() && id(ad_match_started).state;
+      if (!match_on) {
+        return;
+      }
+
+      int remaining = id(ad_remaining).has_state() ? (int) id(ad_remaining).state : 999;
+
+      auto draw_hit_center = [&]() {
+        it.draw_pixel_at(3, 3, COLOR_ON);
+        it.draw_pixel_at(4, 3, COLOR_ON);
+        it.draw_pixel_at(3, 4, COLOR_ON);
+        it.draw_pixel_at(4, 4, COLOR_ON);
+      };
+
+      auto draw_hit_pixel = [&](int x, int y) {
+        if (x >= 0 && x < 8 && y >= 0 && y < 8) {
+          it.draw_pixel_at(x, y, COLOR_ON);
+        }
+      };
+
+      auto draw_x = [&](int cx, int cy) {
+        for (int i = -1; i <= 1; i++) {
+          if (cx + i >= 0 && cx + i < 8 && cy + i >= 0 && cy + i < 8)
+            it.draw_pixel_at(cx + i, cy + i, COLOR_ON);
+          if (cx + i >= 0 && cx + i < 8 && cy - i >= 0 && cy - i < 8)
+            it.draw_pixel_at(cx + i, cy - i, COLOR_ON);
+        }
+      };
+      auto draw_x_1 = [&]() {
+        for (int i = 0; i < 8; i++) {
+          it.draw_pixel_at(i, i, COLOR_ON);
+          it.draw_pixel_at(7 - i, i, COLOR_ON);
+        }
+      };
+      auto draw_border = [&]() {
+        // oben + unten
+        for (int x = 0; x < 8; x++) {
+          it.draw_pixel_at(x, 0, COLOR_ON);
+          it.draw_pixel_at(x, 7, COLOR_ON);
+        }
+
+        // links + rechts
+        for (int y = 0; y < 8; y++) {
+          it.draw_pixel_at(0, y, COLOR_ON);
+          it.draw_pixel_at(7, y, COLOR_ON);
+        }
+      };
+      auto draw_plus = [&](int cx, int cy) {
+        for (int i = -1; i <= 1; i++) {
+          if (cx + i >= 0 && cx + i < 8)
+            it.draw_pixel_at(cx + i, cy, COLOR_ON);
+          if (cy + i >= 0 && cy + i < 8)
+            it.draw_pixel_at(cx, cy + i, COLOR_ON);
+        }
+      };
+
+      auto draw_ring = [&](int cx, int cy, int r) {
+        for (int x = -r; x <= r; x++) {
+          for (int y = -r; y <= r; y++) {
+            int ax = cx + x;
+            int ay = cy + y;
+            if (ax < 0 || ax > 7 || ay < 0 || ay > 7) continue;
+
+            int d2 = x * x + y * y;
+            if (d2 >= (r * r - r) && d2 <= (r * r + r)) {
+              it.draw_pixel_at(ax, ay, COLOR_ON);
+            }
+          }
+        }
+      };
+
+      auto draw_takeout_o = [&]() {
+        for (int x = 1; x <= 6; x++) {
+          it.draw_pixel_at(x, 1, COLOR_ON);
+          it.draw_pixel_at(x, 6, COLOR_ON);
+        }
+        for (int y = 1; y <= 6; y++) {
+          it.draw_pixel_at(1, y, COLOR_ON);
+          it.draw_pixel_at(6, y, COLOR_ON);
+        }
+        it.draw_pixel_at(1, 1, COLOR_OFF);
+        it.draw_pixel_at(6, 1, COLOR_OFF);
+        it.draw_pixel_at(1, 6, COLOR_OFF);
+        it.draw_pixel_at(6, 6, COLOR_OFF);
+      };
+
+      auto draw_exclamation = [&]() {
+        it.vertical_line(3, 1, 4, COLOR_ON);
+        it.draw_pixel_at(3, 6, COLOR_ON);
+      };
+
+      auto draw_player_arrow = [&]() {
+        it.draw_pixel_at(1, 3, COLOR_ON);
+        it.draw_pixel_at(2, 3, COLOR_ON);
+        it.draw_pixel_at(3, 3, COLOR_ON);
+        it.draw_pixel_at(4, 3, COLOR_ON);
+        it.draw_pixel_at(5, 3, COLOR_ON);
+        it.draw_pixel_at(4, 2, COLOR_ON);
+        it.draw_pixel_at(4, 4, COLOR_ON);
+        it.draw_pixel_at(6, 3, COLOR_ON);
+      };
+
+      auto draw_idle_center = [&]() {
+        it.draw_pixel_at(3, 3, COLOR_ON);
+        it.draw_pixel_at(4, 3, COLOR_ON);
+        it.draw_pixel_at(3, 4, COLOR_ON);
+        it.draw_pixel_at(4, 4, COLOR_ON);
+      };
+
+      // Prioritäten
+      if (now - id(matrix_last_player_change_ms) < 1200) {
+        bool on = ((now / 120) % 2) == 0;
+        if (on) draw_player_arrow();
+        return;
+      }
+
+      auto draw_frame = [&](int inset) {
+        int size = 8 - inset * 2;
+        if (size <= 0) return;
+
+        if (size == 1) {
+          it.draw_pixel_at(inset, inset, COLOR_ON);
+          return;
+        }
+
+        if (size == 2) {
+          it.draw_pixel_at(inset, inset, COLOR_ON);
+          it.draw_pixel_at(inset + 1, inset, COLOR_ON);
+          it.draw_pixel_at(inset, inset + 1, COLOR_ON);
+          it.draw_pixel_at(inset + 1, inset + 1, COLOR_ON);
+          return;
+        }
+
+        it.rectangle(inset, inset, size, size, COLOR_ON);
+      };
+
+      if (now - id(matrix_last_win_ms) < 3000) {
+        uint32_t dt = now - id(matrix_last_win_ms);
+
+        // 3 Zyklen à 1000 ms
+        uint32_t phase = dt % 1000;
+
+        if (phase < 250) {
+          draw_frame(0);   // 8x8
+        } else if (phase < 500) {
+          draw_frame(1);   // 6x6
+        } else if (phase < 750) {
+          draw_frame(2);   // 4x4
+        } else {
+          draw_frame(3);   // 2x2 Mitte
+        }
+
+        return;
+      }
+
+      if (now - id(matrix_last_bust_ms) < 1500) {
+        bool on = ((now / 160) % 2) == 0;
+        if (on) draw_plus(3, 3);
+        return;
+      }
+
+      if (now - id(matrix_last_miss_ms) < 1200) {
+        bool on = ((now / 140) % 2) == 0;
+        if (on) draw_x_1();
+        return;
+      }
+
+      if (now - id(matrix_last_takeout_ms) < 1500) {
+        draw_takeout_o();
+        return;
+      }
+
+      if (now - id(matrix_last_hit_ms) < 1200) {
+        uint32_t dt = now - id(matrix_last_hit_ms);
+
+        if (dt < 250) {
+          draw_hit_center();
+        } else if (dt < 500) {
+          draw_hit_center();
+          draw_ring(3, 3, 1);
+        } else if (dt < 800) {
+          draw_hit_center();
+          draw_ring(3, 3, 2);
+        } else {
+          draw_hit_center();
+        }
+        return;
+      }
+
+      draw_idle_center();
+
+  # 1) 4-stellig: Wurf 1 als Punktewert
+  - platform: tm1637
+    id: disp_throw1_points
+    clk_pin: GPIO4
+    dio_pin: GPIO3
+    intensity: 1
+    update_interval: 200ms
+    lambda: |-
+      int dart_no = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (!turn_active || dart_no < 1) {
+        it.print("   -");
+        return;
+      }
+
+      int p1 = id(ad_throw_1_points).has_state() ? (int) id(ad_throw_1_points).state : 0;
+
+      char buf[5];
+      snprintf(buf, sizeof(buf), "%4d", p1);
+      it.print(buf);
+  # 2) 4-stellig: Wurf 2 als Punktewert
+  - platform: tm1637
+    id: disp_throw2_points
+    clk_pin: GPIO2
+    dio_pin: GPIO1
+    intensity: 1
+    update_interval: 200ms
+    lambda: |-
+      int dart_no = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (!turn_active || dart_no < 2) {
+        it.print("   -");
+        return;
+      }
+
+      int p2 = id(ad_throw_2_points).has_state() ? (int) id(ad_throw_2_points).state : 0;
+
+      char buf[5];
+      snprintf(buf, sizeof(buf), "%4d", p2);
+      it.print(buf);
+
+  # 3) 4-stellig: Wurf 3 als Punktewert
+  - platform: tm1637
+    id: disp_throw3_points
+    clk_pin: GPIO20
+    dio_pin: GPIO21
+    intensity: 1
+    update_interval: 200ms
+    lambda: |-
+      int dart_no = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (!turn_active || dart_no < 3) {
+        it.print("   -");
+        return;
+      }
+
+      int p3 = id(ad_throw_3_points).has_state() ? (int) id(ad_throw_3_points).state : 0;
+
+      char buf[5];
+      snprintf(buf, sizeof(buf), "%4d", p3);
+      it.print(buf);
+
+  # 4) 6-stellig: Remaining links (3), Turn Score rechts (3)
+  - platform: tm1637
+    id: disp_remaining_turn
+    clk_pin: GPIO9
+    dio_pin: GPIO10
+    intensity: 1
+    update_interval: 200ms
+    lambda: |-
+      int remaining = 0;
+      int turn_score = 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (id(ad_remaining).has_state()) {
+        remaining = (int) id(ad_remaining).state;
+      }
+
+      if (id(ad_turn_score).has_state()) {
+        turn_score = (int) id(ad_turn_score).state;
+      }
+
+      if (remaining < 0) remaining = 0;
+      if (remaining > 999) remaining = 999;
+      if (turn_score < 0) turn_score = 0;
+      if (turn_score > 999) turn_score = 999;
+
+      // Turn Score nur waehrend aktivem Turn cachen
+      if (turn_active && turn_score > 0) {
+        id(cached_turn_score) = turn_score;
+      }
+
+      auto print_mapped6 = [&](const char *text) {
+        char out[7];
+        out[0] = text[2];
+        out[1] = text[1];
+        out[2] = text[0];
+        out[3] = text[5];
+        out[4] = text[4];
+        out[5] = text[3];
+        out[6] = '\0';
+        it.print(out);
+      };
+
+      char left[4];
+      snprintf(left, sizeof(left), "%03d", remaining);
+
+      char right[4];
+      if (turn_active) {
+        snprintf(right, sizeof(right), "%03d", id(cached_turn_score));
+      } else {
+        snprintf(right, sizeof(right), "  -");
+      }
+
+      char normal[7];
+      snprintf(normal, sizeof(normal), "%s%s", left, right);
+
+      char out[7];
+      out[0] = normal[2];
+      out[1] = normal[1];
+      out[2] = normal[0];
+      out[3] = normal[5];
+      out[4] = normal[4];
+      out[5] = normal[3];
+      out[6] = '\0';
+
+      it.print(out);
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: autodarts_strip
+    name: "Autodarts LED Strip"
+    pin: GPIO0
+    chipset: WS2812
+    num_leds: 64
+    rgb_order: GRB
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+
+    effects:
+      - addressable_lambda:
+          name: "Takeout Orange Pulse"
+          update_interval: 80ms
+          lambda: |-
+            static bool on = false;
+            on = !on;
+
+            if (on) {
+              for (int i = 0; i < it.size(); i++) {
+                it[i] = Color(255, 80, 0);
+              }
+            } else {
+              it.all() = Color(0, 0, 0);
+            }
+
+      - addressable_lambda:
+          name: "Win Green Chase"
+          update_interval: 60ms
+          lambda: |-
+            static int pos = 0;
+            it.all() = Color(0, 0, 0);
+            it[pos] = Color(0, 255, 0);
+            pos = (pos + 1) % it.size();
+
+      - addressable_color_wipe:
+          name: Color Wipe Effect With Custom Values
+          colors:
+            - red: 100%
+              green: 0%
+              blue: 0%
+              num_leds: 22
+              gradient: true
+            - red: 0%
+              green: 100%
+              blue: 0%
+              num_leds: 20
+              gradient: true
+            - red: 0%
+              green: 0%
+              blue: 100%
+              num_leds: 22
+              gradient: true
+            # - red: 0%
+            #   green: 0%
+            #   blue: 0%
+            #   num_leds: 1
+          add_led_interval: 100ms
+          reverse: false
+
+
+      - addressable_rainbow:
+          name: "Rainbow Test"
+          speed: 10
+          width: 64

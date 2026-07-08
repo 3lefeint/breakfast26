@@ -1,0 +1,102 @@
+<script>
+  import { onMount } from 'svelte';
+  import { gameState } from '../lib/stores/gameState.js';
+  import { players } from '../lib/stores/players.js';
+  import { elimination } from '../lib/stores/elimination.js';
+  import { cap } from '../lib/util.js';
+  import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
+  import { health, startHealthPolling } from '../lib/stores/health.js';
+  import AppHeader from '../lib/components/AppHeader.svelte';
+  import X01View from './views/X01View.svelte';
+  import EliminationTv from './views/EliminationTv.svelte';
+  import EliminationFinishedTv from './views/EliminationFinishedTv.svelte';
+
+  onMount(() => {
+    connect();
+    startHealthPolling();
+    primeAutoplay();
+  });
+
+  let game = $derived($gameState.game || {});
+  let sessionStats = $derived($gameState.session_stats || {});
+
+  let matchMeta = $derived.by(() => {
+    if ($elimination && ($elimination.state === 'finished' || $elimination.active)) return 'Elimination';
+    if (!game.match_started) return game.board_status ? `Board: ${game.board_status}` : '—';
+    const legLabel = game.current_leg > 1 ? ` · Leg ${game.current_leg}` : '';
+    return [game.game_mode, game.points_start ? `${game.points_start} pts` : null].filter(Boolean).join(' · ') + legLabel;
+  });
+
+  let view = $derived.by(() => {
+    if ($elimination && $elimination.state === 'finished') return 'elim-finished';
+    if ($elimination && $elimination.active) return 'elim-live';
+    if (game.match_started) return 'x01';
+    return 'idle';
+  });
+</script>
+
+<AppHeader title={matchMeta}>
+  {#snippet right()}
+    <button type="button" class="sound-btn" title="Play voice calls on this device" onclick={toggleAudio}>
+      {$audioOn ? '🔊' : '🔇'}
+    </button>
+  {/snippet}
+</AppHeader>
+
+{#if view === 'idle'}
+  <div id="idle">Waiting for match…</div>
+{:else if view === 'x01'}
+  <div id="active">
+    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} />
+  </div>
+{:else if view === 'elim-live'}
+  <div id="activeElim">
+    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} />
+  </div>
+{:else if view === 'elim-finished'}
+  <EliminationFinishedTv elimination={$elimination} />
+{/if}
+
+<footer>
+  <span class="dot-group">
+    <span><span class="conn-dot" class:ok={$connDot}></span><span class="conn-label">WS</span></span>
+    <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">MQTT</span></span>
+    <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">Autodarts</span></span>
+  </span>
+  <span class="version-info">{$health.version ? `v${$health.version} · ${$health.releaseDate}` : ''}</span>
+</footer>
+
+<style>
+  /* html/body's height/background/reset come from lib/theme.css (shared
+     with Home/Audio). Vite mounts this app into <div id="app"> inside
+     <body> though, not body's direct children like the old templates —
+     so the flex-column page layout has to target #app instead of body,
+     otherwise flex:1 on #idle/#active/etc. has no effect and the footer
+     ends up sitting right after the content instead of at the bottom. */
+  :global(html), :global(body) { overflow: hidden; }
+  /* On phone-width viewports, clipping (overflow: hidden) loses
+     content that doesn't fit a wide-TV layout — allow vertical scrolling
+     instead so nothing is simply unreachable. */
+  @media (max-width: 480px) {
+    :global(html), :global(body) { overflow-y: auto; }
+  }
+  :global(#app) { min-height: 100vh; display: flex; flex-direction: column; }
+  .sound-btn { cursor: pointer; user-select: none; font-size: 1.1rem; background: none; border: none; color: inherit; font-family: inherit; padding: 0; }
+  #idle {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; color: var(--muted); font-weight: 300; letter-spacing: 0.05em;
+  }
+  #active, #activeElim { flex: 1; display: flex; min-height: 0; }
+  #active { flex-direction: column; }
+  #activeElim { flex-direction: row; }
+  footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.6rem 1.25rem; background: var(--surface); border-top: 1px solid var(--border);
+    font-size: 0.8rem; color: var(--muted); flex-shrink: 0;
+  }
+  .dot-group { display: flex; align-items: center; gap: 1rem; }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 5px; transition: background 0.3s; }
+  .conn-dot.ok { background: var(--green); }
+  .conn-label { font-size: 0.8rem; color: var(--muted); }
+  .version-info { color: var(--muted); }
+</style>

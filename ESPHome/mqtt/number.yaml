@@ -1,0 +1,23 @@
+number:
+- name: "Autodarts Notebook Screen Brightness"
+  unique_id: "autodarts_notebook_screen_brightness"
+  icon: mdi:brightness-6
+  command_topic: "autodarts/notebook/screen/brightness/set"
+  state_topic: "autodarts/notebook/screen/brightness/state"
+  command_template: "{{ value | int }}"
+  value_template: "{{ value_json.brightness_pct }}"
+  min: 0
+  max: 100
+  step: 1
+  mode: slider
+  availability:
+    - topic: "autodarts/notebook/status"
+      value_template: "{{ value_json.state }}"
+      payload_available: "online"
+      payload_not_available: "offline"
+  device:
+    identifiers:
+      - "autodarts_notebook"
+    name: "Autodarts Notebook"
+    manufacturer: "Microsoft"
+    model: "Surface Book 2"

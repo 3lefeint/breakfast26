@@ -1,0 +1,990 @@
+esphome:
+  name: autodarts-led
+  friendly_name: autodarts-led
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  use_address: !secret device_ip   # optional: fixed address for OTA updates
+  power_save_mode: none
+  output_power: 8.5dB
+  networks:
+  - ssid: !secret wifi_ssid
+    password: !secret wifi_password
+    hidden: true
+  fast_connect: true
+  ap:
+    ssid: "Autodarts-Led Fallback Hotspot"
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+# Direct MQTT subscription for atomic dart events — bypasses HA entity ordering race.
+# Add mqtt_host, mqtt_username, mqtt_password to secrets.yaml.
+mqtt:
+  broker: !secret mqtt_host
+  port: 1883
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: false
+  on_message:
+    # Fired on every dart. Contains: seq, dart, miss, points, field, multiplier,
+    # mode, player_changed. All animation triggers come from here.
+    - topic: autodarts/events/dart
+      then:
+        - lambda: |-
+            bool miss = x.find("\"miss\":true") != std::string::npos;
+            bool player_changed = x.find("\"player_changed\":true") != std::string::npos;
+            uint32_t now = millis();
+
+            if (player_changed) {
+              id(matrix_last_player_change_ms) = now;
+              ESP_LOGD("autodarts", "dart event: player changed");
+            }
+            if (miss) {
+              id(matrix_last_miss_ms) = now;
+              ESP_LOGD("autodarts", "dart event: MISS");
+            } else {
+              id(matrix_last_hit_ms) = now;
+              ESP_LOGD("autodarts", "dart event: HIT");
+            }
+
+            // Dart-number LED effect: parse "dart": N from payload
+            int dart_no = 0;
+            auto pos = x.find("\"dart\":");
+            if (pos != std::string::npos) dart_no = atoi(x.c_str() + pos + 7);
+
+            id(led_effect_start_ms) = (int)now;
+            auto call = id(autodarts_strip).turn_on();
+            if      (dart_no == 1) call.set_effect("Dart 1 Orange");
+            else if (dart_no == 2) call.set_effect("Dart 2 Yellow");
+            else if (dart_no == 3) call.set_effect("Dart 3 Sequence");
+            else return;
+            call.perform();
+
+    # Fired after a bust. Red blink → orange (pull darts) → stuck warning.
+    - topic: autodarts/events/bust
+      then:
+        - lambda: |-
+            id(matrix_last_bust_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            ESP_LOGD("autodarts", "bust event");
+        - light.turn_on:
+            id: autodarts_strip
+            effect: "Bust Red"
+
+    # Fired when darts are pulled — turn off strip (pull-darts state ends).
+    - topic: autodarts/events/turn_end
+      then:
+        - light.turn_off:
+            id: autodarts_strip
+
+    # Fired on game-won and match-won.
+    - topic: autodarts/events/won
+      then:
+        - lambda: |-
+            id(matrix_last_win_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            ESP_LOGD("autodarts", "won event");
+        - light.turn_on:
+            id: autodarts_strip
+            effect: "Win Celebrate"
+
+    # Stop LEDs when a new match starts or the current one ends.
+    - topic: autodarts/events/match_started
+      then:
+        - light.turn_off:
+            id: autodarts_strip
+    - topic: autodarts/events/match_ended
+      then:
+        - light.turn_off:
+            id: autodarts_strip
+
+    # Freeplay dart detected (no active match) — trigger matrix hit animation.
+    - topic: autodarts/events/freeplay_dart
+      then:
+        - lambda: |-
+            id(matrix_last_hit_ms) = millis();
+            ESP_LOGD("autodarts", "freeplay dart");
+
+    # Freeplay state — store in globals for display lambdas (bypasses HA).
+    - topic: autodarts/freeplay/count
+      then:
+        - lambda: 'id(fp_count) = atoi(x.c_str());'
+    - topic: autodarts/freeplay/throw1_name
+      then:
+        - lambda: 'id(fp_throw1_name) = x;'
+    - topic: autodarts/freeplay/throw2_name
+      then:
+        - lambda: 'id(fp_throw2_name) = x;'
+    - topic: autodarts/freeplay/throw3_name
+      then:
+        - lambda: 'id(fp_throw3_name) = x;'
+    - topic: autodarts/freeplay/total
+      then:
+        - lambda: 'id(fp_total) = atoi(x.c_str());'
+
+    # Fired on Board Status changes. Used for takeout animation.
+    - topic: autodarts/events/board_status
+      then:
+        - lambda: |-
+            if (x.find("Takeout") != std::string::npos) {
+              id(matrix_last_takeout_ms) = millis();
+              ESP_LOGD("autodarts", "board_status: takeout");
+            }
+
+    # ── Elimination game ───────────────────────────────────────────────────────
+    - topic: autodarts/elimination/active
+      then:
+        - lambda: |-
+            bool was_active = id(elim_active);
+            id(elim_active) = (x == "true");
+            if (id(elim_active) && !was_active) {
+              id(led_effect_start_ms) = (int)millis();
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Elimination Lives");
+              call.perform();
+            } else if (!id(elim_active) && was_active) {
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+            }
+
+    - topic: autodarts/elimination/current_number
+      then:
+        - lambda: 'id(elim_player_number) = atoi(x.c_str());'
+
+    - topic: autodarts/elimination/current_lives
+      then:
+        - lambda: 'id(elim_current_lives) = atoi(x.c_str());'
+
+    - topic: autodarts/elimination/lives_max
+      then:
+        - lambda: 'id(elim_lives_max) = atoi(x.c_str());'
+
+    - topic: autodarts/elimination/target
+      then:
+        - lambda: 'id(elim_target) = atoi(x.c_str());'
+
+    - topic: autodarts/elimination/freipass
+      then:
+        - lambda: 'id(elim_freipass) = (x == "true");'
+
+    - topic: autodarts/elimination/current/dart1
+      then:
+        - lambda: 'id(elim_dart1) = x.empty() ? -1 : atoi(x.c_str());'
+
+    - topic: autodarts/elimination/current/dart2
+      then:
+        - lambda: 'id(elim_dart2) = x.empty() ? -1 : atoi(x.c_str());'
+
+    - topic: autodarts/elimination/current/dart3
+      then:
+        - lambda: 'id(elim_dart3) = x.empty() ? -1 : atoi(x.c_str());'
+
+    - topic: autodarts/elimination/current/total
+      then:
+        - lambda: 'id(elim_total) = x.empty() ? 0 : atoi(x.c_str());'
+
+    - topic: autodarts/elimination/events/life_lost
+      then:
+        - lambda: |-
+            id(elim_last_life_lost_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            ESP_LOGD("autodarts", "elimination: life lost");
+        - light.turn_on:
+            id: autodarts_strip
+            effect: "Life Lost"
+        - delay: 1500ms
+        - if:
+            condition:
+              lambda: 'return id(elim_active);'
+            then:
+              - light.turn_on:
+                  id: autodarts_strip
+                  effect: "Elimination Lives"
+
+    - topic: autodarts/elimination/events/eliminated
+      then:
+        - lambda: |-
+            id(elim_last_eliminated_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            ESP_LOGD("autodarts", "elimination: player eliminated");
+        - light.turn_on:
+            id: autodarts_strip
+            effect: "Eliminated"
+        - delay: 3000ms
+        - if:
+            condition:
+              lambda: 'return id(elim_active);'
+            then:
+              - light.turn_on:
+                  id: autodarts_strip
+                  effect: "Elimination Lives"
+
+    - topic: autodarts/elimination/events/game_won
+      then:
+        - lambda: |-
+            id(elim_active) = false;
+            id(led_effect_start_ms) = (int)millis();
+        - light.turn_on:
+            id: autodarts_strip
+            effect: "Win Celebrate"
+
+spi:
+  clk_pin: GPIO6
+  mosi_pin: GPIO7
+
+# ─── Home Assistant sensors (retained state — for display values only) ───────
+
+sensor:
+  - platform: homeassistant
+    id: ad_turn_score
+    entity_id: sensor.autodarts_turn_score
+    internal: true
+
+  - platform: homeassistant
+    id: ad_remaining
+    entity_id: sensor.autodarts_remaining
+
+  - platform: homeassistant
+    id: ad_throw_1_points
+    entity_id: sensor.autodarts_throw_1_points
+
+  - platform: homeassistant
+    id: ad_throw_2_points
+    entity_id: sensor.autodarts_throw_2_points
+
+  - platform: homeassistant
+    id: ad_throw_3_points
+    entity_id: sensor.autodarts_throw_3_points
+
+  - platform: homeassistant
+    id: ad_last_dart_number
+    entity_id: sensor.autodarts_last_dart_number
+
+text_sensor:
+  # Board status from a separate HA entity (tux integration). Kept as additional
+  # takeout source alongside the direct MQTT board_status event.
+  - platform: homeassistant
+    id: ad_status
+    entity_id: sensor.ad_tux_status
+    on_value:
+      then:
+        - lambda: |-
+            std::string s = id(ad_status).state.c_str();
+            for (char &c : s) c = tolower((unsigned char)c);
+            if (s == "takeout" || s == "takeout finished") {
+              id(matrix_last_takeout_ms) = millis();
+            }
+        - logger.log:
+            format: "ad_status = %s"
+            args: ["id(ad_status).state.c_str()"]
+
+binary_sensor:
+  - platform: homeassistant
+    id: ad_match_started
+    entity_id: binary_sensor.autodarts_match_started_binary
+
+  - platform: homeassistant
+    id: ad_turn_active
+    entity_id: binary_sensor.autodarts_turn_active
+
+# ─── Animation globals ────────────────────────────────────────────────────────
+
+globals:
+  - id: matrix_last_hit_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_miss_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_player_change_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_bust_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_win_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: matrix_last_takeout_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: cached_turn_score
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # ── Freeplay state (populated from MQTT subscriptions, no HA round-trip) ──
+  - id: led_effect_start_ms
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: fp_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: fp_throw1_name
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+  - id: fp_throw2_name
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+  - id: fp_throw3_name
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+  - id: fp_total
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # ── Elimination game state ─────────────────────────────────────────────────
+  - id: elim_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: elim_player_number
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: elim_current_lives
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: elim_lives_max
+    type: int
+    restore_value: no
+    initial_value: '3'
+
+  - id: elim_target
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: elim_freipass
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: elim_last_life_lost_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: elim_last_eliminated_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: elim_dart1
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: elim_dart2
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: elim_dart3
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: elim_total
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+# ─── Displays ─────────────────────────────────────────────────────────────────
+
+display:
+  # 8x8 LED matrix — animations driven by MQTT dart events
+  - platform: max7219digit
+    id: autodarts_matrix
+    cs_pin: GPIO5
+    num_chips: 1
+    intensity: 5
+    update_interval: 80ms
+    lambda: |-
+      it.clear();
+      const uint32_t now = millis();
+
+      // 90° CW rotation: compensates physical display mount orientation.
+      // All pixel draws use px(x,y) instead of draw_pixel_at(x,y).
+      auto px = [&](int x, int y) {
+        it.draw_pixel_at(7 - y, x, COLOR_ON);
+      };
+
+      // ── Draw helpers ──────────────────────────────────────────────────────
+
+      auto draw_miss_x = [&]() {
+        for (int i = 0; i < 8; i++) {
+          px(i, i);
+          px(7 - i, i);
+        }
+      };
+
+      auto draw_hit_center = [&]() {
+        px(3, 3); px(4, 3); px(3, 4); px(4, 4);
+      };
+
+      auto draw_ring = [&](int cx, int cy, int r) {
+        for (int dx = -r; dx <= r; dx++) {
+          for (int dy = -r; dy <= r; dy++) {
+            int ax = cx + dx, ay = cy + dy;
+            if (ax < 0 || ax > 7 || ay < 0 || ay > 7) continue;
+            int d2 = dx * dx + dy * dy;
+            if (d2 >= (r * r - r) && d2 <= (r * r + r)) px(ax, ay);
+          }
+        }
+      };
+
+      auto draw_plus = [&](int cx, int cy) {
+        for (int i = -2; i <= 2; i++) {
+          if (cx + i >= 0 && cx + i < 8) px(cx + i, cy);
+          if (cy + i >= 0 && cy + i < 8) px(cx, cy + i);
+        }
+      };
+
+      auto draw_takeout_o = [&]() {
+        for (int i = 1; i <= 6; i++) {
+          px(i, 1); px(i, 6);
+          px(1, i); px(6, i);
+        }
+        // clear corners to round the shape
+        it.draw_pixel_at(7 - 1, 1, COLOR_OFF);
+        it.draw_pixel_at(7 - 1, 6, COLOR_OFF);
+        it.draw_pixel_at(7 - 6, 1, COLOR_OFF);
+        it.draw_pixel_at(7 - 6, 6, COLOR_OFF);
+      };
+
+      auto draw_exclamation = [&]() {
+        for (int i = 1; i <= 4; i++) px(3, i);
+        px(3, 6);
+      };
+
+      auto draw_player_arrow = [&]() {
+        // Right-pointing arrow in logical space → downward after 90° CW
+        px(1, 3); px(2, 3); px(3, 3); px(4, 3); px(5, 3);
+        px(4, 2); px(4, 4); px(6, 3);
+      };
+
+      auto draw_idle_center = [&]() {
+        px(3, 3); px(4, 3); px(3, 4); px(4, 4);
+      };
+
+      // ── Elimination mode ──────────────────────────────────────────────────
+
+      if (id(elim_active)) {
+        uint32_t dt_elim = now - id(elim_last_eliminated_ms);
+        uint32_t dt_life = now - id(elim_last_life_lost_ms);
+
+        if (dt_elim < 2000) {
+          // Eliminated: fast-blinking full X
+          bool on = ((now / 100) % 2) == 0;
+          if (on) draw_miss_x();
+          return;
+        }
+
+        if (dt_life < 1500) {
+          // Life lost: blinking minus bar
+          bool on = ((now / 200) % 2) == 0;
+          if (on) {
+            for (int i = 1; i <= 6; i++) { px(i, 3); px(i, 4); }
+          }
+          return;
+        }
+
+        // Show current player number as large digit
+        int n = id(elim_player_number);
+        if (n >= 1 && n <= 9) {
+          static const uint8_t DIGITS[10][8] = {
+            {0x3C,0x42,0x42,0x42,0x42,0x42,0x3C,0x00}, // 0 (unused)
+            {0x10,0x30,0x10,0x10,0x10,0x10,0x38,0x00}, // 1
+            {0x3C,0x42,0x02,0x0C,0x30,0x40,0x7E,0x00}, // 2
+            {0x3C,0x42,0x02,0x1C,0x02,0x42,0x3C,0x00}, // 3
+            {0x08,0x18,0x28,0x48,0x7E,0x08,0x08,0x00}, // 4
+            {0x7E,0x40,0x7C,0x02,0x02,0x42,0x3C,0x00}, // 5
+            {0x3C,0x40,0x40,0x7C,0x42,0x42,0x3C,0x00}, // 6
+            {0x7E,0x02,0x04,0x08,0x10,0x10,0x10,0x00}, // 7
+            {0x3C,0x42,0x42,0x3C,0x42,0x42,0x3C,0x00}, // 8
+            {0x3C,0x42,0x42,0x3E,0x02,0x42,0x3C,0x00}, // 9
+          };
+          for (int row = 0; row < 8; row++) {
+            uint8_t pat = DIGITS[n][row];
+            for (int col = 0; col < 8; col++) {
+              if (pat & (0x80 >> col)) px(col, row);
+            }
+          }
+        }
+        return;
+      }
+
+      bool match_on = id(ad_match_started).has_state() && id(ad_match_started).state;
+      if (!match_on) {
+        return;
+      }
+
+      int remaining = id(ad_remaining).has_state() ? (int) id(ad_remaining).state : 999;
+
+      // ── Animation priority (highest first) ────────────────────────────────
+
+      if (now - id(matrix_last_player_change_ms) < 1200) {
+        bool on = ((now / 120) % 2) == 0;
+        if (on) draw_player_arrow();
+        return;
+      }
+
+      if (now - id(matrix_last_win_ms) < 2000) {
+        bool on = ((now / 250) % 2) == 0;
+        if (on) {
+          it.rectangle(0, 0, 8, 8, COLOR_ON);
+        } else {
+          it.rectangle(1, 1, 6, 6, COLOR_ON);
+        }
+        return;
+      }
+
+      if (now - id(matrix_last_bust_ms) < 1500) {
+        bool on = ((now / 160) % 2) == 0;
+        if (on) draw_plus(3, 3);
+        return;
+      }
+
+      if (now - id(matrix_last_miss_ms) < 1200) {
+        bool on = ((now / 140) % 2) == 0;
+        if (on) draw_miss_x();
+        return;
+      }
+
+      if (now - id(matrix_last_takeout_ms) < 1500) {
+        draw_takeout_o();
+        return;
+      }
+
+      if (now - id(matrix_last_hit_ms) < 1200) {
+        uint32_t dt = now - id(matrix_last_hit_ms);
+        if (dt < 300) {
+          draw_hit_center();
+        } else if (dt < 600) {
+          draw_hit_center();
+          draw_ring(3, 3, 2);
+        } else if (dt < 900) {
+          draw_ring(3, 3, 3);
+        } else {
+          draw_hit_center();
+        }
+        return;
+      }
+
+      // ── Idle display ──────────────────────────────────────────────────────
+
+      if (remaining < 50) {
+        draw_exclamation();
+        return;
+      }
+
+      if (remaining < 100) {
+        px(7, 7);
+        return;
+      }
+
+      draw_idle_center();
+
+  # TM1637 #1 — Dart 1 points / freeplay throw 1 / elimination dart 1
+  - platform: tm1637
+    id: disp_throw1_points
+    clk_pin: GPIO4
+    dio_pin: GPIO3
+    intensity: 5
+    update_interval: 200ms
+    lambda: |-
+      if (id(elim_active)) {
+        char buf[5];
+        int v = id(elim_dart1);
+        if (v < 0) strcpy(buf, "   -");
+        else snprintf(buf, sizeof(buf), "%4d", v);
+        it.print(buf);
+        return;
+      }
+
+      bool match_on = id(ad_match_started).has_state() && id(ad_match_started).state;
+
+      if (!match_on) {
+        char seg[5];
+        std::string n = id(fp_count) >= 1 ? id(fp_throw1_name) : "";
+        if (n.size() >= 2 && (n[0]=='S'||n[0]=='D'||n[0]=='T')) {
+          char p = n[0]=='T' ? 't' : n[0]=='D' ? 'd' : 'S';
+          snprintf(seg, sizeof(seg), "%c%3s", p, n.substr(1).c_str());
+        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M') {
+          snprintf(seg, sizeof(seg), "%4s", n.substr(0,4).c_str());
+        } else { strcpy(seg, "   -"); }
+        it.print(seg);
+        return;
+      }
+
+      int dart_no = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (!turn_active || dart_no < 1) {
+        it.print("   -");
+        return;
+      }
+
+      int p1 = id(ad_throw_1_points).has_state() ? (int) id(ad_throw_1_points).state : 0;
+      char buf[5];
+      snprintf(buf, sizeof(buf), "%4d", p1);
+      it.print(buf);
+
+  # TM1637 #2 — Dart 2 points / freeplay throw 2 / elimination dart 2
+  - platform: tm1637
+    id: disp_throw2_points
+    clk_pin: GPIO2
+    dio_pin: GPIO1
+    intensity: 5
+    update_interval: 200ms
+    lambda: |-
+      if (id(elim_active)) {
+        char buf[5];
+        int v = id(elim_dart2);
+        if (v < 0) strcpy(buf, "   -");
+        else snprintf(buf, sizeof(buf), "%4d", v);
+        it.print(buf);
+        return;
+      }
+
+      bool match_on = id(ad_match_started).has_state() && id(ad_match_started).state;
+
+      if (!match_on) {
+        char seg[5];
+        std::string n = id(fp_count) >= 2 ? id(fp_throw2_name) : "";
+        if (n.size() >= 2 && (n[0]=='S'||n[0]=='D'||n[0]=='T')) {
+          char p = n[0]=='T' ? 't' : n[0]=='D' ? 'd' : 'S';
+          snprintf(seg, sizeof(seg), "%c%3s", p, n.substr(1).c_str());
+        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M') {
+          snprintf(seg, sizeof(seg), "%4s", n.substr(0,4).c_str());
+        } else { strcpy(seg, "   -"); }
+        it.print(seg);
+        return;
+      }
+
+      int dart_no = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (!turn_active || dart_no < 2) {
+        it.print("   -");
+        return;
+      }
+
+      int p2 = id(ad_throw_2_points).has_state() ? (int) id(ad_throw_2_points).state : 0;
+      char buf[5];
+      snprintf(buf, sizeof(buf), "%4d", p2);
+      it.print(buf);
+
+  # TM1637 #3 — Dart 3 points / freeplay throw 3 / elimination dart 3
+  - platform: tm1637
+    id: disp_throw3_points
+    clk_pin: GPIO20
+    dio_pin: GPIO21
+    intensity: 5
+    update_interval: 200ms
+    lambda: |-
+      if (id(elim_active)) {
+        char buf[5];
+        int v = id(elim_dart3);
+        if (v < 0) strcpy(buf, "   -");
+        else snprintf(buf, sizeof(buf), "%4d", v);
+        it.print(buf);
+        return;
+      }
+
+      bool match_on = id(ad_match_started).has_state() && id(ad_match_started).state;
+
+      if (!match_on) {
+        char seg[5];
+        std::string n = id(fp_count) >= 3 ? id(fp_throw3_name) : "";
+        if (n.size() >= 2 && (n[0]=='S'||n[0]=='D'||n[0]=='T')) {
+          char p = n[0]=='T' ? 't' : n[0]=='D' ? 'd' : 'S';
+          snprintf(seg, sizeof(seg), "%c%3s", p, n.substr(1).c_str());
+        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M') {
+          snprintf(seg, sizeof(seg), "%4s", n.substr(0,4).c_str());
+        } else { strcpy(seg, "   -"); }
+        it.print(seg);
+        return;
+      }
+
+      int dart_no = id(ad_last_dart_number).has_state() ? (int) id(ad_last_dart_number).state : 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (!turn_active || dart_no < 3) {
+        it.print("   -");
+        return;
+      }
+
+      int p3 = id(ad_throw_3_points).has_state() ? (int) id(ad_throw_3_points).state : 0;
+      char buf[5];
+      snprintf(buf, sizeof(buf), "%4d", p3);
+      it.print(buf);
+
+  # TM1637 #4 — Remaining/target (left 3) + Turn score/total (right 3)
+  #             Elimination: target to beat (left) | turn total (right)
+  #             Freeplay: total score (right)
+  - platform: tm1637
+    id: disp_remaining_turn
+    clk_pin: GPIO9
+    dio_pin: GPIO10
+    intensity: 5
+    update_interval: 200ms
+    lambda: |-
+      if (id(elim_active)) {
+        // passes = score > target, so target itself isn't enough to beat
+        // it — show the actual minimum passing score.
+        int tgt = id(elim_freipass) ? 0 : id(elim_target) + 1;
+        int tot = id(elim_total);
+        if (tgt > 999) tgt = 999;
+        if (tot > 999) tot = 999;
+        char normal[7];
+        snprintf(normal, sizeof(normal), "%03d%03d", tgt, tot);
+        char out[7];
+        out[0] = normal[2]; out[1] = normal[1]; out[2] = normal[0];
+        out[3] = normal[5]; out[4] = normal[4]; out[5] = normal[3];
+        out[6] = '\0';
+        it.print(out);
+        return;
+      }
+
+      bool match_on = id(ad_match_started).has_state() && id(ad_match_started).state;
+
+      if (!match_on) {
+        char right[4];
+        if (id(fp_count) > 0) {
+          int tot = id(fp_total);
+          if (tot > 999) tot = 999;
+          snprintf(right, sizeof(right), "%03d", tot);
+        } else {
+          strcpy(right, "---");
+        }
+        // Left side empty, total on right — same reversal as game mode.
+        char normal[7];
+        snprintf(normal, sizeof(normal), "---%s", right);
+        char out[7];
+        out[0] = normal[2]; out[1] = normal[1]; out[2] = normal[0];
+        out[3] = normal[5]; out[4] = normal[4]; out[5] = normal[3];
+        out[6] = '\0';
+        it.print(out);
+        return;
+      }
+
+      int remaining = 0;
+      int turn_score = 0;
+      bool turn_active = id(ad_turn_active).has_state() && id(ad_turn_active).state;
+
+      if (id(ad_remaining).has_state()) {
+        remaining = (int) id(ad_remaining).state;
+      }
+      if (id(ad_turn_score).has_state()) {
+        turn_score = (int) id(ad_turn_score).state;
+      }
+
+      if (remaining < 0) remaining = 0;
+      if (remaining > 999) remaining = 999;
+      if (turn_score < 0) turn_score = 0;
+      if (turn_score > 999) turn_score = 999;
+
+      if (turn_active && turn_score > 0) {
+        id(cached_turn_score) = turn_score;
+      }
+
+      char left[4];
+      snprintf(left, sizeof(left), "%03d", remaining);
+
+      char right[4];
+      if (turn_active) {
+        snprintf(right, sizeof(right), "%03d", id(cached_turn_score));
+      } else {
+        snprintf(right, sizeof(right), "  -");
+      }
+
+      // Physical wiring reverses digit order — swap within each 3-digit group.
+      char normal[7];
+      snprintf(normal, sizeof(normal), "%s%s", left, right);
+
+      char out[7];
+      out[0] = normal[2];
+      out[1] = normal[1];
+      out[2] = normal[0];
+      out[3] = normal[5];
+      out[4] = normal[4];
+      out[5] = normal[3];
+      out[6] = '\0';
+
+      it.print(out);
+
+# ─── LED strip ────────────────────────────────────────────────────────────────
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: autodarts_strip
+    name: "Autodarts LED Strip"
+    pin: GPIO0
+    chipset: SK6812
+    num_leds: 5
+    rgb_order: GRB
+    is_rgbw: true
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+
+    color_correct: [50%, 50%, 50%, 50%]
+
+    effects:
+      # ── Dart count effects ──────────────────────────────────────────────────
+      - addressable_lambda:
+          name: "Dart 1 Orange"
+          update_interval: 500ms
+          lambda: |-
+            it.all() = Color(0, 0, 0);
+            it[1] = Color(255, 80, 0);
+            it[2] = Color(255, 80, 0);
+            it[3] = Color(255, 80, 0);
+
+      - addressable_lambda:
+          name: "Dart 2 Yellow"
+          update_interval: 500ms
+          lambda: |-
+            it.all() = Color(0, 0, 0);
+            it[2] = Color(220, 180, 0);
+
+      # Dart 3: 2 s green (Zug fertig) → orange (Darts ziehen) → >35 s roter Fehlerblink
+      - addressable_lambda:
+          name: "Dart 3 Sequence"
+          update_interval: 100ms
+          lambda: |-
+            uint32_t elapsed = millis() - (uint32_t)id(led_effect_start_ms);
+            if (elapsed < 2000) {
+              it.all() = Color(0, 200, 0);
+            } else if (elapsed < 35000) {
+              it.all() = Color(255, 80, 0);
+            } else {
+              bool on = ((elapsed / 800) % 2) == 0;
+              it.all() = on ? Color(200, 0, 0) : Color(60, 20, 0);
+            }
+
+      # Bust: 3 s rotes Blinken → orange (Darts ziehen) → >35 s Fehlerblink
+      - addressable_lambda:
+          name: "Bust Red"
+          update_interval: 100ms
+          lambda: |-
+            uint32_t elapsed = millis() - (uint32_t)id(led_effect_start_ms);
+            if (elapsed < 3000) {
+              bool on = ((elapsed / 300) % 2) == 0;
+              it.all() = on ? Color(200, 0, 0) : Color(0, 0, 0);
+            } else if (elapsed < 35000) {
+              it.all() = Color(255, 80, 0);
+            } else {
+              bool on = ((elapsed / 800) % 2) == 0;
+              it.all() = on ? Color(200, 0, 0) : Color(60, 20, 0);
+            }
+
+      # Win: grüne Füll-Animation + Gold/Grün-Blink für 10 s, dann aus
+      - addressable_lambda:
+          name: "Win Celebrate"
+          update_interval: 100ms
+          lambda: |-
+            uint32_t elapsed = millis() - (uint32_t)id(led_effect_start_ms);
+            if (elapsed >= 10000) { it.all() = Color(0, 0, 0); return; }
+            int step = (elapsed / 100) % 10;
+            int n = it.size();
+            if (step < n) {
+              it.all() = Color(0, 0, 0);
+              for (int i = 0; i <= step; i++) it[i] = Color(0, 220, 0);
+            } else {
+              bool gold = ((step - n) % 2) == 0;
+              Color c = gold ? Color(255, 150, 0) : Color(0, 220, 0);
+              for (int i = 0; i < n; i++) it[i] = c;
+            }
+
+      # Life lost: 3 red pulses (1.5 s) then caller returns strip to Elimination Lives
+      - addressable_lambda:
+          name: "Life Lost"
+          update_interval: 100ms
+          lambda: |-
+            uint32_t elapsed = millis() - (uint32_t)id(led_effect_start_ms);
+            if (elapsed >= 1500) { it.all() = Color(0, 0, 0); return; }
+            bool on = ((elapsed / 250) % 2) == 0;
+            it.all() = on ? Color(200, 0, 0) : Color(0, 0, 0);
+
+      # Eliminated: rapid red strobe 2 s, then dim glow, caller returns to Lives or off
+      - addressable_lambda:
+          name: "Eliminated"
+          update_interval: 100ms
+          lambda: |-
+            uint32_t elapsed = millis() - (uint32_t)id(led_effect_start_ms);
+            if (elapsed >= 3000) { it.all() = Color(0, 0, 0); return; }
+            if (elapsed < 2000) {
+              bool on = ((elapsed / 100) % 2) == 0;
+              it.all() = on ? Color(200, 0, 0) : Color(0, 0, 0);
+            } else {
+              it.all() = Color(40, 0, 0);
+            }
+
+      # Lives display for Elimination mode: N lit LEDs, color by health
+      - addressable_lambda:
+          name: "Elimination Lives"
+          update_interval: 300ms
+          lambda: |-
+            int lives = id(elim_current_lives);
+            int n = it.size();
+            for (int i = 0; i < n; i++) {
+              if (i < lives) {
+                Color c;
+                if (lives <= 1)      c = Color(200, 0,   0);    // red: last life
+                else if (lives == 2) c = Color(180, 100, 0);   // amber: danger
+                else                 c = Color(0,   180, 0);   // green: healthy
+                it[i] = c;
+              } else {
+                it[i] = Color(0, 0, 0);
+              }
+            }
+
+      - addressable_rainbow:
+          name: "Rainbow Test"
+          speed: 10
+          width: 5

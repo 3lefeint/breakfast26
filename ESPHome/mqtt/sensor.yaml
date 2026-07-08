@@ -1,0 +1,135 @@
+sensor:
+- name: "Autodarts Notebook Status"
+  unique_id: autodarts_notebook_status
+  state_topic: "autodarts/notebook/status"
+  value_template: "{{ value_json.state }}"
+  json_attributes_topic: "autodarts/notebook/status"
+
+- name: "Autodarts Remaining"
+  unique_id: "b540fc00-272b-4c5d-9707-d0c9e9ae037e"
+  state_topic: "autodarts/current/remaining"
+
+- name: "Autodarts Turn Score"
+  unique_id: "e86960fe-7e4a-45f5-a6f0-3747fa39fd25"
+  state_topic: "autodarts/current/turn_score"
+
+- name: "Autodarts Throw 1"
+  unique_id: "0f871bf7-886c-4694-835c-c32a507739ad"
+  state_topic: "autodarts/current/throw1_raw"
+
+- name: "Autodarts Throw 2"
+  unique_id: "a643ff4d-a6b8-453d-a005-511586d0591b"
+  state_topic: "autodarts/current/throw2_raw"
+
+- name: "Autodarts Throw 3"
+  unique_id: "8d3f973f-3108-4f33-aae9-f92c71468401"
+  state_topic: "autodarts/current/throw3_raw"
+
+- name: "Autodarts Player"
+  unique_id: "9af10926-8937-4406-82ea-187b64b388ef"
+  state_topic: "autodarts/current/player_name"
+
+- name: "Autodarts Player Index"
+  unique_id: "d8b47664-f4f7-4d8b-a459-e59746f1435f"
+  state_topic: "autodarts/current/player_index"
+
+- name: "Autodarts Throw 1 Points"
+  unique_id: "5c6b7c23-6200-44f0-8e5f-b8f2f78f5d2d"
+  state_topic: "autodarts/current/throw1_points"
+
+- name: "Autodarts Throw 2 Points"
+  unique_id: "0f7e5c60-b8d2-4b8d-a53d-b7c47f620d56"
+  state_topic: "autodarts/current/throw2_points"
+
+- name: "Autodarts Throw 3 Points"
+  unique_id: "89d7ecf5-b0a1-42db-8c6f-86a9d2bb8f1d"
+  state_topic: "autodarts/current/throw3_points"
+
+- name: "Autodarts Last Field Name"
+  unique_id: "8eb8a7cf-5c4e-4d1d-b6a1-b4ef1db4f621"
+  state_topic: "autodarts/current/last_field_name"
+
+- name: "Autodarts Last Field Number"
+  unique_id: "3ac4fd54-f58e-4fdb-bfe0-c9954cb3e0df"
+  state_topic: "autodarts/current/last_field_number"
+
+- name: "Autodarts Last Field Multiplier"
+  unique_id: "34ed9ca6-f7ff-4f58-b8b8-9f0dd27b8aa1"
+  state_topic: "autodarts/current/last_field_multiplier"
+
+- name: "Autodarts Last Dart Number"
+  unique_id: "8f8b7d9b-0e22-4c61-95a9-9d6f4e1dbd84"
+  state_topic: "autodarts/current/last_dart_number"
+
+- name: "Autodarts Last Dart Value"
+  unique_id: "a7a8f3c4-c2e8-4ec1-a4e8-7cf3c85c18e1"
+  state_topic: "autodarts/current/last_dart_value"
+
+- name: "Autodarts Board Status"
+  unique_id: "c7e35f6e-9cb5-46f9-b3f2-e98a0d3a6ed6"
+  state_topic: "autodarts/board/status"
+
+- name: "Autodarts Match Started"
+  unique_id: "ed2f766f-6d58-4625-bbb0-2e7c88ecbb44"
+  state_topic: "autodarts/match/started"
+
+- name: "Autodarts Match ID"
+  unique_id: "4f13f7a3-c20b-4dc4-b1cb-3299b0f64b46"
+  state_topic: "autodarts/match/id"
+
+- name: "Autodarts Game Mode"
+  unique_id: "f4c0dd5a-8c02-4d67-bd7d-53c6d3c9aa7f"
+  state_topic: "autodarts/match/game_mode"
+
+- name: "Autodarts Points Start"
+  unique_id: "5b5cf0d7-5f7e-4d65-87d4-497a04d1b7af"
+  state_topic: "autodarts/match/points_start"
+
+- name: "Autodarts Match Special"
+  unique_id: "7c953747-0a81-4742-a8f1-2d953672c9df"
+  state_topic: "autodarts/match/special"
+
+- name: "Autodarts Last Event"
+  unique_id: "db6624d4-2a39-4b42-b8bf-7f1bd0a5aaf2"
+  state_topic: "autodarts/match/last_event"
+
+- name: "Autodarts State JSON"
+  unique_id: "3d2a1d9d-8893-4579-b6fb-2b80e8ef24c9"
+  state_topic: "autodarts/state/json"
+
+- name: "Autodarts Players JSON"
+  unique_id: "8f4d7b63-8e6f-47eb-8b16-8c1ec8c194f7"
+  state_topic: "autodarts/players/json"
+
+- name: "Autodarts Remaining Scores JSON"
+  unique_id: "0f4a3f2c-4e85-4bd8-9c5f-3b7a7f58ec95"
+  state_topic: "autodarts/remaining_scores/json"
+
+# Optional schon jetzt: bekannte Spieler-Slots
+- name: "Autodarts Player 0 Remaining"
+  unique_id: "21f3ad0a-4c2a-4f39-9753-17f4c7fe6f3b"
+  state_topic: "autodarts/players/0/remaining"
+
+- name: "Autodarts Player 1 Remaining"
+  unique_id: "e4372d15-23f6-4a3a-a9b2-42fd7ae4cc90"
+  state_topic: "autodarts/players/1/remaining"
+
+- name: "Autodarts Player 0 Turn Score"
+  unique_id: "5369f56c-5348-4b64-9bf8-c2c7ef60dbfc"
+  state_topic: "autodarts/players/0/turn_score"
+
+- name: "Autodarts Player 1 Turn Score"
+  unique_id: "cb8a0f62-d7da-4a62-bc0f-4db57f43d2ab"
+  state_topic: "autodarts/players/1/turn_score"
+
+- name: "Autodarts Player 0 Name"
+  unique_id: "09ce2d58-213f-4b45-9f7b-9d13d77d4bb6"
+  state_topic: "autodarts/players/0/name"
+
+- name: "Autodarts Player 1 Name"
+  unique_id: "83e8fbc2-6bb5-441d-9488-bcb7e2972075"
+  state_topic: "autodarts/players/1/name"
+
+- name: "Autodarts Throw Seq"
+  unique_id: "b2d8c8d3-0d86-49a4-9f6a-77b9cf0cb3a1"
+  state_topic: "autodarts/current/throw_seq"

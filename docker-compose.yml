@@ -1,0 +1,58 @@
+# Current plan: Autodarts runs natively on the host (however it's installed
+# there today — systemd service, Windows installer, etc.), regardless of
+# whether the host ends up being Linux or Windows. Only Breakfast is
+# containerized.
+#
+# Deliberately NOT using a third-party Autodarts container image (e.g.
+# community images like michvllni/autodarts) — running someone else's image
+# with camera/hardware device access is a supply-chain decision that needs
+# an explicit, separate call, not a default baked into this file. If
+# Autodarts gets containerized later, that means writing and controlling our
+# own Dockerfile for it, not adopting one from a random maintainer.
+#
+# config.toml must set:
+#   [direct]
+#   board_ws_url = "ws://host.docker.internal:3180/api/events"
+#
+# All app config/data lives under one directory (config.toml, stats.db,
+# sessions/, sounds/), bind-mounted as a whole — the Dockerfile runs with
+# that directory as its cwd, so every one of those (already relative-path)
+# defaults resolves inside it automatically. stats.db in particular no
+# longer needs a manual `touch`: sqlite3 creates it as a plain file inside
+# an already-existing directory, so the old file-vs-directory Docker
+# bind-mount gotcha (Docker creating a directory at a host path that
+# doesn't exist yet) can't happen here — `data/` itself is a directory
+# either way.
+#
+# Before first run:
+#   mkdir -p data/sessions data/sounds
+#   cp config.toml.example data/config.toml   # then fill in your values
+#
+# Upgrading from an older layout (separate ./config.toml, ./stats.db,
+# ./sessions, ./sounds at the repo root)? Move them in once:
+#   mkdir -p data
+#   mv config.toml stats.db sessions sounds data/
+#
+# Run with: docker compose up -d
+
+services:
+  breakfast:
+    build: .
+    container_name: breakfast
+    restart: unless-stopped
+    command: ["direct"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    dns:
+      # Explicit public resolvers — on hosts where /etc/resolv.conf points
+      # only at a loopback stub resolver (e.g. systemd-resolved's 127.0.0.53),
+      # that address means nothing inside the container's own network
+      # namespace and DNS resolution fails entirely (e.g. api.autodarts.io).
+      - 1.1.1.1
+      - 8.8.8.8
+    extra_hosts:
+      # Docker Desktop (Windows/Mac) provides host.docker.internal automatically;
+      # this line makes it also work on plain Linux Docker Engine.
+      - "host.docker.internal:host-gateway"

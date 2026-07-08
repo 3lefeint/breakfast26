@@ -1,0 +1,34 @@
+/* Shared design tokens — mirrors breakfast/web/templates/index.html's
+   :root block exactly, so Svelte components look identical to the
+   templates they replaced. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Vite mounts each app into a plain <div id="app"> inside <body>, unlike
+   the old templates where header/main/footer were direct children of
+   <body> itself — so <body>'s background/reset apply globally here, but
+   each app's own top-level flex/height layout (min-height: 100vh etc.)
+   must target #app instead of body, since #app is the real box in
+   between. See each app's own App.svelte for that per-app layout. */
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  --bg:          #17171f;
+  --surface:     #212230;
+  --border:      #35374a;
+  --text:        #e8e8f0;
+  --muted:       #85859e;
+  --accent:      #8bc34a;
+  --accent-soft: #263318;
+  --green:       #4ade80;
+  --red:         #f87171;
+  --yellow:      #fbbf24;
+}
+
+:root[data-theme="ocean"]  { --accent: #22d3ee; --accent-soft: #0e3138; }
+:root[data-theme="sunset"] { --accent: #fb923c; --accent-soft: #3a2313; }
+:root[data-theme="forest"] { --accent: #34d399; --accent-soft: #103324; }

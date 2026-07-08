@@ -1,0 +1,88 @@
+# Breakfast configuration
+# Copy this file to config.toml and fill in your values.
+# Run with: python main.py            (mode taken from this file)
+#       or: python main.py direct     (mode forced via CLI)
+# CLI arguments always override values in this file.
+
+# Active mode: "direct" (email/password + cloud WebSocket)
+mode = "direct"
+
+# ── Direct mode ───────────────────────────────────────────────────────────────
+[direct]
+email     = "user@example.com"
+password  = "your-password"
+board_id  = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Local Autodarts board WebSocket (used by elimination mode / freeplay only).
+# Default assumes Autodarts runs on the same host as Breakfast.
+# Override when running Breakfast in a container:
+#   - Autodarts as a sibling container in the same docker-compose.yml:
+#       board_ws_url = "ws://autodarts:3180/api/events"
+#   - Autodarts native on the host, Breakfast containerized (e.g. Windows):
+#       board_ws_url = "ws://host.docker.internal:3180/api/events"
+# board_ws_url = "ws://localhost:3180/api/events"
+
+# Board manager link shown in the Web UI header. Default: auto-resolved
+# from the Autodarts cloud API (plain http://<board-ip>:3180, works with
+# no DNS/certificate — e.g. at a clubhouse). Override for a nicer
+# home-lab domain:
+# board_manager_url = "https://dart-machine.example.com/"
+
+# ── MQTT / Home Assistant / LED output ───────────────────────────────────────
+# Fully optional — Elimination, the scoreboard, and the voice caller all work
+# with no [mqtt] section at all. This only feeds Home Assistant sensors and
+# ESPHome/LED displays over MQTT.
+[mqtt]
+enabled    = true   # explicit on/off switch, independent of leaving host blank
+host       = "192.168.1.10"
+port       = 1883
+username   = "mqtt"
+password   = "mqtt"
+base_topic = "autodarts"
+
+# ── Web UI ────────────────────────────────────────────────────────────────────
+[web]
+port = 8080
+# theme = "default"         # "default", "ocean", "sunset", or "forest"
+# accent_color = "#7c6aff"  # custom hex color, overrides the theme's accent
+
+# ── Statistics (SQLite) ───────────────────────────────────────────────────────
+# Per-turn data is stored here; lifetime and session stats are derived from it.
+# Use "none" to disable stats collection entirely.
+# [stats]
+# db = "stats.db"
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+[logging]
+level = "INFO"    # DEBUG, INFO, WARNING, ERROR
+events = false    # true: log each game event (dart-thrown etc.) at INFO level
+# file = "/var/log/breakfast.log"   # optional, log to file in addition to stderr
+
+# ── Optional features ─────────────────────────────────────────────────────────
+# [audio]
+# dir = "/home/user/autodarts-sounds"
+# Optional voice-pack profile: sounds are looked up in <dir>/profiles/<profile>/
+# first, your own files in <dir> cover any key the profile doesn't have.
+# profile = "en-US-Joey-Male"
+
+# ── Voice caller (requires [audio] dir; playback via the /audio browser page) ─
+# [caller]
+# enabled = true            # false: no match calls (elimination audio unaffected)
+# per_dart = true           # call every dart by field name (triple, double 16, ...)
+# turn_total = true         # announce the turn total after the third dart
+# checkout_limit = 1        # announce the same remaining score at most N times (0 = off)
+# announce_change = false   # announce the incoming player on every change
+# call_player = true        # player names at match/leg start and checkout calls
+# ambient_volume = 0.6      # volume for ambient_* sounds (0 = ambient off)
+# call_misses = true        # announce "outside" on a missed dart; false keeps
+#                           # per-dart hit calls but silences just misses
+
+# [record]
+# file = "session.jsonl"
+
+# ── Dev mode ──────────────────────────────────────────────────────────────────
+# Exposes a Settings "Dev" tab to simulate a full X01 leg or Elimination match
+# at runtime (no physical board needed) — see README "Dev mode". Off by
+# default; not meant to be enabled on a shared/production instance.
+# [dev]
+# enabled = true

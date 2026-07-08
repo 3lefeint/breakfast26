@@ -1,0 +1,22 @@
+switch:
+- name: "Autodarts Notebook Display"
+  unique_id: "autodarts_notebook_display_power"
+  icon: mdi:monitor
+  command_topic: "autodarts/notebook/screen/power/set"
+  state_topic: "autodarts/notebook/screen/power/state"
+  payload_on: "ON"
+  payload_off: "OFF"
+  value_template: "{{ value_json.power }}"
+  state_on: "ON"
+  state_off: "OFF"
+  availability:
+    - topic: "autodarts/notebook/status"
+      value_template: "{{ value_json.state }}"
+      payload_available: "online"
+      payload_not_available: "offline"
+  device:
+    identifiers:
+      - "autodarts_notebook"
+    name: "Autodarts Notebook"
+    manufacturer: "Microsoft"
+    model: "Surface Book 2"

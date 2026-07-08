@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.git/
+.pytest_cache/
+tests/
+
+# Runtime data / local config — bind-mounted at run time, never baked into the image
+sessions/
+players.json
+config.toml
+*.db
+
+# Docs, not needed inside the image
+README.md
+CHANGELOG.md
+systemd/
+ESPHome/
+HomeAssistant/

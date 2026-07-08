@@ -1,0 +1,24 @@
+binary_sensor:
+- name: "Autodarts Miss"
+  unique_id: "af3415cf-2ada-41ad-a316-c0c362a633ad"
+  state_topic: "autodarts/current/last_is_miss"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Bust"
+  unique_id: "8bc879b0-106f-4c13-ae00-dd9d45fd2fe3"
+  state_topic: "autodarts/current/is_bust"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Match Started Binary"
+  unique_id: "1d3b373b-2198-4c52-a3a4-d00f6c23f6ad"
+  state_topic: "autodarts/match/started"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Turn Active"
+  unique_id: "46b2a5d4-8f0e-4f5f-8e5f-80b5e4c7262a"
+  state_topic: "autodarts/current/turn_active"
+  payload_on: "true"
+  payload_off: "false"

@@ -1,0 +1,30 @@
+button:
+- name: "Autodarts Notebook herunterfahren"
+  unique_id: autodarts_notebook_shutdown
+  command_topic: "autodarts/notebook/cmd"
+  payload_press: "shutdown"
+
+- name: "Autodarts Notebook neu starten"
+  unique_id: autodarts_notebook_reboot
+  command_topic: "autodarts/notebook/cmd"
+  payload_press: "reboot"
+
+- name: "Autodarts Service restart"
+  unique_id: autodarts_service_restart
+  command_topic: "autodarts/notebook/cmd"
+  payload_press: "restart_autodarts"
+
+- name: "Breakfast restart"
+  unique_id: autodarts_bridge_restart
+  command_topic: "autodarts/notebook/cmd"
+  payload_press: "restart_autodarts_bridge"
+
+- name: "Darts Caller restart"
+  unique_id: darts_caller_restart
+  command_topic: "autodarts/notebook/cmd"
+  payload_press: "restart_darts_caller"
+
+- name: "Alle Autodarts Services restart"
+  unique_id: autodarts_all_services_restart
+  command_topic: "autodarts/notebook/cmd"
+  payload_press: "restart_all_autodarts_services"

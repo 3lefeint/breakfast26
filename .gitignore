@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Runtime data / local config (contain credentials or personal data — never commit)
+sessions/
+config.toml
+*.db
+
+# Docker deployment's consolidated config/data directory
+data/
+
+# ESPHome secrets
+ESPHome/secrets.yaml
+
+# Editor / OS
+.DS_Store
+*.swp
+
+# Sound Files
+sounds
+
+# Mockups
+mockups
+
+# Frontend — Vite/Svelte build artifacts, never commit
+frontend/node_modules/
+frontend/dist/
+breakfast/web/dist/

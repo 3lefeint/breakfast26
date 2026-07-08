@@ -1,0 +1,446 @@
+# Voice-pack generation plan for "leni" (de-CH-LeniNeural via edge-tts).
+#
+# Edit texts/rate/pitch/volume below, then run:
+#   python tools/generate_voicepack.py tools/voicepack_leni.toml
+#
+# Each [[group]] below is one category — it gets its own default rate/pitch/
+# volume, applied to every key in it unless a key overrides them individually.
+# rate/volume are relative percentages ("+5%", "-5%"), pitch is relative Hz
+# ("+5Hz", "-5Hz"). "+0%"/"+0Hz" = voice default.
+# Keep pitch within -5Hz..+5Hz — bigger swings made the voice sound too
+# different between categories (decided after listening). Rate was bumped
+# +15 percentage points across every group/key on top of that same relative
+# spread (speed-up request) — the old -5%..+5% ceiling for rate no longer
+# applies, only the relative spread between categories still matters.
+#
+# Two ways to list entries in a group:
+#   - keys.<key> = "spoken text"                          (explicit key -> text)
+#   - keys.<key> = { text = "...", rate = "...", ... }     (same, with a per-key
+#                                                            prosody override)
+#   - keys.<key> = { variants = ["...", "..."], ... }      (multiple recordings
+#                                                            of the same key —
+#                                                            <key>.mp3,
+#                                                            <key>+1.mp3, ... —
+#                                                            picked at random)
+#   - range.start / range.end / range.exclude              (a numeric run, text
+#                                                            defaults to the
+#                                                            plain number;
+#                                                            range.overrides.<n>
+#                                                            works the same way
+#                                                            as keys.<key> above,
+#                                                            variants included)
+
+voice = "de-CH-LeniNeural"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Lifecycle — neutral (match/leg start, cancel, checkout intro)
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Lifecycle - neutral"
+rate = "+15%"
+pitch = "+0Hz"
+volume = "+0%"
+
+[group.keys.matchon]
+variants = ["Neus Spiel", "Es geit los"]
+
+[group.keys.gameon]
+variants = ["Naechstes Leg", "Witer geits"]
+
+[group.keys.matchcancel]
+variants = ["Spiel abbroche", "Isch fertig, kei Sieger"]
+
+[group.keys.you_require]
+variants = ["du bruchsch no", "dir fehlt no"]
+
+# leg_1 .. leg_10 — digit reading as the base, dialect number word as the variant
+[group.keys.leg_1]
+variants = ["Leg 1", "Leg eis"]
+[group.keys.leg_2]
+variants = ["Leg 2", "Leg zwöi"]
+[group.keys.leg_3]
+variants = ["Leg 3", "Leg drü"]
+[group.keys.leg_4]
+variants = ["Leg 4", "Leg vier"]
+[group.keys.leg_5]
+variants = ["Leg 5", "Leg föif"]
+[group.keys.leg_6]
+variants = ["Leg 6", "Leg sächs"]
+[group.keys.leg_7]
+variants = ["Leg 7", "Leg sibe"]
+[group.keys.leg_8]
+variants = ["Leg 8", "Leg acht"]
+[group.keys.leg_9]
+variants = ["Leg 9", "Leg nün"]
+[group.keys.leg_10]
+variants = ["Leg 10", "Leg zäh"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Lifecycle — excited (leg/match won)
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Lifecycle - excited (won)"
+rate = "+20%"
+pitch = "+5Hz"
+volume = "+5%"
+
+[group.keys.matchshot]
+variants = ["Spiel gewonnen", "Du hesch gwunne!"]
+
+[group.keys.gameshot]
+variants = ["Leg gewonnen", "das Leg isch dis!"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Lifecycle — subdued (bust)
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Lifecycle - subdued (bust)"
+rate = "+10%"
+pitch = "-5Hz"
+volume = "+0%"
+
+[group.keys.busted]
+variants = ["zviel gsieh", "hahaha", "kei pünkt für dich", "no skor"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Field names (per-dart calls) — d1-d20, t1-t20, bull/bullseye/outside/
+# double/triple. Called immediately after each dart, slightly energetic.
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Field names"
+rate = "+20%"
+pitch = "+5Hz"
+volume = "+5%"
+
+[group.keys.bull]
+variants = ["Bull", "s'Bull"]
+[group.keys.bullseye]
+variants = ["Bullseye", "volle Bull"]
+[group.keys.outside]
+variants = ["danebe", "verfehlt", "schiillsch"]
+[group.keys.double]
+variants = ["doppel", "Duppu"]
+[group.keys.triple]
+variants = ["trippel", "Tripu"]
+
+[group.keys.d1]
+variants = ["doppel 1", "Duppu 1"]
+[group.keys.d2]
+variants = ["doppel 2", "Duppu 2"]
+[group.keys.d3]
+variants = ["doppel 3", "Duppu 3"]
+[group.keys.d4]
+variants = ["doppel 4", "Duppu 4"]
+[group.keys.d5]
+variants = ["doppel 5", "Duppu 5"]
+[group.keys.d6]
+variants = ["doppel 6", "Duppu 6"]
+[group.keys.d7]
+variants = ["doppel 7", "Duppu 7"]
+[group.keys.d8]
+variants = ["doppel 8", "Duppu 8"]
+[group.keys.d9]
+variants = ["doppel 9", "Duppu 9"]
+[group.keys.d10]
+variants = ["doppel 10", "Duppu 10"]
+[group.keys.d11]
+variants = ["doppel 11", "Duppu 11"]
+[group.keys.d12]
+variants = ["doppel 12", "Duppu 12"]
+[group.keys.d13]
+variants = ["doppel 13", "Duppu 13"]
+[group.keys.d14]
+variants = ["doppel 14", "Duppu 14"]
+[group.keys.d15]
+variants = ["doppel 15", "Duppu 15"]
+[group.keys.d16]
+variants = ["doppel 16", "Duppu 16"]
+[group.keys.d17]
+variants = ["doppel 17", "Duppu 17"]
+[group.keys.d18]
+variants = ["doppel 18", "Duppu 18"]
+[group.keys.d19]
+variants = ["doppel 19", "Duppu 19"]
+[group.keys.d20]
+variants = ["doppel 20", "Duppu 20"]
+
+[group.keys.t1]
+variants = ["trippel 1", "Tripu 1"]
+[group.keys.t2]
+variants = ["trippel 2", "Tripu 2"]
+[group.keys.t3]
+variants = ["trippel 3", "Tripu 3"]
+[group.keys.t4]
+variants = ["trippel 4", "Tripu 4"]
+[group.keys.t5]
+variants = ["trippel 5", "Tripu 5"]
+[group.keys.t6]
+variants = ["trippel 6", "Tripu 6"]
+[group.keys.t7]
+variants = ["trippel 7", "Tripu 7"]
+[group.keys.t8]
+variants = ["trippel 8", "Tripu 8"]
+[group.keys.t9]
+variants = ["trippel 9", "Tripu 9"]
+[group.keys.t10]
+variants = ["trippel 10", "Tripu 10"]
+[group.keys.t11]
+variants = ["trippel 11", "Tripu 11"]
+[group.keys.t12]
+variants = ["trippel 12", "Tripu 12"]
+[group.keys.t13]
+variants = ["trippel 13", "Tripu 13"]
+[group.keys.t14]
+variants = ["trippel 14", "Tripu 14"]
+[group.keys.t15]
+variants = ["trippel 15", "Tripu 15"]
+[group.keys.t16]
+variants = ["trippel 16", "Tripu 16"]
+[group.keys.t17]
+variants = ["trippel 17", "Tripu 17"]
+[group.keys.t18]
+variants = ["trippel 18", "Tripu 18"]
+[group.keys.t19]
+variants = ["trippel 19", "Tripu 19"]
+[group.keys.t20]
+variants = ["trippel 20", "Tripu 20"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Score numbers — achieved (turn totals, per-dart score fallback, Elimination
+# running total). Plain digits, 0-180. Excited/euphoric tone.
+#
+# NOT given a second variant per number (yet) — see the note below the
+# Checkout group about why, and whether you want that too.
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Score - achieved (0-180)"
+rate = "+20%"
+pitch = "+5Hz"
+volume = "+5%"
+
+[group.range]
+start = 0
+end = 180
+
+# Example per-number override (uncomment/edit to try a different reading):
+# [group.range.overrides.180]
+# variants = ["180", "Huere Hudle!"]
+# rate = "+5%"
+# pitch = "+5Hz"
+
+# 0-50 given a dialect number-word variant (same pattern as leg_1..leg_10
+# above) — 51-180 left as plain digits for now, see the note below.
+[group.range.overrides.0]
+variants = ["0", "null"]
+[group.range.overrides.1]
+variants = ["1", "eis"]
+[group.range.overrides.2]
+variants = ["2", "zwöi"]
+[group.range.overrides.3]
+variants = ["3", "drü"]
+[group.range.overrides.4]
+variants = ["4", "vier"]
+[group.range.overrides.5]
+variants = ["5", "föif"]
+[group.range.overrides.6]
+variants = ["6", "sächs"]
+[group.range.overrides.7]
+variants = ["7", "sibe"]
+[group.range.overrides.8]
+variants = ["8", "acht"]
+[group.range.overrides.9]
+variants = ["9", "nün"]
+[group.range.overrides.10]
+variants = ["10", "zäh"]
+[group.range.overrides.11]
+variants = ["11", "elf"]
+[group.range.overrides.12]
+variants = ["12", "zwöuf"]
+[group.range.overrides.13]
+variants = ["13", "drizäh"]
+[group.range.overrides.14]
+variants = ["14", "vierzäh"]
+[group.range.overrides.15]
+variants = ["15", "füfzäh"]
+[group.range.overrides.16]
+variants = ["16", "sächzäh"]
+[group.range.overrides.17]
+variants = ["17", "sibzäh"]
+[group.range.overrides.18]
+variants = ["18", "achzäh"]
+[group.range.overrides.19]
+variants = ["19", "nünzäh"]
+[group.range.overrides.20]
+variants = ["20", "zwänzg"]
+[group.range.overrides.21]
+variants = ["21", "einezwänzg"]
+[group.range.overrides.22]
+variants = ["22", "zweiezwänzg"]
+[group.range.overrides.23]
+variants = ["23", "dreiezwänzg"]
+[group.range.overrides.24]
+variants = ["24", "vierezwänzg"]
+[group.range.overrides.25]
+variants = ["25", "föifezwänzg"]
+[group.range.overrides.26]
+variants = ["26", "sächsezwänzg"]
+[group.range.overrides.27]
+variants = ["27", "sibenezwänzg"]
+[group.range.overrides.28]
+variants = ["28", "achtezwänzg"]
+[group.range.overrides.29]
+variants = ["29", "nünezwänzg"]
+[group.range.overrides.30]
+variants = ["30", "driissg"]
+[group.range.overrides.31]
+variants = ["31", "eiedriissg"]
+[group.range.overrides.32]
+variants = ["32", "zweiedriissg"]
+[group.range.overrides.33]
+variants = ["33", "dreiedriissg"]
+[group.range.overrides.34]
+variants = ["34", "vieredriissg"]
+[group.range.overrides.35]
+variants = ["35", "föifedriissg"]
+[group.range.overrides.36]
+variants = ["36", "sächsedriissg"]
+[group.range.overrides.37]
+variants = ["37", "sibenedriissg"]
+[group.range.overrides.38]
+variants = ["38", "achtedriissg"]
+[group.range.overrides.39]
+variants = ["39", "nünedriissg"]
+[group.range.overrides.40]
+variants = ["40", "vierzg"]
+[group.range.overrides.41]
+variants = ["41", "eievierzg"]
+[group.range.overrides.42]
+variants = ["42", "zweievierzg"]
+[group.range.overrides.43]
+variants = ["43", "dreievierzg"]
+[group.range.overrides.44]
+variants = ["44", "vierevierzg"]
+[group.range.overrides.45]
+variants = ["45", "föifevierzg"]
+[group.range.overrides.46]
+variants = ["46", "sächsevierzg"]
+[group.range.overrides.47]
+variants = ["47", "sibenevierzg"]
+[group.range.overrides.48]
+variants = ["48", "achtevierzg"]
+[group.range.overrides.49]
+variants = ["49", "nünevierzg"]
+[group.range.overrides.50]
+variants = ["50", "füfzg"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Checkout numbers — required ("you require N"). Same digits, calm tone.
+# Bogey numbers (159,162,163,165,166,168,169) are excluded — no checkout
+# call ever exists for them, see VOICE_PACKS.md.
+#
+# NOTE on why achieved/checkout numbers were left alone this round: with
+# 181 + 162 = 343 individual numbers, hand-writing a genuine second dialect
+# reading for every one is a much bigger job than the ~70 named phrases
+# above (which are one-off wording choices), and it's the kind of content
+# where authenticity really matters — better to do a handful yourself as
+# real examples first (via range.overrides.<n>, same syntax as everywhere
+# else) than have all 343 auto-filled with guessed dialect numerals. Say
+# the word if you'd like the full range done anyway.
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Score - required / checkout (2-170)"
+rate = "+10%"
+pitch = "-5Hz"
+volume = "+0%"
+
+[group.range]
+start = 2
+end = 170
+exclude = [159, 162, 163, 165, 166, 168, 169]
+key_prefix = "require_"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Elimination-specific phrases
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Elimination"
+rate = "+15%"
+pitch = "+0Hz"
+volume = "+0%"
+
+[group.keys.freipass]
+# Played right after a player-name call now
+# ("Peter, du hesch en Freipass") — already fits, no change needed.
+variants = ["du hesch en freipass", "freipass für dich"]
+
+[group.keys.filler_after_name]
+# New key, played right after the first player's name at
+# match start ("Neus Spiel, Peter, du bisch am Zug").
+variants = ["du bisch am zug", "du bisch dra", "go for it!"]
+
+[group.keys.filler_target]
+# New key, played right after the incoming player's
+# name (when they don't have a freipass) and right before the target
+# number ("Peter, du bruchsch 42").
+variants = ["du bruchsch", "es bruucht"]
+
+[group.keys.miss]
+variants = ["danebe", "verfehlt", "miss", "siiro"]
+
+[group.keys.eliminated]
+# Played right after a player-name call now
+# ("Peter, du bisch dusse") — old standalone phrasing replaced.
+variants = ["du bisch dusse", "you lost"]
+
+[group.keys.close]
+variants = ["aber das isch knapp gsieh", "knapp dra verbi"]
+rate = "+20%"
+pitch = "+5Hz"
+
+[group.keys.too_low]
+variants = ["das isch chli wenig gsieh", "minimalist", "eeemoschional damaaasch"]
+rate = "+10%"
+pitch = "-5Hz"
+
+[group.keys.nice]
+variants = ["Stark!", "Mega!"]
+rate = "+20%"
+pitch = "+5Hz"
+
+[group.keys.life_lost]
+# Played right after a player-name call now
+# ("Peter, du hesch es Lebe verlore") — "minus eis" already fit, kept.
+variants = ["du hesch es lebe verlore", "minus eis"]
+# rate = "0%"
+pitch = "-5Hz"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Player names — one entry per PERSON, key = the exact lowercase name they
+# are registered under in the app's player list (that's what the caller
+# looks up at announce time, e.g. registered as "Peter" -> looks for
+# peter.mp3). The person is always registered under that one name — the
+# `variants` list is different NICKNAME PRONUNCIATIONS of that same
+# person, generated as variants of the same key (peter.mp3, peter+1.mp3,
+# peter+2.mp3, ...) and picked at random each time, same as every other
+# variant set in this pack (t20+1.mp3 etc.). Not for different people —
+# each real person gets their own [group.keys.<name>] block below.
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Player names"
+rate = "+15%"
+pitch = "+0Hz"
+volume = "+0%"
+
+[group.keys]
+
+[group.keys.unknown_player]
+# Fallback when a registered player's name has no recording —
+# replaces the old silent player{N} fallback entirely.
+variants = ["nächste person", "wer au immer det staht", "mister!", "dude"]
+
+# --- Peter (example — replace with your own friends below) ---
+[group.keys.peter]
+variants = ["Peter", "Piiit", "Pete", "P"]
+
+# [group.keys.]
+# variants = ["", "", "", ""]

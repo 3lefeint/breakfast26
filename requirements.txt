@@ -1,0 +1,7 @@
+paho-mqtt
+websocket-client
+requests
+fastapi
+uvicorn[standard]
+tomli_w
+edge-tts
