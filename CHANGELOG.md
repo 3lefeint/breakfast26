@@ -6,6 +6,7 @@
 - DEBUG/INFO logging across the app; config changes log keys, never values.
 - Colored log output, opt out with `NO_COLOR`; `LOG_LEVEL` sets the level, also for the updater.
 - X01: "Bogey — no checkout" badge on /tv for scores without a 3-dart finish.
+- Freeplay audio: a miss comment per dart and the turn total.
 
 ### Changed
 - Internal code comments and docs tidied.

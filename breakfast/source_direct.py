@@ -19,7 +19,60 @@ from breakfast.dev_demo import DemoRunner
 DEFAULT_BOARD_WS_URL = "ws://localhost:3180/api/events"
 
 
-def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL):
+def _dart_value(throw):
+    seg = throw.get("segment", {})
+    multiplier = seg.get("multiplier")
+    if not multiplier:  # 0 (miss) or None → 0 points
+        return 0
+    return (seg.get("number") or 0) * multiplier
+
+
+def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count):
+    """Process one board-WS state message. Returns the new prev_count.
+
+    Split out from _start_board_ws()'s on_message closure so this logic is
+    unit-testable without a real WebSocket thread.
+    """
+    # Board status regardless of game mode — this local connection is
+    # active for X01/Freeplay/Elimination alike, unlike the cloud
+    # channel (autodarts_client.py), which only relays board-status
+    # events once a real Autodarts cloud match has started, so it
+    # never fires during Freeplay/Elimination at all.
+    new_status = board_status.resolve(data.get("event", ""), data.get("status"))
+    if new_status:
+        evt = state.update({"event": "Board Status", "data": {"status": new_status}})
+        if evt:
+            from breakfast.web import server as web
+            web.push()
+
+    count = data.get("numThrows", 0)
+    throws = data.get("throws") or []
+
+    if state.match_started:
+        return count
+
+    try:
+        if elim_ctrl and elim_ctrl.active:
+            elim_ctrl.on_board_state(count, throws)
+        else:
+            is_new_dart = count > prev_count
+            if count != prev_count and mqtt_pub:
+                mqtt_pub.publish_freeplay(count, throws)
+            if audio and is_new_dart and 1 <= count <= len(throws):
+                # Same simple call style as elimination.py — freeplay has
+                # no caller/ambient machinery, just a miss comment per
+                # dart and the turn total once all 3 are down.
+                if _dart_value(throws[count - 1]) == 0:
+                    audio.play("miss", prob=0.35)
+                if count == 3:
+                    audio.play(str(sum(_dart_value(t) for t in throws)))
+    except Exception:
+        log.exception("Board WS handler error")
+
+    return count
+
+
+def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None):
     """Background thread: local board WebSocket for elimination and freeplay."""
     prev_count = 0
 
@@ -31,37 +84,8 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
             return
         if msg.get("type") != "state":
             return
-
-        data = msg.get("data", {})
-
-        # Board status regardless of game mode — this local connection is
-        # active for X01/Freeplay/Elimination alike, unlike the cloud
-        # channel (autodarts_client.py), which only relays board-status
-        # events once a real Autodarts cloud match has started, so it
-        # never fires during Freeplay/Elimination at all.
-        new_status = board_status.resolve(data.get("event", ""), data.get("status"))
-        if new_status:
-            evt = state.update({"event": "Board Status", "data": {"status": new_status}})
-            if evt:
-                from breakfast.web import server as web
-                web.push()
-
-        count = data.get("numThrows", 0)
-        throws = data.get("throws") or []
-
-        if state.match_started:
-            prev_count = count
-            return
-
-        try:
-            if elim_ctrl and elim_ctrl.active:
-                elim_ctrl.on_board_state(count, throws)
-            elif count != prev_count and mqtt_pub:
-                mqtt_pub.publish_freeplay(count, throws)
-        except Exception:
-            log.exception("Board WS handler error")
-
-        prev_count = count
+        prev_count = _handle_board_message(
+            msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count)
 
     def run():
         while True:
@@ -126,7 +150,7 @@ def run_direct(email, password, board_id, record_file=None,
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
     )
-    _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url)
+    _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio)
 
     def on_event(data):
         if recorder:
