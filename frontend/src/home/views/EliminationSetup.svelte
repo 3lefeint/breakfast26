@@ -57,23 +57,29 @@
     </div>
   </div>
 
-  <div class="elim-section-title">Game players <span class="hint">(order = play order)</span></div>
-  <ul class="game-players">
-    {#each gamePlayers as name, i (name)}
-      <li>
-        <span class="player-name-text">{cap(name)}</span>
-        <button class="btn-icon" onclick={() => movePlayer(i, -1)} disabled={i === 0}>↑</button>
-        <button class="btn-icon" onclick={() => movePlayer(i, +1)} disabled={i === gamePlayers.length - 1}>↓</button>
-        <button class="btn-icon remove" onclick={() => removeFromGame(i)}>×</button>
-      </li>
-    {/each}
-  </ul>
+  <div class="elim-columns">
+    <div class="elim-column">
+      <div class="elim-section-title">Known players <span class="hint">(click to add/remove)</span></div>
+      <div class="known-chips">
+        {#each $players.known as name (name)}
+          <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
+        {/each}
+      </div>
+    </div>
 
-  <div class="elim-section-title">Known players <span class="hint">(click to add/remove)</span></div>
-  <div class="known-chips">
-    {#each $players.known as name (name)}
-      <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
-    {/each}
+    <div class="elim-column">
+      <div class="elim-section-title">Game players <span class="hint">(order = play order)</span></div>
+      <ul class="game-players">
+        {#each gamePlayers as name, i (name)}
+          <li>
+            <span class="player-name-text">{cap(name)}</span>
+            <button class="btn-icon" onclick={() => movePlayer(i, -1)} disabled={i === 0}>↑</button>
+            <button class="btn-icon" onclick={() => movePlayer(i, +1)} disabled={i === gamePlayers.length - 1}>↓</button>
+            <button class="btn-icon remove" onclick={() => removeFromGame(i)}>×</button>
+          </li>
+        {/each}
+      </ul>
+    </div>
   </div>
 
   <label class="random-order-row">
@@ -97,7 +103,26 @@
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
   .btn-counter { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
-  .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+  /* Known-players chips and the game-players list each get their own
+     fixed column instead of stacking in one flow — otherwise every chip
+     tap that grows the game-players list pushes the chip grid (and the
+     very next chip you're about to tap) down by that same amount. Chips
+     column comes first so it also reads naturally top-first when stacked
+     on narrow viewports: pick from the pool, then see picks accumulate
+     below, instead of the list's append point moving under your thumb.
+     Each column also gets a *fixed* (not max-) height + its own scroll —
+     a plain grid still stretches both columns' row to match whichever is
+     tallest, so content below the grid (Random order/Start) would keep
+     shifting with every tap right up until a max-height's ceiling was
+     reached, which realistic player counts never hit. A fixed height
+     from the very first item means the columns never resize at all,
+     regardless of how many players are known or selected. */
+  .elim-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1rem; align-items: start; }
+  .elim-column .elim-section-title { margin-bottom: 0.75rem; }
+  @media (max-width: 640px) {
+    .elim-columns { grid-template-columns: 1fr; gap: 1.5rem; }
+  }
+  .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: flex-start; height: 260px; overflow-y: auto; }
   .chip {
     background: var(--bg); border: 1px solid var(--border); color: var(--text);
     border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit;
@@ -105,7 +130,7 @@
   }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-  .game-players { list-style: none; margin-bottom: 1rem; padding: 0; }
+  .game-players { list-style: none; margin-bottom: 1rem; padding: 0; height: 260px; overflow-y: auto; }
   .game-players li {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.4rem 0; border-bottom: 1px solid var(--border);

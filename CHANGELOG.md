@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Elimination setup: the player chips and the game-players list no longer reflow each other.
+
 ## [0.2.0] - 2026-08-18
 
 ### Added
