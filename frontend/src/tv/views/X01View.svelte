@@ -21,6 +21,10 @@
     const co = getCheckout(rem);
     return co ? '→ ' + co.join('  ') : '';
   });
+  // In checkout range but no 3-dart combination exists at all (the classic
+  // "bogey numbers": 169, 168, 166, ...) — distinct from simply not being
+  // in checkout range yet, which just renders nothing.
+  let isBogey = $derived(isX01 && rem >= 2 && rem <= 170 && !checkoutHint);
 
   let legLabel = $derived(game.current_leg > 1 ? `Leg ${game.current_leg}` : null);
   let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} pts` : null, game.special, legLabel].filter(Boolean).join(' · '));
@@ -79,7 +83,9 @@
 <div class="player-card">
   <div class="player-name">{cap(game.active_player_name || '—')}</div>
   <div class="player-score">{cur.remaining ?? '—'}</div>
-  <div id="coHint">{checkoutHint}</div>
+  <div id="coHint">
+    {#if checkoutHint}{checkoutHint}{:else if isBogey}<span class="bogey-badge">Bogey — no checkout</span>{/if}
+  </div>
   <div class="darts-row">
     {#each [1, 2, 3] as n}
       {@const raw = cur[`throw${n}_raw`]}
@@ -152,6 +158,12 @@
     text-shadow: 0 0 36px color-mix(in srgb, var(--green) 35%, transparent);
   }
   #coHint { font-size: clamp(1rem, 2.5vw, 2.5rem); font-weight: 700; color: var(--yellow); letter-spacing: 0.08em; min-height: 1.3em; margin-bottom: 0.5em; }
+  .bogey-badge {
+    display: inline-block; font-size: 0.5em; font-weight: 700; color: var(--red);
+    background: color-mix(in srgb, var(--red) 15%, transparent);
+    border: 1px solid var(--red); border-radius: 999px; padding: 0.2em 0.7em;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
   .darts-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1vw; align-items: center; }
   .dart-box {
     background: color-mix(in srgb, var(--surface) 70%, var(--bg));
