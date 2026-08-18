@@ -7,6 +7,7 @@
 - Colored log output, opt out with `NO_COLOR`; `LOG_LEVEL` sets the level, also for the updater.
 - X01: "Bogey — no checkout" badge on /tv for scores without a 3-dart finish.
 - Freeplay audio: a miss comment per dart and the turn total.
+- The voice-pack profile setting is a dropdown of the installed profiles.
 
 ### Changed
 - Internal code comments and docs tidied.

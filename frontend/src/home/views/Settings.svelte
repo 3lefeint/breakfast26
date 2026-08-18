@@ -40,6 +40,7 @@
   let tabs = $derived(cfg.dev?.enabled ? [...TABS, { id: 'dev', label: 'Dev' }] : TABS);
 
   let cfg = $state(emptyCfg());
+  let voicePackProfiles = $state([]);
   // Snapshot of what was actually loaded from config.toml, so save() can
   // tell "field is empty because it was never set" apart from "field was
   // cleared just now" — only the latter should send an explicit null to
@@ -51,7 +52,17 @@
   onMount(async () => {
     await loadConfig();
     await applyTheme();
+    await loadVoicePackProfiles();
   });
+
+  async function loadVoicePackProfiles() {
+    try {
+      const res = await fetch('/api/voice-packs').then((r) => r.json());
+      voicePackProfiles = res.profiles || [];
+    } catch (e) {
+      console.error('loadVoicePackProfiles failed:', e);
+    }
+  }
 
   async function loadConfig() {
     try {
@@ -362,7 +373,15 @@
     <div class="settings-section">
       <div class="settings-section-title">Voice caller <span class="badge restart">restart to apply</span></div>
       <div class="settings-row"><label for="sAudioDir">Sounds directory</label><input type="text" id="sAudioDir" placeholder="/path/to/sounds" bind:value={cfg.audio.dir}></div>
-      <div class="settings-row"><label for="sAudioProfile">Voice-pack profile</label><input type="text" id="sAudioProfile" placeholder="(own sounds only)" bind:value={cfg.audio.profile}></div>
+      <div class="settings-row">
+        <label for="sAudioProfile">Voice-pack profile</label>
+        <select id="sAudioProfile" bind:value={cfg.audio.profile}>
+          <option value="">(own sounds only)</option>
+          {#each voicePackProfiles as p}
+            <option value={p}>{p}</option>
+          {/each}
+        </select>
+      </div>
       <div class="settings-row"><label for="sCallerEnabled">Caller enabled</label><input type="checkbox" id="sCallerEnabled" bind:checked={cfg.caller.enabled}></div>
       <div class="settings-row"><label for="sCallerPerDart">Call every dart</label><input type="checkbox" id="sCallerPerDart" bind:checked={cfg.caller.per_dart}></div>
       <div class="settings-row"><label for="sCallerMisses">Announce misses ("outside")</label><input type="checkbox" id="sCallerMisses" bind:checked={cfg.caller.call_misses}></div>

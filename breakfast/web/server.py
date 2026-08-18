@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from breakfast import __release_date__, __version__
 from breakfast import config as cfg_mod
 from breakfast import known_players as kp
+from breakfast import voicepack
 
 log = logging.getLogger(__name__)
 
@@ -457,6 +458,20 @@ _SECRET_KEYS = {"password"}
 
 def _mask(d: dict, keys: set) -> dict:
     return {k: (_MASK if k in keys and v else v) for k, v in d.items()}
+
+
+@app.get("/api/voice-packs")
+async def get_voice_packs():
+    """Installed voice-pack profile names under the configured `[audio] dir`
+    — lets the Settings form offer a dropdown instead of a free-text field
+    the user has to already know the exact folder name for."""
+    if not _config_path:
+        return {"profiles": []}
+    raw = cfg_mod.load(_config_path)
+    audio_dir = raw.get("audio", {}).get("dir")
+    if not audio_dir:
+        return {"profiles": []}
+    return {"profiles": voicepack.list_profiles(audio_dir)}
 
 
 @app.get("/api/config")
