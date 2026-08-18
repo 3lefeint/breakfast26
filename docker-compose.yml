@@ -56,3 +56,40 @@ services:
       # Docker Desktop (Windows/Mac) provides host.docker.internal automatically;
       # this line makes it also work on plain Linux Docker Engine.
       - "host.docker.internal:host-gateway"
+
+  # Self-update helper. Runs as a Docker sibling to `breakfast`
+  # (not inside it, not host-native) so it keeps running while `breakfast`
+  # is mid-rebuild/restart, and works the same regardless of whether the
+  # host ends up being Linux or Windows (Docker Desktop). Deliberately not
+  # published via `ports:` — reachable only from `breakfast` over the
+  # compose-internal network, by service name (http://updater:8090).
+  #
+  # `${PWD}:${PWD}` (not e.g. `.:/repo`) is required, not just a style
+  # choice: this container talks to the *host's* Docker daemon via the
+  # mounted socket, so any `docker compose` command it runs resolves
+  # relative volume paths (like `breakfast`'s `./data:/app/data` above) the
+  # same way the host would — which only works if the path looks identical
+  # from both sides. `${PWD}` needs `docker compose up -d` to be run from
+  # the repo root, same as always.
+  #
+  # This repo is private, so pulling releases needs authentication —
+  # `data/updater_deploy_key` is a dedicated, repo-scoped, **read-only**
+  # GitHub deploy key (not pmo's own SSH key), mounted read-only and never
+  # baked into the image. Before first run:
+  #   ssh-keygen -t ed25519 -N "" -f data/updater_deploy_key
+  #   gh repo deploy-key add data/updater_deploy_key.pub \
+  #     --title "breakfast26-updater (read-only)" --repo <owner>/<repo>
+  #   rm data/updater_deploy_key.pub   # only the private half needs to stay
+  updater:
+    build:
+      context: .
+      dockerfile: updater/Dockerfile
+    container_name: breakfast-updater
+    restart: unless-stopped
+    environment:
+      - REPO_DIR=${PWD}
+      - GIT_SSH_COMMAND=ssh -i /run/secrets/updater_deploy_key -o IdentitiesOnly=yes
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+      - ${PWD}/data/updater_deploy_key:/run/secrets/updater_deploy_key:ro

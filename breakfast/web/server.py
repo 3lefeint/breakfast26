@@ -8,6 +8,7 @@ import time
 import tomllib
 from pathlib import Path
 
+import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
@@ -644,6 +645,49 @@ async def dev_demo_elimination():
     if started:
         push()
     return {"started": started, "error": error}
+
+
+# ── REST: self-update ────────────────────────────────────────────────────────
+
+# `updater` is the compose service name — only resolvable over the
+# compose-internal network the two containers share, see docker-compose.yml.
+_UPDATER_URL = os.environ.get("BREAKFAST_UPDATER_URL", "http://updater:8090")
+
+
+def _updater_get(path: str) -> dict:
+    r = requests.get(f"{_UPDATER_URL}{path}", timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def _updater_post(path: str) -> dict:
+    r = requests.post(f"{_UPDATER_URL}{path}", timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+@app.get("/api/updates/check")
+async def updates_check():
+    try:
+        return await asyncio.to_thread(_updater_get, "/check")
+    except Exception as e:
+        return {"error": f"updater unreachable: {e}"}
+
+
+@app.post("/api/updates/apply")
+async def updates_apply():
+    try:
+        return await asyncio.to_thread(_updater_post, "/apply")
+    except Exception as e:
+        return {"error": f"updater unreachable: {e}"}
+
+
+@app.get("/api/updates/status")
+async def updates_status():
+    try:
+        return await asyncio.to_thread(_updater_get, "/status")
+    except Exception as e:
+        return {"error": f"updater unreachable: {e}"}
 
 
 # ── REST: players ─────────────────────────────────────────────────────────────

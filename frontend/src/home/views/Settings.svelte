@@ -186,6 +186,84 @@
     await api('POST', '/api/control/restart');
   }
 
+  // Self-update. checkForUpdate()/applyUpdate() talk to the
+  // updater helper through this app's own /api/updates/* proxy — but
+  // pollUntilBackUp() below polls /api/health directly (not proxied),
+  // since this app's own container is what goes down during the update;
+  // routing status through it would go dark for exactly the window that
+  // matters.
+  let updateChecking = $state(false);
+  let updateApplying = $state(false);
+  let updateInfo = $state(null);      // { current, latest, update_available } | { error }
+  let updatePhaseText = $state('');
+  let updateOutcome = $state(null);   // 'success' | 'rolled_back' | 'timeout' | null
+  let updateOutcomeDetail = $state(null);
+
+  async function checkForUpdate() {
+    updateChecking = true;
+    updateInfo = null;
+    updateOutcome = null;
+    try {
+      updateInfo = await fetch('/api/updates/check').then((r) => r.json());
+    } catch (e) {
+      updateInfo = { error: String(e) };
+    } finally {
+      updateChecking = false;
+    }
+  }
+
+  async function applyUpdate() {
+    if (!updateInfo?.update_available) return;
+    if (!confirm(`Install update to v${updateInfo.latest}? The app will be briefly unavailable while it rebuilds and restarts.`)) return;
+    const res = await fetch('/api/updates/apply', { method: 'POST' })
+      .then((r) => r.json())
+      .catch((e) => ({ error: String(e) }));
+    if (res.error || res.ok === false) {
+      alert('Could not start the update: ' + (res.error || 'unknown error'));
+      return;
+    }
+    updateApplying = true;
+    updateOutcome = null;
+    updateOutcomeDetail = null;
+    updatePhaseText = 'Installing update — this can take a few minutes…';
+    await pollUntilBackUp(updateInfo.latest);
+  }
+
+  async function pollUntilBackUp(expectedVersion) {
+    const deadline = Date.now() + 8 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const health = await fetch('/api/health').then((r) => r.json());
+        if (!health.version) continue;
+        if (health.version === expectedVersion) {
+          updateOutcome = 'success';
+          updateApplying = false;
+          updatePhaseText = '';
+          setTimeout(() => location.reload(), 1500);
+          return;
+        }
+        // Back up, but not on the version we asked for — the updater
+        // rolled back after a failed health check.
+        updateOutcome = 'rolled_back';
+        updateApplying = false;
+        updatePhaseText = '';
+        try {
+          const status = await fetch('/api/updates/status').then((r) => r.json());
+          updateOutcomeDetail = status.detail || null;
+        } catch (_) {
+          // best-effort only — the generic rolled_back message still shows
+        }
+        return;
+      } catch (_) {
+        // still down / rebuilding — keep polling
+      }
+    }
+    updateOutcome = 'timeout';
+    updateApplying = false;
+    updatePhaseText = '';
+  }
+
   let devDemo = $derived($gameState.dev_demo);
   let vp = $derived($gameState.voicepack_generation);
   let vpText = $derived.by(() => {
@@ -327,6 +405,32 @@
   <button type="button" class="btn btn-stop" style="width:100%" onclick={restartApp}>Restart Breakfast</button>
 </div>
 
+<div class="settings-section maintenance">
+  <div class="settings-section-title">Updates</div>
+  {#if updateApplying}
+    <p class="note">{updatePhaseText}</p>
+  {:else}
+    <button type="button" class="btn btn-add" style="width:100%" onclick={checkForUpdate} disabled={updateChecking}>
+      {updateChecking ? 'Checking…' : 'Check for update'}
+    </button>
+
+    {#if updateInfo?.error}
+      <p class="note update-error">{updateInfo.error}</p>
+    {:else if updateInfo?.update_available}
+      <p class="note">Version {updateInfo.latest} is available (current: {updateInfo.current}).</p>
+      <button type="button" class="btn btn-save" style="width:100%; margin-top:0.5rem" onclick={applyUpdate}>Update now</button>
+    {:else if updateInfo}
+      <p class="note">Up to date — version {updateInfo.current} is the latest.</p>
+    {/if}
+
+    {#if updateOutcome === 'rolled_back'}
+      <p class="note update-error">Update failed and was automatically rolled back{updateOutcomeDetail ? `: ${updateOutcomeDetail}` : '.'} Contact whoever maintains this app if it keeps happening.</p>
+    {:else if updateOutcome === 'timeout'}
+      <p class="note update-error">The app didn't come back after the update. It may still be starting — try reloading in a minute, or contact whoever maintains this app.</p>
+    {/if}
+  {/if}
+</div>
+
 <style>
   .settings-section {
     background: var(--surface); border: 1px solid var(--border);
@@ -371,6 +475,7 @@
     border-radius: 6px; color: var(--text); padding: 0.35rem 0.6rem; font-size: 0.85rem;
   }
   .note { font-size: 0.75rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .note.update-error { color: var(--red); }
   .settings-banner {
     padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid;
     font-size: 0.875rem; margin-bottom: 1rem;
