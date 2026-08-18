@@ -25,7 +25,7 @@
   // Settings' Dev tab for this run, without touching config.toml — POST
   // /api/dev/unlock is in-memory only server-side, so it's gone again on
   // the next restart, same as this counter is gone on the next page load.
-  const DEV_TAP_THRESHOLD = 7;
+  const DEV_TAP_THRESHOLD = 5;
   const DEV_TAP_WINDOW_MS = 1500;
   const DEV_CELEBRATION_MS = 2500;
   let devTapCount = 0;
