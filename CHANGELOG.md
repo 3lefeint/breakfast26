@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-18
+
 ### Added
 - The /tv header glows green/yellow/red with the board status.
 
