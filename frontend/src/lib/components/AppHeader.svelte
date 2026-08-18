@@ -7,10 +7,16 @@
   // more "modern framework" without touching the underlying color
   // tokens (still just --accent/--surface/--border, per the app's
   // existing dark-only/swappable-accent theme system).
-  let { left, right, title = '' } = $props();
+  //
+  // glowColor ('green' | 'yellow' | 'red' | null) swaps that subtle
+  // accent-tinted underline for a much more prominent colored glow —
+  // used by /tv to make the board's current status genuinely hard to
+  // miss instead of a small footer dot nobody's looking at while
+  // throwing. null keeps the default, app-wide accent glow.
+  let { left, right, title = '', glowColor = null } = $props();
 </script>
 
-<header>
+<header class:glow-green={glowColor === 'green'} class:glow-yellow={glowColor === 'yellow'} class:glow-red={glowColor === 'red'}>
   <div class="left-group">
     <a class="brand-link" href="/" title="Breakfast — back to home">
       <img src="/static/breakfast-header-sport-dark-tight.png" alt="Breakfast">
@@ -36,9 +42,22 @@
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
     box-shadow: 0 1px 0 0 color-mix(in srgb, var(--accent) 12%, transparent);
+    transition: box-shadow 0.3s;
     flex-shrink: 0;
     position: relative;
     z-index: 20;
+  }
+  /* A solid colored edge plus a soft blurred bleed below it — meant to
+     read as a glow, not just a colored line, so it's catchable in
+     peripheral vision while actually looking at the dartboard. */
+  header.glow-green {
+    box-shadow: 0 2px 0 0 var(--green), 0 10px 28px -6px color-mix(in srgb, var(--green) 65%, transparent);
+  }
+  header.glow-yellow {
+    box-shadow: 0 2px 0 0 var(--yellow), 0 10px 28px -6px color-mix(in srgb, var(--yellow) 65%, transparent);
+  }
+  header.glow-red {
+    box-shadow: 0 2px 0 0 var(--red), 0 10px 28px -6px color-mix(in srgb, var(--red) 65%, transparent);
   }
   .left-group { display: flex; align-items: center; gap: 0.6rem; justify-self: start; }
   .brand-link { display: inline-flex; align-items: center; line-height: 0; transition: opacity 0.15s; }

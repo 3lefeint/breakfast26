@@ -5,6 +5,7 @@ import time
 
 import websocket
 
+from breakfast import board_status
 from breakfast.state import GameState
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,19 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
             return
 
         data = msg.get("data", {})
+
+        # Board status regardless of game mode — this local connection is
+        # active for X01/Freeplay/Elimination alike, unlike the cloud
+        # channel (autodarts_client.py), which only relays board-status
+        # events once a real Autodarts cloud match has started, so it
+        # never fires during Freeplay/Elimination at all.
+        new_status = board_status.resolve(data.get("event", ""), data.get("status"))
+        if new_status:
+            evt = state.update({"event": "Board Status", "data": {"status": new_status}})
+            if evt:
+                from breakfast.web import server as web
+                web.push()
+
         count = data.get("numThrows", 0)
         throws = data.get("throws") or []
 

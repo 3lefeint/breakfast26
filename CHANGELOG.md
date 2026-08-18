@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- The /tv header glows green/yellow/red with the board status.
+
 ### Fixed
 - Elimination setup: the player chips and the game-players list no longer reflow each other.
 

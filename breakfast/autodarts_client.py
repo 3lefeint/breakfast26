@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import requests
 import websocket
 
+from breakfast import board_status
 from breakfast.dartboard import field_centers
 
 log = logging.getLogger(__name__)
@@ -442,7 +443,7 @@ class AutodartsCloudClient:
 
                 elif channel == "autodarts.boards":
                     data = m.get("data", {})
-                    self._forward_board_status(data.get("event", ""))
+                    self._forward_board_status(data.get("event", ""), data.get("status"))
                     self._subscribe_match(data, ws)
 
                 elif channel == "autodarts.users":
@@ -456,20 +457,15 @@ class AutodartsCloudClient:
 
     # -------------------------------------------------------- board/match lifecycle
 
-    _BOARD_STATUS_MAP = {
-        "Takeout started": "Takeout Started",
-        "Takeout finished": "Takeout Finished",
-        "Manual reset": "Manual reset",
-        "Stopped": "Board Stopped",
-        "Started": "Board Started",
-        "Calibration started": "Calibration Started",
-        "Calibration finished": "Calibration Finished",
-    }
-
-    def _forward_board_status(self, event_name):
-        status = self._BOARD_STATUS_MAP.get(event_name)
+    def _forward_board_status(self, event_name, raw_status=None):
+        status = board_status.resolve(event_name, raw_status)
         if status:
             self._emit({"event": "Board Status", "data": {"status": status}})
+        elif event_name and not board_status.is_ignorable(event_name):
+            # Previously silently dropped — any board event Autodarts sends
+            # that isn't already accounted for should be visible somewhere
+            # rather than vanish without a trace.
+            log.info("Unmapped board event: %r", event_name)
 
     def _subscribe_match(self, m, ws):
         evt = m.get("event")

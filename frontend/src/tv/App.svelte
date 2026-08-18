@@ -33,9 +33,41 @@
     if (game.match_started) return 'x01';
     return 'idle';
   });
+
+  // Always-visible board-readiness indicator, independent of whether a
+  // match is active — matchMeta above already goes dark on board_status
+  // the moment a leg starts, which is exactly when a stuck takeout matters
+  // most. Green: ready to throw. Yellow: normal, expected, not throwable
+  // right now. Red: a real problem. Grey: no status yet, or one we don't
+  // recognize — never guess green for something we don't know.
+  const BOARD_STATUS_COLOR = {
+    // Autodarts' own raw status vocabulary — forwarded unmodified by the
+    // backend (breakfast/board_status.py), this is what actually arrives
+    // for most events now.
+    'Throw': 'green',
+    'Takeout': 'yellow',
+    'Takeout in progress': 'yellow',
+    // Fallback event-name-based strings, used only for events that don't
+    // carry Autodarts' own status field.
+    'Board Started': 'green',
+    'Takeout Finished': 'green',
+    'Calibration Finished': 'green',
+    'Manual reset': 'green',
+    'Takeout Started': 'yellow',
+    'Calibration Started': 'yellow',
+    'Board Starting': 'yellow',
+    'Board Stopped': 'red',
+    'Board Stopping': 'red',
+    'Board Disconnected': 'red',
+  };
+  let boardStatusColor = $derived(BOARD_STATUS_COLOR[game.board_status] || 'grey');
+  // 'grey' (no status yet, or an unrecognized one) keeps the header's
+  // default subtle accent glow instead of claiming a color we're not
+  // actually sure of.
+  let headerGlow = $derived(boardStatusColor === 'grey' ? null : boardStatusColor);
 </script>
 
-<AppHeader title={matchMeta}>
+<AppHeader title={matchMeta} glowColor={headerGlow}>
   {#snippet right()}
     <button type="button" class="sound-btn" title="Play voice calls on this device" onclick={toggleAudio}>
       {$audioOn ? '🔊' : '🔇'}

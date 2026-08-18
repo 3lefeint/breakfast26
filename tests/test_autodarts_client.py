@@ -153,3 +153,65 @@ class TestForceClearMatch:
         client._subscribe_match({"event": "finish", "id": "m1"}, MagicMock())
 
         assert events == []
+
+
+class TestForwardBoardStatus:
+    @pytest.mark.parametrize("raw,mapped", [
+        ("Takeout started", "Takeout Started"),
+        ("Takeout finished", "Takeout Finished"),
+        ("Manual reset", "Manual reset"),
+        ("Stopped", "Board Stopped"),
+        ("Started", "Board Started"),
+        ("Starting", "Board Starting"),
+        ("Stopping", "Board Stopping"),
+        ("Disconnected", "Board Disconnected"),
+        ("Calibration started", "Calibration Started"),
+        ("Calibration finished", "Calibration Finished"),
+    ])
+    def test_known_events_are_forwarded(self, raw, mapped):
+        events = []
+        client = _make_client(events)
+        client._forward_board_status(raw)
+        assert events == [{"event": "Board Status", "data": {"status": mapped}}]
+
+    def test_throw_detected_is_silently_ignored_not_logged(self, caplog):
+        events = []
+        client = _make_client(events)
+        client._forward_board_status("Throw detected")
+        assert events == []
+        assert "Throw detected" not in caplog.text
+
+    def test_takeout_status_on_throw_detected_fires_immediately(self):
+        # The turn-ending dart carries status="Takeout" on a "Throw
+        # detected" event, well before the separate "Takeout started"
+        # event exists at all — the raw status is forwarded as-is (no
+        # renaming), right away, not held back for that later event.
+        events = []
+        client = _make_client(events)
+        client._forward_board_status("Throw detected", raw_status="Takeout")
+        assert events == [{"event": "Board Status", "data": {"status": "Takeout"}}]
+
+    def test_raw_status_takes_priority_over_event_map(self):
+        # Even if some other event name happened to arrive alongside a
+        # status field, the status field wins.
+        events = []
+        client = _make_client(events)
+        client._forward_board_status("Something else", raw_status="Takeout")
+        assert events == [{"event": "Board Status", "data": {"status": "Takeout"}}]
+
+    def test_throw_status_is_forwarded_too(self):
+        # "Throw" is what actually resets the board back to ready — it
+        # must be forwarded like any other status, not treated as a
+        # no-op.
+        events = []
+        client = _make_client(events)
+        client._forward_board_status("Throw detected", raw_status="Throw")
+        assert events == [{"event": "Board Status", "data": {"status": "Throw"}}]
+
+    def test_unrecognized_event_is_not_forwarded_but_is_logged(self, caplog):
+        events = []
+        client = _make_client(events)
+        with caplog.at_level("INFO"):
+            client._forward_board_status("Something new")
+        assert events == []
+        assert "Something new" in caplog.text
