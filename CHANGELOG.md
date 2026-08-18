@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- DEBUG/INFO logging across the app; config changes log keys, never values.
+- Colored log output, opt out with `NO_COLOR`; `LOG_LEVEL` sets the level, also for the updater.
+
 ## [0.3.0] - 2026-08-18
 
 ### Added

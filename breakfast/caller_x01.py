@@ -48,6 +48,7 @@ class X01Caller(ModeHandler):
     def on_dart(self, evt, snapshot, audio):
         cur = snapshot.get("current") or {}
         remaining = cur.get("remaining")
+        log.debug("on_dart: dart=%s field=%s remaining=%s", evt.get("dart"), evt.get("field"), remaining)
 
         # The winning dart is followed immediately by the won event —
         # skip the field call so gameshot/matchshot isn't queued behind it.

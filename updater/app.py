@@ -27,6 +27,32 @@ from fastapi import FastAPI
 
 log = logging.getLogger("updater")
 
+
+class _ColorFormatter(logging.Formatter):
+    """Same formatter as main.py's — duplicated rather than imported since
+    this service is deliberately standalone (its own Dockerfile doesn't
+    copy the `breakfast` package in at all, to keep it minimal)."""
+
+    _COLORS = {
+        logging.DEBUG: "\033[34m",       # blue
+        logging.INFO: "\033[32m",        # green
+        logging.WARNING: "\033[33m",     # yellow
+        logging.ERROR: "\033[38;5;208m",  # orange (no standard 8-color orange)
+        logging.CRITICAL: "\033[31m",    # red — logging.FATAL is the same level, not a separate one
+    }
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        color = self._COLORS.get(record.levelno)
+        if not color:
+            return super().format(record)
+        original = record.levelname
+        record.levelname = f"{color}{original}{self._RESET}"
+        try:
+            return super().format(record)
+        finally:
+            record.levelname = original
+
 # Same absolute path on both sides of the `${PWD}:${PWD}` bind mount in
 # docker-compose.yml — required so `docker compose` commands run in here
 # (which control the *host's* daemon via the mounted socket) resolve
@@ -174,6 +200,7 @@ def _run_apply() -> None:
 
 @app.get("/check")
 async def check():
+    log.debug("Update check requested")
     try:
         current = await asyncio.to_thread(_current_version)
     except Exception as e:
@@ -194,6 +221,7 @@ async def check():
 
 @app.post("/apply")
 async def apply():
+    log.debug("Apply requested")
     with _state_lock:
         if _state["phase"] not in ("idle", "done", "rolled_back", "failed"):
             return {"ok": False, "error": "an update is already in progress"}
@@ -206,10 +234,17 @@ async def apply():
 
 @app.get("/status")
 async def status():
+    log.debug("Status requested")
     with _state_lock:
         return dict(_state)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    handler = logging.StreamHandler()
+    formatter_cls = logging.Formatter if os.environ.get("NO_COLOR") else _ColorFormatter
+    handler.setFormatter(formatter_cls(fmt, datefmt="%H:%M:%S"))
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(level)
     uvicorn.run(app, host="0.0.0.0", port=8090, log_level="warning")

@@ -1,4 +1,7 @@
+import logging
 from copy import deepcopy
+
+log = logging.getLogger(__name__)
 
 
 def _to_int(value, default=0):
@@ -109,6 +112,10 @@ class GameState:
     def update(self, data):
         """Process one caller event. Returns an event dict for downstream consumers or None."""
         event = data.get("event")
+        # The first thing every incoming dart/board event passes through —
+        # one exhaustive line per event here covers all of them cheaply,
+        # rather than needing a log call in every branch below.
+        log.debug("update: event=%s data=%s", event, data)
         self.last_event = event
 
         if event in ("welcome", "mirror"):

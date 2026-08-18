@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import sys
 
 from breakfast import __release_date__, __version__
@@ -43,14 +44,63 @@ def _log_startup_banner() -> None:
     log.info("Breakfast v%s (%s)", __version__, __release_date__)
 
 
+class _ColorFormatter(logging.Formatter):
+    """Colorizes just the [levelname] tag, not the whole line — keeps long
+    DEBUG lines with embedded values readable while severity still stands
+    out at a glance.
+
+    Always on regardless of sys.stderr.isatty(): this app's primary
+    "interactive terminal" in practice is `docker logs -f`/`docker compose
+    logs -f`, where stderr is a pipe from Python's point of view even
+    though a human is watching it live — isatty() would be False there,
+    defeating the point entirely for the main real-world case. NO_COLOR
+    (no-color.org) is the explicit opt-out instead, checked by the caller.
+    """
+
+    _COLORS = {
+        logging.DEBUG: "\033[34m",       # blue
+        logging.INFO: "\033[32m",        # green
+        logging.WARNING: "\033[33m",     # yellow
+        logging.ERROR: "\033[38;5;208m",  # orange (no standard 8-color orange)
+        logging.CRITICAL: "\033[31m",    # red — logging.FATAL is the same level, not a separate one
+    }
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        color = self._COLORS.get(record.levelno)
+        if not color:
+            return super().format(record)
+        # Mutate/restore rather than build a fresh copy — record.levelname
+        # is shared across every handler attached to the logger (e.g. the
+        # plain file handler below), so a permanent change here would leak
+        # ANSI codes into the file log too.
+        original = record.levelname
+        record.levelname = f"{color}{original}{self._RESET}"
+        try:
+            return super().format(record)
+        finally:
+            record.levelname = original
+
+
 def _setup_logging(level_name: str, log_file: str | None = None) -> None:
     level = getattr(logging, (level_name or "INFO").upper(), logging.INFO)
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    logging.basicConfig(level=level, format=fmt, datefmt="%H:%M:%S", stream=sys.stderr)
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(level)
+
+    formatter_cls = logging.Formatter if os.environ.get("NO_COLOR") else _ColorFormatter
+    stream_handler = logging.StreamHandler(sys.stderr)
+    stream_handler.setFormatter(formatter_cls(fmt, datefmt="%H:%M:%S"))
+    root.addHandler(stream_handler)
+
     if log_file:
+        # Always plain — raw ANSI escape codes in a text file/grep/editor
+        # just look like garbage, unlike an interactive terminal.
         fh = logging.FileHandler(log_file)
-        fh.setFormatter(logging.Formatter(fmt))
-        logging.getLogger().addHandler(fh)
+        fh.setFormatter(logging.Formatter(fmt, datefmt="%H:%M:%S"))
+        root.addHandler(fh)
 
 
 def _add_mqtt_args(parser):

@@ -165,8 +165,10 @@ async def ws_endpoint(ws: WebSocket):
     _clients.add(ws)
     # Only clients that opted in via /ws?role=audio receive play instructions,
     # so a phone glancing at the scoreboard doesn't start blaring calls.
-    if ws.query_params.get("role") == "audio":
+    role = ws.query_params.get("role")
+    if role == "audio":
         _audio_clients.add(ws)
+    log.info("WS connected (role=%s, clients=%d)", role or "default", len(_clients))
     try:
         await ws.send_json(_last_payload if _last_payload else _build_payload())
         while True:
@@ -176,6 +178,7 @@ async def ws_endpoint(ws: WebSocket):
     finally:
         _clients.discard(ws)
         _audio_clients.discard(ws)
+        log.info("WS disconnected (role=%s, clients=%d)", role or "default", len(_clients))
 
 
 @app.get("/api/sound/{filename}")
@@ -252,6 +255,7 @@ def _run_in_thread(fn):
 
 @app.post("/api/control/undo")
 async def control_undo():
+    log.debug("Undo requested")
     if not _cloud_client:
         return {"error": "cloud control not available"}
     _run_in_thread(_cloud_client.undo_throw)
@@ -260,6 +264,7 @@ async def control_undo():
 
 @app.post("/api/control/next-player")
 async def control_next_player():
+    log.debug("Next player requested")
     if not _cloud_client:
         return {"error": "cloud control not available"}
     _run_in_thread(_cloud_client.next_player)
@@ -268,6 +273,7 @@ async def control_next_player():
 
 @app.post("/api/control/next-game")
 async def control_next_game():
+    log.debug("Next game requested")
     if not _cloud_client:
         return {"error": "cloud control not available"}
     _run_in_thread(_cloud_client.next_game)
@@ -276,6 +282,7 @@ async def control_next_game():
 
 @app.post("/api/control/reset-board")
 async def control_reset_board():
+    log.debug("Reset board requested")
     if not _cloud_client:
         return {"error": "cloud control not available"}
     _run_in_thread(_cloud_client.reset_board)
@@ -286,6 +293,7 @@ async def control_reset_board():
 async def control_force_clear_match():
     """Manually unblock Elimination/freeplay when a match on the Autodarts
     side was abandoned (no finish/delete event ever arrives)."""
+    log.info("Force-clear-match requested via UI")
     if not _cloud_client:
         return {"error": "cloud control not available"}
     _run_in_thread(_cloud_client.force_clear_match)
@@ -312,6 +320,7 @@ class CorrectThrowBody(BaseModel):
 
 @app.post("/api/control/correct-throw")
 async def control_correct_throw(body: CorrectThrowBody):
+    log.debug("Correct-throw requested: dart=%s field=%s", body.dart, body.field)
     if not _cloud_client:
         return {"error": "cloud control not available"}
     if body.dart not in (1, 2, 3):
@@ -338,6 +347,10 @@ class CorrectDartBody(BaseModel):
 
 @app.post("/api/elimination/start")
 async def elim_start(body: StartBody):
+    # elimination.py's own EliminationGame logs the "Game started" INFO
+    # milestone once it actually starts — this is just the REST-layer
+    # entry, not a duplicate of that.
+    log.debug("Elimination start requested: players=%s lives=%s", body.players, body.lives)
     if not _elim_ctrl:
         return {"error": "no elimination controller"}
     players = [p.strip() for p in body.players if p.strip()]
@@ -349,6 +362,7 @@ async def elim_start(body: StartBody):
 
 @app.post("/api/elimination/stop")
 async def elim_stop():
+    log.debug("Elimination stop requested")
     if _elim_ctrl:
         _elim_ctrl.stop()
     return {"ok": True}
@@ -356,6 +370,7 @@ async def elim_stop():
 
 @app.post("/api/elimination/correct")
 async def elim_correct(body: CorrectBody):
+    log.debug("Elimination correct requested: total=%s", body.total)
     if _elim_ctrl and _elim_ctrl.game:
         _elim_ctrl.game.correct_turn(body.total)
     return {"ok": True}
@@ -363,6 +378,7 @@ async def elim_correct(body: CorrectBody):
 
 @app.post("/api/elimination/correct-dart")
 async def elim_correct_dart(body: CorrectDartBody):
+    log.debug("Elimination correct-dart requested: dart=%s field=%s", body.dart, body.field)
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _elim_ctrl and _elim_ctrl.game:
@@ -402,6 +418,8 @@ async def stats_match(match_id: str):
 
 @app.delete("/api/stats/player/{name}")
 async def stats_delete_player(name: str):
+    # Destructive and irreversible (unlike hiding) — worth INFO, not DEBUG.
+    log.info("Deleting player stats: %s", name)
     if not _stats_db:
         return {"error": "stats not enabled"}
     _stats_db.delete_player(name)
@@ -523,6 +541,7 @@ async def patch_config(body: dict):
         return {k: v for k, v in section.items() if v != _MASK}
 
     updates: dict = {}
+    changed_keys: list[str] = []
     changed_non_runtime: list[str] = []
 
     for section, values in body.items():
@@ -534,12 +553,18 @@ async def patch_config(body: dict):
         updates[section] = cleaned
         for key in cleaned:
             flat = key if section == "logging" else f"{section}.{key}"
+            changed_keys.append(flat)
             if key not in cfg_mod.RUNTIME_FIELDS:
                 changed_non_runtime.append(flat)
+
+    # Key names only, never values — matches the masking discipline
+    # /api/config's own response already applies to secret fields.
+    log.debug("Config PATCH requested: keys=%s", changed_keys)
 
     cfg_mod.write(_config_path, updates)
     cfg_mod.apply_runtime(updates.get("logging", {}))
 
+    log.info("Config saved: keys=%s restart_required=%s", changed_keys, changed_non_runtime)
     return {"saved": True, "restart_required": changed_non_runtime}
 
 
@@ -559,6 +584,7 @@ async def voicepack_generate(body: VoicepackGenerateBody):
     missing keys (fast), force=True re-generates everything, including
     keys whose text changed since the last generation (slow, several
     minutes for the full pack)."""
+    log.debug("Voice-pack generate requested: force=%s", body.force)
     if _voicepack_status["running"]:
         return {"error": "generation already running"}
     if not _audio_engine:
@@ -575,6 +601,7 @@ async def voicepack_generate(body: VoicepackGenerateBody):
     out_dir = Path(audio_dir) / "profiles" / name
 
     _voicepack_status.update(running=True, done=0, skipped=0, total=0, error=None)
+    log.info("Voice-pack generation started (force=%s)", body.force)
     push()
 
     async def task():
@@ -584,6 +611,8 @@ async def voicepack_generate(body: VoicepackGenerateBody):
         try:
             await generate_run(plan, out_dir, only=None, force=body.force,
                                 dry_run=False, trim=True, on_progress=on_progress)
+            log.info("Voice-pack generation finished: done=%d skipped=%d",
+                      _voicepack_status["done"], _voicepack_status["skipped"])
         except Exception as e:
             log.exception("Voice-pack generation failed")
             _voicepack_status["error"] = str(e)
@@ -620,11 +649,13 @@ async def dev_unlock():
     again the next time the process restarts."""
     global _dev_unlocked
     _dev_unlocked = True
+    log.info("Dev tab unlocked for this run (version-number tap)")
     return {"unlocked": True}
 
 
 @app.post("/api/dev/demo/x01")
 async def dev_demo_x01():
+    log.debug("X01 demo requested")
     if not _dev_enabled():
         return {"started": False, "error": "[dev] not enabled in config"}
     if not _dev_demo:
@@ -637,6 +668,7 @@ async def dev_demo_x01():
 
 @app.post("/api/dev/demo/elimination")
 async def dev_demo_elimination():
+    log.debug("Elimination demo requested")
     if not _dev_enabled():
         return {"started": False, "error": "[dev] not enabled in config"}
     if not _dev_demo:
@@ -668,25 +700,31 @@ def _updater_post(path: str) -> dict:
 
 @app.get("/api/updates/check")
 async def updates_check():
+    log.debug("Update check requested")
     try:
         return await asyncio.to_thread(_updater_get, "/check")
     except Exception as e:
+        log.warning("Updater unreachable on /check: %s", e)
         return {"error": f"updater unreachable: {e}"}
 
 
 @app.post("/api/updates/apply")
 async def updates_apply():
+    log.info("Update apply requested via UI")
     try:
         return await asyncio.to_thread(_updater_post, "/apply")
     except Exception as e:
+        log.warning("Updater unreachable on /apply: %s", e)
         return {"error": f"updater unreachable: {e}"}
 
 
 @app.get("/api/updates/status")
 async def updates_status():
+    log.debug("Update status requested")
     try:
         return await asyncio.to_thread(_updater_get, "/status")
     except Exception as e:
+        log.warning("Updater unreachable on /status: %s", e)
         return {"error": f"updater unreachable: {e}"}
 
 
@@ -703,6 +741,7 @@ async def list_players():
 
 @app.post("/api/players")
 async def add_player(body: PlayerBody):
+    log.debug("Add player requested: %s", body.name)
     name = body.name.strip()
     if not name:
         return {"error": "empty name"}
@@ -718,6 +757,7 @@ async def set_player_hidden(name: str, body: HiddenBody):
     """Hide/unhide a player from the Players tab and from
     leaderboard()/all_players_stats() (same flag controls both) —
     non-destructive and reversible, unlike DELETE /api/stats/player/{name}."""
+    log.info("Player %s: %s", "hidden" if body.hidden else "unhidden", name)
     if not _stats_db:
         return {"error": "stats not enabled"}
     _stats_db.upsert_player(name, hidden=body.hidden)

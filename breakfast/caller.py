@@ -82,6 +82,10 @@ class Caller:
     def _dispatch(self, evt, snapshot):
         etype = evt.get("type")
         handler = self._handler_for(evt.get("mode") or snapshot.get("game_mode"))
+        # Every audio-triggering event flows through here — one exhaustive
+        # line per event, same pattern as state.py's update(), rather than
+        # a log call in every branch below.
+        log.debug("dispatch: type=%s mode=%s", etype, snapshot.get("game_mode"))
 
         if etype == "match_started":
             self._match_won_seen = False
