@@ -4,8 +4,8 @@
 
 Self-hosted darts companion for Autodarts: live scoreboard, elimination game
 mode, board control, built-in voice caller with custom voice-pack creation,
-and lifetime statistics — with optional MQTT output for LED/display
-control.
+lifetime statistics, and one-click self-update — with optional MQTT output
+for LED/display control.
 
 ---
 
@@ -43,18 +43,28 @@ Connects straight to the Autodarts cloud — no darts-caller required.
   downloadable voice profile (`voicepack` subcommand) with your own files as
   per-key fallback
 - **TV / kiosk mode** (`/tv`): full-screen live view for wall-mounted displays and tablets, no navigation — X01 scoreboard (remaining score, checkout hint, dart boxes) or the live Elimination game, whichever is active
-- **Checkout suggestions**: standard X01 checkout path shown below the remaining score
+- **Checkout suggestions**: standard X01 checkout path shown below the remaining score, with a distinct "Bogey — no checkout" badge for the handful of remaining scores that are in checkout range but have no valid 3-dart finish (169, 168, 166, 165, 163, 162, 159)
 - **Live session stats**: 3-dart average, 180s, checkout % shown next to each player during a match
 - **Lifetime statistics tab**: per-player averages, 180 / 140+ / 100+ counts, checkout & double-hit rates across all sessions; per-player reset with double confirmation
 - **Leaderboards**: top-10 by average, 180s, checkout %, double % in the Stats tab
 - **Leg tracking**: legs won per player recorded per match; shown live in the scoreboard and in match history
 - **MQTT auto-reconnect**: reconnects with exponential backoff when the broker drops mid-session
-- **Elimination** game mode with unlimited players, life management, turn correction,
-  optional random turn order for a new game, and a win-count crown for the current leader
+- **Elimination** game mode with unlimited players, life management, turn correction
+  and undo (repeatable, walks back any completed turn — including reopening an
+  already-finished match if the winning turn itself gets undone), optional
+  random turn order for a new game, and a win-count crown for the current leader
 - **Board control** (direct mode): Undo throw, Next Player, Next Leg, Reset Board, Correct Throw — all on the `/tv` live view
-- MQTT output for ESPHome / LED strips (works without Home Assistant)
+- **Freeplay**: casual throws outside a match still get a miss comment per dart and
+  the turn total announced (with `[audio]` configured), plus live MQTT/LED output
+- MQTT output for ESPHome / LED strips (works without Home Assistant); fully
+  optional — Elimination, the scoreboard, and the voice caller all work with it off
+- **Self-update** (Docker deployments): check for a newer release and install it
+  with one confirmation click from Settings — pulls, rebuilds, and restarts
+  automatically, with an automatic rollback if the new build doesn't come up
+  healthy
 - Session recording and replay — develop without throwing darts
 - Config file — no long CLI commands needed in production
+- Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
 - **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
 - **Advanced per-player dashboard** (Stats tab): activity/performance charts, scoring buckets, average & checkout-% over time, win/loss and game-type ratio, doubles hit rate, and Top 10 Legs (filterable by starting score, e.g. 301/501) / Top 10 Checkouts
@@ -131,7 +141,11 @@ email    = "user@example.com"
 password = "your-password"
 board_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
+# Fully optional — Elimination, the scoreboard, and the voice caller all work
+# with no [mqtt] section at all. This only feeds Home Assistant sensors and
+# ESPHome/LED displays over MQTT.
 [mqtt]
+enabled  = true    # explicit on/off switch, independent of leaving host blank
 host     = "192.168.1.10"
 port     = 1883
 username = "mqtt"
@@ -160,6 +174,12 @@ events = false          # true: log each game event (dart-thrown etc.) at INFO l
 # [dev]
 # enabled = true   # exposes a Settings "Dev" tab to simulate a full X01/Elimination match — see "Dev mode" below
 ```
+
+Terminal / `docker logs` output is colored by level (DEBUG blue, INFO green, WARNING
+yellow, ERROR orange, CRITICAL red) — set the `NO_COLOR` environment variable to any
+value to opt out. Applies to the main app and the `updater` service (below) alike; the
+updater's own log level is set separately via its `LOG_LEVEL` env var (default `INFO`),
+since it's a distinct process from `main.py`.
 
 All settings can be overridden on the command line — CLI args always win over the config file.
 
@@ -247,7 +267,7 @@ The live scoreboard itself (X01 and Elimination) lives on the separate
 | **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts) — whichever is active; idle screen otherwise |
 | **Players** | Known players list — name, Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Stats** | Lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
-| **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart |
+| **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below) |
 
 All connected clients update in real time via WebSocket.
 
@@ -289,10 +309,16 @@ currently active:
 - **X01**: large remaining score, checkout hint, dart boxes, compact
   all-player table, and the board/match control buttons below
 - **Elimination**: lives per player, turn order, tap-to-correct darts, a
-  win-count crown for whoever currently has the most Elimination wins, and
-  the Stop/rematch/finished-match flow
+  win-count crown for whoever currently has the most Elimination wins, an
+  Undo control (walks back the last completed turn — repeatable, and works
+  even from the finished/winner screen to reopen a match), and the
+  Stop/rematch/finished-match flow
 
-It uses the same WebSocket connection as the rest of the app and reconnects automatically.
+The header glows green/yellow/red in real time to reflect the board's
+current status (ready / mid-takeout-or-calibration / stopped-or-disconnected),
+sourced from both the cloud and local board connections so it works during
+X01, Freeplay, and Elimination alike. It uses the same WebSocket connection
+as the rest of the app and reconnects automatically.
 
 #### Board controls (direct mode only)
 
@@ -304,6 +330,11 @@ It uses the same WebSocket connection as the rest of the app and reconnects auto
 | ⟳ Reset Board | Hard-reset the local board |
 | ✓ Correct | Correct a misdetected throw (select dart 1/2/3, enter field e.g. `T20`) |
 
+This is the X01 board-level undo (removes the last *detected throw*).
+Elimination has its own, separate Undo (removes the last *completed turn*,
+see above) — the two aren't interchangeable since Elimination isn't scored
+through the same board-control pipeline.
+
 ---
 
 ## Statistics
@@ -313,7 +344,7 @@ Per-turn data (score, remaining, bust/checkout flag, all three dart fields + rem
 - **Session stats** (live, in-game): 3-dart average, 180 count, checkout % per player — updated after every turn with no database query
 - **Lifetime stats** (Stats tab): same plus 140+, 100+, double-hit rate across all sessions
 - **Leaderboards** (Stats tab): top-10 players by Best Average, Most 180s, Best CO%, Best Double %
-- **Win counts** (Players tab): Elimination wins and X01 match wins, tracked separately per player
+- **Win counts** (Players tab): Elimination wins and X01 match wins, tracked separately per player. Solo (single-player/practice) X01 sessions don't count here — a session with no opponent isn't a competitive win — though their per-dart stats (average, 180s, checkout %) are still tracked normally
 - **Double-hit tracking**: the remaining score is stored per individual dart, so the query can determine exactly which dart was thrown at a double (remaining ≤ 40 or = 50) and whether it was hit
 - **Advanced dashboard** (Stats tab, per player): activity (darts/games/playtime), performance summary (best average/leg/checkout, total 180s), scoring buckets, average/checkout-% over time, win/loss and game-type ratio, doubles hit rate by number, Top 10 Legs (fewest darts to win — filterable by starting score, since a 301 leg and a 701 leg aren't comparable on darts alone) and Top 10 Checkouts
 
@@ -364,8 +395,8 @@ curl http://localhost:8080/api/health
 
 ```json
 {
-  "version": "0.1.0",
-  "release_date": "2026-07-08",
+  "version": "0.3.0",
+  "release_date": "2026-08-18",
   "uptime_s": 3742,
   "mqtt": { "connected": true },
   "autodarts": {
@@ -422,6 +453,34 @@ All topics are relative to `base_topic` (default: `autodarts`).
 | `autodarts/players/<index>/remaining` | Remaining score |
 | `autodarts/players/<index>/turn_score` | Current turn total |
 
+### Elimination
+
+| Topic | Value |
+|-------|-------|
+| `autodarts/elimination/active` | `true` / `false` |
+| `autodarts/elimination/state` | Full Elimination game state as JSON (retained) |
+| `autodarts/elimination/current_number` | Current player's seat number |
+| `autodarts/elimination/current_lives` | Current player's remaining lives |
+| `autodarts/elimination/lives_max` | Lives each player started with |
+| `autodarts/elimination/target` | Score the current player must beat |
+| `autodarts/elimination/freipass` | `true` / `false` — first-turn-of-life exemption |
+| `autodarts/elimination/current/dart{1,2,3}`, `.../current/total` | The turn in progress |
+| `autodarts/elimination/last_turn/dart{1,2,3}`, `.../last_turn/total` | The most recently finished turn |
+| `autodarts/elimination/events/{event_type}` | Non-retained event (`turn_pass`, `life_lost`, `eliminated`, `game_won`) |
+| `autodarts/elimination/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start`, `stop`, `correct_turn`, `undo`, `add_player`, `remove_player`); every action also has a REST equivalent (see **REST API** below) |
+
+### Freeplay
+
+Published whenever darts land with no match active — lets an ESPHome
+display react to casual throws too, not just real matches.
+
+| Topic | Value |
+|-------|-------|
+| `autodarts/freeplay/count` | Darts thrown so far this turn (0-3) |
+| `autodarts/freeplay/throw{1,2,3}_name` | Field name of each dart (e.g. `T20`) |
+| `autodarts/freeplay/total` | Turn total so far |
+| `autodarts/events/freeplay_dart` | Non-retained event, fired per dart |
+
 ### Debug / full state
 
 | Topic | Value |
@@ -466,7 +525,7 @@ default — `[dev]` is not meant to be enabled on a shared/production
 instance.
 
 Don't want to edit `config.toml`/restart just to try it once? Tap the
-version number in the Home footer 7 times in a row — same Android-style
+version number in the Home footer 5 times in a row — same Android-style
 gesture as unlocking Developer options — to reveal the Dev tab for the
 current run only (`POST /api/dev/unlock`, in-memory, never written to
 `config.toml`). Gone again on the next restart.
@@ -499,6 +558,26 @@ with camera/hardware device access is a supply-chain decision that needs an
 explicit, separate call. If Autodarts gets containerized later, that means
 writing and controlling our own image for it, not adopting one from an
 outside maintainer.
+
+### Self-update (optional)
+
+`docker-compose.yml` also defines an `updater` sidecar service — a small
+FastAPI app with the Docker socket and the repo checkout mounted, giving
+Settings → Updates a "check for update" / "install" button that pulls the
+newest `vX.Y.Z` tag from `origin/master`, rebuilds and restarts `breakfast`,
+health-checks the result, and automatically rolls back if the new build
+doesn't come up healthy. It never takes a shell string from the caller —
+every git/docker command it runs is a fixed, hardcoded argv list — and it's
+reachable only from the `breakfast` container over the compose-internal
+network, never exposed to the host or the wider network.
+
+Since this repo is private, the updater needs its own read-only SSH deploy
+key to fetch from GitHub — one-time setup documented in `docker-compose.yml`'s
+own header comments for the `updater` service (generate a dedicated
+`ssh-keygen` keypair, register it via `gh repo deploy-key add`, the private
+half goes to `data/updater_deploy_key`, gitignored). Skip this setup
+entirely if self-update isn't wanted — the rest of Breakfast is unaffected
+either way, only the Settings → Updates button won't do anything useful.
 
 ### Testing the image manually (build, run, cleanup)
 
@@ -609,6 +688,7 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/elimination/stop` | Stop the current game |
 | `POST` | `/api/elimination/correct` | Correct the last turn's total |
 | `POST` | `/api/elimination/correct-dart` | Correct one dart of the current turn |
+| `POST` | `/api/elimination/undo` | Undo the most recently completed turn — repeatable; reopens the match if the undone turn had finished it |
 
 **Stats**:
 
@@ -639,6 +719,14 @@ The web server exposes a REST API alongside the WebSocket.
 | `PATCH` | `/api/config` | Update config.toml; runtime fields (e.g. log level) apply immediately, the rest need a restart |
 | `POST` | `/api/voicepack/generate` | Regenerate the voice pack (`force`: true re-generates every key, false only fills in missing ones) |
 
+**Updates** (Docker deployments with the `updater` sidecar set up, see **Self-update** above):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/updates/check` | Fetch tags, compare against the running version — `{current, latest, update_available}` |
+| `POST` | `/api/updates/apply` | Pull, rebuild, restart, health-check, automatic rollback on failure |
+| `GET` | `/api/updates/status` | Last-known outcome (`done` / `rolled_back: <reason>` / `in_progress`) |
+
 **Dev demo** (direct mode only, requires `[dev] enabled = true` or the version-tap unlock):
 
 | Method | Path | Description |
@@ -659,8 +747,11 @@ breakfast26/
 ├── requirements-dev.txt            # + pytest, for the test suite (see Running tests)
 ├── pytest.ini                      # pytest config
 ├── Dockerfile                      # Multi-stage: Node builder (frontend) + Python runtime
-├── docker-compose.yml              # Compose service — see its header comments for full setup notes
+├── docker-compose.yml              # Compose services — see its header comments for full setup notes
 ├── .dockerignore
+├── updater/                        # Self-update sidecar service (optional, see "Self-update" above)
+│   ├── app.py                     # FastAPI app: check/apply/status, fixed git+docker command sequences only
+│   └── Dockerfile                 # Debian + docker-ce-cli + docker-compose-plugin
 ├── systemd/
 │   └── breakfast.service          # Systemd unit template
 ├── ESPHome/                       # ESPHome configs for LED strips
