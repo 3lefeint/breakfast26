@@ -188,9 +188,12 @@ class TestStatsTracker:
     def test_match_won_sets_matches_winner(self, tracker, db):
         """Regression for the X01 side of x01_win_counts(): matches.winner
         used to only ever be written by elimination.py, leaving every X01
-        match's winner column NULL forever."""
+        match's winner column NULL forever. Needs a second player's turn too
+        (solo matches are excluded from x01_win_counts())."""
         tracker.process(ev_match_started())
         tracker.process(ev_dart(1, 32, 0, field="D16"))
         tracker.process(ev_darts_pulled())
+        tracker.process(ev_dart(1, 32, 0, field="D16", player="bob"))
+        tracker.process(ev_darts_pulled(player="bob"))
         tracker.process({"event": "match-won", "player": "alice", "game": {"winner": "alice"}})
         assert db.x01_win_counts() == {"alice": 1}

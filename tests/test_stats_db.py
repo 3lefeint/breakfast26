@@ -233,13 +233,27 @@ class TestElimination:
 
     def test_x01_win_counts_excludes_elimination(self, db):
         _open(db, "m1")
+        _turn(db, "m1", "alice")
+        _turn(db, "m1", "bob")
         db.set_winner("m1", "alice")
         _open(db, "m2")
+        _turn(db, "m2", "alice")
+        _turn(db, "m2", "bob")
         db.set_winner("m2", "alice")
         db.open_match("e1", "Elimination", 3)
         db.record_elimination_result("e1", [("bob", 1, 2)])
         db.set_winner("e1", "bob")
         assert db.x01_win_counts() == {"alice": 2}
+
+    def test_x01_win_counts_excludes_solo_practice_matches(self, db):
+        _open(db, "m1")
+        _turn(db, "m1", "alice")
+        db.set_winner("m1", "alice")
+        _open(db, "m2")
+        _turn(db, "m2", "alice")
+        _turn(db, "m2", "bob")
+        db.set_winner("m2", "alice")
+        assert db.x01_win_counts() == {"alice": 1}
 
     def test_set_winner(self, db):
         db.open_match("e1", "Elimination", 3)
@@ -414,13 +428,25 @@ class TestPlayerDashboard:
         _open(db, "m1")
         db.insert_turn("m1", "alice", 1, 1, 501, 60, False, False,
                        [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
+        db.insert_turn("m1", "bob", 1, 1, 501, 40, False, False,
+                       [("20", 20, 481), ("20", 20, 461)])
         db.set_winner("m1", "alice")
         _open(db, "m2")
         db.insert_turn("m2", "alice", 1, 1, 501, 60, False, False,
                        [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
+        db.insert_turn("m2", "bob", 1, 1, 501, 60, False, False,
+                       [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
         db.set_winner("m2", "bob")
         result = db.player_win_loss("alice")
         assert result == {"wins": 1, "losses": 1}
+
+    def test_win_loss_excludes_solo_practice_matches(self, db):
+        _open(db, "m1")
+        db.insert_turn("m1", "alice", 1, 1, 501, 60, False, False,
+                       [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
+        db.set_winner("m1", "alice")
+        result = db.player_win_loss("alice")
+        assert result == {"wins": 0, "losses": 0}
 
     def test_game_type_ratio(self, db):
         _open(db, "m1")

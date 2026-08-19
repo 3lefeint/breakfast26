@@ -70,6 +70,17 @@ CREATE INDEX IF NOT EXISTS idx_elim_turns_match   ON elimination_turns   (match_
 """
 
 
+# A match counts as "solo" (practice, no opponent) when exactly one distinct
+# player ever appears in its `turns` rows — Elimination is excluded here
+# since EliminationController.start() already refuses fewer than 2 players,
+# so this predicate only ever matches X01. Shared by every query that must
+# not let solo sessions inflate competitive win/loss stats.
+_SOLO_X01_SQL = (
+    "m.game_mode != 'Elimination' AND "
+    "(SELECT COUNT(DISTINCT player) FROM turns WHERE turns.match_id = m.match_id) <= 1"
+)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -222,10 +233,14 @@ class StatsDB:
         return {r["player"]: r["n"] for r in rows}
 
     def x01_win_counts(self) -> dict:
+        """Excludes solo (single-player/practice) X01 matches — see
+        `_is_solo_x01()`: a session with no opponent isn't a
+        competitive win and shouldn't feed the leaderboard/win badges."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT winner as player, COUNT(*) as n FROM matches"
+                "SELECT winner as player, COUNT(*) as n FROM matches m"
                 " WHERE winner IS NOT NULL AND game_mode != 'Elimination'"
+                f" AND NOT ({_SOLO_X01_SQL})"
                 " GROUP BY winner"
             ).fetchall()
         return {r["player"]: r["n"] for r in rows}
@@ -657,15 +672,17 @@ class StatsDB:
         ]
 
     def player_win_loss(self, player: str) -> dict:
-        """Wins vs losses among decided (winner set) matches this player was in."""
+        """Wins vs losses among decided (winner set) matches this player was
+        in — excludes solo X01 matches, same as x01_win_counts()."""
         with self._lock:
-            rows = self._conn.execute("""
-                SELECT winner FROM matches
+            rows = self._conn.execute(f"""
+                SELECT winner FROM matches m
                 WHERE winner IS NOT NULL AND match_id IN (
                     SELECT match_id FROM turns WHERE player = ?
                     UNION
                     SELECT match_id FROM elimination_turns WHERE player = ?
                 )
+                AND NOT ({_SOLO_X01_SQL})
             """, (player, player)).fetchall()
         wins = sum(1 for r in rows if r["winner"] == player)
         return {"wins": wins, "losses": len(rows) - wins}
