@@ -77,6 +77,14 @@
     await api('POST', '/api/elimination/stop');
     window.location.href = '/#elimination';
   }
+  async function undoWin() {
+    // Resumes the match server-side and un-records the win from
+    // stats.db — for a match-ending dart that turned out to be
+    // misdetected. App.svelte switches back to the live view on its own
+    // once elimination.state flips back to "playing".
+    if (!confirm('Undo the winning turn and resume the match?')) return;
+    await api('POST', '/api/elimination/undo');
+  }
 </script>
 
 <ConfettiBurst />
@@ -91,6 +99,7 @@
       <button class="btn btn-add" onclick={openRematchModal}>🔁 Rematch</button>
       <button class="btn btn-add" onclick={finishDone}>✓ Done</button>
     </div>
+    <button class="btn-undo-win" onclick={undoWin}>↩ Undo winning turn</button>
   </div>
 </div>
 
@@ -148,6 +157,12 @@
   .winner-name { font-size: clamp(1.5rem, 4vw, 3rem); font-weight: 700; color: var(--green); }
   .winner-label { color: var(--muted); margin: 0.5rem 0 1.5rem; }
   .finished-actions { display: flex; gap: 0.5rem; justify-content: center; }
+  .btn-undo-win {
+    display: block; margin: 1rem auto 0; background: none; border: none;
+    color: var(--muted); font-size: 0.8rem; text-decoration: underline;
+    cursor: pointer;
+  }
+  .btn-undo-win:hover { color: var(--text); }
   .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }
   .lives-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }

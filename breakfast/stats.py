@@ -262,6 +262,47 @@ class StatsDB:
                 )
             self._conn.commit()
 
+    def delete_elimination_results(self, match_id: str):
+        """Un-record everything record_elimination_result() wrote for a
+        match — used when undoing a match finish so a later
+        re-finish doesn't silently no-op against the old rows'
+        UNIQUE(match_id, player) constraint."""
+        log.debug("DB write: delete_elimination_results match_id=%s", match_id)
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM elimination_results WHERE match_id = ?", (match_id,)
+            )
+            self._conn.commit()
+
+    def delete_last_elimination_turn(self, match_id: str, player: str):
+        """Remove the most recently inserted elimination_turns row for one
+        player in one match — undoes insert_elimination_turn()'s write for
+        the turn being walked back."""
+        log.debug("DB write: delete_last_elimination_turn match_id=%s player=%s",
+                  match_id, player)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id FROM elimination_turns WHERE match_id = ? AND player = ?"
+                " ORDER BY id DESC LIMIT 1",
+                (match_id, player),
+            ).fetchone()
+            if row:
+                self._conn.execute(
+                    "DELETE FROM elimination_turns WHERE id = ?", (row["id"],)
+                )
+                self._conn.commit()
+
+    def reopen_match(self, match_id: str):
+        """Clear `ended_at` — undoing a match finish walks the
+        match back to `state == "playing"`, so it shouldn't still look
+        closed."""
+        log.debug("DB write: reopen_match match_id=%s", match_id)
+        with self._lock:
+            self._conn.execute(
+                "UPDATE matches SET ended_at = NULL WHERE match_id = ?", (match_id,)
+            )
+            self._conn.commit()
+
     def insert_elimination_turn(self, match_id: str, player: str, darts_count: int):
         log.debug("DB write: insert_elimination_turn match_id=%s player=%s darts_count=%s",
                   match_id, player, darts_count)

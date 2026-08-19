@@ -377,6 +377,16 @@ async def elim_correct(body: CorrectBody):
     return {"ok": True}
 
 
+@app.post("/api/elimination/undo")
+async def elim_undo():
+    log.debug("Elimination undo requested")
+    if not (_elim_ctrl and _elim_ctrl.game):
+        return {"error": "no active or finished game"}
+    if not _elim_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
 @app.post("/api/elimination/correct-dart")
 async def elim_correct_dart(body: CorrectDartBody):
     log.debug("Elimination correct-dart requested: dart=%s field=%s", body.dart, body.field)

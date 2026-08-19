@@ -71,6 +71,7 @@ class EliminationGame:
         self._current_darts = []
         self._dart_overrides = {}  # dart index -> manually corrected throw
         self._turn_snapshot = None
+        self._history = []  # stack of pre-turn snapshots, for undo()
         self._outcome_published = False
         self._preview_fired = False
         if self.stats_db:
@@ -211,6 +212,7 @@ class EliminationGame:
                 is_match_over = future_lives == 0 and len(self.active) == 2
                 self._publish_event(event, player, score)
                 if is_match_over:
+                    self._push_history(self._snapshot_state(player), turn_recorded=False)
                     self.lives[player] = future_lives
                     self._finish_match(player, score)
                     return
@@ -266,10 +268,11 @@ class EliminationGame:
         self._publish_turn(reset=True)
         log.info("Winner: %s", self.winner)
 
-    def _end_turn(self):
-        player = self.current_player
-        score = sum(_dart_value(t) for t in self._last_throws)
-        self._turn_snapshot = {
+    def _snapshot_state(self, player):
+        """The game state as of right now, before this turn's outcome gets
+        applied — shared by `correct_turn()`'s single-level correction and
+        `undo()`'s multi-level history."""
+        return {
             "player": player,
             "target": self.target,
             "freipass": self.freipass,
@@ -281,6 +284,20 @@ class EliminationGame:
             "elimination_order": list(self.elimination_order),
             "darts": list(self._current_darts),
         }
+
+    def _push_history(self, snapshot, turn_recorded):
+        """*turn_recorded* is False for a turn that finished the match via
+        the instant 3-dart-preview path — `_end_turn()` (and its
+        `insert_elimination_turn()` write) is never reached for that turn,
+        per `_finish_match()`'s docstring, so `undo()` must not try to
+        delete a DB row that was never written."""
+        self._history.append({**snapshot, "turn_recorded": turn_recorded})
+
+    def _end_turn(self):
+        player = self.current_player
+        score = sum(_dart_value(t) for t in self._last_throws)
+        self._turn_snapshot = self._snapshot_state(player)
+        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
         self._publish_last_turn(self._current_darts)
         if self.stats_db:
             self.stats_db.insert_elimination_turn(self.match_id, player, len(self._last_throws))
@@ -372,6 +389,43 @@ class EliminationGame:
         self.elimination_order = list(snap["elimination_order"])
         self._apply_turn(snap["player"], new_total, silent=True)
         log.info("Turn corrected: total=%d", new_total)
+
+    def undo(self) -> bool:
+        """Walk back the most recently completed turn — including
+        reopening an already-finished match if the winning turn itself
+        gets undone, so a misdetected match-ending dart doesn't
+        permanently lock in a wrong result. Repeatable: call again to
+        keep undoing further back. Returns False if there's nothing left
+        to undo. Deliberately silent (no audio) — an undo is a
+        correction, not a game event, same as `correct_turn()`."""
+        if not self._history:
+            return False
+        snap = self._history.pop()
+        was_finished = self.state == "finished"
+        self.lives = dict(snap["lives"])
+        self.active = list(snap["active"])
+        self.current_idx = snap["current_idx"]
+        self.target = snap["target"]
+        self.freipass = snap["freipass"]
+        self.state = snap["state"]
+        self.winner = snap["winner"]
+        self.elimination_order = list(snap["elimination_order"])
+        if self.stats_db:
+            if was_finished:
+                self.stats_db.delete_elimination_results(self.match_id)
+                self.stats_db.set_winner(self.match_id, None)
+                self.stats_db.reopen_match(self.match_id)
+            if snap["turn_recorded"]:
+                self.stats_db.delete_last_elimination_turn(self.match_id, snap["player"])
+        self._current_darts = []
+        self._dart_overrides = {}
+        self._outcome_published = False
+        self._preview_fired = False
+        self._turn_snapshot = None
+        self._publish_state()
+        self._publish_turn(reset=True)
+        log.info("Turn undone: %s now up, target=%d", self.current_player, self.target)
+        return True
 
     def correct_current_dart(self, dart_index, field):
         """Correct a single dart of the turn still in progress (darts not
@@ -541,6 +595,10 @@ class EliminationController:
             new_total = int(cmd.get("total", 0))
             if self.game:
                 self.game.correct_turn(new_total)
+
+        elif action == "undo":
+            if self.game:
+                self.game.undo()
 
         elif action == "add_player":
             name = cmd.get("name", "").strip()

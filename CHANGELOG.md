@@ -8,6 +8,7 @@
 - X01: "Bogey — no checkout" badge on /tv for scores without a 3-dart finish.
 - Freeplay audio: a miss comment per dart and the turn total.
 - The voice-pack profile setting is a dropdown of the installed profiles.
+- Elimination: Undo walks back the last completed turn, also in a finished match.
 
 ### Changed
 - Internal code comments and docs tidied.

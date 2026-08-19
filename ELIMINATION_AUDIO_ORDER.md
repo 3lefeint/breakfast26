@@ -160,13 +160,11 @@ there. `on_board_state()`'s existing `state != "playing"` guard means
 turn once the match is marked finished, so there's no double-processing
 when the darts are eventually pulled.
 
-**Known risk, tracked separately:** finishing the match on the 3-dart
-preview's tentative read (before the throw is "confirmed" by the
-dart-pull/correction flow) means a misdetected dart could end the match
-and record a wrong winner with no way to undo it today —
-`correct_turn()`'s existing undo path relies on a snapshot that
-`_end_turn()` no longer takes for a match-ending turn. A proper
-undo/correct mechanism for this window is still needed but not started.
+**Known risk:** finishing the match on the 3-dart preview's tentative read
+(before the throw is "confirmed" by the dart-pull/correction flow) means a
+misdetected dart can end the match and record a wrong winner. The Undo
+control walks the turn back, reopens the match and removes its result from
+the stats.
 
 ---
 
@@ -263,7 +261,7 @@ baseline:
   turn; new order winner name → `matchshot` (reversed from before);
   `matchshot` left unchanged. Follow-up: the whole match now finishes
   immediately in the 3-dart preview instead of waiting for darts to be
-  pulled — the undo/correct safety net this still needs is not built yet.
+  pulled; Undo reopens the match if the dart was misdetected.
 - **Case 9** (next player + freipass re-grant): order unchanged
   (name → freipass), `freipass` re-recorded as a continuation after a
   name.

@@ -39,6 +39,11 @@
     await api('POST', '/api/elimination/stop');
     window.location.href = '/';
   }
+
+  async function undo() {
+    if (!confirm('Undo the last completed turn?')) return;
+    await api('POST', '/api/elimination/undo');
+  }
 </script>
 
 <div class="player-card">
@@ -62,6 +67,7 @@
     {/if}
   </div>
   <div class="elim-endgame-row">
+    <button class="btn-end-game" onclick={undo}>↩ Undo</button>
     <button class="btn-end-game" onclick={stop}>■ Stop</button>
   </div>
 </div>
@@ -126,7 +132,7 @@
     color: var(--yellow); border: 1px solid color-mix(in srgb, var(--yellow) 35%, transparent);
     border-radius: 999px; padding: 0.15em 0.7em;
   }
-  .elim-endgame-row { margin-top: 1.5rem; }
+  .elim-endgame-row { margin-top: 1.5rem; display: flex; gap: 0.6rem; }
   .btn-end-game {
     background: var(--surface); border: 1px solid var(--border); color: var(--muted);
     border-radius: 999px; padding: 0.55rem 1.25rem;

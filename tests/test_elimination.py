@@ -424,6 +424,152 @@ class TestAudioOrderCR007:
         assert audio.played == ["60", "bob", "filler_target", "61"]
 
 
+class TestUndo:
+    """Undo the most recently completed turn, repeatable to
+    walk back further, including reopening an already-finished match."""
+
+    def test_returns_false_when_nothing_to_undo(self):
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+        assert game.undo() is False
+
+    def test_reverts_a_normal_turn(self):
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+        game.on_board_state(3, [_throw(20, 3)] * 3)  # alice: 180, passes via freipass
+        game.on_board_state(0, [])                    # pull -> target=180, advances to bob
+
+        assert game.target == 180
+        assert game.current_player == "bob"
+
+        assert game.undo() is True
+        assert game.target == 0
+        assert game.freipass is True
+        assert game.current_player == "alice"
+
+    def test_is_repeatable_across_multiple_turns(self):
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+        game.on_board_state(3, [_throw(20, 1)] * 3)  # alice: 60, passes via freipass -> target=60
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)   # bob: 3, fails (3 <= 60) -> life_lost
+        game.on_board_state(0, [])
+
+        assert game.lives["bob"] == 2
+        assert game.current_player == "alice"
+
+        assert game.undo() is True  # undo bob's failed turn
+        assert game.lives["bob"] == 3
+        assert game.current_player == "bob"
+        assert game.target == 60
+
+        assert game.undo() is True  # undo alice's passing turn
+        assert game.target == 0
+        assert game.freipass is True
+        assert game.current_player == "alice"
+
+        assert game.undo() is False  # nothing left
+
+    def test_is_silent(self):
+        audio = FakeAudio()
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts", audio=audio)
+        game.on_board_state(3, [_throw(20, 1)] * 3)
+        game.on_board_state(0, [])
+        audio.played = []
+
+        game.undo()
+
+        assert audio.played == []
+
+    def test_removes_the_recorded_elimination_turn(self):
+        db = StatsDB(":memory:")
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts", stats_db=db)
+        game.on_board_state(3, [_throw(20, 1)] * 3)
+        game.on_board_state(0, [])
+
+        n = db._conn.execute(
+            "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='alice'",
+            (game.match_id,),
+        ).fetchone()["n"]
+        assert n == 1
+
+        game.undo()
+
+        n = db._conn.execute(
+            "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='alice'",
+            (game.match_id,),
+        ).fetchone()["n"]
+        assert n == 0
+
+    def test_reopens_a_match_finished_via_the_instant_preview_path(self):
+        db = StatsDB(":memory:")
+        game = EliminationGame(["alice", "bob"], 1, FakeMqttClient(), "autodarts", stats_db=db)
+        game.on_board_state(3, [_throw(20, 3)] * 3)  # alice: 180, passes via freipass
+        game.on_board_state(0, [])                    # advances to bob
+        game.on_board_state(3, [_throw(1, 1)] * 3)    # bob: 3, fails, only life -> instant match-over
+
+        assert game.state == "finished"
+        assert game.winner == "alice"
+        assert db.win_counts() == {"alice": 1}
+        row = db._conn.execute(
+            "SELECT ended_at FROM matches WHERE match_id=?", (game.match_id,)
+        ).fetchone()
+        assert row["ended_at"] is not None
+        # the instant-finish path skips _end_turn() entirely -> no row for bob's turn
+        n = db._conn.execute(
+            "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='bob'",
+            (game.match_id,),
+        ).fetchone()["n"]
+        assert n == 0
+
+        assert game.undo() is True
+
+        assert game.state == "playing"
+        assert game.winner is None
+        assert game.current_player == "bob"
+        assert game.lives["bob"] == 1
+        assert db.win_counts() == {}
+        row = db._conn.execute(
+            "SELECT winner, ended_at FROM matches WHERE match_id=?", (game.match_id,)
+        ).fetchone()
+        assert row["winner"] is None
+        assert row["ended_at"] is None
+
+    def test_reopens_a_match_finished_via_the_apply_turn_fallback_path(self):
+        db = StatsDB(":memory:")
+        game = EliminationGame(["alice", "bob"], 1, FakeMqttClient(), "autodarts", stats_db=db)
+        game.on_board_state(3, [_throw(20, 3)] * 3)  # alice: 180, passes via freipass
+        game.on_board_state(0, [])                    # advances to bob
+
+        # bob throws only 1 dart then pulls -> preview (3-dart) never fires,
+        # so _end_turn()/_apply_turn()'s <3-dart fallback finishes the match.
+        game.on_board_state(1, [_throw(1, 1)])
+        game.on_board_state(0, [])
+
+        assert game.state == "finished"
+        assert game.winner == "alice"
+        # unlike the instant-preview path, this one DOES go through
+        # _end_turn(), so bob's finishing turn is recorded.
+        n = db._conn.execute(
+            "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='bob'",
+            (game.match_id,),
+        ).fetchone()["n"]
+        assert n == 1
+
+        assert game.undo() is True
+
+        assert game.state == "playing"
+        assert game.winner is None
+        assert game.current_player == "bob"
+        n = db._conn.execute(
+            "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='bob'",
+            (game.match_id,),
+        ).fetchone()["n"]
+        assert n == 0
+        row = db._conn.execute(
+            "SELECT winner, ended_at FROM matches WHERE match_id=?", (game.match_id,)
+        ).fetchone()
+        assert row["winner"] is None
+        assert row["ended_at"] is None
+
+
 class TestUnknownPlayerFallback:
     """Elimination calls audio.play() directly rather than through
     Caller/X01Caller, so it needs its own copy of that name-lookup
