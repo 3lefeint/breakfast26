@@ -182,6 +182,20 @@ class TestVersion:
         assert AudioEngine(str(audio_dir)).version != AudioEngine(str(other)).version
 
 
+class TestInvalidate:
+    def test_forces_a_rescan_after_a_new_file_appears(self, engine, audio_dir):
+        assert engine.has_audio("newkey") is False  # caches the empty result
+
+        (audio_dir / "newkey.mp3").write_bytes(b"")
+        assert engine.has_audio("newkey") is False, "still cached from before the file existed"
+
+        engine.invalidate("newkey")
+        assert engine.has_audio("newkey") is True
+
+    def test_unknown_key_is_a_noop(self, engine):
+        engine.invalidate("never_looked_up")  # must not raise
+
+
 class TestResolve:
     def test_known_file(self, engine, audio_dir):
         assert engine.resolve("busted.mp3") == str(audio_dir / "busted.mp3")

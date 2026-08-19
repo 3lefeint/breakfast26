@@ -42,6 +42,11 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - **Voice packs**: use your own sound files, optionally switch to a
   downloadable voice profile (`voicepack` subcommand) with your own files as
   per-key fallback
+- **Voice Pack editor** (Settings tab): add, test-listen (unsaved preview),
+  save, browse, and delete individual voice-pack entries — any key (a
+  player name, a phrase, or a number) with one or more randomized-pronunciation
+  variants — straight from the browser, no manual TOML editing or CLI
+  generator run needed for a single change
 - **TV / kiosk mode** (`/tv`): full-screen live view for wall-mounted displays and tablets, no navigation — X01 scoreboard (remaining score, checkout hint, dart boxes) or the live Elimination game, whichever is active
 - **Checkout suggestions**: standard X01 checkout path shown below the remaining score, with a distinct "Bogey — no checkout" badge for the handful of remaining scores that are in checkout range but have no valid 3-dart finish (169, 168, 166, 165, 163, 162, 159)
 - **Live session stats**: 3-dart average, 180s, checkout % shown next to each player during a match
@@ -267,7 +272,7 @@ The live scoreboard itself (X01 and Elimination) lives on the separate
 | **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts) — whichever is active; idle screen otherwise |
 | **Players** | Known players list — name, Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Stats** | Lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
-| **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below) |
+| **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
 
 All connected clients update in real time via WebSocket.
 
@@ -299,6 +304,15 @@ python main.py voicepack --list                     # catalog
 python main.py voicepack --install en-US-Joey-Male  # into <audio dir>/profiles/
 # then: [audio] profile = "en-US-Joey-Male" — own files stay as fallback
 ```
+
+Adding/tuning one key (a name, a phrase, or a number) doesn't need any of
+this — Settings → **Voice Pack** tab: pick a group, type the key and one
+or more variant texts, preview how each sounds (synthesized on the fly,
+not saved), then save — writes the .mp3 file(s) and updates
+`tools/voicepack_leni.toml` (comment-preserving), immediately usable
+without a restart. The same tab also browses/plays/deletes what's already
+generated; deleting a variant renumbers the remaining ones so none of
+them go silently unreachable.
 
 ### TV / kiosk mode (`/tv`)
 
@@ -719,6 +733,17 @@ The web server exposes a REST API alongside the WebSocket.
 | `PATCH` | `/api/config` | Update config.toml; runtime fields (e.g. log level) apply immediately, the rest need a restart |
 | `POST` | `/api/voicepack/generate` | Regenerate the voice pack (`force`: true re-generates every key, false only fills in missing ones) |
 
+**Voice Pack editor** (Settings → Voice Pack tab):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/voicepack/groups` | List the plan's `[[group]]` names (`name`, `is_range`) |
+| `GET` | `/api/voicepack/entries?group=<name>` | Every key currently defined in that group, with each variant's text and whether its `.mp3` has actually been generated |
+| `POST` | `/api/voicepack/preview` | Synthesize `text` on the fly with `group`'s voice/rate/pitch/volume — returns audio bytes directly, nothing is saved |
+| `POST` | `/api/voicepack/entries` | Add/replace a key's variants (`group`, `key`, `variants`) — synthesizes every file and updates the plan |
+| `DELETE` | `/api/voicepack/entries` | Remove one variant (`group`, `key`, `variant_index`) — renumbers the remaining files and updates the plan |
+| `GET` | `/api/voicepack/file/{filename}` | Serves an already-generated variant file straight from the plan's own profile directory |
+
 **Updates** (Docker deployments with the `updater` sidecar set up, see **Self-update** above):
 
 | Method | Path | Description |
@@ -783,6 +808,7 @@ breakfast26/
     ├── caller.py                  # Voice caller: shared lifecycle calls + mode dispatch
     ├── caller_x01.py              # X01 call logic (per-dart, totals, checkout calls)
     ├── voicepack.py               # Sound directory resolution + voice-pack installer
+    ├── voicepack_editor.py        # Per-key plan read/write (tomlkit, comment-preserving) + synth for the Settings Voice Pack tab
     ├── mqtt_output.py             # MQTT publisher with auto-reconnect
     ├── audio_engine.py            # Browser-based audio: play instructions over WebSocket
     ├── recorder.py                # Session recorder

@@ -35,6 +35,7 @@
     { id: 'mqtt', label: 'MQTT' },
     { id: 'source', label: 'Autodarts Source' },
     { id: 'voice', label: 'Voice & Caller' },
+    { id: 'voicepack', label: 'Voice Pack' },
   ];
   let activeTab = $state('general');
   let tabs = $derived(cfg.dev?.enabled ? [...TABS, { id: 'dev', label: 'Dev' }] : TABS);
@@ -49,11 +50,143 @@
   let banner = $state(null); // { kind: 'ok'|'warn'|'error', text }
   let voicepackForce = $state(false);
 
+  // Voice Pack tab — add/edit/browse/delete individual voice-pack entries,
+  // separate from the whole-pack "Regenerate" flow above and from the
+  // shared config Save (this tab writes tools/voicepack_leni.toml + sound
+  // files directly, not config.toml).
+  let vpGroups = $state([]);
+  let vpSelectedGroup = $state('');
+  let vpEntries = $state([]);
+  let vpEntriesLoading = $state(false);
+  let vpFormKey = $state('');
+  let vpFormVariants = $state(['']);
+  let vpSaving = $state(false);
+
   onMount(async () => {
     await loadConfig();
     await applyTheme();
     await loadVoicePackProfiles();
+    await loadVoicepackGroups();
   });
+
+  async function loadVoicepackGroups() {
+    try {
+      const res = await fetch('/api/voicepack/groups').then((r) => r.json());
+      vpGroups = res.groups || [];
+      if (!vpSelectedGroup && vpGroups.length) vpSelectedGroup = vpGroups[0].name;
+      if (vpSelectedGroup) await loadVoicepackEntries();
+    } catch (e) {
+      console.error('loadVoicepackGroups failed:', e);
+    }
+  }
+
+  async function loadVoicepackEntries() {
+    vpEntriesLoading = true;
+    try {
+      const res = await fetch('/api/voicepack/entries?group=' + encodeURIComponent(vpSelectedGroup))
+        .then((r) => r.json());
+      vpEntries = res.entries || [];
+    } catch (e) {
+      console.error('loadVoicepackEntries failed:', e);
+    } finally {
+      vpEntriesLoading = false;
+    }
+  }
+
+  function onVpGroupChange() {
+    resetVpForm();
+    loadVoicepackEntries();
+  }
+
+  function resetVpForm() {
+    vpFormKey = '';
+    vpFormVariants = [''];
+  }
+
+  function editVpEntry(entry) {
+    vpFormKey = entry.key;
+    vpFormVariants = entry.variants.map((v) => v.text);
+  }
+
+  function addVpVariantRow() {
+    vpFormVariants = [...vpFormVariants, ''];
+  }
+
+  function removeVpVariantRow(i) {
+    const next = vpFormVariants.filter((_, idx) => idx !== i);
+    vpFormVariants = next.length ? next : [''];
+  }
+
+  async function playAudioBlobResponse(res) {
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('audio')) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    new Audio(URL.createObjectURL(blob)).play();
+  }
+
+  async function previewVpVariant(text) {
+    if (!text.trim()) return;
+    try {
+      const res = await fetch('/api/voicepack/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: vpSelectedGroup, text }),
+      });
+      await playAudioBlobResponse(res);
+    } catch (e) {
+      alert('Preview failed: ' + e.message);
+    }
+  }
+
+  async function playVpFile(filename) {
+    try {
+      await playAudioBlobResponse(await fetch('/api/voicepack/file/' + encodeURIComponent(filename)));
+    } catch (e) {
+      alert('Playback failed: ' + e.message);
+    }
+  }
+
+  async function saveVpEntry() {
+    const key = vpFormKey.trim();
+    const variants = vpFormVariants.map((v) => v.trim()).filter(Boolean);
+    if (!key || !variants.length) {
+      alert('Key and at least one variant are required.');
+      return;
+    }
+    vpSaving = true;
+    try {
+      const res = await fetch('/api/voicepack/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: vpSelectedGroup, key, variants }),
+      }).then((r) => r.json());
+      if (res.error) { alert('Save failed: ' + res.error); return; }
+      resetVpForm();
+      await loadVoicepackEntries();
+    } catch (e) {
+      alert('Save failed: ' + e);
+    } finally {
+      vpSaving = false;
+    }
+  }
+
+  async function deleteVpVariant(key, index) {
+    if (!confirm('Delete this variant?')) return;
+    try {
+      const res = await fetch('/api/voicepack/entries', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: vpSelectedGroup, key, variant_index: index }),
+      }).then((r) => r.json());
+      if (res.error) { alert('Delete failed: ' + res.error); return; }
+      await loadVoicepackEntries();
+    } catch (e) {
+      alert('Delete failed: ' + e);
+    }
+  }
 
   async function loadVoicePackProfiles() {
     try {
@@ -399,6 +532,62 @@
       <button type="button" class="btn btn-add" style="width:100%" onclick={regenerateVoicepack} disabled={vp?.running}>Regenerate voice pack</button>
       <div class="voicepack-progress">{vpText}</div>
     </div>
+  {:else if activeTab === 'voicepack'}
+    <div class="settings-section">
+      <div class="settings-section-title">Group</div>
+      <div class="settings-row">
+        <label for="sVpGroup">Group</label>
+        <select id="sVpGroup" bind:value={vpSelectedGroup} onchange={onVpGroupChange}>
+          {#each vpGroups as g (g.name)}
+            <option value={g.name}>{g.name}{g.is_range ? ' (numbers)' : ''}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Existing entries{vpEntriesLoading ? ' — loading…' : ''}</div>
+      {#if !vpEntries.length && !vpEntriesLoading}
+        <p class="note">No entries generated yet in this group.</p>
+      {/if}
+      {#each vpEntries as entry (entry.key)}
+        <div class="vp-entry">
+          <div class="vp-entry-header">
+            <span class="vp-entry-key">{entry.key}</span>
+            <button type="button" class="btn-icon" onclick={() => editVpEntry(entry)}>Edit</button>
+          </div>
+          {#each entry.variants as v (v.index)}
+            <div class="vp-variant-row">
+              <span class="vp-variant-text">{v.text}</span>
+              <button type="button" class="btn-icon" disabled={!v.has_file}
+                      title={v.has_file ? 'Play' : 'Not generated yet'}
+                      onclick={() => playVpFile(v.filename)}>▶</button>
+              <button type="button" class="btn-icon remove" title="Delete this variant"
+                      onclick={() => deleteVpVariant(entry.key, v.index)}>×</button>
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Add / edit entry</div>
+      <p class="note">Key: a player-roster name, a phrase key, or a number (for a numbers group). Add one or more variant texts — spelled however makes the voice say it right — preview each, then save. Saving (re)writes the .mp3 file(s) for this key and updates the plan; an existing key with the same name is replaced entirely.</p>
+      <div class="settings-row">
+        <label for="sVpKey">Key</label>
+        <input type="text" id="sVpKey" bind:value={vpFormKey} placeholder="e.g. peter, close, 21">
+      </div>
+      {#each vpFormVariants as _, i}
+        <div class="vp-variant-row">
+          <input type="text" bind:value={vpFormVariants[i]} placeholder="variant text">
+          <button type="button" class="btn-icon" onclick={() => previewVpVariant(vpFormVariants[i])}>▶</button>
+          <button type="button" class="btn-icon remove" onclick={() => removeVpVariantRow(i)}>×</button>
+        </div>
+      {/each}
+      <button type="button" class="btn btn-add" onclick={addVpVariantRow}>+ Add variant</button>
+      <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem"
+              onclick={saveVpEntry} disabled={vpSaving}>{vpSaving ? 'Saving…' : '💾 Save entry'}</button>
+    </div>
   {:else if activeTab === 'dev'}
     <div class="settings-section">
       <div class="settings-section-title">Recording <span class="badge restart">restart to apply</span></div>
@@ -509,4 +698,23 @@
   .btn-add { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; }
   .btn-stop { background: #7f1d1d; color: #fff; padding: 0.5rem 1rem; }
   .voicepack-progress { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+  .vp-entry { border-bottom: 1px solid var(--border); padding: 0.6rem 0; }
+  .vp-entry:last-child { border-bottom: none; }
+  .vp-entry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+  .vp-entry-key { font-weight: 600; font-size: 0.9rem; }
+  .vp-variant-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+  .vp-variant-row input[type="text"] {
+    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.85rem;
+  }
+  .vp-variant-row input:focus { outline: none; border-color: var(--accent); }
+  .vp-variant-text { flex: 1; font-size: 0.85rem; }
+  .btn-icon {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.8rem; cursor: pointer;
+    flex-shrink: 0;
+  }
+  .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-icon:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }
 </style>

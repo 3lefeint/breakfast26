@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import tempfile
 import threading
 import time
 import tomllib
@@ -14,11 +15,13 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
 from breakfast import config as cfg_mod
 from breakfast import known_players as kp
 from breakfast import voicepack
+from breakfast import voicepack_editor as ve
 
 log = logging.getLogger(__name__)
 
@@ -599,6 +602,16 @@ def _run_async_in_thread(coro_fn):
     threading.Thread(target=lambda: asyncio.run(coro_fn()), daemon=True).start()
 
 
+def _voicepack_plan_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "tools" / "voicepack_leni.toml"
+
+
+def _voicepack_out_dir(profile_name: str) -> Path:
+    cfg = cfg_mod.load(_config_path) if _config_path else {}
+    audio_dir = cfg.get("audio", {}).get("dir", "sounds")
+    return Path(audio_dir) / "profiles" / profile_name
+
+
 class VoicepackGenerateBody(BaseModel):
     force: bool = False
 
@@ -617,13 +630,11 @@ async def voicepack_generate(body: VoicepackGenerateBody):
 
     from tools.generate_voicepack import run as generate_run
 
-    plan_path = Path(__file__).resolve().parents[2] / "tools" / "voicepack_leni.toml"
+    plan_path = _voicepack_plan_path()
     with open(plan_path, "rb") as f:
         plan = tomllib.load(f)
     name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
-    cfg = cfg_mod.load(_config_path) if _config_path else {}
-    audio_dir = cfg.get("audio", {}).get("dir", "sounds")
-    out_dir = Path(audio_dir) / "profiles" / name
+    out_dir = _voicepack_out_dir(name)
 
     _voicepack_status.update(running=True, done=0, skipped=0, total=0, error=None)
     log.info("Voice-pack generation started (force=%s)", body.force)
@@ -646,6 +657,151 @@ async def voicepack_generate(body: VoicepackGenerateBody):
             push()
 
     _run_async_in_thread(task)
+    return {"ok": True}
+
+
+@app.get("/api/voicepack/groups")
+async def voicepack_groups():
+    doc = ve.load_plan(_voicepack_plan_path())
+    return {"groups": ve.list_groups(doc)}
+
+
+@app.get("/api/voicepack/entries")
+async def voicepack_entries(group: str):
+    doc = ve.load_plan(_voicepack_plan_path())
+    entries = ve.list_entries(doc, group, _voicepack_out_dir(ve.profile_dir_name(doc)))
+    if entries is None:
+        return {"error": "unknown group"}
+    return {"entries": entries}
+
+
+@app.get("/api/voicepack/file/{filename}")
+async def voicepack_file(filename: str):
+    """Serves an already-generated variant file straight from the plan's
+    own output directory — independent of AudioEngine/the currently active
+    `[audio] profile`, so browsing/listening in the editor works the same
+    whether or not this pack happens to be the one currently in use."""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=404, detail="unknown sound file")
+    doc = ve.load_plan(_voicepack_plan_path())
+    path = _voicepack_out_dir(ve.profile_dir_name(doc)) / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="unknown sound file")
+    return FileResponse(path, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
+class VoicepackPreviewBody(BaseModel):
+    group: str
+    text: str
+
+
+@app.post("/api/voicepack/preview")
+async def voicepack_preview(body: VoicepackPreviewBody):
+    """Synthesize *text* on the fly with *group*'s voice/rate/pitch/volume,
+    for a "how would this sound" check before saving — writes to a scratch
+    file that's deleted right after the response is sent, never touches the
+    plan or the profile directory."""
+    if not body.text.strip():
+        return {"error": "text is required"}
+    doc = ve.load_plan(_voicepack_plan_path())
+    groups = {g["name"]: g for g in doc["group"]}
+    if body.group not in groups:
+        return {"error": "unknown group"}
+    group = next(g for g in doc["group"] if g["name"] == body.group)
+    rate = group.get("rate", "+0%")
+    pitch = group.get("pitch", "+0Hz")
+    volume = group.get("volume", "+0%")
+
+    from tools.generate_voicepack import synthesize
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".mp3", prefix="voicepack-preview-")
+    os.close(fd)
+    dest = Path(tmp_path)
+    try:
+        await synthesize(doc["voice"], body.text, rate, pitch, volume, dest, trim=True)
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        log.warning("Voice-pack preview synth failed: %s", e)
+        return {"error": f"synthesis failed: {e}"}
+    return FileResponse(
+        dest, media_type="audio/mpeg", headers={"Cache-Control": "no-store"},
+        background=BackgroundTask(dest.unlink, missing_ok=True),
+    )
+
+
+class VoicepackEntryBody(BaseModel):
+    group: str
+    key: str
+    variants: list[str]
+
+
+@app.post("/api/voicepack/entries")
+async def voicepack_save_entry(body: VoicepackEntryBody):
+    """Add or replace a key's variants: synthesizes every variant file,
+    updates the plan (comment-preserving), and prunes any now-stale
+    trailing file from a previously longer variant list."""
+    key = body.key.strip()
+    variants = [v.strip() for v in body.variants if v.strip()]
+    if not key:
+        return {"error": "key is required"}
+    if not variants:
+        return {"error": "at least one variant is required"}
+
+    plan_path = _voicepack_plan_path()
+    doc = ve.load_plan(plan_path)
+    groups = {g["name"]: g for g in doc["group"]}
+    group = groups.get(body.group)
+    if group is None:
+        return {"error": "unknown group"}
+    if "range" in group:
+        try:
+            key = str(int(key))
+        except ValueError:
+            return {"error": "key must be a whole number for this group"}
+
+    prosody = ve.entry_prosody(doc, body.group, key)
+    out_dir = _voicepack_out_dir(ve.profile_dir_name(doc))
+    result = ve.upsert_entry(doc, body.group, key, variants)
+
+    try:
+        await ve.synthesize_entry(doc["voice"], prosody["rate"], prosody["pitch"],
+                                   prosody["volume"], out_dir, result["stem"], variants)
+    except Exception as e:
+        log.warning("Voice-pack entry synth failed for key=%s: %s", key, e)
+        return {"error": f"synthesis failed: {e}"}
+
+    ve.prune_extra_variant_files(out_dir, result["stem"], keep_count=len(variants))
+    ve.save_plan(plan_path, doc)
+    if _audio_engine:
+        _audio_engine.invalidate(result["stem"])
+    log.info("Voice-pack entry saved: group=%s key=%s variants=%d", body.group, key, len(variants))
+    return {"ok": True}
+
+
+class VoicepackDeleteVariantBody(BaseModel):
+    group: str
+    key: str
+    variant_index: int
+
+
+@app.delete("/api/voicepack/entries")
+async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
+    """Remove one variant, renumbering the remaining higher-indexed files
+    down so none of them silently fall past AudioEngine's gap-stops-the-
+    scan cutoff — and keeps the plan's variants list in sync."""
+    plan_path = _voicepack_plan_path()
+    doc = ve.load_plan(plan_path)
+    out_dir = _voicepack_out_dir(ve.profile_dir_name(doc))
+    result = ve.remove_variant(doc, body.group, body.key, body.variant_index)
+    if result is None:
+        return {"error": "entry not found"}
+
+    ve.renumber_after_delete(out_dir, result["stem"], body.variant_index, result["new_count"])
+    ve.save_plan(plan_path, doc)
+    if _audio_engine:
+        _audio_engine.invalidate(result["stem"])
+    log.info("Voice-pack variant deleted: group=%s key=%s index=%d",
+              body.group, body.key, body.variant_index)
     return {"ok": True}
 
 

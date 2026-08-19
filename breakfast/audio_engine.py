@@ -121,6 +121,13 @@ class AudioEngine:
     def _default_channel(name):
         return "ambient" if name.startswith("ambient_") else "voice"
 
+    def invalidate(self, name: str):
+        """Drop *name* from the variant-file cache so the next play()/
+        has_audio() re-scans disk — needed after the Voice Pack editor
+        adds/removes a variant file for a key that this process already
+        looked up once (`_variants()` never expires an entry on its own)."""
+        self._cache.pop(name, None)
+
     def has_audio(self, name: str) -> bool:
         """True if at least one variant file exists for *name*, without
         playing it — e.g. to flag a player name with no recording in the UI."""

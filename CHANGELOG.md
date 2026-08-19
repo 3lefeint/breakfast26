@@ -9,6 +9,7 @@
 - Freeplay audio: a miss comment per dart and the turn total.
 - The voice-pack profile setting is a dropdown of the installed profiles.
 - Elimination: Undo walks back the last completed turn, also in a finished match.
+- Settings: Voice Pack tab to add, preview, save and delete voice-pack entries.
 
 ### Changed
 - Internal code comments and docs tidied.
