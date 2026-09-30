@@ -70,7 +70,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - Session recording and replay — develop without throwing darts
 - Config file — no long CLI commands needed in production
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
-- **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories
+- **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories (the voice-pack profile is picked from a dropdown of the installed profiles)
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
 - **Advanced per-player dashboard** (Stats tab): activity/performance charts, scoring buckets, average & checkout-% over time, win/loss and game-type ratio, doubles hit rate, and Top 10 Legs (filterable by starting score, e.g. 301/501) / Top 10 Checkouts
 - **Modern Web UI**: Svelte 5 + Vite frontend (built to static assets, no client-side framework runtime overhead), dark-mode with swappable accent colors
@@ -712,7 +712,7 @@ The web server exposes a REST API alongside the WebSocket.
 | `GET` | `/api/stats/player/{name}` | Lifetime stats for one player |
 | `DELETE` | `/api/stats/player/{name}` | Delete all stats for a player (double-confirmed in the UI) |
 | `GET` | `/api/stats/matches` | Recent matches (up to 20) |
-| `GET` | `/api/stats/match/{id}` | Per-player stats for one match |
+| `GET` | `/api/stats/match/{match_id}` | Per-player stats for one match |
 | `GET` | `/api/stats/dashboard/{name}?points_start=501` | Advanced per-player dashboard (one bundled fetch); `points_start` picks the Top 10 Legs mode, defaults to 501 or the lowest played mode |
 | `GET` | `/api/leaderboard?metric=avg3&limit=10` | Top-N players by metric (`avg3`, `s180`, `co_pct`, `dbl_pct`, `total_score`) |
 
@@ -731,6 +731,7 @@ The web server exposes a REST API alongside the WebSocket.
 |--------|------|-------------|
 | `GET` | `/api/config` | Current config (credentials masked) |
 | `PATCH` | `/api/config` | Update config.toml; runtime fields (e.g. log level) apply immediately, the rest need a restart |
+| `GET` | `/api/voice-packs` | Voice-pack profiles installed under `[audio] dir` (feeds the profile dropdown in Settings → Voice & Caller) |
 | `POST` | `/api/voicepack/generate` | Regenerate the voice pack (`force`: true re-generates every key, false only fills in missing ones) |
 
 **Voice Pack editor** (Settings → Voice Pack tab):
@@ -812,6 +813,8 @@ breakfast26/
     ├── mqtt_output.py             # MQTT publisher with auto-reconnect
     ├── audio_engine.py            # Browser-based audio: play instructions over WebSocket
     ├── recorder.py                # Session recorder
+    ├── board_status.py            # Board-status resolution shared by the cloud and local board connections
+    ├── dev_demo.py                # Runtime-triggered X01/Elimination demo runs for the Settings Dev tab
     ├── output_console.py          # Console state printer
     ├── known_players.py           # Player roster/win-count helpers (thin wrapper over StatsDB)
     └── web/
