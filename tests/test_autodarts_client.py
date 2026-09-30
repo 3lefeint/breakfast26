@@ -215,3 +215,48 @@ class TestForwardBoardStatus:
             client._forward_board_status("Something new")
         assert events == []
         assert "Something new" in caplog.text
+
+
+def test_on_message_processes_in_arrival_order_even_when_handlers_are_slow(monkeypatch):
+    import threading
+    import time
+
+    client = _make_client()
+    seen = []
+    concurrent = []
+    active = 0
+    guard = threading.Lock()
+
+    def slow_handler(data):
+        nonlocal active
+        with guard:
+            active += 1
+            concurrent.append(active)
+        # Earlier messages take longer, so a thread-per-message model would
+        # finish them out of order.
+        time.sleep(0.02 if data["n"] % 2 == 0 else 0.0)
+        seen.append(data["n"])
+        with guard:
+            active -= 1
+
+    monkeypatch.setattr(client, "_handle_match_state", slow_handler)
+
+    for n in range(20):
+        client._on_message(None, json.dumps(
+            {"channel": "autodarts.matches", "data": {"n": n}}))
+    client._msg_queue.join()
+
+    assert seen == list(range(20))
+    assert max(concurrent) == 1
+
+
+def test_on_message_survives_a_failing_message(monkeypatch):
+    client = _make_client()
+    seen = []
+    monkeypatch.setattr(client, "_handle_match_state", lambda data: seen.append(data["n"]))
+
+    client._on_message(None, "not json")
+    client._on_message(None, json.dumps({"channel": "autodarts.matches", "data": {"n": 1}}))
+    client._msg_queue.join()
+
+    assert seen == [1]

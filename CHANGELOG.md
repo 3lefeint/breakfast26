@@ -15,6 +15,9 @@
 - Internal code comments and docs tidied.
 - Solo X01 sessions no longer count toward wins and win/loss.
 
+### Fixed
+- Autodarts messages are processed one at a time in arrival order (#2).
+
 ## [0.3.0] - 2026-08-18
 
 ### Added

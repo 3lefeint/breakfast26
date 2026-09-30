@@ -7,6 +7,7 @@ state.py.update() expects (identical to what darts-caller broadcasts).
 import base64
 import json
 import logging
+import queue
 import threading
 import time
 from datetime import datetime, timedelta
@@ -167,6 +168,11 @@ class AutodartsCloudClient:
         # "finish"/"delete" event ever arrives to clear self._match_active).
         self._match_started_at: float | None = None
         self._last_activity_at: float | None = None
+
+        # Incoming WS messages, drained in order by a single worker thread
+        self._msg_queue: queue.Queue = queue.Queue()
+        self._worker: threading.Thread | None = None
+        self._worker_lock = threading.Lock()
 
         # Cached local board address (fetched lazily)
         self._board_address: str | None = None
@@ -433,27 +439,44 @@ class AutodartsCloudClient:
         log.warning("WS closed (%s: %s), reconnecting…", code, msg)
 
     def _on_message(self, ws, raw):
-        def process():
+        # Messages are queued and handled by one worker thread so they are
+        # processed strictly in arrival order — GameState and StatsTracker hold
+        # unsynchronized per-match state that concurrent handlers would corrupt.
+        self._ensure_worker()
+        self._msg_queue.put((ws, raw))
+
+    def _ensure_worker(self):
+        with self._worker_lock:
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(
+                    target=self._worker_loop, daemon=True, name="autodarts-msg")
+                self._worker.start()
+
+    def _worker_loop(self):
+        while True:
+            ws, raw = self._msg_queue.get()
             try:
-                m = json.loads(raw)
-                channel = m.get("channel", "")
-
-                if channel == "autodarts.matches":
-                    self._handle_match_state(m.get("data", {}))
-
-                elif channel == "autodarts.boards":
-                    data = m.get("data", {})
-                    self._forward_board_status(data.get("event", ""), data.get("status"))
-                    self._subscribe_match(data, ws)
-
-                elif channel == "autodarts.users":
-                    # Lobby handling omitted — not needed here
-                    pass
-
+                self._process_message(ws, raw)
             except Exception as e:
                 log.error("Message processing error: %s", e)
+            finally:
+                self._msg_queue.task_done()
 
-        threading.Thread(target=process, daemon=True).start()
+    def _process_message(self, ws, raw):
+        m = json.loads(raw)
+        channel = m.get("channel", "")
+
+        if channel == "autodarts.matches":
+            self._handle_match_state(m.get("data", {}))
+
+        elif channel == "autodarts.boards":
+            data = m.get("data", {})
+            self._forward_board_status(data.get("event", ""), data.get("status"))
+            self._subscribe_match(data, ws)
+
+        elif channel == "autodarts.users":
+            # Lobby handling omitted — not needed here
+            pass
 
     # -------------------------------------------------------- board/match lifecycle
 
