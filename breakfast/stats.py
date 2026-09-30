@@ -524,8 +524,46 @@ class StatsDB:
             })
         return result
 
+    def match_elimination_stats(self, match_id: str) -> dict:
+        """Per-player result of one Elimination match, best placement first:
+        `placement`/`lives_left` are None for a match that never finished."""
+        with self._lock:
+            results = self._conn.execute(
+                "SELECT player, placement, lives_left FROM elimination_results"
+                " WHERE match_id = ?", (match_id,)
+            ).fetchall()
+            turns = self._conn.execute(
+                "SELECT player, COUNT(*) as turns, AVG(darts_count) as avg_darts"
+                " FROM elimination_turns WHERE match_id = ? GROUP BY player", (match_id,)
+            ).fetchall()
+        by_player = {
+            r["player"]: {"placement": r["placement"], "lives_left": r["lives_left"],
+                          "turns": 0, "avg_darts_per_turn": None}
+            for r in results
+        }
+        for r in turns:
+            entry = by_player.setdefault(
+                r["player"],
+                {"placement": None, "lives_left": None, "turns": 0, "avg_darts_per_turn": None},
+            )
+            entry["turns"] = r["turns"]
+            entry["avg_darts_per_turn"] = round(r["avg_darts"], 2)
+        ordered = sorted(
+            by_player.items(),
+            key=lambda kv: (kv[1]["placement"] is None, kv[1]["placement"] or 0, kv[0]),
+        )
+        return dict(ordered)
+
     def match_stats(self, match_id: str) -> dict:
-        """Per-player stats dict for one specific match (for the Stats tab)."""
+        """Per-player stats dict for one specific match (for the Stats tab).
+        Elimination matches return their own shape, see
+        `match_elimination_stats()`."""
+        with self._lock:
+            mode_row = self._conn.execute(
+                "SELECT game_mode FROM matches WHERE match_id = ?", (match_id,)
+            ).fetchone()
+        if mode_row and mode_row["game_mode"] == "Elimination":
+            return self.match_elimination_stats(match_id)
         with self._lock:
             rows = self._conn.execute("""
                 SELECT player,

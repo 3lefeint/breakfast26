@@ -712,7 +712,7 @@ The web server exposes a REST API alongside the WebSocket.
 | `GET` | `/api/stats/player/{name}` | Lifetime stats for one player |
 | `DELETE` | `/api/stats/player/{name}` | Delete all stats for a player (double-confirmed in the UI) |
 | `GET` | `/api/stats/matches` | Recent matches (up to 20) |
-| `GET` | `/api/stats/match/{match_id}` | Per-player stats for one match |
+| `GET` | `/api/stats/match/{match_id}` | Per-player stats for one match; for an Elimination match, each player's placement, lives left, turns, and average darts per turn instead |
 | `GET` | `/api/stats/dashboard/{name}?points_start=501` | Advanced per-player dashboard (one bundled fetch); `points_start` picks the Top 10 Legs mode, defaults to 501 or the lowest played mode |
 | `GET` | `/api/leaderboard?metric=avg3&limit=10` | Top-N players by metric (`avg3`, `s180`, `co_pct`, `dbl_pct`, `total_score`) |
 

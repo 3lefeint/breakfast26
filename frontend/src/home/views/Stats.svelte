@@ -68,6 +68,12 @@
     openMatches = next;
   }
 
+  function ordinal(n) {
+    if (n == null) return '—';
+    const mod100 = n % 100;
+    const suffix = mod100 >= 11 && mod100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+    return n + suffix;
+  }
   function matchDate(m) { return m.started_at ? new Date(m.started_at).toLocaleString() : '?'; }
   function matchMode(m) { return [m.game_mode, m.points_start ? m.points_start + ' pts' : ''].filter(Boolean).join(' '); }
   function matchPlayers(m) { return (m.players || []).map(cap).join(' · '); }
@@ -136,6 +142,22 @@
             {#if matchDetails[m.match_id] == null}
               <div class="stats-empty">Load failed.</div>
             {:else}
+              {#if m.game_mode === 'Elimination'}
+                <table class="players-table stats-table detail">
+                  <thead><tr><th>Player</th><th class="num-cell">Place</th><th class="num-cell">Lives left</th><th class="num-cell">Turns</th><th class="num-cell">Avg darts</th></tr></thead>
+                  <tbody>
+                    {#each Object.entries(matchDetails[m.match_id]) as [name, s]}
+                      <tr>
+                        <td>{cap(name)}</td>
+                        <td class="num-cell">{ordinal(s.placement)}</td>
+                        <td class="num-cell">{s.lives_left ?? '—'}</td>
+                        <td class="num-cell">{s.turns}</td>
+                        <td class="num-cell">{s.avg_darts_per_turn != null ? s.avg_darts_per_turn.toFixed(1) : '—'}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              {:else}
               <table class="players-table stats-table detail">
                 <thead><tr><th>Player</th><th class="num-cell">Avg</th><th class="num-cell">180</th><th class="num-cell">CO%</th><th class="num-cell">D%</th></tr></thead>
                 <tbody>
@@ -150,6 +172,7 @@
                   {/each}
                 </tbody>
               </table>
+              {/if}
             {/if}
           </div>
         {/if}

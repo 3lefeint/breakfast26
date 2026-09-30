@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Expanded Elimination matches under Recent matches show placement, lives, turns and average (#5).
 - Per-player dashboard: Elimination section with games, wins, win rate, placements and darts per turn (#1).
 
 ## [0.4.1] - 2026-09-30

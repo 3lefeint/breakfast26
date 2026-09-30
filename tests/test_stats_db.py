@@ -495,6 +495,33 @@ class TestPlayerDashboard:
         legs_all = db.top_legs("alice")
         assert {l["match_id"] for l in legs_all} == {"m1", "m2"}
 
+    def test_match_stats_for_elimination_match_lists_placements(self, db):
+        _open(db, "e1", "Elimination", None)
+        db.record_elimination_result("e1", [("bob", 1, 2), ("alice", 2, None), ("cara", 3, None)])
+        db.insert_elimination_turn("e1", "alice", 3)
+        db.insert_elimination_turn("e1", "alice", 2)
+        db.insert_elimination_turn("e1", "bob", 3)
+        stats = db.match_stats("e1")
+        assert list(stats) == ["bob", "alice", "cara"]
+        assert stats["bob"] == {"placement": 1, "lives_left": 2, "turns": 1, "avg_darts_per_turn": 3.0}
+        assert stats["alice"]["placement"] == 2
+        assert stats["alice"]["turns"] == 2
+        assert stats["alice"]["avg_darts_per_turn"] == 2.5
+        assert stats["cara"] == {"placement": 3, "lives_left": None, "turns": 0, "avg_darts_per_turn": None}
+
+    def test_match_stats_for_unfinished_elimination_match_has_no_placement(self, db):
+        _open(db, "e1", "Elimination", None)
+        db.insert_elimination_turn("e1", "alice", 3)
+        assert db.match_stats("e1") == {
+            "alice": {"placement": None, "lives_left": None, "turns": 1, "avg_darts_per_turn": 3.0},
+        }
+
+    def test_match_stats_for_x01_match_is_unchanged(self, db):
+        _open(db, "m1")
+        db.insert_turn("m1", "alice", 1, 1, 501, 60, False, False,
+                       [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
+        assert "avg3" in db.match_stats("m1")["alice"]
+
     def test_player_elimination_stats(self, db):
         _open(db, "e1", "Elimination", None)
         _open(db, "e2", "Elimination", None)
