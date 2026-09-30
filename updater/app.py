@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 import re
+import socket
 import subprocess
 import threading
 import time
@@ -145,12 +146,28 @@ def _set_phase(phase: str, detail: str | None = None) -> None:
 
 
 def _self_restart() -> None:
+    # Recreating this container from inside itself kills the very process
+    # running the command halfway through (compose stops the old container
+    # after creating the new one, which then never starts). A detached
+    # helper container, started from this same image, does the recreate
+    # instead and outlives the container it replaces.
     try:
-        _run("docker", "compose", "up", "-d", "--build", "updater", timeout=300)
+        image = _run("docker", "inspect", "--format", "{{.Image}}", socket.gethostname()).stdout.strip()
+        _run(
+            "docker", "run", "-d", "--rm",
+            "--entrypoint", "docker",
+            "-v", "/var/run/docker.sock:/var/run/docker.sock",
+            "-v", f"{REPO_DIR}:{REPO_DIR}",
+            "-w", REPO_DIR,
+            "-e", f"PWD={REPO_DIR}",
+            image,
+            "compose", "up", "-d", "--build", "updater",
+            timeout=60,
+        )
     except Exception:
         # Best-effort — the main app's update already succeeded and was
         # already reported as such; worst case this needs one manual
-        # `docker compose up -d --build updater` over Tailscale.
+        # `docker compose up -d --build updater` on the host.
         log.exception("self-restart after successful update failed")
 
 

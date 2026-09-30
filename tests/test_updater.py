@@ -50,3 +50,37 @@ class TestIsUpdateAvailable:
 
     def test_unparseable_latest_is_never_an_update(self):
         assert _is_update_available("0.1.0", "garbage") is False
+
+
+class TestSelfRestart:
+    def test_recreates_updater_from_a_detached_helper_container(self, monkeypatch):
+        import subprocess
+        from updater import app as updater_app
+
+        calls = []
+
+        def fake_run(*args, timeout=120):
+            calls.append(args)
+            return subprocess.CompletedProcess(args, 0, stdout="sha256:abc\n", stderr="")
+
+        monkeypatch.setattr(updater_app, "_run", fake_run)
+        monkeypatch.setattr(updater_app, "REPO_DIR", "/srv/repo")
+
+        updater_app._self_restart()
+
+        inspect, run = calls
+        assert inspect[:2] == ("docker", "inspect")
+        assert run[:4] == ("docker", "run", "-d", "--rm")
+        assert "sha256:abc" in run
+        assert run[-5:] == ("compose", "up", "-d", "--build", "updater")
+        assert "/srv/repo:/srv/repo" in run
+        assert "PWD=/srv/repo" in run
+
+    def test_failure_is_swallowed(self, monkeypatch):
+        from updater import app as updater_app
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("docker unavailable")
+
+        monkeypatch.setattr(updater_app, "_run", boom)
+        updater_app._self_restart()  # must not raise
