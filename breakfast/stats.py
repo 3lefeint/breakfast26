@@ -738,6 +738,37 @@ class StatsDB:
             ).fetchone()["n"]
         return {"x01": x01 or 0, "elimination": elim or 0}
 
+    def player_elimination_stats(self, player: str) -> dict:
+        """Elimination-only numbers: finished games, how they placed, and the
+        average darts per recorded turn. `games` counts games with a recorded
+        result, so a match that was abandoned before finishing isn't included."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT placement, COUNT(*) as n FROM elimination_results"
+                " WHERE player = ? GROUP BY placement", (player,)
+            ).fetchall()
+            avg_row = self._conn.execute(
+                "SELECT AVG(darts_count) as avg_darts FROM elimination_turns WHERE player = ?",
+                (player,),
+            ).fetchone()
+        by_place = {r["placement"]: r["n"] for r in rows}
+        games = sum(by_place.values())
+        wins = by_place.get(1, 0)
+        return {
+            "games": games,
+            "wins": wins,
+            "win_pct": round(wins / games * 100, 1) if games else 0.0,
+            "placements": {
+                "first": wins,
+                "second": by_place.get(2, 0),
+                "third": by_place.get(3, 0),
+                "other": sum(n for place, n in by_place.items() if place > 3),
+            },
+            "avg_darts_per_turn": (
+                round(avg_row["avg_darts"], 2) if avg_row["avg_darts"] is not None else None
+            ),
+        }
+
     def player_doubles_by_number(self, player: str) -> list:
         """Attempts/hits per double target (D1-D20 + bullseye-as-25), inferred from
         the remaining score before each dart — same approximation the existing
@@ -860,6 +891,7 @@ class StatsDB:
             "checkout_pct_by_date": self.player_checkout_pct_by_date(player),
             "win_loss": self.player_win_loss(player),
             "game_type_ratio": self.player_game_type_ratio(player),
+            "elimination": self.player_elimination_stats(player),
             "doubles": self.player_doubles_by_number(player),
             "top_legs": self.top_legs(player, points_start=points_start),
             "leg_modes": leg_modes,

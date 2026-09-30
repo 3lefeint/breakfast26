@@ -495,6 +495,31 @@ class TestPlayerDashboard:
         legs_all = db.top_legs("alice")
         assert {l["match_id"] for l in legs_all} == {"m1", "m2"}
 
+    def test_player_elimination_stats(self, db):
+        _open(db, "e1", "Elimination", None)
+        _open(db, "e2", "Elimination", None)
+        _open(db, "e3", "Elimination", None)
+        db.record_elimination_result("e1", [("alice", 1, 2), ("bob", 2, None), ("cara", 3, None)])
+        db.record_elimination_result("e2", [("bob", 1, 1), ("alice", 2, None)])
+        db.record_elimination_result("e3", [("bob", 1, 3), ("cara", 2, None), ("dan", 3, None), ("alice", 4, None)])
+        db.insert_elimination_turn("e1", "alice", 3)
+        db.insert_elimination_turn("e1", "alice", 2)
+        stats = db.player_elimination_stats("alice")
+        assert stats["games"] == 3
+        assert stats["wins"] == 1
+        assert stats["win_pct"] == 33.3
+        assert stats["placements"] == {"first": 1, "second": 1, "third": 0, "other": 1}
+        assert stats["avg_darts_per_turn"] == 2.5
+
+    def test_player_elimination_stats_without_games(self, db):
+        stats = db.player_elimination_stats("nobody")
+        assert stats["games"] == 0
+        assert stats["win_pct"] == 0.0
+        assert stats["avg_darts_per_turn"] is None
+
+    def test_player_dashboard_includes_elimination(self, db):
+        assert db.player_dashboard("nobody")["elimination"]["games"] == 0
+
     def test_x01_points_start_values_excludes_elimination(self, db):
         _open(db, "m1", pts=301)
         _open(db, "m2", pts=501)
@@ -517,7 +542,7 @@ class TestPlayerDashboard:
         dashboard = db.player_dashboard("alice")
         assert set(dashboard.keys()) == {
             "activity", "activity_by_date", "performance", "scoring_buckets",
-            "avg_by_date", "checkout_pct_by_date", "win_loss", "game_type_ratio",
+            "avg_by_date", "checkout_pct_by_date", "win_loss", "game_type_ratio", "elimination",
             "doubles", "top_legs", "top_checkouts", "leg_modes", "selected_points_start",
         }
 

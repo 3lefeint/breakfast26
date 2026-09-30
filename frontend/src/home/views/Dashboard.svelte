@@ -123,6 +123,26 @@
     </div>
   </div>
 
+  {#if data.elimination?.games}
+    {@const e = data.elimination}
+    <div class="dash-subtitle">Elimination</div>
+    <div class="stat-tiles">
+      <div class="stat-tile"><div class="stat-tile-label">Games</div><div class="stat-tile-value">{e.games}</div></div>
+      <div class="stat-tile"><div class="stat-tile-label">Wins</div><div class="stat-tile-value">{e.wins}</div></div>
+      <div class="stat-tile"><div class="stat-tile-label">Win rate</div><div class="stat-tile-value">{fmtPct(e.win_pct)}</div></div>
+      <div class="stat-tile"><div class="stat-tile-label">Avg darts / turn</div><div class="stat-tile-value">{e.avg_darts_per_turn != null ? e.avg_darts_per_turn.toFixed(1) : '—'}</div></div>
+    </div>
+    <div class="dash-chart-card top">
+      <div class="dash-chart-title">Placements ({e.placements.first} 1st &middot; {e.placements.second} 2nd &middot; {e.placements.third} 3rd &middot; {e.placements.other} lower)</div>
+      <ProportionBar segments={[
+        { label: '1st', value: e.placements.first, color: 'var(--green)' },
+        { label: '2nd', value: e.placements.second, color: 'var(--accent)' },
+        { label: '3rd', value: e.placements.third, color: 'var(--muted)' },
+        { label: 'Lower', value: e.placements.other, color: 'var(--red)' },
+      ]} />
+    </div>
+  {/if}
+
   <div class="dash-chart-card top">
     <div class="dash-chart-title">Doubles hit rate</div>
     <HBarChart

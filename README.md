@@ -72,7 +72,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
 - **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories (the voice-pack profile is picked from a dropdown of the installed profiles)
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
-- **Advanced per-player dashboard** (Stats tab): activity/performance charts, scoring buckets, average & checkout-% over time, win/loss and game-type ratio, doubles hit rate, and Top 10 Legs (filterable by starting score, e.g. 301/501) / Top 10 Checkouts
+- **Advanced per-player dashboard** (Stats tab): activity/performance charts, scoring buckets, average & checkout-% over time, win/loss and game-type ratio, an Elimination section (games, wins, win rate, placements, average darts per turn), doubles hit rate, and Top 10 Legs (filterable by starting score, e.g. 301/501) / Top 10 Checkouts
 - **Modern Web UI**: Svelte 5 + Vite frontend (built to static assets, no client-side framework runtime overhead), dark-mode with swappable accent colors
 
 ---
@@ -360,7 +360,7 @@ Per-turn data (score, remaining, bust/checkout flag, all three dart fields + rem
 - **Leaderboards** (Stats tab): top-10 players by Best Average, Most 180s, Best CO%, Best Double %
 - **Win counts** (Players tab): Elimination wins and X01 match wins, tracked separately per player. Solo (single-player/practice) X01 sessions don't count here — a session with no opponent isn't a competitive win — though their per-dart stats (average, 180s, checkout %) are still tracked normally
 - **Double-hit tracking**: the remaining score is stored per individual dart, so the query can determine exactly which dart was thrown at a double (remaining ≤ 40 or = 50) and whether it was hit
-- **Advanced dashboard** (Stats tab, per player): activity (darts/games/playtime), performance summary (best average/leg/checkout, total 180s), scoring buckets, average/checkout-% over time, win/loss and game-type ratio, doubles hit rate by number, Top 10 Legs (fewest darts to win — filterable by starting score, since a 301 leg and a 701 leg aren't comparable on darts alone) and Top 10 Checkouts
+- **Advanced dashboard** (Stats tab, per player): activity (darts/games/playtime), performance summary (best average/leg/checkout, total 180s), scoring buckets, average/checkout-% over time, win/loss and game-type ratio, Elimination stats (games, wins, win rate, placement spread, average darts per turn — shown once the player has finished an Elimination game), doubles hit rate by number, Top 10 Legs (fewest darts to win — filterable by starting score, since a 301 leg and a 701 leg aren't comparable on darts alone) and Top 10 Checkouts
 
 Reset all stats for a player: Stats tab → ✕ button → two confirmation dialogs.
 
