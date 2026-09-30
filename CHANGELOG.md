@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- The update panel no longer reports "rolled back" while the update is still building (#3).
+
 ## [0.4.0] - 2026-09-30
 
 ### Added

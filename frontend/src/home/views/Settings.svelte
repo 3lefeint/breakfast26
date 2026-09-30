@@ -387,18 +387,18 @@
           setTimeout(() => location.reload(), 1500);
           return;
         }
-        // Back up, but not on the version we asked for — the updater
-        // rolled back after a failed health check.
-        updateOutcome = 'rolled_back';
-        updateApplying = false;
-        updatePhaseText = '';
-        try {
-          const status = await fetch('/api/updates/status').then((r) => r.json());
+        // Reachable but still on the old version: the updater is most likely
+        // still building (the old container keeps serving until the new one
+        // replaces it). Only the updater's own status says whether it
+        // actually gave up and rolled back.
+        const status = await fetch('/api/updates/status').then((r) => r.json());
+        if (status.phase === 'rolled_back' || status.phase === 'failed') {
+          updateOutcome = 'rolled_back';
           updateOutcomeDetail = status.detail || null;
-        } catch (_) {
-          // best-effort only — the generic rolled_back message still shows
+          updateApplying = false;
+          updatePhaseText = '';
+          return;
         }
-        return;
       } catch (_) {
         // still down / rebuilding — keep polling
       }
