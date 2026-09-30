@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-30
+
 ### Fixed
 - The update panel no longer reports "rolled back" while the update is still building (#3).
 - The updater restarts itself through a detached helper container (#4).
