@@ -269,7 +269,7 @@ The live scoreboard itself (X01 and Elimination) lives on the separate
 | View | What it shows |
 |------|--------------|
 | **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
-| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts) — whichever is active; idle screen otherwise |
+| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise |
 | **Players** | Known players list — name, Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Stats** | Lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
 | **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
@@ -343,6 +343,7 @@ as the rest of the app and reconnects automatically.
 | ▶▶ Next Leg | Start next leg/set |
 | ⟳ Reset Board | Hard-reset the local board |
 | ✓ Correct | Correct a misdetected throw (select dart 1/2/3, enter field e.g. `T20`) |
+| 🎯 Board | Same correction by clicking the spot on a dartboard (or picking a multiplier and number on the pad below it) |
 
 This is the X01 board-level undo (removes the last *detected throw*).
 Elimination has its own, separate Undo (removes the last *completed turn*,
@@ -795,7 +796,7 @@ breakfast26/
 │   ├── vite.config.js             # Multi-page build config + dev-server API proxy
 │   └── src/
 │       ├── home/                  # Home app: hub, Elimination, Players, Stats, Settings
-│       ├── tv/                    # TV app: X01 view, Elimination live/finished, dart-correct modal
+│       ├── tv/                    # TV app: X01 view, Elimination live/finished, dart-correct modal (clickable dartboard + number pad)
 │       ├── audio/                 # Minimal audio-unlock page
 │       └── lib/                   # Shared components, stores, API/router/theme helpers
 └── breakfast/

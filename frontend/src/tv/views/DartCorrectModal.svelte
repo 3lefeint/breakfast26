@@ -1,10 +1,12 @@
 <script>
-  // Ports tv.html's #dartCorrectModal — number-pad to fix a
-  // misrecognized dart before it's pulled, opened by tapping D1/D2/D3 on
-  // the live Elimination view (only while that dart has a value already).
+  // Fixes a misrecognized dart before it's pulled: click the spot on the
+  // dartboard, or use the multiplier + number pad. Opened by tapping D1/D2/D3
+  // on the live Elimination view (only while that dart has a value already),
+  // and from the X01 view's Board button.
   import { api } from '../../lib/api.js';
+  import DartBoard from '../../lib/components/DartBoard.svelte';
 
-  let { dartIndex, onClose } = $props();
+  let { dartIndex, onClose, endpoint = '/api/elimination/correct-dart' } = $props();
 
   let mult = $state(1); // 1=Single, 2=Double, 3=Triple
 
@@ -13,7 +15,7 @@
   }
 
   async function submit(field) {
-    await api('POST', '/api/elimination/correct-dart', { dart: dartIndex + 1, field });
+    await api('POST', endpoint, { dart: dartIndex + 1, field });
     onClose();
   }
 </script>
@@ -23,6 +25,9 @@
   <div class="modal-box">
     <div class="section-title">Correct D{dartIndex + 1}</div>
 
+    <DartBoard onSelect={submit} />
+
+    <div class="pad-label">Or pick a field</div>
     <div class="mult-row">
       <button class="btn-mult" class:sel={mult === 1} onclick={() => (mult = 1)}>Single</button>
       <button class="btn-mult" class:sel={mult === 2} onclick={() => (mult = 2)}>Double</button>
@@ -50,6 +55,7 @@
   .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1.5rem 1rem; }
   .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(0,0,0,0.6); border: none; padding: 0; cursor: default; }
   .modal-box { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 480px; width: 100%; }
+  .pad-label { font-size: 0.75rem; color: var(--muted); text-align: center; margin: 0.9rem 0 0.6rem; }
   .mult-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
   .btn-mult {
     flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);

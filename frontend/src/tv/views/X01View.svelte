@@ -8,6 +8,7 @@
   import { getCheckout } from '../../lib/checkout.js';
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
+  import DartCorrectModal from './DartCorrectModal.svelte';
 
   const ABANDONED_MATCH_THRESHOLD_S = 900;
 
@@ -42,6 +43,7 @@
 
   let selectedDartNum = $state(1);
   let correctField = $state('');
+  let boardOpen = $state(false);
 
   async function ctrl(action) {
     await api('POST', `/api/control/${action}`);
@@ -143,8 +145,13 @@
            oninput={(e) => { correctField = e.target.value.toUpperCase(); }}
            onkeydown={(e) => e.key === 'Enter' && correctThrowSubmit()}>
     <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={correctThrowSubmit}>✓ Apply</button>
+    <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={() => (boardOpen = true)}>🎯 Board</button>
   </div>
 </div>
+
+{#if boardOpen}
+  <DartCorrectModal dartIndex={selectedDartNum - 1} endpoint="/api/control/correct-throw" onClose={() => (boardOpen = false)} />
+{/if}
 
 <style>
   .match-info { font-size: 0.8rem; color: var(--muted); margin: 0.7rem 3vw 0; }
