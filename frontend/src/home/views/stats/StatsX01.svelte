@@ -1,125 +1,108 @@
 <script>
-  // X01 half of the Stats tab: only X01 numbers — lifetime table, recent
-  // X01 matches, leaderboards and the X01 side of the per-player dashboard.
+  // X01 half of the Stats tab: totals and records, the players compared as bars,
+  // recent X01 matches and the per-player section.
   import { onMount } from 'svelte';
   import { cap } from '../../../lib/util.js';
-  import Dashboard from '../Dashboard.svelte';
+  import X01Player from './X01Player.svelte';
   import RecentMatches from './RecentMatches.svelte';
+  import RankBars from './RankBars.svelte';
 
   let players = $state([]);
-  let lbAvg = $state([]);
-  let lb180 = $state([]);
-  let lbCo = $state([]);
-  let lbDbl = $state([]);
+  let overview = $state(null);
   let loadFailed = $state(false);
 
   onMount(async () => {
     try {
-      const [p, a, s180, co, dbl] = await Promise.all([
+      [players, overview] = await Promise.all([
         fetch('/api/stats/players').then((r) => r.json()),
-        fetch('/api/leaderboard?metric=avg3&limit=10').then((r) => r.json()),
-        fetch('/api/leaderboard?metric=s180&limit=10').then((r) => r.json()),
-        fetch('/api/leaderboard?metric=co_pct&limit=10').then((r) => r.json()),
-        fetch('/api/leaderboard?metric=dbl_pct&limit=10').then((r) => r.json()),
+        fetch('/api/stats/x01/overview').then((r) => r.json()),
       ]);
-      players = p; lbAvg = a; lb180 = s180; lbCo = co; lbDbl = dbl;
     } catch (e) {
       loadFailed = true;
     }
   });
+
+  const date = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const who = (r) => (r ? `${cap(r.player)} · ${date(r.date)}` : '');
+  const hours = (h) => (h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(1)} h`);
+
+  // Best first; each ranking only lists players it can say something about.
+  function ranking(list, value, text, sub) {
+    return list
+      .map((p) => ({ name: cap(p.player), value: value(p), text: text(p), sub: sub?.(p) }))
+      .sort((a, b) => b.value - a.value);
+  }
+  let rankings = $derived({
+    average: ranking(players.filter((p) => p.avg3 != null), (p) => p.avg3, (p) => p.avg3.toFixed(1), (p) => `${p.turns} turns`),
+    tons: ranking(players, (p) => p.s100 + p.s140 + p.s180, (p) => `${p.s100 + p.s140 + p.s180}`, (p) => `of ${p.turns}`),
+    checkout: ranking(players.filter((p) => p.co_attempts), (p) => p.co_pct, (p) => `${p.co_pct}%`, (p) => `${p.co_hits}/${p.co_attempts}`),
+    doubles: ranking(players.filter((p) => p.dbl_attempts), (p) => p.dbl_pct, (p) => `${p.dbl_pct}%`, (p) => `${p.dbl_hits}/${p.dbl_attempts}`),
+  });
 </script>
 
-<div class="section-title">Lifetime stats</div>
-<table class="players-table stats-table">
-  <thead>
-    <tr>
-      <th>Player</th><th class="num-cell">Sessions</th><th class="num-cell">Avg</th>
-      <th class="num-cell">180</th><th class="num-cell">140+</th><th class="num-cell">100+</th>
-      <th class="num-cell">CO%</th><th class="num-cell">D%</th>
-    </tr>
-  </thead>
-  <tbody>
-    {#if loadFailed}
-      <tr><td colspan="8" class="stats-empty">Could not load stats.</td></tr>
-    {:else if !players.length}
-      <tr><td colspan="8" class="stats-empty">No X01 data yet — play a game first.</td></tr>
-    {:else}
-      {#each players as p (p.player)}
-        <tr>
-          <td>{cap(p.player)}</td>
-          <td class="num-cell">{p.sessions ?? '—'}</td>
-          <td class="num-cell">{p.avg3 != null ? p.avg3.toFixed(1) : '—'}</td>
-          <td class="num-cell">{p.s180 ?? '—'}</td>
-          <td class="num-cell">{p.s140 ?? '—'}</td>
-          <td class="num-cell">{p.s100 ?? '—'}</td>
-          <td class="num-cell">{p.co_attempts ? p.co_pct + '%' : '—'}</td>
-          <td class="num-cell">{p.dbl_attempts ? p.dbl_pct + '%' : '—'}</td>
-        </tr>
-      {/each}
-    {/if}
-  </tbody>
-</table>
+{#if loadFailed}
+  <div class="empty">Could not load stats.</div>
+{:else if overview}
+  {@const s = overview.summary}
+  {@const r = overview.records}
+  <div class="section-title">Overview</div>
+  <div class="stat-tiles">
+    <div class="stat-tile"><div class="stat-tile-label">Matches</div><div class="stat-tile-value">{s.matches}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Legs</div><div class="stat-tile-value">{s.legs}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Total darts</div><div class="stat-tile-value">{s.darts}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Total playtime</div><div class="stat-tile-value">{hours(s.playtime_hours)}</div></div>
+  </div>
+  <div class="records">
+    <div class="record">
+      <div class="stat-tile-label">Highest turn</div>
+      <div class="stat-tile-value">{r.highest_turn?.score ?? '—'}</div>
+      <div class="record-sub">{who(r.highest_turn)}</div>
+    </div>
+    <div class="record">
+      <div class="stat-tile-label">Highest checkout</div>
+      <div class="stat-tile-value">{r.highest_checkout?.score ?? '—'}</div>
+      <div class="record-sub">{r.highest_checkout ? r.highest_checkout.targets.join(' ') + ' · ' : ''}{who(r.highest_checkout)}</div>
+    </div>
+    <div class="record">
+      <div class="stat-tile-label">Best leg{r.best_leg ? ` (${r.best_leg.points_start})` : ''}</div>
+      <div class="stat-tile-value">{r.best_leg ? `${r.best_leg.darts} darts` : '—'}</div>
+      <div class="record-sub">{who(r.best_leg)}</div>
+    </div>
+    <div class="record">
+      <div class="stat-tile-label">Best match average</div>
+      <div class="stat-tile-value">{r.best_average ? r.best_average.avg3.toFixed(1) : '—'}</div>
+      <div class="record-sub">{who(r.best_average)}</div>
+    </div>
+  </div>
+
+  <div class="section-title top">Players compared</div>
+  <div class="rankings">
+    <RankBars title="Average (3 darts)" rows={rankings.average} />
+    <RankBars title="Turns of 100 or more" rows={rankings.tons} />
+    <RankBars title="Checkout %" rows={rankings.checkout} />
+    <RankBars title="Double %" rows={rankings.doubles} />
+  </div>
+{/if}
 
 <RecentMatches mode="x01" />
 
-<div class="section-title top2">Leaderboard</div>
-<div class="leaderboard-grid">
-  <div>
-    <div class="lb-label">Best Average</div>
-    <table class="players-table stats-table"><thead><tr><th>#</th><th>Player</th><th class="num-cell">Avg</th></tr></thead>
-      <tbody>
-        {#if !lbAvg.length}<tr><td colspan="3" class="stats-empty">—</td></tr>{/if}
-        {#each lbAvg as r, i}<tr><td class="num-cell muted narrow">#{i + 1}</td><td>{cap(r.player)}</td><td class="num-cell">{r.avg3 != null ? r.avg3.toFixed(1) : '—'}</td></tr>{/each}
-      </tbody>
-    </table>
-  </div>
-  <div>
-    <div class="lb-label">Most 180s</div>
-    <table class="players-table stats-table"><thead><tr><th>#</th><th>Player</th><th class="num-cell">180s</th></tr></thead>
-      <tbody>
-        {#if !lb180.length}<tr><td colspan="3" class="stats-empty">—</td></tr>{/if}
-        {#each lb180 as r, i}<tr><td class="num-cell muted narrow">#{i + 1}</td><td>{cap(r.player)}</td><td class="num-cell">{r.s180 ?? '—'}</td></tr>{/each}
-      </tbody>
-    </table>
-  </div>
-  <div>
-    <div class="lb-label">Best Checkout %</div>
-    <table class="players-table stats-table"><thead><tr><th>#</th><th>Player</th><th class="num-cell">CO%</th></tr></thead>
-      <tbody>
-        {#if !lbCo.length}<tr><td colspan="3" class="stats-empty">—</td></tr>{/if}
-        {#each lbCo as r, i}<tr><td class="num-cell muted narrow">#{i + 1}</td><td>{cap(r.player)}</td><td class="num-cell">{r.co_attempts ? r.co_pct + '%' : '—'}</td></tr>{/each}
-      </tbody>
-    </table>
-  </div>
-  <div>
-    <div class="lb-label">Best Double %</div>
-    <table class="players-table stats-table"><thead><tr><th>#</th><th>Player</th><th class="num-cell">D%</th></tr></thead>
-      <tbody>
-        {#if !lbDbl.length}<tr><td colspan="3" class="stats-empty">—</td></tr>{/if}
-        {#each lbDbl as r, i}<tr><td class="num-cell muted narrow">#{i + 1}</td><td>{cap(r.player)}</td><td class="num-cell">{r.dbl_attempts ? r.dbl_pct + '%' : '—'}</td></tr>{/each}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="section-title top2">Advanced</div>
-<Dashboard mode="x01" players={players.map((p) => p.player)} />
+<div class="section-title top2">Player</div>
+<X01Player players={players.map((p) => p.player)} />
 
 <style>
-  .section-title { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .section-title { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.6rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .section-title.top { margin-top: 1.75rem; }
   .section-title.top2 { margin-top: 2rem; }
-  .players-table { width: 100%; border-collapse: collapse; }
-  .players-table th {
-    font-size: 0.75rem; color: var(--muted); font-weight: 500;
-    text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border);
+  .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
+  .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
+  .stat-tile, .record {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.75rem 0.9rem; text-align: center;
   }
-  .players-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); }
-  .stats-table th, .stats-table td { font-size: 0.8rem; }
-  .num-cell { text-align: right; }
-  .players-table th.num-cell { text-align: right; }
-  .muted { color: var(--muted); }
-  .narrow { width: 2rem; }
-  .stats-empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
-  .leaderboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem; }
-  .lb-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem; }
+  .stat-tile-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }
+  .stat-tile-value { font-size: 1.4rem; font-weight: 600; }
+  .records { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+  .record-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; min-height: 1em; }
+  .rankings { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  @media (max-width: 700px) { .rankings, .records { grid-template-columns: 1fr; } }
 </style>

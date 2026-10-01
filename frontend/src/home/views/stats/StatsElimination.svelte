@@ -84,7 +84,7 @@
 <RecentMatches mode="elimination" />
 
 <div class="section-title top2">Activity</div>
-<Dashboard mode="elimination" players={players.map((p) => p.player)} />
+<Dashboard players={players.map((p) => p.player)} />
 
 <style>
   .section-title { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.6rem; letter-spacing: 0.06em; text-transform: uppercase; }

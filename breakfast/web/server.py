@@ -432,6 +432,13 @@ async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|el
     return _stats_db.recent_matches(mode=mode)
 
 
+@app.get("/api/stats/x01/overview")
+async def stats_x01_overview():
+    if not _stats_db:
+        return {"summary": {}, "records": {}}
+    return _stats_db.x01_overview()
+
+
 @app.get("/api/stats/elimination/overview")
 async def stats_elimination_overview():
     if not _stats_db:

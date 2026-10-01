@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Stats tab, X01 view: overview, records, players compared and per-player charts, top 10 legs and checkouts (#14).
 - Stats tab, Elimination view: overview and records, placements, form, head to head, game length and activity (#14).
 - Stats tab: chips to switch between an X01 view and an Elimination view (#14).
 - Elimination turns are stored with score, target and outcome (#14).

@@ -406,6 +406,24 @@ class TestPlayerDashboard:
         perf = db.player_performance_summary("alice")
         assert perf["best_leg_darts"] == 1
 
+    def test_performance_summary_best_leg_501_ignores_other_starts(self, db):
+        _open(db, "m1", pts=301)
+        db.insert_turn("m1", "alice", 1, 1, 40, 40, False, True, [("D20", 40, 0)])
+        db.record_leg_win("m1", 1, "alice")
+        _open(db, "m2", pts=501)
+        db.insert_turn("m2", "alice", 1, 1, 40, 40, False, True,
+                       [("S20", 20, 20), ("D10", 20, 0)])
+        db.record_leg_win("m2", 1, "alice")
+        perf = db.player_performance_summary("alice")
+        assert perf["best_leg_darts"] == 1
+        assert perf["best_leg_501_darts"] == 2
+
+    def test_performance_summary_best_leg_501_none_without_501_win(self, db):
+        _open(db, "m1", pts=301)
+        db.insert_turn("m1", "alice", 1, 1, 40, 40, False, True, [("D20", 40, 0)])
+        db.record_leg_win("m1", 1, "alice")
+        assert db.player_performance_summary("alice")["best_leg_501_darts"] is None
+
     def test_performance_summary_best_checkout(self, db):
         _open(db, "m1")
         db.insert_turn("m1", "alice", 1, 1, 32, 32, False, True, [("D16", 32, 0)])
@@ -413,16 +431,6 @@ class TestPlayerDashboard:
                        [("T20", 60, 20), ("D10", 20, 0)])
         perf = db.player_performance_summary("alice")
         assert perf["best_checkout"] == 80
-
-    def test_scoring_buckets(self, db):
-        _open(db, "m1")
-        db.insert_turn("m1", "alice", 1, 1, 501, 45, False, False,
-                       [("15", 15, 486), ("15", 15, 471), ("15", 15, 456)])
-        db.insert_turn("m1", "alice", 1, 2, 456, 180, False, False,
-                       [("T20", 60, 396), ("T20", 60, 336), ("T20", 60, 276)])
-        buckets = db.player_scoring_buckets("alice")
-        assert buckets["under_60"] == 1
-        assert buckets["170_plus"] == 1
 
     def test_win_loss(self, db):
         _open(db, "m1")
@@ -447,15 +455,6 @@ class TestPlayerDashboard:
         db.set_winner("m1", "alice")
         result = db.player_win_loss("alice")
         assert result == {"wins": 0, "losses": 0}
-
-    def test_game_type_ratio(self, db):
-        _open(db, "m1")
-        db.insert_turn("m1", "alice", 1, 1, 501, 60, False, False,
-                       [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
-        db.open_match("e1", "Elimination", 3)
-        db.insert_elimination_turn("e1", "alice", 3)
-        ratio = db.player_game_type_ratio("alice")
-        assert ratio == {"x01": 1, "elimination": 1}
 
     def test_doubles_by_number_hit_and_miss(self, db):
         _open(db, "m1")
@@ -544,9 +543,6 @@ class TestPlayerDashboard:
         assert stats["win_pct"] == 0.0
         assert stats["avg_darts_per_turn"] is None
 
-    def test_player_dashboard_includes_elimination(self, db):
-        assert db.player_dashboard("nobody")["elimination"]["games"] == 0
-
     def test_x01_points_start_values_excludes_elimination(self, db):
         _open(db, "m1", pts=301)
         _open(db, "m2", pts=501)
@@ -568,8 +564,8 @@ class TestPlayerDashboard:
                        [("20", 20, 481), ("20", 20, 461), ("20", 20, 441)])
         dashboard = db.player_dashboard("alice")
         assert set(dashboard.keys()) == {
-            "activity", "activity_by_date", "performance", "scoring_buckets",
-            "avg_by_date", "checkout_pct_by_date", "win_loss", "game_type_ratio", "elimination", "elimination_records",
+            "activity", "activity_by_date", "performance", "score_histogram", "avg_by_match",
+            "dart_hits", "bust_by_remaining", "checkout_by_match", "win_loss", "elimination_records",
             "doubles", "top_legs", "top_checkouts", "leg_modes", "selected_points_start",
         }
 
@@ -882,3 +878,189 @@ class TestEliminationRecords:
         self._turn(db, "e1", "alice", 150, 100, True)
         db.upsert_player("alice", hidden=True)
         assert db.player_dashboard("alice", mode="elimination")["elimination_records"]["highest_score"]["score"] == 150
+
+
+class TestX01Overview:
+    def _leg(self, db, match_id, leg, player, darts, start_remaining=301):
+        """One won leg in `darts` darts: three-dart turns ending in a checkout."""
+        turns = (darts + 2) // 3
+        for i in range(turns):
+            last = i == turns - 1
+            n = darts - 3 * i if last else 3
+            db.insert_turn(match_id, player, leg, i + 1, start_remaining, 30 if not last else 40,
+                           False, last, [("S10", 10, 0)] * n)
+        db.record_leg_win(match_id, leg, player)
+
+    def test_empty_database(self, db):
+        overview = db.x01_overview()
+        assert overview["summary"] == {"matches": 0, "legs": 0, "darts": 0, "playtime_hours": 0}
+        assert overview["records"] == {"highest_turn": None, "highest_checkout": None,
+                                       "best_leg": None, "best_average": None}
+
+    def test_summary_counts_x01_only(self, db):
+        _open(db, "m1", pts=301)
+        self._leg(db, "m1", 1, "alice", 12)
+        db.open_match("e1", "Elimination", 3)
+        db.insert_elimination_turn("e1", "alice", 3)
+        summary = db.x01_overview()["summary"]
+        assert (summary["matches"], summary["legs"], summary["darts"]) == (1, 1, 12)
+
+    def test_records(self, db):
+        _open(db, "m1", pts=301)
+        db._conn.execute("UPDATE matches SET started_at = '2026-07-06T10:00:00+00:00' WHERE match_id = 'm1'")
+        self._leg(db, "m1", 1, "alice", 15)
+        self._leg(db, "m1", 2, "bob", 12)
+        db.insert_turn("m1", "alice", 3, 1, 301, 126, False, False, [("T20", 60, 241), ("T20", 60, 181), ("S6", 6, 175)])
+        db.insert_turn("m1", "bob", 3, 1, 170, 170, False, True, [("T20", 60, 110), ("T20", 60, 50), ("BULL", 50, 0)])
+        records = db.x01_overview()["records"]
+        assert records["highest_turn"] == {"score": 170, "player": "bob", "date": "2026-07-06"}
+        assert records["highest_checkout"]["score"] == 170
+        assert records["highest_checkout"]["targets"] == ["T20", "T20", "BULL"]
+        assert records["best_leg"] == {"darts": 12, "player": "bob", "date": "2026-07-06", "points_start": 301}
+
+    def test_best_leg_uses_the_most_played_starting_score(self, db):
+        _open(db, "m1", pts=301)
+        _open(db, "m2", pts=501)
+        self._leg(db, "m1", 1, "alice", 18)
+        self._leg(db, "m1", 2, "alice", 15)
+        self._leg(db, "m2", 1, "alice", 9, start_remaining=501)        # shorter, but a 501 leg
+        best = db.x01_overview()["records"]["best_leg"]
+        assert (best["darts"], best["points_start"]) == (15, 301)
+
+    def test_best_average_needs_enough_darts(self, db):
+        _open(db, "m1")
+        db.insert_turn("m1", "alice", 1, 1, 501, 180, False, False, [("T20", 60, 441)] * 3)     # 3 darts only
+        assert db.x01_overview()["records"]["best_average"] is None
+        for turn in range(2, 7):
+            db.insert_turn("m1", "alice", 1, turn, 501, 60, False, False, [("S20", 20, 481)] * 3)
+        assert db.x01_overview()["records"]["best_average"]["player"] == "alice"
+
+    def test_records_leave_out_hidden_players_but_totals_keep_them(self, db):
+        _open(db, "m1", pts=301)
+        self._leg(db, "m1", 1, "alice", 12)
+        db.upsert_player("alice", hidden=True)
+        overview = db.x01_overview()
+        assert overview["records"]["highest_turn"] is None and overview["records"]["best_leg"] is None
+        assert overview["summary"]["darts"] == 12
+
+
+class TestScoreHistogram:
+    def _turn(self, db, score, turn, darts=3, player="alice"):
+        db.insert_turn("m1", player, 1, turn, 501, score, False, False, [("S1", 1, 500)] * darts)
+
+    def test_bins_of_ten_with_180_in_the_last_one(self, db):
+        _open(db, "m1")
+        for i, score in enumerate([0, 9, 10, 45, 49, 100, 170, 179, 180], start=1):
+            self._turn(db, score, i)
+        histogram = db.player_score_histogram("alice")
+        bins = histogram["bins"]
+        assert len(bins) == 19
+        assert (bins[0], bins[1], bins[4], bins[10], bins[17], bins[18]) == (2, 1, 2, 1, 2, 1)
+        assert sum(bins) == histogram["turns"] == 9
+
+    def test_average_is_per_three_darts_like_the_rest_of_the_stats(self, db):
+        _open(db, "m1")
+        self._turn(db, 60, 1)
+        self._turn(db, 30, 2, darts=1)               # a checkout with one dart
+        assert db.player_score_histogram("alice")["avg3"] == round(90 * 3.0 / 4, 1)
+
+    def test_a_player_without_turns(self, db):
+        assert db.player_score_histogram("nobody") == {"bins": [0] * 19, "turns": 0, "avg3": None}
+
+
+class TestAverageByMatch:
+    def test_one_average_per_match_oldest_first_per_three_darts(self, db):
+        _open(db, "m2", pts=301)
+        _open(db, "m1", pts=501)
+        db._conn.execute("UPDATE matches SET started_at = '2026-07-01T10:00:00+00:00' WHERE match_id = 'm1'")
+        db._conn.execute("UPDATE matches SET started_at = '2026-07-02T10:00:00+00:00' WHERE match_id = 'm2'")
+        db.insert_turn("m1", "alice", 1, 1, 501, 60, False, False, [("S20", 20, 481)] * 3)
+        db.insert_turn("m1", "alice", 1, 2, 441, 30, False, False, [("S10", 10, 431)] * 3)
+        db.insert_turn("m2", "alice", 1, 1, 301, 100, False, False, [("S20", 20, 281)] * 3)
+        db.insert_turn("m2", "bob", 1, 2, 301, 9, False, False, [("S3", 3, 298)] * 3)
+        result = db.player_avg_by_match("alice")
+        assert [(r["match_id"], r["avg3"], r["darts"], r["points_start"]) for r in result] == [
+            ("m1", 45.0, 6, 501), ("m2", 100.0, 3, 301)]
+
+    def test_player_without_turns(self, db):
+        assert db.player_avg_by_match("nobody") == []
+
+
+class TestDartHits:
+    def _turn(self, db, turn, darts, player="alice"):
+        db.insert_turn("m1", player, 1, turn, 501, 0, False, False, [(d, 0, 0) for d in darts])
+
+    def test_hits_per_field_misses_per_sector_and_the_rest(self, db):
+        _open(db, "m1")
+        self._turn(db, 1, ["S20", "S20", "T20"])
+        self._turn(db, 2, ["M1", "m1", "BULL"])
+        self._turn(db, 3, ["25", "MISS", "D16"])
+        hits = db.player_dart_hits("alice")
+        assert hits["darts"] == 9
+        assert hits["fields"] == {"S20": 2, "T20": 1, "BULL": 1, "25": 1, "D16": 1}
+        assert hits["misses"] == {"1": 2}
+        assert hits["no_sector_misses"] == 1
+
+    def test_only_the_players_own_darts_count(self, db):
+        _open(db, "m1")
+        self._turn(db, 1, ["S20"], player="alice")
+        self._turn(db, 2, ["S5", "S5"], player="bob")
+        assert db.player_dart_hits("alice")["fields"] == {"S20": 1}
+
+    def test_a_player_without_darts(self, db):
+        assert db.player_dart_hits("nobody") == {"darts": 0, "fields": {}, "misses": {}, "no_sector_misses": 0}
+
+
+class TestBustByRemaining:
+    def _turn(self, db, turn, remaining, bust, player="alice"):
+        db.insert_turn("m1", player, 1, turn, remaining, 0 if bust else 10, bust, False, [("S1", 1, remaining - 1)])
+
+    def test_turns_and_busts_land_in_the_band_of_their_starting_score(self, db):
+        _open(db, "m1")
+        for i, (remaining, bust) in enumerate(
+                [(2, True), (10, False), (11, True), (40, True), (41, False), (170, False), (171, False), (501, False)], start=1):
+            self._turn(db, i, remaining, bust)
+        result = db.player_bust_by_remaining("alice")
+        by_label = {b["label"]: (b["turns"], b["busts"]) for b in result["bands"]}
+        assert by_label == {"≤ 10": (2, 1), "11–20": (1, 1), "21–30": (0, 0), "31–40": (1, 1),
+                            "41–60": (1, 0), "61–100": (0, 0), "101–170": (1, 0), "> 170": (2, 0)}
+        assert (result["turns"], result["busts"]) == (8, 3)
+
+    def test_only_the_players_own_turns(self, db):
+        _open(db, "m1")
+        self._turn(db, 1, 20, True, player="alice")
+        self._turn(db, 2, 20, True, player="bob")
+        assert db.player_bust_by_remaining("alice")["busts"] == 1
+
+    def test_a_player_without_turns_has_all_bands_empty(self, db):
+        result = db.player_bust_by_remaining("nobody")
+        assert len(result["bands"]) == 8 and (result["turns"], result["busts"]) == (0, 0)
+
+
+class TestCheckoutByMatch:
+    def _turn(self, db, match_id, turn, remaining, checkout=False, player="alice"):
+        db.insert_turn(match_id, player, 1, turn, remaining, remaining if checkout else 10, False, checkout,
+                       [("S1", 1, 0)])
+
+    def test_hits_over_the_turns_started_in_checkout_range_per_match(self, db):
+        _open(db, "m2", pts=301)
+        _open(db, "m1", pts=301)
+        db._conn.execute("UPDATE matches SET started_at = '2026-07-01T10:00:00+00:00' WHERE match_id = 'm1'")
+        db._conn.execute("UPDATE matches SET started_at = '2026-07-02T10:00:00+00:00' WHERE match_id = 'm2'")
+        for i, (remaining, checkout) in enumerate([(301, False), (170, False), (40, False), (32, True)], start=1):
+            self._turn(db, "m1", i, remaining, checkout)
+        self._turn(db, "m2", 1, 100, True)
+        result = db.player_checkout_by_match("alice")
+        assert [(r["match_id"], r["attempts"], r["hits"], r["co_pct"]) for r in result] == [
+            ("m1", 3, 1, 33.3), ("m2", 1, 1, 100.0)]
+
+    def test_matches_without_a_turn_in_checkout_range_are_left_out(self, db):
+        _open(db, "m1")
+        self._turn(db, "m1", 1, 501)
+        assert db.player_checkout_by_match("alice") == []
+
+    def test_only_the_players_own_turns(self, db):
+        _open(db, "m1")
+        self._turn(db, "m1", 1, 40, player="alice")
+        self._turn(db, "m1", 2, 40, player="bob")
+        assert [r["attempts"] for r in db.player_checkout_by_match("alice")] == [1]

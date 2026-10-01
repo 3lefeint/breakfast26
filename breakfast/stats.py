@@ -6,6 +6,7 @@ dart1/2/3-thrown events that only X01 emits).
 
 import json
 import logging
+import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -716,6 +717,16 @@ class StatsDB:
                     GROUP BY t.match_id, t.leg
                 )
             """, (player, player)).fetchone()
+            leg_501_row = self._conn.execute("""
+                SELECT MIN(darts) as darts FROM (
+                    SELECT SUM(t.darts_count) as darts
+                    FROM turns t
+                    JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg
+                    JOIN matches m ON m.match_id = t.match_id
+                    WHERE l.winner = ? AND t.player = ? AND m.points_start = 501
+                    GROUP BY t.match_id, t.leg
+                )
+            """, (player, player)).fetchone()
             co_row = self._conn.execute(
                 "SELECT MAX(score) as best FROM turns WHERE player = ? AND is_checkout = 1",
                 (player,),
@@ -732,59 +743,108 @@ class StatsDB:
         return {
             "best_avg3": round(best_avg3, 1),
             "best_leg_darts": leg_row["darts"] if leg_row and leg_row["darts"] is not None else None,
+            "best_leg_501_darts": leg_501_row["darts"] if leg_501_row and leg_501_row["darts"] is not None else None,
             "best_checkout": co_row["best"] if co_row and co_row["best"] is not None else None,
             "total_180s": s180_row["n"] or 0 if s180_row else 0,
         }
 
-    def player_scoring_buckets(self, player: str) -> dict:
+    def player_score_histogram(self, player: str) -> dict:
+        """How often each turn score came up, in bins of ten points (0-9, 10-19, ...,
+        170-179, 180), with the 3-dart average. Busts count as the turns they are."""
         with self._lock:
-            row = self._conn.execute("""
-                SELECT
-                    SUM(CASE WHEN score < 60 THEN 1 ELSE 0 END) as under_60,
-                    SUM(CASE WHEN score >= 60 AND score < 100 THEN 1 ELSE 0 END) as s60,
-                    SUM(CASE WHEN score >= 100 AND score < 140 THEN 1 ELSE 0 END) as s100,
-                    SUM(CASE WHEN score >= 140 AND score < 170 THEN 1 ELSE 0 END) as s140,
-                    SUM(CASE WHEN score >= 170 THEN 1 ELSE 0 END) as s170
-                FROM turns WHERE player = ?
-            """, (player,)).fetchone()
+            rows = self._conn.execute(
+                "SELECT score / 10 as bin, COUNT(*) as n FROM turns WHERE player = ? GROUP BY bin",
+                (player,),
+            ).fetchall()
+            total = self._conn.execute(
+                "SELECT COUNT(*) as turns, SUM(score) as score, SUM(darts_count) as darts"
+                " FROM turns WHERE player = ?", (player,),
+            ).fetchone()
+        bins = [0] * 19
+        for r in rows:
+            bins[min(r["bin"], 18)] += r["n"]
         return {
-            "under_60": row["under_60"] or 0,
-            "60_99":    row["s60"] or 0,
-            "100_139":  row["s100"] or 0,
-            "140_169":  row["s140"] or 0,
-            "170_plus": row["s170"] or 0,
+            "bins": bins,
+            "turns": total["turns"] or 0,
+            "avg3": round(total["score"] * 3.0 / total["darts"], 1) if total["darts"] else None,
         }
 
-    def player_avg_by_date(self, player: str) -> list:
+    # Starting scores of a turn, grouped to see where busts happen (the labels are shown as they are).
+    _BUST_BANDS = (("≤ 10", 0, 10), ("11–20", 11, 20), ("21–30", 21, 30), ("31–40", 31, 40),
+                   ("41–60", 41, 60), ("61–100", 61, 100), ("101–170", 101, 170), ("> 170", 171, None))
+
+    def player_bust_by_remaining(self, player: str) -> dict:
+        """Turns and busts by the score a turn started on, in fixed bands, plus the totals."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT remaining_before as remaining, is_bust FROM turns WHERE player = ?", (player,)
+            ).fetchall()
+        bands = [{"label": label, "turns": 0, "busts": 0} for label, _, _ in self._BUST_BANDS]
+        for r in rows:
+            for band, (_, low, high) in zip(bands, self._BUST_BANDS):
+                if r["remaining"] >= low and (high is None or r["remaining"] <= high):
+                    band["turns"] += 1
+                    band["busts"] += 1 if r["is_bust"] else 0
+                    break
+        return {"bands": bands, "turns": len(rows), "busts": sum(b["busts"] for b in bands)}
+
+    def player_dart_hits(self, player: str) -> dict:
+        """Where this player's darts went, from the recorded dart fields: hits per
+        field on the board (`S20`, `D16`, `T19`, `25`, `BULL`), misses per sector (the
+        darts that landed outside the scoring area next to that number, `M11`), and the
+        misses without any sector."""
+        fields, misses, no_sector, darts = {}, {}, 0, 0
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT dart1, dart2, dart3 FROM turns WHERE player = ?", (player,)).fetchall()
+        for row in rows:
+            for raw in row:
+                if not raw:
+                    continue
+                darts += 1
+                field = raw.upper()
+                miss = re.fullmatch(r"M(\d{1,2})", field)
+                if miss:
+                    misses[miss.group(1)] = misses.get(miss.group(1), 0) + 1
+                elif field == "MISS":
+                    no_sector += 1
+                else:
+                    fields[field] = fields.get(field, 0) + 1
+        return {"darts": darts, "fields": fields, "misses": misses, "no_sector_misses": no_sector}
+
+    def player_avg_by_match(self, player: str) -> list:
+        """The 3-dart average of each match the player threw darts in, oldest first."""
         with self._lock:
             rows = self._conn.execute("""
-                SELECT DATE(m.started_at) as date,
-                       SUM(t.score) as total_score, SUM(t.darts_count) as total_darts
+                SELECT t.match_id as match_id, m.started_at as started_at, m.points_start as points_start,
+                       SUM(t.score) as score, SUM(t.darts_count) as darts
                 FROM turns t JOIN matches m ON m.match_id = t.match_id
                 WHERE t.player = ?
-                GROUP BY DATE(m.started_at)
-                ORDER BY date
+                GROUP BY t.match_id HAVING SUM(t.darts_count) > 0
+                ORDER BY m.started_at
             """, (player,)).fetchall()
         return [
-            {"date": r["date"],
-             "avg3": round((r["total_score"] or 0) / r["total_darts"] * 3, 1) if r["total_darts"] else 0.0}
+            {"match_id": r["match_id"], "started_at": r["started_at"], "points_start": r["points_start"],
+             "darts": r["darts"], "avg3": round(r["score"] * 3.0 / r["darts"], 1)}
             for r in rows
         ]
 
-    def player_checkout_pct_by_date(self, player: str) -> list:
+    def player_checkout_by_match(self, player: str) -> list:
+        """Checkout % of each match, oldest first: hits over the turns that started in
+        checkout range (170 or less). Matches without such a turn are left out."""
         with self._lock:
             rows = self._conn.execute("""
-                SELECT DATE(m.started_at) as date,
-                       SUM(CASE WHEN t.remaining_before <= 170 THEN 1 ELSE 0 END) as co_attempts,
-                       SUM(t.is_checkout) as co_hits
+                SELECT t.match_id as match_id, m.started_at as started_at,
+                       SUM(CASE WHEN t.remaining_before <= 170 THEN 1 ELSE 0 END) as attempts,
+                       SUM(t.is_checkout) as hits
                 FROM turns t JOIN matches m ON m.match_id = t.match_id
                 WHERE t.player = ?
-                GROUP BY DATE(m.started_at)
-                ORDER BY date
+                GROUP BY t.match_id HAVING attempts > 0
+                ORDER BY m.started_at
             """, (player,)).fetchall()
         return [
-            {"date": r["date"],
-             "co_pct": round(r["co_hits"] / r["co_attempts"] * 100, 1) if r["co_attempts"] else 0.0}
+            {"match_id": r["match_id"], "started_at": r["started_at"], "attempts": r["attempts"],
+             "hits": r["hits"], "co_pct": round(r["hits"] / r["attempts"] * 100, 1)}
             for r in rows
         ]
 
@@ -801,16 +861,6 @@ class StatsDB:
             """, (player,) * len(tables)).fetchall()
         wins = sum(1 for r in rows if r["winner"] == player)
         return {"wins": wins, "losses": len(rows) - wins}
-
-    def player_game_type_ratio(self, player: str) -> dict:
-        with self._lock:
-            x01 = self._conn.execute(
-                "SELECT COUNT(DISTINCT match_id) as n FROM turns WHERE player = ?", (player,)
-            ).fetchone()["n"]
-            elim = self._conn.execute(
-                "SELECT COUNT(DISTINCT match_id) as n FROM elimination_turns WHERE player = ?", (player,)
-            ).fetchone()["n"]
-        return {"x01": x01 or 0, "elimination": elim or 0}
 
     def player_elimination_stats(self, player: str) -> dict:
         """Elimination-only numbers: finished games, how they placed, and the
@@ -1092,6 +1142,95 @@ class StatsDB:
             for r in rows
         ]
 
+    def x01_overview(self) -> dict:
+        """What the X01 view opens with: totals over every X01 match, and records.
+        The totals count everything played; the records leave out players flagged
+        `hidden`, like the leaderboards. Each record is None or a dict with the
+        player and the date (`started_at`, date part only)."""
+        with self._lock:
+            totals = self._conn.execute("""
+                SELECT COUNT(DISTINCT match_id) as matches, COALESCE(SUM(darts_count), 0) as darts
+                FROM turns
+            """).fetchone()
+            legs = self._conn.execute("""
+                SELECT COUNT(*) as n FROM legs
+                WHERE winner IS NOT NULL AND match_id IN (SELECT match_id FROM turns)
+            """).fetchone()["n"]
+            hours = self._conn.execute("""
+                SELECT COALESCE(SUM((julianday(ended_at) - julianday(started_at)) * 24), 0) as h
+                FROM matches
+                WHERE ended_at IS NOT NULL AND match_id IN (SELECT match_id FROM turns)
+            """).fetchone()["h"]
+
+            def one(sql, params=()):
+                return self._conn.execute(sql, params).fetchone()
+
+            visible = "COALESCE(p.hidden, 0) = 0"
+            turn = one(f"""
+                SELECT t.score, t.player, m.started_at FROM turns t
+                JOIN matches m ON m.match_id = t.match_id
+                LEFT JOIN players p ON p.name = t.player
+                WHERE {visible} ORDER BY t.score DESC, m.started_at LIMIT 1
+            """)
+            checkout = one(f"""
+                SELECT t.score, t.player, t.dart1, t.dart2, t.dart3, m.started_at FROM turns t
+                JOIN matches m ON m.match_id = t.match_id
+                LEFT JOIN players p ON p.name = t.player
+                WHERE t.is_checkout = 1 AND {visible} ORDER BY t.score DESC, m.started_at LIMIT 1
+            """)
+            # Legs are only comparable within one starting score: take the most played one.
+            common = one("""
+                SELECT m.points_start as points_start FROM legs l
+                JOIN matches m ON m.match_id = l.match_id
+                WHERE l.winner IS NOT NULL AND m.points_start IS NOT NULL
+                GROUP BY m.points_start ORDER BY COUNT(*) DESC, m.points_start DESC LIMIT 1
+            """)
+            leg = one(f"""
+                SELECT t.player, SUM(t.darts_count) as darts, m.points_start, m.started_at
+                FROM turns t
+                JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg AND l.winner = t.player
+                JOIN matches m ON m.match_id = t.match_id
+                LEFT JOIN players p ON p.name = t.player
+                WHERE m.points_start = ? AND {visible}
+                GROUP BY t.match_id, t.leg, t.player ORDER BY darts, m.started_at LIMIT 1
+            """, (common["points_start"],)) if common else None
+            # A match average needs a few turns behind it to mean anything.
+            average = one(f"""
+                SELECT t.player, SUM(t.score) * 3.0 / SUM(t.darts_count) as avg3,
+                       m.points_start, m.started_at
+                FROM turns t
+                JOIN matches m ON m.match_id = t.match_id
+                LEFT JOIN players p ON p.name = t.player
+                WHERE {visible}
+                GROUP BY t.match_id, t.player HAVING SUM(t.darts_count) >= 18
+                ORDER BY avg3 DESC, m.started_at LIMIT 1
+            """)
+
+        def day(row):
+            return row["started_at"][:10]
+
+        return {
+            "summary": {
+                "matches": totals["matches"], "legs": legs, "darts": totals["darts"],
+                "playtime_hours": round(hours, 2),
+            },
+            "records": {
+                "highest_turn": {"score": turn["score"], "player": turn["player"], "date": day(turn)} if turn else None,
+                "highest_checkout": {
+                    "score": checkout["score"], "player": checkout["player"], "date": day(checkout),
+                    "targets": [d for d in (checkout["dart1"], checkout["dart2"], checkout["dart3"]) if d],
+                } if checkout else None,
+                "best_leg": {
+                    "darts": leg["darts"], "player": leg["player"], "date": day(leg),
+                    "points_start": leg["points_start"],
+                } if leg else None,
+                "best_average": {
+                    "avg3": round(average["avg3"], 1), "player": average["player"], "date": day(average),
+                    "points_start": average["points_start"],
+                } if average else None,
+            },
+        }
+
     def player_dashboard(self, player: str, points_start: int | None = None, mode: str = "all") -> dict:
         """Bundle every player_*/top_* method above into one payload — one fetch
         for the whole advanced-stats view instead of ~10 round trips.
@@ -1110,12 +1249,12 @@ class StatsDB:
             "activity": self.player_activity(player, mode),
             "activity_by_date": self.player_activity_by_date(player, mode),
             "performance": self.player_performance_summary(player),
-            "scoring_buckets": self.player_scoring_buckets(player),
-            "avg_by_date": self.player_avg_by_date(player),
-            "checkout_pct_by_date": self.player_checkout_pct_by_date(player),
+            "score_histogram": self.player_score_histogram(player),
+            "avg_by_match": self.player_avg_by_match(player),
+            "dart_hits": self.player_dart_hits(player),
+            "bust_by_remaining": self.player_bust_by_remaining(player),
+            "checkout_by_match": self.player_checkout_by_match(player),
             "win_loss": self.player_win_loss(player, mode),
-            "game_type_ratio": self.player_game_type_ratio(player),
-            "elimination": self.player_elimination_stats(player),
             "elimination_records": self.elimination_records(player),
             "doubles": self.player_doubles_by_number(player),
             "top_legs": self.top_legs(player, points_start=points_start),

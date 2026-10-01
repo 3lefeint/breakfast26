@@ -29,3 +29,20 @@ export function fieldAtMm(x, y) {
   if (r <= DOUBLE_IN) return `S${n}`;
   return `D${n}`;
 }
+
+// A point at `rMm` from the center and `deg` clockwise from the top, drawn
+// `scale` units per millimetre (y down, as in SVG).
+export function polar(rMm, deg, scale) {
+  const a = (deg * Math.PI) / 180;
+  return [rMm * scale * Math.sin(a), -rMm * scale * Math.cos(a)];
+}
+
+// The ring segment between two radii and two angles, as an SVG path.
+export function bandPath(rInMm, rOutMm, deg0, deg1, scale) {
+  const [x0, y0] = polar(rOutMm, deg0, scale);
+  const [x1, y1] = polar(rOutMm, deg1, scale);
+  const [x2, y2] = polar(rInMm, deg1, scale);
+  const [x3, y3] = polar(rInMm, deg0, scale);
+  const rOut = rOutMm * scale, rIn = rInMm * scale;
+  return `M${x0},${y0} A${rOut},${rOut} 0 0 1 ${x1},${y1} L${x2},${y2} A${rIn},${rIn} 0 0 0 ${x3},${y3} Z`;
+}
