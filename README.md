@@ -48,6 +48,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
   variants — straight from the browser, no manual TOML editing or CLI
   generator run needed for a single change
 - **TV / kiosk mode** (`/tv`): full-screen live view for wall-mounted displays and tablets, no navigation — X01 scoreboard (remaining score, checkout hint, dart boxes) or the live Elimination game, whichever is active
+- **Live dart positions** (`/tv`): a dartboard under the scores shows where each dart of the current turn landed, as numbered markers, in X01 and Elimination. Needs the local Autodarts board connection (`board_ws_url`); without it the board stays hidden
 - **Checkout suggestions**: standard X01 checkout path shown below the remaining score, with a distinct "Bogey — no checkout" badge for the handful of remaining scores that are in checkout range but have no valid 3-dart finish (169, 168, 166, 165, 163, 162, 159)
 - **Live session stats**: 3-dart average, 180s, checkout % shown next to each player during a match
 - **Lifetime statistics tab**: per-player averages, 180 / 140+ / 100+ counts, checkout & double-hit rates across all sessions; per-player reset with double confirmation
@@ -269,7 +270,7 @@ The live scoreboard itself (X01 and Elimination) lives on the separate
 | View | What it shows |
 |------|--------------|
 | **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
-| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise |
+| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn |
 | **Players** | Known players list — name, Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Stats** | Lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
 | **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
@@ -333,6 +334,12 @@ current status (ready / mid-takeout-or-calibration / stopped-or-disconnected),
 sourced from both the cloud and local board connections so it works during
 X01, Freeplay, and Elimination alike. It uses the same WebSocket connection
 as the rest of the app and reconnects automatically.
+
+A dartboard marks where each dart of the current turn landed: below the dart boxes in
+Elimination, in its own column on the right (about 40% of the width) in X01. The positions come from the local board connection
+(`board_ws_url`), so they show in every mode; the markers clear when the darts
+are taken out. A dart corrected in Breakfast moves to the center of the new field.
+Without that connection the board is hidden.
 
 #### Board controls (direct mode only)
 
@@ -815,6 +822,7 @@ breakfast26/
     ├── audio_engine.py            # Browser-based audio: play instructions over WebSocket
     ├── recorder.py                # Session recorder
     ├── board_status.py            # Board-status resolution shared by the cloud and local board connections
+    ├── board_darts.py             # Darts currently on the board (positions from the local board stream)
     ├── dev_demo.py                # Runtime-triggered X01/Elimination demo runs for the Settings Dev tab
     ├── output_console.py          # Console state printer
     ├── known_players.py           # Player roster/win-count helpers (thin wrapper over StatsDB)

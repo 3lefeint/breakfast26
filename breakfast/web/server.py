@@ -88,6 +88,7 @@ def _build_payload() -> dict:
     known_players = kp.load(_stats_db)
     return {
         "game": game_snap,
+        "board_darts": _game_state.board_darts.snapshot() if _game_state else None,
         "elimination": elim_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
@@ -102,6 +103,12 @@ def _build_payload() -> dict:
         "voicepack_generation": _voicepack_status,
         "dev_demo": _dev_demo.status() if _dev_demo else None,
     }
+
+
+def _move_board_dart(index: int, field: str):
+    """Show a corrected dart at the center of its new field."""
+    if _game_state and _game_state.board_darts.override(index, field):
+        push()
 
 
 async def _send_to(clients: set, data: dict):
@@ -330,6 +337,7 @@ async def control_correct_throw(body: CorrectThrowBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     _run_in_thread(lambda: _cloud_client.correct_throw(body.dart, body.field))
+    _move_board_dart(body.dart - 1, body.field)
     return {"ok": True}
 
 
@@ -397,6 +405,7 @@ async def elim_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _elim_ctrl and _elim_ctrl.game:
         _elim_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field)
     return {"ok": True}
 
 

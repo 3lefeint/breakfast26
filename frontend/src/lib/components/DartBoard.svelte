@@ -1,9 +1,11 @@
 <script>
-  // Clickable dartboard: a click turns into the same field string the
+  // Dartboard. By default a click turns into the same field string the
   // correction endpoints already accept (`T20`, `D16`, `25`, `50`, `0`).
+  // With `readonly` it only displays `darts` ({ n, x, y }, unit = outer edge
+  // of the double ring, y up) as numbered markers.
   import { SEGMENT_ORDER, RINGS_MM, fieldAtMm } from '../dartboard.js';
 
-  let { onSelect, disabled = false } = $props();
+  let { onSelect, disabled = false, readonly = false, darts = [] } = $props();
 
   const HALF = 200;           // viewBox is -200..200 on both axes
   const BOARD_R = 165;        // rendered radius of the double ring's outer edge
@@ -56,12 +58,12 @@
   }
 </script>
 
-<div class="board-wrap" class:disabled>
+<div class="board-wrap" class:disabled class:readonly>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <svg viewBox="{-HALF} {-HALF} {2 * HALF} {2 * HALF}" class="dartboard"
-       aria-label="Dartboard: click where the dart landed"
-       onclick={(e) => !disabled && onSelect(fieldFromEvent(e))}
-       onpointermove={(e) => { hover = disabled ? '' : fieldFromEvent(e); }}
+       aria-label={readonly ? 'Dartboard: darts on the board' : 'Dartboard: click where the dart landed'}
+       onclick={(e) => !readonly && !disabled && onSelect(fieldFromEvent(e))}
+       onpointermove={(e) => { hover = readonly || disabled ? '' : fieldFromEvent(e); }}
        onpointerleave={() => (hover = '')}>
     <circle r={BOARD_R + 4} fill="#0c0c0f" />
     {#each segments as s}
@@ -78,15 +80,25 @@
         <circle r={r * K} />
       {/each}
     </g>
+    {#each darts as d (d.n)}
+      <g class="dart" style="transform: translate({d.x * BOARD_R}px, {-d.y * BOARD_R}px)">
+        <circle r="12" />
+        <text class="dart-n">{d.n}</text>
+      </g>
+    {/each}
   </svg>
-  <div class="hover-label">{labelFor(hover) || ' '}</div>
+  {#if !readonly}<div class="hover-label">{labelFor(hover) || ' '}</div>{/if}
 </div>
 
 <style>
-  .board-wrap { display: flex; flex-direction: column; align-items: center; }
-  .dartboard { width: 100%; max-width: 380px; height: auto; cursor: crosshair; touch-action: manipulation; }
+  .board-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .dartboard { width: 100%; max-width: var(--board-max, 380px); height: auto; cursor: crosshair; touch-action: manipulation; }
   .disabled .dartboard { cursor: default; opacity: 0.4; }
+  .readonly .dartboard { cursor: default; }
   .num { fill: var(--muted); font-size: 16px; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
   .wires circle { stroke: rgba(255, 255, 255, 0.18); stroke-width: 0.6; pointer-events: none; }
+  .dart { transition: transform 0.25s ease-out; pointer-events: none; }
+  .dart circle { fill: var(--accent); stroke: #0c0c0f; stroke-width: 1.5; }
+  .dart-n { fill: #0c0c0f; font-size: 14px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
   .hover-label { margin-top: 0.3rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2em; }
 </style>

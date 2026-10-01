@@ -124,3 +124,30 @@ class TestHandleBoardMessage:
             {"numThrows": 0, "throws": []}, state, None, None, audio, prev_count=3)
         assert new_count == 0
         assert audio.calls == []
+
+
+class TestBoardDartsFromBoardStream:
+    def _connected_state(self):
+        state = GameState()
+        state.board_darts.set_connected(True)
+        return state
+
+    def test_darts_are_tracked_in_freeplay(self):
+        state = self._connected_state()
+        throws = [{"segment": {"name": "T1"}, "coords": {"x": 0.16, "y": 0.58}}]
+        _handle_board_message({"numThrows": 1, "throws": throws}, state, None, None, None, prev_count=0)
+        assert state.board_darts.snapshot() == [{"n": 1, "x": 0.16, "y": 0.58}]
+
+    def test_darts_are_tracked_while_a_match_is_running(self):
+        state = self._connected_state()
+        state.match_started = True
+        throws = [{"segment": {"name": "T1"}, "coords": {"x": 0.16, "y": 0.58}}]
+        _handle_board_message({"numThrows": 1, "throws": throws}, state, None, None, None, prev_count=0)
+        assert state.board_darts.snapshot() == [{"n": 1, "x": 0.16, "y": 0.58}]
+
+    def test_takeout_clears_the_darts(self):
+        state = self._connected_state()
+        throws = [{"segment": {"name": "T1"}, "coords": {"x": 0.16, "y": 0.58}}]
+        _handle_board_message({"numThrows": 1, "throws": throws}, state, None, None, None, prev_count=0)
+        _handle_board_message({"numThrows": 0, "throws": []}, state, None, None, None, prev_count=1)
+        assert state.board_darts.snapshot() == []

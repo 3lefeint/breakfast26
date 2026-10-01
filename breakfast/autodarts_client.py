@@ -27,7 +27,7 @@ _LOGIN_URL = "https://api.autodarts.io/auth/v1/login"
 _REFRESH_URL = "https://api.autodarts.io/auth/v1/refresh"
 
 # Center of every field in Autodarts' board coordinates, used by correct_throw()
-# to PATCH a throw.
+# to PATCH a throw and by board_darts to place a corrected dart.
 _FIELD_COORDS: dict[str, dict] = field_centers()
 
 

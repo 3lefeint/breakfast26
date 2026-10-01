@@ -79,11 +79,11 @@
   <div id="idle">Waiting for match…</div>
 {:else if view === 'x01'}
   <div id="active">
-    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} />
+    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_darts} />
   </div>
 {:else if view === 'elim-live'}
   <div id="activeElim">
-    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} />
+    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_darts} />
   </div>
 {:else if view === 'elim-finished'}
   <EliminationFinishedTv elimination={$elimination} />

@@ -10,9 +10,10 @@
   import WinBadge from '../../lib/components/WinBadge.svelte';
   import LivesDisplay from '../../lib/components/LivesDisplay.svelte';
   import Crown from '../../lib/components/Crown.svelte';
+  import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
-  let { elimination, winsFor } = $props();
+  let { elimination, winsFor, boardDarts = null } = $props();
 
   let darts = $derived(elimination.current_darts || []);
   let total = $derived(darts.reduce((a, b) => a + b, 0));
@@ -57,6 +58,9 @@
       </button>
     {/each}
   </div>
+  {#if boardDarts}
+    <div class="live-board"><DartBoard readonly darts={boardDarts} /></div>
+  {/if}
   <div class="elim-target-row">
     <span class="elim-target-label">Target</span>
     <span class="elim-target-value">{elimination.target != null ? elimination.target + 1 : '—'}</span>
@@ -119,6 +123,7 @@
   .dart-box .dlabel { font-size: clamp(0.6rem, 0.9vw, 1rem); color: var(--muted); margin-bottom: 2px; }
   .dart-box .dval { font-size: clamp(1.2rem, 2.5vw, 3rem); font-weight: 800; }
   .dart-box.miss .dval { color: var(--red); }
+  .live-board { --board-max: min(360px, 32vh); margin-top: 1rem; display: flex; justify-content: center; }
   .elim-target-row { display: flex; align-items: baseline; gap: 0.6em; margin-top: 1rem; }
   .elim-target-label { font-size: clamp(0.75rem, 1.3vw, 1.1rem); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
   .elim-target-value {

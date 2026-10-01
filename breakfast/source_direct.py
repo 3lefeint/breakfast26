@@ -48,6 +48,10 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count):
     count = data.get("numThrows", 0)
     throws = data.get("throws") or []
 
+    if state.board_darts.update(throws if count else []):
+        from breakfast.web import server as web
+        web.push()
+
     if state.match_started:
         return count
 
@@ -87,13 +91,21 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
         prev_count = _handle_board_message(
             msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count)
 
+    def set_connected(connected):
+        if state.board_darts.set_connected(connected):
+            from breakfast.web import server as web
+            web.push()
+
     def run():
         while True:
             try:
-                ws = websocket.WebSocketApp(board_ws_url, on_message=on_message)
+                ws = websocket.WebSocketApp(
+                    board_ws_url, on_message=on_message,
+                    on_open=lambda ws: set_connected(True))
                 ws.run_forever()
             except Exception as e:
                 log.warning("Board WS error: %s", e)
+            set_connected(False)
             time.sleep(3)
 
     threading.Thread(target=run, daemon=True).start()

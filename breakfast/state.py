@@ -1,6 +1,8 @@
 import logging
 from copy import deepcopy
 
+from breakfast.board_darts import BoardDarts
+
 log = logging.getLogger(__name__)
 
 
@@ -30,6 +32,8 @@ def _safe_player_name(raw):
 
 class GameState:
     def __init__(self):
+        # Lives outside reset(): it follows the local board stream, not the match.
+        self.board_darts = BoardDarts()
         self.reset()
 
     def reset(self):
