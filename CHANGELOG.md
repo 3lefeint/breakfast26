@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- The Home pages scroll anywhere in the window and use a wider content column.
+
 ## [0.5.0] - 2026-10-01
 
 ### Added

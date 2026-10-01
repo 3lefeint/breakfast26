@@ -57,17 +57,19 @@
 {/if}
 
 <main>
-  {#if $route === 'elimination'}
-    <Elimination />
-  {:else if $route === 'players'}
-    <Players />
-  {:else if $route === 'stats'}
-    <Stats />
-  {:else if $route === 'settings'}
-    <Settings />
-  {:else}
-    <Home />
-  {/if}
+  <div class="page">
+    {#if $route === 'elimination'}
+      <Elimination />
+    {:else if $route === 'players'}
+      <Players />
+    {:else if $route === 'stats'}
+      <Stats />
+    {:else if $route === 'settings'}
+      <Settings />
+    {:else}
+      <Home />
+    {/if}
+  </div>
 </main>
 
 <footer>
@@ -86,7 +88,9 @@
      flex-column page layout has to target #app instead of body.
      #app is pinned to exactly one viewport tall (not min-height) so
      header/footer never move — only <main> scrolls internally when its
-     content is taller than the space between them. */
+     content is taller than the space between them. <main> spans the whole
+     window so the wheel works anywhere and the scrollbar sits at the window
+     edge; the content is centred in .page. */
   :global(#app) {
     height: 100vh;
     display: flex;
@@ -100,10 +104,12 @@
     min-height: 0;
     overflow-y: auto;
     width: 100%;
-    max-width: 720px;
+    font-family: system-ui, sans-serif;
+  }
+  .page {
+    max-width: 1100px;
     margin: 0 auto;
     padding: 1.5rem 1.25rem;
-    font-family: system-ui, sans-serif;
   }
   footer {
     display: flex; align-items: center; justify-content: space-between;
