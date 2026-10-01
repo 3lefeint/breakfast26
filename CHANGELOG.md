@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-01
+
 ### Added
 - TV view: dart boxes and the live dartboard while no match is running (#13).
 - X01: tapping a dart box opens the correction dialog.
