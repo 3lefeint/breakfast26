@@ -276,6 +276,7 @@
     // Checkboxes — always included.
     (updates.logging ??= {}).events = cfg.logging.events;
     (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
+    (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
     for (const key of ['enabled', 'per_dart', 'turn_total', 'announce_change', 'call_player', 'call_misses']) {
       (updates.caller ??= {})[key] = cfg.caller[key];
     }
@@ -476,6 +477,11 @@
         </select>
       </div>
       <div class="settings-row"><label for="sWebAccent">Custom accent color</label><input type="text" id="sWebAccent" placeholder="#7c6aff (overrides theme)" bind:value={cfg.web.accent_color}></div>
+      <div class="settings-row">
+        <label for="sWebJoke">Joke of the day</label>
+        <input type="checkbox" id="sWebJoke" bind:checked={cfg.web.joke_of_the_day}>
+      </div>
+      <p class="note">The About page fetches the joke from icanhazdadjoke.com. Switch it off to make no outbound request.</p>
     </div>
 
     <div class="settings-section">

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- About page behind an ℹ️ button in the footer: version, release time, joke of the day and changelog; `[web] joke_of_the_day` turns the joke off (#11).
+
+### Changed
+- The release date is a UTC timestamp, the footer shows only the version (#11).
+
 ## [0.6.0] - 2026-10-02
 
 ### Added

@@ -18,6 +18,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
+COPY CHANGELOG.md .
 COPY breakfast/ ./breakfast/
 COPY tools/ ./tools/
 COPY --from=frontend-builder /frontend/dist ./breakfast/web/dist

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { connect, wsStatus } from '../lib/stores/gameState.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
-  import { route } from '../lib/router.js';
+  import { route, navigate } from '../lib/router.js';
   import AppHeader from '../lib/components/AppHeader.svelte';
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
   import Home from './views/Home.svelte';
@@ -10,6 +10,7 @@
   import Players from './views/Players.svelte';
   import Stats from './views/Stats.svelte';
   import Settings from './views/Settings.svelte';
+  import About from './views/About.svelte';
 
   onMount(() => {
     connect();
@@ -66,6 +67,8 @@
       <Stats />
     {:else if $route === 'settings'}
       <Settings />
+    {:else if $route === 'about'}
+      <About />
     {:else}
       <Home />
     {/if}
@@ -78,7 +81,10 @@
     <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">MQTT</span></span>
     <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">Autodarts</span></span>
   </span>
-  <button type="button" class="version-info" onclick={onVersionTap}>{$health.version ? `v${$health.version} · ${$health.releaseDate}` : ''}</button>
+  <span class="version-group">
+    <button type="button" class="version-info" onclick={onVersionTap}>{$health.version ? `v${$health.version}` : ''}</button>
+    <button type="button" class="about-btn" aria-label="About" title="About" onclick={() => navigate('about')}>ℹ️</button>
+  </span>
 </footer>
 
 <style>
@@ -120,8 +126,11 @@
   .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 5px; transition: background 0.3s; }
   .conn-dot.ok { background: var(--green); }
   .conn-label { font-size: 0.8rem; color: var(--muted); }
+  .version-group { display: flex; align-items: center; gap: 0.5rem; }
   .version-info {
     color: var(--muted); cursor: pointer; user-select: none;
     background: none; border: none; padding: 0; font: inherit;
   }
+  .about-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; opacity: 0.7; line-height: 1; }
+  .about-btn:hover { opacity: 1; }
 </style>

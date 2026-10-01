@@ -45,6 +45,7 @@ base_topic = "autodarts"
 port = 8080
 # theme = "default"         # "default", "ocean", "sunset", or "forest"
 # accent_color = "#7c6aff"  # custom hex color, overrides the theme's accent
+# joke_of_the_day = true    # About page: joke from icanhazdadjoke.com; false = no outbound call
 
 # ── Statistics (SQLite) ───────────────────────────────────────────────────────
 # Per-turn data is stored here; lifetime and session stats are derived from it.

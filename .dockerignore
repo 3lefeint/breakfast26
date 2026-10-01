@@ -15,7 +15,6 @@ config.toml
 
 # Docs, not needed inside the image
 README.md
-CHANGELOG.md
 systemd/
 ESPHome/
 HomeAssistant/

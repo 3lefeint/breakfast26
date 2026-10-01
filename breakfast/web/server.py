@@ -19,6 +19,8 @@ from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
 from breakfast import config as cfg_mod
+from breakfast import changelog as changelog_mod
+from breakfast import joke as joke_mod
 from breakfast import known_players as kp
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
@@ -45,6 +47,7 @@ _stats_db = None
 _mqtt_pub = None
 _start_time: float = time.time()
 _config_path: str | None = None
+_CHANGELOG_PATH = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
 _audio_engine = None
 _board_manager_url: str | None = None
 _voicepack_status = {"running": False, "done": 0, "skipped": 0, "total": 0, "error": None}
@@ -219,6 +222,25 @@ async def get_sound(filename: str, v: str | None = None):
 @app.get("/api/state")
 async def get_state():
     return _build_payload()
+
+
+@app.get("/api/changelog")
+async def get_changelog():
+    """CHANGELOG.md as versions with their sections, for the About page."""
+    try:
+        text = _CHANGELOG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return {"versions": []}
+    return {"versions": changelog_mod.parse_changelog(text)}
+
+
+@app.get("/api/joke")
+async def get_joke():
+    """Joke of the day; `[web] joke_of_the_day = false` turns it off and makes no outbound call."""
+    raw = cfg_mod.load(_config_path) if _config_path else {}
+    if not raw.get("web", {}).get("joke_of_the_day", True):
+        return {"enabled": False, "joke": None, "source": None}
+    return {"enabled": True, **await asyncio.to_thread(joke_mod.joke_of_the_day)}
 
 
 @app.get("/api/health")
@@ -560,6 +582,7 @@ async def get_config():
             "port":         web.get("port", 8080),
             "theme":        web.get("theme", "default"),
             "accent_color": web.get("accent_color"),
+            "joke_of_the_day": web.get("joke_of_the_day", True),
         },
         "direct": _mask({
             "email":         direct.get("email"),

@@ -72,6 +72,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - Config file — no long CLI commands needed in production
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
 - **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories (the voice-pack profile is picked from a dropdown of the installed profiles)
+- **About page**: the ℹ️ button in the footer opens the running version, its release time (UTC), a joke of the day (icanhazdadjoke.com, cached per day, a built-in joke if the request fails; `[web] joke_of_the_day = false` turns it off and makes no outbound call) and the changelog
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
 - **Per-player stats** (Stats tab, X01 and Elimination chips): activity and records, and for X01 a score histogram, board heatmap, bust rate, win/loss, average and checkout % per match, doubles and the Top 10 legs (by starting score) and checkouts
 - **Modern Web UI**: Svelte 5 + Vite frontend (built to static assets, no client-side framework runtime overhead), dark-mode with swappable accent colors
@@ -159,6 +160,7 @@ password = "mqtt"
 
 [web]
 port = 8080
+# joke_of_the_day = true   # About page fetches a joke from icanhazdadjoke.com; false = no outbound call
 
 # [stats]
 # db = "stats.db"       # SQLite file for per-turn data; "none" to disable
@@ -418,7 +420,7 @@ curl http://localhost:8080/api/health
 ```json
 {
   "version": "0.3.0",
-  "release_date": "2026-08-18",
+  "release_date": "2026-08-18T10:00:00Z",
   "uptime_s": 3742,
   "mqtt": { "connected": true },
   "autodarts": {
@@ -432,7 +434,7 @@ curl http://localhost:8080/api/health
 }
 ```
 
-The Web UI footer shows two coloured dots (MQTT and Autodarts) that poll `/api/health` every 30 seconds — green = connected, red = disconnected — alongside the app version and release date.
+The Web UI footer shows two coloured dots (MQTT and Autodarts) that poll `/api/health` every 30 seconds — green = connected, red = disconnected — alongside the app version and an ℹ️ button that opens the About page.
 
 Useful for a systemd `ExecStartPost` health check:
 
@@ -687,6 +689,8 @@ The web server exposes a REST API alongside the WebSocket.
 |--------|------|-------------|
 | `GET` | `/api/state` | Full app state snapshot (same payload pushed over `/ws`) |
 | `GET` | `/api/health` | Service health (uptime, MQTT/WS state, stats-db enabled) |
+| `GET` | `/api/changelog` | `CHANGELOG.md` as versions with their sections, for the About page; `[Unreleased]` only if it has entries |
+| `GET` | `/api/joke` | Joke of the day (cached per day, built-in fallback); `{"enabled": false}` and no outbound call if `[web] joke_of_the_day = false` |
 | `GET` | `/api/board-address` | Local Autodarts board manager URL, for the Home hub's Board card |
 | `GET` | `/api/sound/{filename}` | Serves one voice-pack sound file (used by `/audio`) |
 

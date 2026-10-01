@@ -100,7 +100,7 @@
     <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">MQTT</span></span>
     <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">Autodarts</span></span>
   </span>
-  <span class="version-info">{$health.version ? `v${$health.version} · ${$health.releaseDate}` : ''}</span>
+  <span class="version-info">{$health.version ? `v${$health.version} · ${($health.releaseDate ?? '').slice(0, 10)}` : ''}</span>
 </footer>
 
 <style>
