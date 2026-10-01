@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-02
+
 ### Added
 - Stats tab, X01 view: overview, records, players compared and per-player charts, top 10 legs and checkouts (#14).
 - Stats tab, Elimination view: overview and records, placements, form, head to head, game length and activity (#14).
