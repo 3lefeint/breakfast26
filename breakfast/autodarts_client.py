@@ -751,14 +751,22 @@ class AutodartsCloudClient:
         if busted and not self._is_game_finished:
             self._last_points = "B"
             self._prev_throws_count = n
-            game_data = {"mode": m.get("variant"), "busted": "True"}
+            # A bust resets the score to the turn's start, so `remaining` is the
+            # score before the turn. The busting dart travels with the event
+            # because there is no dart{n}-thrown event for it.
+            game_data = {"mode": m.get("variant"), "busted": "True",
+                         "pointsBeforeTurn": str(remaining)}
             if throws:
                 seg = throws[-1].get("segment", {})
+                number = int(seg.get("number", 0) or 0)
+                multiplier = int(seg.get("multiplier", 0) or 0)
                 game_data.update({
                     "field_name": str(seg.get("name", "")).lower(),
                     "field_number": seg.get("number"),
                     "field_multiplier": seg.get("multiplier"),
                     "type": str(seg.get("bed", "")).lower(),
+                    "dartNumber": str(n),
+                    "dartValue": str(number * multiplier),
                 })
             self._emit({**common, "event": "busted", "game": game_data})
             return

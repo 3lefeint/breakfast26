@@ -122,7 +122,7 @@
   <div class="card top uni">
     <div class="card-title">Bust rate</div>
     <div class="middle"><BustBands bands={bust.bands} /></div>
-    <div class="card-note">Busts on the first dart of a turn are not recorded yet, so these rates are a lower bound.</div>
+    <div class="card-note">Games from before the fix miss the bust dart itself and busts on the first dart, so their rates are a lower bound.</div>
   </div>
   <div class="two">
     <div class="card uni">

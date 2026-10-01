@@ -19,8 +19,16 @@ def ev_darts_pulled(player="alice"):
     return {"event": "darts-pulled", "player": player, "game": {}}
 
 
-def ev_busted(player="alice"):
-    return {"event": "busted", "player": player, "game": {}}
+def ev_busted(player="alice", number=None, value=0, field="S20", before=None):
+    """busted: without `number` it is the older event that only carries the bust flag;
+    with it, the busting dart (its number in the turn, value, field) and the score
+    before the turn, like the Autodarts client sends it."""
+    game = {}
+    if number is not None:
+        game = {"dartNumber": str(number), "dartValue": str(value), "field_name": field.lower()}
+        if before is not None:
+            game["pointsBeforeTurn"] = str(before)
+    return {"event": "busted", "player": player, "game": game}
 
 
 def ev_game_won(player="alice"):
@@ -104,6 +112,63 @@ class TestStatsTracker:
         rows = _db_turns(db)
         assert rows[0]["is_bust"] == 1
         assert rows[0]["score"] == 0
+
+    def test_bust_on_the_third_dart_stores_all_three_darts(self, tracker, db):
+        tracker.process(ev_match_started(pts=60))
+        tracker.process(ev_dart(1, 20, 40, field="S20"))
+        tracker.process(ev_dart(2, 19, 21, field="S19"))
+        tracker.process(ev_busted(number=3, value=60, field="T20", before=60))
+        tracker.process(ev_darts_pulled())
+        (row,) = _db_turns(db)
+        assert row["is_bust"] == 1 and row["score"] == 0 and row["darts_count"] == 3
+        assert (row["dart3"], row["dart3_val"], row["dart3_rem"]) == ("T20", 60, 21 - 60)
+        assert row["remaining_before"] == 60
+
+    def test_bust_on_the_second_dart_stores_two_darts(self, tracker, db):
+        tracker.process(ev_match_started(pts=60))
+        tracker.process(ev_dart(1, 20, 40, field="S20"))
+        tracker.process(ev_busted(number=2, value=50, field="BULL", before=60))
+        tracker.process(ev_darts_pulled())
+        (row,) = _db_turns(db)
+        assert row["is_bust"] == 1 and row["darts_count"] == 2
+        assert (row["dart2"], row["dart2_val"]) == ("BULL", 50)
+
+    def test_bust_on_the_first_dart_still_stores_the_turn(self, tracker, db):
+        tracker.process(ev_match_started(pts=40))
+        tracker.process(ev_busted(number=1, value=60, field="T20", before=40))
+        tracker.process(ev_darts_pulled())
+        (row,) = _db_turns(db)
+        assert row["is_bust"] == 1 and row["score"] == 0 and row["darts_count"] == 1
+        assert row["remaining_before"] == 40
+        assert (row["dart1"], row["dart1_val"], row["dart1_rem"]) == ("T20", 60, 40 - 60)
+
+    def test_a_repeated_busted_event_does_not_store_the_dart_twice(self, tracker, db):
+        tracker.process(ev_match_started(pts=40))
+        tracker.process(ev_busted(number=1, value=60, field="T20", before=40))
+        tracker.process(ev_busted(number=1, value=60, field="T20", before=40))
+        tracker.process(ev_darts_pulled())
+        tracker.process(ev_match_started(match_id="m2", pts=60))
+        tracker.process(ev_dart(1, 20, 40, field="S20", player="alice"))
+        tracker.process(ev_busted(number=2, value=60, field="T20", before=60))
+        tracker.process(ev_busted(number=2, value=60, field="T20", before=60))
+        tracker.process(ev_darts_pulled())
+        assert [r["darts_count"] for r in _db_turns(db, "m1")] == [1]
+        assert [r["darts_count"] for r in _db_turns(db, "m2")] == [2]
+
+    def test_a_bust_counts_its_dart_in_the_session_stats(self, tracker, db):
+        tracker.process(ev_match_started(pts=40))
+        tracker.process(ev_busted(number=1, value=60, field="T20", before=40))
+        tracker.process(ev_darts_pulled())
+        assert tracker.session_stats["alice"]["total_darts"] == 1
+        assert tracker.session_stats["alice"]["total_score"] == 0
+
+    def test_a_first_dart_bust_does_not_swallow_the_next_turn(self, tracker, db):
+        tracker.process(ev_match_started(pts=40))
+        tracker.process(ev_busted(player="alice", number=1, value=60, field="T20", before=40))
+        tracker.process(ev_darts_pulled(player="alice"))
+        tracker.process(ev_dart(1, 20, 20, field="S20", player="bob"))
+        tracker.process(ev_darts_pulled(player="bob"))
+        assert [(r["player"], r["is_bust"]) for r in _db_turns(db)] == [("alice", 1), ("bob", 0)]
 
     def test_game_won_increments_leg(self, tracker, db):
         tracker.process(ev_match_started())

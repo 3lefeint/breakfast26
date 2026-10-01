@@ -294,3 +294,39 @@ class TestCorrectThrow:
         _start_match(client)
         client.correct_throw(1, "20")
         assert calls == []
+
+
+class TestBustedEvent:
+    """The event for the dart that busts carries that dart and the score before the turn."""
+
+    @staticmethod
+    def _state(darts, remaining, busted=False):
+        seg = {"S20": ("S20", 20, 1), "T20": ("T20", 20, 3), "D20": ("D20", 20, 2)}
+        throws = [{"segment": {"name": seg[d][0], "number": seg[d][1], "multiplier": seg[d][2], "bed": "x"}}
+                  for d in darts]
+        points = sum(seg[d][1] * seg[d][2] for d in darts)
+        return {"variant": "X01", "players": [{"name": "Alice"}], "player": 0, "gameScores": [remaining],
+                "turns": [{"throws": throws, "points": points, "busted": busted}],
+                "settings": {"baseScore": 501}, "winner": -1, "gameWinner": -1}
+
+    def _run(self, states):
+        events = []
+        client = _make_client(events)
+        for state in states:
+            client._process_x01(state)
+        return events
+
+    def test_bust_on_the_second_dart(self):
+        events = self._run([
+            self._state(["S20"], 12),                                  # 32 before the turn
+            self._state(["S20", "T20"], 32, busted=True),              # the score is reset to 32
+        ])
+        busted = [e for e in events if e["event"] == "busted"][0]["game"]
+        assert busted["dartNumber"] == "2" and busted["dartValue"] == "60"
+        assert busted["field_name"] == "t20" and busted["pointsBeforeTurn"] == "32"
+
+    def test_bust_on_the_first_dart(self):
+        events = self._run([self._state(["T20"], 32, busted=True)])
+        assert [e["event"] for e in events] == ["busted"]
+        game = events[0]["game"]
+        assert game["dartNumber"] == "1" and game["dartValue"] == "60" and game["pointsBeforeTurn"] == "32"

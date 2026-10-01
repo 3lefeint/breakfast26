@@ -5,6 +5,9 @@
 ### Added
 - About page behind an ℹ️ button in the footer: version, release time, joke of the day and changelog; `[web] joke_of_the_day` turns the joke off (#11).
 
+### Fixed
+- The dart that busts is stored, and a bust on the first dart no longer loses the turn (#16).
+
 ### Changed
 - The release date is a UTC timestamp, the footer shows only the version (#11).
 

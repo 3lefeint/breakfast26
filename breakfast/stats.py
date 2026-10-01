@@ -1378,9 +1378,8 @@ class StatsTracker:
                 prev_rem = self._buf["darts"][-1][2]
                 self._buf["darts"].append((field, dv, prev_rem - dv))
 
-        elif ev == "busted":
-            if self._buf:
-                self._buf["is_bust"] = True
+        elif ev == "busted" and self._is_x01():
+            self._on_bust(player, game)
 
         elif ev == "darts-pulled":
             self._flush_turn()
@@ -1413,6 +1412,35 @@ class StatsTracker:
                 self._db.close_match(self._match_id)
 
     # ── internal ─────────────────────────────────────────────────────────────
+
+    def _on_bust(self, player, game):
+        """Marks the turn as a bust and stores the dart that busted. That dart has
+        no dart{n}-thrown event; the busted event carries it. A bust on the first
+        dart starts the turn, since no buffer exists yet. The same event can
+        arrive more than once, a dart already stored is not added again."""
+        if self._buf and player and self._buf["player"] != player:
+            self._flush_turn()
+        field = (game.get("fieldName") or game.get("field_name") or "").upper()
+        try:
+            number = int(game.get("dartNumber"))
+            value = int(game.get("dartValue"))
+        except (TypeError, ValueError):
+            number = value = None          # an older recording: only the bust flag is known
+        if self._buf is None and number == 1 and player:
+            try:
+                before = int(game.get("pointsBeforeTurn"))
+            except (TypeError, ValueError):
+                before = None
+            if before is not None:
+                self._buf = {"player": player, "leg": self._leg, "remaining_before": before,
+                             "is_bust": True, "darts": [(field, value, before - value)]}
+                return
+        if not self._buf:
+            return
+        self._buf["is_bust"] = True
+        darts = self._buf["darts"]
+        if number == len(darts) + 1:
+            darts.append((field, value, darts[-1][2] - value))
 
     def _is_x01(self) -> bool:
         return "01" in self._game_mode or self._game_mode == "Random Checkout"
