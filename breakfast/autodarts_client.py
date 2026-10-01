@@ -26,6 +26,15 @@ _MATCHES_URL = "https://api.autodarts.io/gs/v0/matches/"
 _LOGIN_URL = "https://api.autodarts.io/auth/v1/login"
 _REFRESH_URL = "https://api.autodarts.io/auth/v1/refresh"
 
+def _position_fields(throw: dict) -> dict:
+    """Where a dart landed (`coords`) and how Autodarts got it (`entry`, "detected" for a
+    dart the cameras found), for the dart events. Empty if the throw carries no position."""
+    coords = throw.get("coords")
+    if not (isinstance(coords, dict) and "x" in coords and "y" in coords):
+        return {}
+    return {"coords": {"x": coords["x"], "y": coords["y"]}, "entry": throw.get("entry")}
+
+
 # Center of every field in Autodarts' board coordinates, used by correct_throw()
 # to PATCH a throw and by board_darts to place a corrected dart.
 _FIELD_COORDS: dict[str, dict] = field_centers()
@@ -251,6 +260,7 @@ class AutodartsCloudClient:
                 "fieldNumber": seg.get("number"),
                 "fieldMultiplier": seg.get("multiplier", 0),
                 "type": str(seg.get("bed", "")).lower(),
+                **_position_fields(throws[n - 1]),
             },
         })
 
@@ -767,6 +777,7 @@ class AutodartsCloudClient:
                     "type": str(seg.get("bed", "")).lower(),
                     "dartNumber": str(n),
                     "dartValue": str(number * multiplier),
+                    **_position_fields(throws[-1]),
                 })
             self._emit({**common, "event": "busted", "game": game_data})
             return
@@ -807,6 +818,7 @@ class AutodartsCloudClient:
                         "fieldNumber": number,
                         "fieldMultiplier": multiplier,
                         "type": str(seg.get("bed", "")).lower(),
+                        **_position_fields(throw_data),
                     },
                 })
             if n == 3:

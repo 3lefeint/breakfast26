@@ -9,6 +9,7 @@
   import Donut from './Donut.svelte';
   import TrendLine from './TrendLine.svelte';
   import DartHeatmap from './DartHeatmap.svelte';
+  import PositionHeatmap from './PositionHeatmap.svelte';
   import BustBands from './BustBands.svelte';
   import DoublesRadar from './DoublesRadar.svelte';
   import RankBars from './RankBars.svelte';
@@ -20,6 +21,7 @@
   let selected = $state('');
   let data = $state(null);
   let error = $state(false);
+  let heatView = $state(null);   // 'fields' or 'positions'; null: positions once there are enough
 
   let names = $derived([...new Set(players)].sort());
 
@@ -102,6 +104,8 @@
     <div class="middle"><Histogram bins={data.score_histogram.bins} mean={data.score_histogram.avg3} /></div>
   </div>
   {@const h = hitStats(data.dart_hits)}
+  {@const pos = data.dart_positions}
+  {@const view = heatView ?? (pos.darts.length >= 20 ? 'positions' : 'fields')}
   <div class="board-row top">
     <div class="side">
       <div class="tiles two-tiles">
@@ -109,8 +113,20 @@
         <div class="tile"><div class="label">Missed the board</div><div class="value">{h.missRate.toFixed(0)}%</div></div>
       </div>
       <div class="card">
-        <div class="card-title">Heatmap</div>
-        <DartHeatmap fields={data.dart_hits.fields} misses={data.dart_hits.misses} darts={data.dart_hits.darts} />
+        <div class="card-title heat-title">
+          <span>Heatmap</span>
+          {#if pos.darts.length}
+            <span class="heat-switch">
+              <button type="button" class="mode-tab" class:active={view === 'fields'} onclick={() => (heatView = 'fields')}>Fields</button>
+              <button type="button" class="mode-tab" class:active={view === 'positions'} onclick={() => (heatView = 'positions')}>Positions</button>
+            </span>
+          {/if}
+        </div>
+        {#if view === 'positions'}
+          <PositionHeatmap darts={pos.darts} corrected={pos.corrected} />
+        {:else}
+          <DartHeatmap fields={data.dart_hits.fields} misses={data.dart_hits.misses} darts={data.dart_hits.darts} />
+        {/if}
       </div>
     </div>
     <div class="side">
@@ -214,6 +230,9 @@
   .middle > :global(.donut) { align-self: stretch; }
   .middle > :global(.radar) { align-self: stretch; }
   .card-title { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.5rem; }
+  .heat-title { display: flex; align-items: center; justify-content: space-between; }
+  .heat-switch { display: flex; gap: 0.3rem; }
+  .heat-switch .mode-tab { padding: 0.15rem 0.6rem; font-size: 0.75rem; }
   .card-note { font-size: 0.7rem; color: var(--muted); margin-top: 0.4rem; }
   .mode-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
   .mode-tab { background: var(--bg); border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 0.3rem 0.8rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }

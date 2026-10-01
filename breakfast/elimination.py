@@ -321,7 +321,22 @@ class EliminationGame:
         to_beat = 0 if self.freipass else self.target
         self.stats_db.insert_elimination_turn(
             self.match_id, player, darts_count, score=score, target=to_beat,
-            freipass=self.freipass, passed=score > to_beat, lives_before=self.lives[player])
+            freipass=self.freipass, passed=score > to_beat, lives_before=self.lives[player],
+            positions=self._dart_positions())
+
+    def _dart_positions(self):
+        """Where each dart of the turn landed, None for a dart without a position (one
+        corrected by tapping carries none)."""
+        positions = []
+        for throw in self._last_throws:
+            coords = throw.get("coords")
+            if isinstance(coords, dict) and "x" in coords and "y" in coords:
+                positions.append({"field": (throw.get("segment") or {}).get("name"),
+                                  "x": float(coords["x"]), "y": float(coords["y"]),
+                                  "entry": throw.get("entry")})
+            else:
+                positions.append(None)
+        return positions
 
     def _apply_turn(self, player, score, silent=False):
         passes = score > (0 if self.freipass else self.target)

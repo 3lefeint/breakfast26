@@ -11,6 +11,8 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
+from breakfast.dartboard import field_centers
+
 log = logging.getLogger(__name__)
 
 _SCHEMA = """
@@ -68,7 +70,23 @@ CREATE TABLE IF NOT EXISTS elimination_turns (
     passed      INTEGER,
     lives_before INTEGER
 );
+CREATE TABLE IF NOT EXISTS dart_positions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id    TEXT    NOT NULL,
+    game_mode   TEXT    NOT NULL,
+    player      TEXT    NOT NULL,
+    leg         INTEGER NOT NULL DEFAULT 1,
+    turn        INTEGER NOT NULL,
+    dart_number INTEGER NOT NULL,
+    field       TEXT,
+    x           REAL    NOT NULL,
+    y           REAL    NOT NULL,
+    entry       TEXT,
+    corrected   INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_turns_player ON turns (player);
+CREATE INDEX IF NOT EXISTS idx_dart_positions_player ON dart_positions (player);
+CREATE INDEX IF NOT EXISTS idx_dart_positions_match  ON dart_positions (match_id);
 CREATE INDEX IF NOT EXISTS idx_turns_match  ON turns (match_id);
 CREATE INDEX IF NOT EXISTS idx_legs_match   ON legs  (match_id);
 CREATE INDEX IF NOT EXISTS idx_elim_results_match ON elimination_results (match_id);
@@ -92,8 +110,32 @@ _SOLO_X01_SQL = (
 )
 
 
+_FIELD_CENTERS = field_centers()
+
+
+def _is_corrected(field, x, y, entry) -> bool:
+    """A dart sits on the exact center of its field, or Autodarts says it was not
+    detected, when it was set by a correction — its position is not where the dart landed."""
+    if entry not in (None, "", "detected"):
+        return True
+    key = {"BULL": "50"}.get((field or "").upper(), (field or "").upper())
+    center = _FIELD_CENTERS.get(key)
+    return bool(center) and abs(center["x"] - x) < 1e-6 and abs(center["y"] - y) < 1e-6
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _position(game: dict):
+    """{x, y, entry} from a dart event's coords, or None if it carries none."""
+    coords = game.get("coords")
+    if isinstance(coords, dict):
+        try:
+            return {"x": float(coords["x"]), "y": float(coords["y"]), "entry": game.get("entry")}
+        except (KeyError, TypeError, ValueError):
+            pass
+    return None
 
 
 def _safe_name(raw) -> str | None:
@@ -307,6 +349,12 @@ class StatsDB:
                 (match_id, player),
             ).fetchone()
             if row:
+                turn = self._conn.execute(
+                    "SELECT COUNT(*) FROM elimination_turns WHERE match_id = ? AND player = ?",
+                    (match_id, player)).fetchone()[0]
+                self._conn.execute(
+                    "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'Elimination'"
+                    " AND player = ? AND turn = ?", (match_id, player, turn))
                 self._conn.execute(
                     "DELETE FROM elimination_turns WHERE id = ?", (row["id"],)
                 )
@@ -326,9 +374,10 @@ class StatsDB:
     def insert_elimination_turn(self, match_id: str, player: str, darts_count: int,
                                 score: int | None = None, target: int | None = None,
                                 freipass: bool | None = None, passed: bool | None = None,
-                                lives_before: int | None = None):
+                                lives_before: int | None = None, positions=None):
         """`target` is the score this turn had to beat (0 on a freipass), `passed`
-        whether it did, `lives_before` the player's lives going into the turn."""
+        whether it did, `lives_before` the player's lives going into the turn.
+        positions: one {"field", "x", "y"} (or None) per dart."""
         log.debug("DB write: insert_elimination_turn match_id=%s player=%s darts_count=%s "
                   "score=%s target=%s freipass=%s passed=%s lives_before=%s",
                   match_id, player, darts_count, score, target, freipass, passed, lives_before)
@@ -342,6 +391,11 @@ class StatsDB:
                  None if freipass is None else int(freipass),
                  None if passed is None else int(passed), lives_before),
             )
+            turn = self._conn.execute(
+                "SELECT COUNT(*) FROM elimination_turns WHERE match_id = ? AND player = ?",
+                (match_id, player)).fetchone()[0]
+            self._insert_positions(match_id, "Elimination", player, 1, turn,
+                                   [((p or {}).get("field"), p) for p in positions or []])
             self._conn.commit()
 
     def correct_last_elimination_turn(self, match_id: str, player: str, score: int, passed: bool):
@@ -356,6 +410,14 @@ class StatsDB:
                 " ORDER BY id DESC LIMIT 1)",
                 (score, int(passed), match_id, player),
             )
+            # The darts of a turn whose total was corrected were misread: their
+            # positions do not tell where the darts landed.
+            self._conn.execute(
+                "UPDATE dart_positions SET corrected = 1"
+                " WHERE match_id = ? AND game_mode = 'Elimination' AND player = ? AND turn = ("
+                " SELECT COUNT(*) FROM elimination_turns WHERE match_id = ? AND player = ?)",
+                (match_id, player, match_id, player),
+            )
             self._conn.commit()
 
     def _ensure_player(self, name):
@@ -369,8 +431,9 @@ class StatsDB:
         )
 
     def insert_turn(self, match_id, player, leg, turn, remaining_before,
-                    score, is_bust, is_checkout, darts):
-        """darts: list of (field_str, value_int, remaining_after_int), up to 3 entries."""
+                    score, is_bust, is_checkout, darts, positions=None):
+        """darts: list of (field_str, value_int, remaining_after_int), up to 3 entries.
+        positions: one entry per dart, {"x", "y", "entry"} or None if the position is unknown."""
         d = [darts[i] if i < len(darts) else (None, None, None) for i in range(3)]
         log.debug(
             "DB write: insert_turn match_id=%s player=%s leg=%s turn=%s "
@@ -393,7 +456,22 @@ class StatsDB:
                  d[1][0], d[1][1], d[1][2],
                  d[2][0], d[2][1], d[2][2]),
             )
+            self._insert_positions(match_id, "X01", player, leg, turn,
+                                   [(f, p) for (f, _, _), p in zip(darts, positions or [])])
             self._conn.commit()
+
+    def _insert_positions(self, match_id, game_mode, player, leg, turn, fields_positions):
+        """Caller holds the lock and commits. fields_positions: (field, position) per
+        dart, in dart order; darts without a position are skipped."""
+        for number, (field, pos) in enumerate(fields_positions, start=1):
+            if not pos:
+                continue
+            self._conn.execute(
+                "INSERT INTO dart_positions"
+                " (match_id, game_mode, player, leg, turn, dart_number, field, x, y, entry, corrected)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (match_id, game_mode, player, leg, turn, number, field, pos["x"], pos["y"],
+                 pos.get("entry"), int(_is_corrected(field, pos["x"], pos["y"], pos.get("entry")))))
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -811,6 +889,24 @@ class StatsDB:
                 else:
                     fields[field] = fields.get(field, 0) + 1
         return {"darts": darts, "fields": fields, "misses": misses, "no_sector_misses": no_sector}
+
+    def player_dart_positions(self, player: str, mode: str = "x01", limit: int = 3000) -> dict:
+        """Where this player's darts landed, newest `limit` darts: `darts` as {x, y, field},
+        unit = outer edge of the double ring, y up. Darts set by a correction are not
+        listed, they only count in `corrected`. `total` is everything recorded."""
+        where = "game_mode = 'Elimination'" if mode == "elimination" else "game_mode != 'Elimination'"
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT x, y, field, corrected FROM dart_positions WHERE player = ? AND {where}"
+                " ORDER BY id DESC LIMIT ?", (player, limit)).fetchall()
+            total = self._conn.execute(
+                f"SELECT COUNT(*) FROM dart_positions WHERE player = ? AND {where}", (player,)).fetchone()[0]
+        return {
+            "darts": [{"x": round(r["x"], 4), "y": round(r["y"], 4), "field": r["field"]}
+                      for r in rows if not r["corrected"]],
+            "corrected": sum(1 for r in rows if r["corrected"]),
+            "total": total,
+        }
 
     def player_avg_by_match(self, player: str) -> list:
         """The 3-dart average of each match the player threw darts in, oldest first."""
@@ -1252,6 +1348,7 @@ class StatsDB:
             "score_histogram": self.player_score_histogram(player),
             "avg_by_match": self.player_avg_by_match(player),
             "dart_hits": self.player_dart_hits(player),
+            "dart_positions": self.player_dart_positions(player, mode if mode in ("x01", "elimination") else "x01"),
             "bust_by_remaining": self.player_bust_by_remaining(player),
             "checkout_by_match": self.player_checkout_by_match(player),
             "win_loss": self.player_win_loss(player, mode),
@@ -1362,6 +1459,7 @@ class StatsTracker:
                 "remaining_before": rem_before,
                 "is_bust": False,
                 "darts": [(field, dv, rem)],
+                "positions": [_position(game)],
             }
 
         elif ev == "dart2-thrown":
@@ -1370,6 +1468,7 @@ class StatsTracker:
                 field = (game.get("fieldName") or "").upper()
                 prev_rem = self._buf["darts"][-1][2]
                 self._buf["darts"].append((field, dv, prev_rem - dv))
+                self._buf["positions"].append(_position(game))
 
         elif ev == "dart3-thrown":
             if self._buf and self._buf["player"] == player:
@@ -1377,6 +1476,7 @@ class StatsTracker:
                 field = (game.get("fieldName") or "").upper()
                 prev_rem = self._buf["darts"][-1][2]
                 self._buf["darts"].append((field, dv, prev_rem - dv))
+                self._buf["positions"].append(_position(game))
 
         elif ev == "busted" and self._is_x01():
             self._on_bust(player, game)
@@ -1433,7 +1533,8 @@ class StatsTracker:
                 before = None
             if before is not None:
                 self._buf = {"player": player, "leg": self._leg, "remaining_before": before,
-                             "is_bust": True, "darts": [(field, value, before - value)]}
+                             "is_bust": True, "darts": [(field, value, before - value)],
+                             "positions": [_position(game)]}
                 return
         if not self._buf:
             return
@@ -1441,6 +1542,7 @@ class StatsTracker:
         darts = self._buf["darts"]
         if number == len(darts) + 1:
             darts.append((field, value, darts[-1][2] - value))
+            self._buf["positions"].append(_position(game))
 
     def _is_x01(self) -> bool:
         return "01" in self._game_mode or self._game_mode == "Random Checkout"
@@ -1474,6 +1576,7 @@ class StatsTracker:
             is_bust=is_bust,
             is_checkout=is_checkout,
             darts=darts,
+            positions=buf.get("positions"),
         )
 
         s = self._session_stats.setdefault(player, {

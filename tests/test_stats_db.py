@@ -565,7 +565,7 @@ class TestPlayerDashboard:
         dashboard = db.player_dashboard("alice")
         assert set(dashboard.keys()) == {
             "activity", "activity_by_date", "performance", "score_histogram", "avg_by_match",
-            "dart_hits", "bust_by_remaining", "checkout_by_match", "win_loss", "elimination_records",
+            "dart_hits", "dart_positions", "bust_by_remaining", "checkout_by_match", "win_loss", "elimination_records",
             "doubles", "top_legs", "top_checkouts", "leg_modes", "selected_points_start",
         }
 

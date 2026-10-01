@@ -4,6 +4,7 @@
   // /api/stats/dashboard/{name}.
   import { cap } from '../../lib/util.js';
   import ActivityBars from './stats/ActivityBars.svelte';
+  import PositionHeatmap from './stats/PositionHeatmap.svelte';
 
   let { players = [] } = $props();
 
@@ -82,6 +83,12 @@
       <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: Math.round(r.minutes) }))} unit="min" />
     </div>
   </div>
+  {#if data.dart_positions.total}
+    <div class="dash-chart-card top">
+      <div class="dash-chart-title">Dart positions</div>
+      <PositionHeatmap darts={data.dart_positions.darts} corrected={data.dart_positions.corrected} />
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -105,6 +112,7 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 0.75rem 0.9rem;
   }
+  .dash-chart-card.top { margin-top: 0.75rem; }
   .dash-chart-title { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.5rem; }
   .dv-empty { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 1rem 0; }
   @media (max-width: 700px) {
