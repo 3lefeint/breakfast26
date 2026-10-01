@@ -512,14 +512,19 @@ class TestUndo:
             "SELECT ended_at FROM matches WHERE match_id=?", (game.match_id,)
         ).fetchone()
         assert row["ended_at"] is not None
-        # the instant-finish path skips _end_turn() entirely -> no row for bob's turn
+        # the instant-finish path skips _end_turn(), but bob's match-ending turn is recorded
+        n = db._conn.execute(
+            "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='bob'",
+            (game.match_id,),
+        ).fetchone()["n"]
+        assert n == 1
+
+        assert game.undo() is True
         n = db._conn.execute(
             "SELECT COUNT(*) as n FROM elimination_turns WHERE match_id=? AND player='bob'",
             (game.match_id,),
         ).fetchone()["n"]
         assert n == 0
-
-        assert game.undo() is True
 
         assert game.state == "playing"
         assert game.winner is None
@@ -600,3 +605,69 @@ class TestUnknownPlayerFallback:
         game._apply_turn(game.current_player, 0)  # alice fails, only life -> ghost wins
 
         assert audio.played == ["ghost", "unknown_player", "matchshot"]
+
+
+class TestRecordedTurnDetails:
+    """Each turn is stored with the score it had to beat, so the Stats tab can
+    show how a game was lost, not just that it was."""
+
+    def _turns(self, db, game):
+        rows = db._conn.execute(
+            "SELECT player, darts_count, score, target, freipass, passed, lives_before"
+            " FROM elimination_turns WHERE match_id=? ORDER BY id", (game.match_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def _game(self, lives=3):
+        db = StatsDB(":memory:")
+        return db, EliminationGame(["alice", "bob"], lives, FakeMqttClient(), "autodarts", stats_db=db)
+
+    def test_a_passing_freipass_turn_and_a_failing_turn(self):
+        db, game = self._game()
+        game.on_board_state(3, [_throw(20, 3)] * 3)   # alice: 180, freipass
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)    # bob: 3 against 180, loses a life
+        game.on_board_state(0, [])
+        assert self._turns(db, game) == [
+            {"player": "alice", "darts_count": 3, "score": 180, "target": 0, "freipass": 1, "passed": 1, "lives_before": 3},
+            {"player": "bob", "darts_count": 3, "score": 3, "target": 180, "freipass": 0, "passed": 0, "lives_before": 3},
+        ]
+
+    def test_the_match_ending_turn_is_recorded_before_the_life_is_taken(self):
+        db, game = self._game(lives=1)
+        game.on_board_state(3, [_throw(20, 3)] * 3)
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)    # bob's last life, instant finish
+        assert game.state == "finished"
+        assert self._turns(db, game)[-1] == {
+            "player": "bob", "darts_count": 3, "score": 3, "target": 180, "freipass": 0, "passed": 0, "lives_before": 1}
+
+    def test_a_turn_after_an_elimination_is_a_freipass(self):
+        db = StatsDB(":memory:")
+        game = EliminationGame(["a", "b", "c"], 1, FakeMqttClient(), "autodarts", stats_db=db)
+        game.on_board_state(3, [_throw(20, 3)] * 3)    # a: 180, freipass
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)     # b: 3 against 180, only life gone
+        game.on_board_state(0, [])
+        game.on_board_state(1, [_throw(5, 1)])         # c: freipass, any score above 0 passes
+        game.on_board_state(0, [])
+        last = self._turns(db, game)[-1]
+        assert (last["player"], last["freipass"], last["target"], last["passed"]) == ("c", 1, 0, 1)
+
+    def test_a_corrected_turn_total_updates_the_recorded_turn(self):
+        db, game = self._game()
+        game.on_board_state(3, [_throw(20, 3)] * 3)
+        game.on_board_state(0, [])
+        game.correct_turn(0)                            # misread, scored nothing: no pass on a freipass
+        row = self._turns(db, game)[0]
+        assert (row["score"], row["passed"], row["target"], row["freipass"]) == (0, 0, 0, 1)
+        game.correct_turn(12)
+        row = self._turns(db, game)[0]
+        assert (row["score"], row["passed"]) == (12, 1)
+
+    def test_without_a_stats_db_nothing_is_recorded_and_nothing_breaks(self):
+        game = EliminationGame(["alice", "bob"], 1, FakeMqttClient(), "autodarts")
+        game.on_board_state(3, [_throw(20, 3)] * 3)
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)
+        assert game.state == "finished"
+        assert game.undo() is True

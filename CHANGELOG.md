@@ -2,8 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- Elimination turns are stored with score, target and outcome (#14).
+
 ### Changed
 - The Home pages scroll anywhere in the window and use a wider content column.
+- The turn that ends an Elimination match is stored as well (#14).
 
 ## [0.5.0] - 2026-10-01
 

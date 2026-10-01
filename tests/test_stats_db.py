@@ -593,3 +593,31 @@ class TestPlayerDashboard:
         dashboard = db.player_dashboard("alice", points_start=301)
         assert dashboard["selected_points_start"] == 301
         assert len(dashboard["top_legs"]) == 1
+
+
+class TestEliminationTurnDetails:
+    def test_old_database_gets_the_new_columns_and_keeps_its_rows(self, tmp_path):
+        import sqlite3
+        path = str(tmp_path / "old.db")
+        old = sqlite3.connect(path)
+        old.executescript("""
+            CREATE TABLE elimination_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, match_id TEXT NOT NULL,
+                player TEXT NOT NULL, darts_count INTEGER NOT NULL);
+            INSERT INTO elimination_turns (match_id, player, darts_count) VALUES ('m', 'alice', 3);
+        """)
+        old.commit()
+        old.close()
+        db = StatsDB(path)
+        cols = {r["name"] for r in db._conn.execute("PRAGMA table_info(elimination_turns)")}
+        assert {"score", "target", "freipass", "passed", "lives_before"} <= cols
+        row = db._conn.execute("SELECT * FROM elimination_turns").fetchone()
+        assert (row["darts_count"], row["score"], row["passed"]) == (3, None, None)
+        db.insert_elimination_turn("m", "bob", 2, score=7, target=5, freipass=False, passed=True, lives_before=3)
+        assert db._conn.execute("SELECT COUNT(*) as n FROM elimination_turns").fetchone()["n"] == 2
+
+    def test_insert_without_details_still_works(self, db):
+        db.open_match("e1", "Elimination", 3)
+        db.insert_elimination_turn("e1", "alice", 3)
+        row = db._conn.execute("SELECT score, passed FROM elimination_turns").fetchone()
+        assert (row["score"], row["passed"]) == (None, None)

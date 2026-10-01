@@ -60,7 +60,12 @@ CREATE TABLE IF NOT EXISTS elimination_turns (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id    TEXT NOT NULL,
     player      TEXT NOT NULL,
-    darts_count INTEGER NOT NULL
+    darts_count INTEGER NOT NULL,
+    score       INTEGER,
+    target      INTEGER,
+    freipass    INTEGER,
+    passed      INTEGER,
+    lives_before INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_turns_player ON turns (player);
 CREATE INDEX IF NOT EXISTS idx_turns_match  ON turns (match_id);
@@ -103,6 +108,7 @@ class StatsDB:
         with self._lock:
             self._conn.executescript(_SCHEMA)
             self._migrate_matches_winner()
+            self._migrate_elimination_turn_details()
             self._migrate_backfill_x01_winner()
             self._migrate_drop_in_roster()
             self._conn.commit()
@@ -114,6 +120,14 @@ class StatsDB:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
         if "winner" not in cols:
             self._conn.execute("ALTER TABLE matches ADD COLUMN winner TEXT")
+
+    def _migrate_elimination_turn_details(self):
+        """Turns recorded before the per-turn details existed keep NULL in the new
+        columns; only the darts count is known for them."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(elimination_turns)")}
+        for name in ("score", "target", "freipass", "passed", "lives_before"):
+            if name not in cols:
+                self._conn.execute(f"ALTER TABLE elimination_turns ADD COLUMN {name} INTEGER")
 
     def _migrate_backfill_x01_winner(self):
         """`matches.winner` was only ever written by elimination.py — X01
@@ -303,14 +317,38 @@ class StatsDB:
             )
             self._conn.commit()
 
-    def insert_elimination_turn(self, match_id: str, player: str, darts_count: int):
-        log.debug("DB write: insert_elimination_turn match_id=%s player=%s darts_count=%s",
-                  match_id, player, darts_count)
+    def insert_elimination_turn(self, match_id: str, player: str, darts_count: int,
+                                score: int | None = None, target: int | None = None,
+                                freipass: bool | None = None, passed: bool | None = None,
+                                lives_before: int | None = None):
+        """`target` is the score this turn had to beat (0 on a freipass), `passed`
+        whether it did, `lives_before` the player's lives going into the turn."""
+        log.debug("DB write: insert_elimination_turn match_id=%s player=%s darts_count=%s "
+                  "score=%s target=%s freipass=%s passed=%s lives_before=%s",
+                  match_id, player, darts_count, score, target, freipass, passed, lives_before)
         with self._lock:
             self._ensure_player(player)
             self._conn.execute(
-                "INSERT INTO elimination_turns (match_id, player, darts_count) VALUES (?, ?, ?)",
-                (match_id, player, darts_count),
+                "INSERT INTO elimination_turns"
+                " (match_id, player, darts_count, score, target, freipass, passed, lives_before)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (match_id, player, darts_count, score, target,
+                 None if freipass is None else int(freipass),
+                 None if passed is None else int(passed), lives_before),
+            )
+            self._conn.commit()
+
+    def correct_last_elimination_turn(self, match_id: str, player: str, score: int, passed: bool):
+        """A finished turn's total was corrected: rewrite the score and whether it
+        passed on the player's most recent recorded turn."""
+        log.debug("DB write: correct_last_elimination_turn match_id=%s player=%s score=%s passed=%s",
+                  match_id, player, score, passed)
+        with self._lock:
+            self._conn.execute(
+                "UPDATE elimination_turns SET score = ?, passed = ? WHERE id = ("
+                " SELECT id FROM elimination_turns WHERE match_id = ? AND player = ?"
+                " ORDER BY id DESC LIMIT 1)",
+                (score, int(passed), match_id, player),
             )
             self._conn.commit()
 

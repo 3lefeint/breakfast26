@@ -212,7 +212,8 @@ class EliminationGame:
                 is_match_over = future_lives == 0 and len(self.active) == 2
                 self._publish_event(event, player, score)
                 if is_match_over:
-                    self._push_history(self._snapshot_state(player), turn_recorded=False)
+                    self._record_turn(player, score, len(self._last_throws))
+                    self._push_history(self._snapshot_state(player), turn_recorded=self.stats_db is not None)
                     self.lives[player] = future_lives
                     self._finish_match(player, score)
                     return
@@ -286,11 +287,8 @@ class EliminationGame:
         }
 
     def _push_history(self, snapshot, turn_recorded):
-        """*turn_recorded* is False for a turn that finished the match via
-        the instant 3-dart-preview path — `_end_turn()` (and its
-        `insert_elimination_turn()` write) is never reached for that turn,
-        per `_finish_match()`'s docstring, so `undo()` must not try to
-        delete a DB row that was never written."""
+        """*turn_recorded*: whether a DB row was written for the turn, so
+        `undo()` knows whether there is one to delete (False without a stats DB)."""
         self._history.append({**snapshot, "turn_recorded": turn_recorded})
 
     def _end_turn(self):
@@ -299,8 +297,7 @@ class EliminationGame:
         self._turn_snapshot = self._snapshot_state(player)
         self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
         self._publish_last_turn(self._current_darts)
-        if self.stats_db:
-            self.stats_db.insert_elimination_turn(self.match_id, player, len(self._last_throws))
+        self._record_turn(player, score, len(self._last_throws))
         # Clear the in-progress darts now that the turn is over, so the next
         # _apply_turn()'s state push shows an empty turn instead of leaving
         # this turn's values on screen until the next player's first dart
@@ -315,6 +312,16 @@ class EliminationGame:
         if not self._preview_fired and self.audio:
             self.audio.play(str(score))
         self._apply_turn(player, score)
+
+    def _record_turn(self, player, score, darts_count):
+        """Write a finished turn to the stats DB together with what it had to
+        beat. Must run before _apply_turn() moves the target on."""
+        if not self.stats_db:
+            return
+        to_beat = 0 if self.freipass else self.target
+        self.stats_db.insert_elimination_turn(
+            self.match_id, player, darts_count, score=score, target=to_beat,
+            freipass=self.freipass, passed=score > to_beat, lives_before=self.lives[player])
 
     def _apply_turn(self, player, score, silent=False):
         passes = score > (0 if self.freipass else self.target)
@@ -387,6 +394,10 @@ class EliminationGame:
         self.state = snap["state"]
         self.winner = snap["winner"]
         self.elimination_order = list(snap["elimination_order"])
+        if self.stats_db:
+            self.stats_db.correct_last_elimination_turn(
+                self.match_id, snap["player"], new_total,
+                new_total > (0 if self.freipass else self.target))
         self._apply_turn(snap["player"], new_total, silent=True)
         log.info("Turn corrected: total=%d", new_total)
 

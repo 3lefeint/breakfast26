@@ -361,7 +361,7 @@ through the same board-control pipeline.
 
 ## Statistics
 
-Per-turn data (score, remaining, bust/checkout flag, all three dart fields + remaining after each dart) is stored in a local SQLite file (`stats.db` by default). Stats are derived from this:
+Per-turn data (score, remaining, bust/checkout flag, all three dart fields + remaining after each dart) is stored in a local SQLite file (`stats.db` by default). Elimination turns are stored with their dart count, score, the score they had to beat, whether it was a freipass and whether the turn passed, plus the player's lives going in (turns from before this was added only have the dart count). Stats are derived from this:
 
 - **Session stats** (live, in-game): 3-dart average, 180 count, checkout % per player — updated after every turn with no database query
 - **Lifetime stats** (Stats tab): same plus 140+, 100+, double-hit rate across all sessions
