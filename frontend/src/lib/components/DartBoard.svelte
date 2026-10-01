@@ -80,7 +80,7 @@
         <circle r={r * K} />
       {/each}
     </g>
-    {#each darts as d (d.n)}
+    {#each darts.filter((d) => d.x != null) as d (d.n)}
       <g class="dart" style="transform: translate({d.x * BOARD_R}px, {-d.y * BOARD_R}px)">
         <circle r="12" />
         <text class="dart-n">{d.n}</text>
@@ -92,7 +92,7 @@
 
 <style>
   .board-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
-  .dartboard { width: 100%; max-width: var(--board-max, 380px); height: auto; cursor: crosshair; touch-action: manipulation; }
+  .dartboard { width: 100%; max-width: var(--board-max, 380px); height: auto; cursor: crosshair; touch-action: manipulation; overflow: visible; }
   .disabled .dartboard { cursor: default; opacity: 0.4; }
   .readonly .dartboard { cursor: default; }
   .num { fill: var(--muted); font-size: 16px; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }

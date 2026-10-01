@@ -8,6 +8,7 @@
   import { health, startHealthPolling } from '../lib/stores/health.js';
   import AppHeader from '../lib/components/AppHeader.svelte';
   import X01View from './views/X01View.svelte';
+  import IdleView from './views/IdleView.svelte';
   import EliminationTv from './views/EliminationTv.svelte';
   import EliminationFinishedTv from './views/EliminationFinishedTv.svelte';
 
@@ -76,7 +77,11 @@
 </AppHeader>
 
 {#if view === 'idle'}
-  <div id="idle">Waiting for match…</div>
+  {#if $gameState.board_darts}
+    <IdleView darts={$gameState.board_darts} />
+  {:else}
+    <div id="idle">Waiting for match…</div>
+  {/if}
 {:else if view === 'x01'}
   <div id="active">
     <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_darts} />

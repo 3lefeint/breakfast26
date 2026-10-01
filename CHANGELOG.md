@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- TV view: dart boxes and the live dartboard while no match is running (#13).
 - X01: tapping a dart box opens the correction dialog.
 - TV view: live dart positions on a dartboard in X01 and Elimination (#12).
 - Clickable dartboard for correcting a misdetected dart (#9).

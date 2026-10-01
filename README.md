@@ -48,7 +48,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
   variants — straight from the browser, no manual TOML editing or CLI
   generator run needed for a single change
 - **TV / kiosk mode** (`/tv`): full-screen live view for wall-mounted displays and tablets, no navigation — X01 scoreboard (remaining score, checkout hint, dart boxes) or the live Elimination game, whichever is active
-- **Live dart positions** (`/tv`): a dartboard under the scores shows where each dart of the current turn landed, as numbered markers, in X01 and Elimination. Needs the local Autodarts board connection (`board_ws_url`); without it the board stays hidden
+- **Live dart positions** (`/tv`): a dartboard under the scores shows where each dart of the current turn landed, as numbered markers, in X01 and Elimination, and on the idle screen (dart boxes above the board) while no match is running. Needs the local Autodarts board connection (`board_ws_url`); without it the board stays hidden
 - **Checkout suggestions**: standard X01 checkout path shown below the remaining score, with a distinct "Bogey — no checkout" badge for the handful of remaining scores that are in checkout range but have no valid 3-dart finish (169, 168, 166, 165, 163, 162, 159)
 - **Live session stats**: 3-dart average, 180s, checkout % shown next to each player during a match
 - **Lifetime statistics tab**: per-player averages, 180 / 140+ / 100+ counts, checkout & double-hit rates across all sessions; per-player reset with double confirmation
@@ -270,7 +270,7 @@ The live scoreboard itself (X01 and Elimination) lives on the separate
 | View | What it shows |
 |------|--------------|
 | **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
-| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn |
+| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn; with no match running and the board connected, the idle screen shows the dart boxes and the dartboard instead of "Waiting for match…" |
 | **Players** | Known players list — name, Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Stats** | Lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
 | **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
