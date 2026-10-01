@@ -829,12 +829,17 @@ class StatsDB:
 
     def all_elimination_stats(self) -> list:
         """Lifetime Elimination numbers per player, same fields as
-        player_elimination_stats plus the name. Players flagged `hidden` are left
-        out, and so are players without a recorded result."""
+        player_elimination_stats plus the name and `expected_wins`: the wins a
+        player would have by chance, i.e. 1/players summed over their games (a win
+        against one opponent is worth less than against two). Players flagged
+        `hidden` are left out, and so are players without a recorded result."""
         with self._lock:
             place_rows = self._conn.execute("""
-                SELECT r.player as player, r.placement as placement, COUNT(*) as n
+                SELECT r.player as player, r.placement as placement, COUNT(*) as n,
+                       SUM(1.0 / f.size) as expected
                 FROM elimination_results r
+                JOIN (SELECT match_id, COUNT(*) as size FROM elimination_results GROUP BY match_id) f
+                  ON f.match_id = r.match_id
                 LEFT JOIN players p ON p.name = r.player
                 WHERE COALESCE(p.hidden, 0) = 0
                 GROUP BY r.player, r.placement
@@ -842,16 +847,148 @@ class StatsDB:
             avg_rows = self._conn.execute(
                 "SELECT player, AVG(darts_count) as avg_darts FROM elimination_turns GROUP BY player"
             ).fetchall()
-        by_player = {}
+        by_player, expected = {}, {}
         for r in place_rows:
             by_player.setdefault(r["player"], {})[r["placement"]] = r["n"]
+            expected[r["player"]] = expected.get(r["player"], 0.0) + r["expected"]
         avg = {r["player"]: r["avg_darts"] for r in avg_rows}
         result = [
-            {"player": name, **_elimination_summary(by_place, avg.get(name))}
+            {"player": name, **_elimination_summary(by_place, avg.get(name)),
+             "expected_wins": round(expected[name], 2)}
             for name, by_place in by_player.items()
         ]
         result.sort(key=lambda r: (-r["games"], -r["wins"], r["player"]))
         return result
+
+    def elimination_form(self, limit: int = 15) -> dict:
+        """Per player (hidden players left out): their last `limit` finished
+        Elimination games, oldest first, each with the date, placement, number of
+        players and opponents, plus the current and best win streak over all their
+        games."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT r.player as player, r.placement as placement, r.match_id as match_id,
+                       m.started_at as started_at
+                FROM elimination_results r
+                JOIN matches m ON m.match_id = r.match_id
+                LEFT JOIN players p ON p.name = r.player
+                WHERE m.game_mode = 'Elimination' AND COALESCE(p.hidden, 0) = 0
+                ORDER BY m.started_at, r.id
+            """).fetchall()
+            everyone = self._conn.execute(
+                "SELECT match_id, player FROM elimination_results"
+            ).fetchall()
+        in_match = {}
+        for r in everyone:
+            in_match.setdefault(r["match_id"], []).append(r["player"])
+        games = {}
+        for r in rows:
+            players = in_match[r["match_id"]]
+            games.setdefault(r["player"], []).append({
+                "match_id": r["match_id"],
+                "date": r["started_at"][:10],
+                "placement": r["placement"],
+                "size": len(players),
+                "opponents": sorted(p for p in players if p != r["player"]),
+            })
+        result = {}
+        for name, played in games.items():
+            best = run = 0
+            for g in played:
+                run = run + 1 if g["placement"] == 1 else 0
+                best = max(best, run)
+            result[name] = {"games": played[-limit:], "current_streak": run, "best_streak": best}
+        return result
+
+    def elimination_head_to_head(self) -> list:
+        """For every pair of players that finished games together: how often each
+        finished ahead of the other (a lower placement is ahead, so in a
+        three-player game all three pairs are counted). Players flagged `hidden`
+        are left out. The pair is ordered by name; most shared games first."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT r.match_id as match_id, r.player as player, r.placement as placement
+                FROM elimination_results r
+                LEFT JOIN players p ON p.name = r.player
+                WHERE COALESCE(p.hidden, 0) = 0
+            """).fetchall()
+        by_match = {}
+        for r in rows:
+            by_match.setdefault(r["match_id"], []).append((r["player"], r["placement"]))
+        pairs = {}
+        for finishers in by_match.values():
+            for i, (p1, place1) in enumerate(finishers):
+                for p2, place2 in finishers[i + 1:]:
+                    (a, place_a), (b, place_b) = sorted([(p1, place1), (p2, place2)])
+                    entry = pairs.setdefault((a, b), {"a": a, "b": b, "a_ahead": 0, "b_ahead": 0, "games": 0})
+                    entry["games"] += 1
+                    entry["a_ahead" if place_a < place_b else "b_ahead"] += 1
+        return sorted(pairs.values(), key=lambda e: (-e["games"], e["a"], e["b"]))
+
+    def elimination_game_lengths(self) -> list:
+        """Every finished Elimination game that has an end time, oldest first: its
+        lives setting, length in minutes, number of players and winner."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT m.match_id as match_id, m.started_at as started_at, m.points_start as lives,
+                       m.winner as winner,
+                       (julianday(m.ended_at) - julianday(m.started_at)) * 1440 as minutes,
+                       (SELECT COUNT(*) FROM elimination_results r WHERE r.match_id = m.match_id) as size
+                FROM matches m
+                WHERE m.game_mode = 'Elimination' AND m.ended_at IS NOT NULL AND m.points_start IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id)
+                ORDER BY m.started_at
+            """).fetchall()
+        return [
+            {"match_id": r["match_id"], "date": r["started_at"][:10], "lives": r["lives"],
+             "minutes": round(r["minutes"], 1), "size": r["size"], "winner": r["winner"]}
+            for r in rows
+        ]
+
+    def elimination_records(self, player: str | None = None) -> dict:
+        """The highest score thrown in an Elimination turn, and the highest score
+        that still lost a life (it did not beat the score before it, `target`).
+        Each is None, or {score, target, player, date}, the first time it was
+        reached. Only turns recorded with a score count, so both stay None for
+        games played before scores were stored. Over everyone (hidden players left
+        out), or for one `player` (a direct lookup, hidden or not)."""
+        who, params = ("AND t.player = ?", (player,)) if player else ("AND COALESCE(p.hidden, 0) = 0", ())
+
+        def best(extra=""):
+            with self._lock:
+                row = self._conn.execute(f"""
+                    SELECT t.score as score, t.target as target, t.player as player,
+                           m.started_at as started_at
+                    FROM elimination_turns t
+                    JOIN matches m ON m.match_id = t.match_id
+                    LEFT JOIN players p ON p.name = t.player
+                    WHERE t.score IS NOT NULL {who} {extra}
+                    ORDER BY t.score DESC, m.started_at, t.id
+                    LIMIT 1
+                """, params).fetchone()
+            if not row:
+                return None
+            return {"score": row["score"], "target": row["target"],
+                    "player": row["player"], "date": row["started_at"][:10]}
+        return {"highest_score": best(), "highest_lost_score": best("AND t.passed = 0")}
+
+    def elimination_summary(self) -> dict:
+        """Finished Elimination matches (those with a recorded result): how many,
+        and how long they took. Minutes are None until a match has an end time."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT (julianday(m.ended_at) - julianday(m.started_at)) * 1440 as minutes
+                FROM matches m
+                WHERE m.game_mode = 'Elimination'
+                  AND EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id)
+            """).fetchall()
+        minutes = [r["minutes"] for r in rows if r["minutes"] is not None]
+        return {
+            "games": len(rows),
+            "total_minutes": round(sum(minutes), 1),
+            "avg_minutes": round(sum(minutes) / len(minutes), 1) if minutes else None,
+            "longest_minutes": round(max(minutes), 1) if minutes else None,
+        }
 
     def player_doubles_by_number(self, player: str) -> list:
         """Attempts/hits per double target (D1-D20 + bullseye-as-25), inferred from
@@ -979,6 +1116,7 @@ class StatsDB:
             "win_loss": self.player_win_loss(player, mode),
             "game_type_ratio": self.player_game_type_ratio(player),
             "elimination": self.player_elimination_stats(player),
+            "elimination_records": self.elimination_records(player),
             "doubles": self.player_doubles_by_number(player),
             "top_legs": self.top_legs(player, points_start=points_start),
             "leg_modes": leg_modes,

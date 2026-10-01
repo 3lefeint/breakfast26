@@ -569,7 +569,7 @@ class TestPlayerDashboard:
         dashboard = db.player_dashboard("alice")
         assert set(dashboard.keys()) == {
             "activity", "activity_by_date", "performance", "scoring_buckets",
-            "avg_by_date", "checkout_pct_by_date", "win_loss", "game_type_ratio", "elimination",
+            "avg_by_date", "checkout_pct_by_date", "win_loss", "game_type_ratio", "elimination", "elimination_records",
             "doubles", "top_legs", "top_checkouts", "leg_modes", "selected_points_start",
         }
 
@@ -690,3 +690,195 @@ class TestEliminationTurnDetails:
         row = db._conn.execute("SELECT score, passed FROM elimination_turns").fetchone()
         assert (row["score"], row["passed"]) == (None, None)
 
+
+class TestEliminationOverview:
+    def _finished(self, db, match_id, results, minutes=None, started="2026-07-06T10:00:00+00:00"):
+        from datetime import datetime, timedelta
+        db.open_match(match_id, "Elimination", 3)
+        db._conn.execute("UPDATE matches SET started_at = ? WHERE match_id = ?", (started, match_id))
+        db.record_elimination_result(match_id, results)
+        if minutes is not None:
+            end = datetime.fromisoformat(started) + timedelta(minutes=minutes)
+            db._conn.execute("UPDATE matches SET ended_at = ? WHERE match_id = ?", (end.isoformat(), match_id))
+        db._conn.commit()
+
+    def test_expected_wins_weigh_each_game_by_its_player_count(self, db):
+        self._finished(db, "e1", [("alice", 1, 2), ("bob", 2, None)])                       # 2 players
+        self._finished(db, "e2", [("alice", 1, 1), ("bob", 2, None), ("carol", 3, None)])   # 3 players
+        rows = {r["player"]: r for r in db.all_elimination_stats()}
+        assert rows["alice"]["expected_wins"] == 0.83    # 1/2 + 1/3
+        assert rows["bob"]["expected_wins"] == 0.83
+        assert rows["carol"]["expected_wins"] == 0.33
+        assert rows["alice"]["wins"] == 2
+
+    def test_summary_counts_finished_games_and_their_length(self, db):
+        self._finished(db, "e1", [("alice", 1, 2), ("bob", 2, None)], minutes=4)
+        self._finished(db, "e2", [("alice", 1, 2), ("bob", 2, None)], minutes=10, started="2026-07-07T10:00:00+00:00")
+        db.open_match("e3", "Elimination", 3)          # abandoned: no result
+        summary = db.elimination_summary()
+        assert summary["games"] == 2
+        assert summary["total_minutes"] == 14.0
+        assert summary["avg_minutes"] == 7.0
+        assert summary["longest_minutes"] == 10.0
+
+    def test_summary_without_end_times_has_no_lengths(self, db):
+        self._finished(db, "e1", [("alice", 1, 2), ("bob", 2, None)])
+        summary = db.elimination_summary()
+        assert (summary["games"], summary["avg_minutes"], summary["longest_minutes"]) == (1, None, None)
+
+    def test_summary_ignores_x01_matches(self, db):
+        db.open_match("x1", "X01", 501)
+        db.insert_turn("x1", "alice", 1, 1, 501, 60, False, False, [("S20", 20, 481)])
+        assert db.elimination_summary()["games"] == 0
+
+
+class TestEliminationForm:
+    def _game(self, db, match_id, results, started):
+        db.open_match(match_id, "Elimination", 3)
+        db._conn.execute("UPDATE matches SET started_at = ? WHERE match_id = ?", (started, match_id))
+        db.record_elimination_result(match_id, results)
+        db._conn.commit()
+
+    def _history(self, db):
+        # alice: 1st, 1st, 2nd, 1st   (bob and carol fill the other places)
+        self._game(db, "e1", [("alice", 1, 2), ("bob", 2, None)], "2026-07-01T10:00:00+00:00")
+        self._game(db, "e2", [("alice", 1, 1), ("bob", 2, None), ("carol", 3, None)], "2026-07-02T10:00:00+00:00")
+        self._game(db, "e3", [("bob", 1, 1), ("alice", 2, None)], "2026-07-03T10:00:00+00:00")
+        self._game(db, "e4", [("alice", 1, 3), ("carol", 2, None)], "2026-07-04T10:00:00+00:00")
+
+    def test_games_are_oldest_first_with_placement_and_opponents(self, db):
+        self._history(db)
+        games = db.elimination_form()["alice"]["games"]
+        assert [g["placement"] for g in games] == [1, 1, 2, 1]
+        assert [g["date"] for g in games] == ["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04"]
+        assert games[1]["size"] == 3 and games[1]["opponents"] == ["bob", "carol"]
+        assert games[3]["opponents"] == ["carol"]
+
+    def test_streaks(self, db):
+        self._history(db)
+        form = db.elimination_form()
+        assert (form["alice"]["current_streak"], form["alice"]["best_streak"]) == (1, 2)
+        assert (form["bob"]["current_streak"], form["bob"]["best_streak"]) == (1, 1)   # last game won
+        assert (form["carol"]["current_streak"], form["carol"]["best_streak"]) == (0, 0)  # never won
+
+    def test_only_the_last_games_are_returned_but_streaks_cover_all(self, db):
+        self._history(db)
+        form = db.elimination_form(limit=2)["alice"]
+        assert [g["placement"] for g in form["games"]] == [2, 1]
+        assert form["best_streak"] == 2
+
+    def test_hidden_players_are_left_out(self, db):
+        self._history(db)
+        db.upsert_player("carol", hidden=True)
+        assert "carol" not in db.elimination_form()
+
+    def test_unfinished_matches_do_not_count(self, db):
+        db.open_match("e1", "Elimination", 3)
+        db.insert_elimination_turn("e1", "alice", 3)
+        assert db.elimination_form() == {}
+
+
+class TestEliminationHeadToHead:
+    def _game(self, db, match_id, results):
+        db.open_match(match_id, "Elimination", 3)
+        db.record_elimination_result(match_id, results)
+
+    def test_two_player_games_count_for_the_winner(self, db):
+        self._game(db, "e1", [("bob", 1, 2), ("alice", 2, None)])
+        self._game(db, "e2", [("alice", 1, 1), ("bob", 2, None)])
+        self._game(db, "e3", [("alice", 1, 3), ("bob", 2, None)])
+        assert db.elimination_head_to_head() == [{"a": "alice", "b": "bob", "a_ahead": 2, "b_ahead": 1, "games": 3}]
+
+    def test_a_three_player_game_counts_all_three_pairs(self, db):
+        self._game(db, "e1", [("carol", 1, 2), ("alice", 2, None), ("bob", 3, None)])
+        pairs = {(p["a"], p["b"]): (p["a_ahead"], p["b_ahead"]) for p in db.elimination_head_to_head()}
+        assert pairs == {("alice", "bob"): (1, 0), ("alice", "carol"): (0, 1), ("bob", "carol"): (0, 1)}
+
+    def test_most_shared_games_come_first(self, db):
+        self._game(db, "e1", [("alice", 1, 2), ("bob", 2, None)])
+        self._game(db, "e2", [("alice", 1, 2), ("carol", 2, None)])
+        self._game(db, "e3", [("alice", 1, 2), ("carol", 2, None)])
+        assert [(p["a"], p["b"]) for p in db.elimination_head_to_head()] == [("alice", "carol"), ("alice", "bob")]
+
+    def test_hidden_players_and_unfinished_matches_are_left_out(self, db):
+        self._game(db, "e1", [("alice", 1, 2), ("bob", 2, None)])
+        db.upsert_player("bob", hidden=True)
+        db.open_match("e2", "Elimination", 3)
+        db.insert_elimination_turn("e2", "alice", 3)
+        assert db.elimination_head_to_head() == []
+
+
+class TestEliminationGameLengths:
+    def _game(self, db, match_id, lives, results, minutes, started="2026-07-06T10:00:00+00:00"):
+        from datetime import datetime, timedelta
+        db.open_match(match_id, "Elimination", lives)
+        end = datetime.fromisoformat(started) + timedelta(minutes=minutes)
+        db._conn.execute("UPDATE matches SET started_at = ?, ended_at = ? WHERE match_id = ?",
+                         (started, end.isoformat(), match_id))
+        db.record_elimination_result(match_id, results)
+        db.set_winner(match_id, results[0][0])
+
+    def test_each_finished_game_with_lives_length_players_and_winner(self, db):
+        self._game(db, "e1", 3, [("alice", 1, 2), ("bob", 2, None)], 4.5)
+        self._game(db, "e2", 1, [("bob", 1, 1), ("alice", 2, None), ("carol", 3, None)], 2, started="2026-07-07T09:00:00+00:00")
+        assert db.elimination_game_lengths() == [
+            {"match_id": "e1", "date": "2026-07-06", "lives": 3, "minutes": 4.5, "size": 2, "winner": "alice"},
+            {"match_id": "e2", "date": "2026-07-07", "lives": 1, "minutes": 2.0, "size": 3, "winner": "bob"},
+        ]
+
+    def test_games_without_a_result_or_end_time_and_x01_are_left_out(self, db):
+        self._game(db, "e1", 3, [("alice", 1, 2), ("bob", 2, None)], 4)
+        db.open_match("e2", "Elimination", 3)              # abandoned
+        db.open_match("x1", "X01", 501)
+        db.record_elimination_result("e3", [("alice", 1, 2), ("bob", 2, None)])   # result but never closed
+        assert [g["match_id"] for g in db.elimination_game_lengths()] == ["e1"]
+
+
+class TestEliminationRecords:
+    def _turn(self, db, match_id, player, score, target, passed, started="2026-07-06T10:00:00+00:00"):
+        if not db._conn.execute("SELECT 1 FROM matches WHERE match_id = ?", (match_id,)).fetchone():
+            db.open_match(match_id, "Elimination", 3)
+            db._conn.execute("UPDATE matches SET started_at = ? WHERE match_id = ?", (started, match_id))
+            db._conn.commit()
+        db.insert_elimination_turn(match_id, player, 3, score=score, target=target, freipass=False,
+                                   passed=passed, lives_before=3)
+
+    def test_highest_score_and_highest_score_that_lost_a_life(self, db):
+        self._turn(db, "e1", "alice", 150, 100, True)
+        self._turn(db, "e1", "bob", 118, 150, False)          # 118 against 150: lost a life
+        self._turn(db, "e1", "alice", 90, 60, True)
+        self._turn(db, "e2", "bob", 140, 160, False, started="2026-07-07T10:00:00+00:00")
+        records = db.elimination_records()
+        assert records["highest_score"] == {"score": 150, "target": 100, "player": "alice", "date": "2026-07-06"}
+        assert records["highest_lost_score"] == {"score": 140, "target": 160, "player": "bob", "date": "2026-07-07"}
+
+    def test_a_tie_goes_to_the_first_time_it_was_reached(self, db):
+        self._turn(db, "e1", "alice", 100, 90, True)
+        self._turn(db, "e2", "bob", 100, 90, True, started="2026-07-07T10:00:00+00:00")
+        assert db.elimination_records()["highest_score"]["player"] == "alice"
+
+    def test_turns_without_a_score_do_not_count(self, db):
+        db.open_match("e1", "Elimination", 3)
+        db.insert_elimination_turn("e1", "alice", 3)          # recorded before scores were stored
+        assert db.elimination_records() == {"highest_score": None, "highest_lost_score": None}
+
+    def test_hidden_players_are_left_out(self, db):
+        self._turn(db, "e1", "alice", 150, 100, True)
+        self._turn(db, "e1", "bob", 90, 100, False)
+        db.upsert_player("alice", hidden=True)
+        records = db.elimination_records()
+        assert records["highest_score"]["player"] == "bob"
+
+    def test_records_can_be_looked_up_for_one_player(self, db):
+        self._turn(db, "e1", "alice", 150, 100, True)
+        self._turn(db, "e1", "bob", 118, 150, False)
+        self._turn(db, "e1", "bob", 90, 60, True)
+        records = db.elimination_records("bob")
+        assert records["highest_score"]["score"] == 118
+        assert records["highest_lost_score"] == {"score": 118, "target": 150, "player": "bob", "date": "2026-07-06"}
+        assert db.elimination_records("carol") == {"highest_score": None, "highest_lost_score": None}
+
+    def test_a_players_records_come_with_the_dashboard_even_when_hidden(self, db):
+        self._turn(db, "e1", "alice", 150, 100, True)
+        db.upsert_player("alice", hidden=True)
+        assert db.player_dashboard("alice", mode="elimination")["elimination_records"]["highest_score"]["score"] == 150

@@ -7,11 +7,11 @@
   import LineChart from '../../lib/components/charts/LineChart.svelte';
   import HBarChart from '../../lib/components/charts/HBarChart.svelte';
   import ProportionBar from '../../lib/components/charts/ProportionBar.svelte';
+  import ActivityBars from './stats/ActivityBars.svelte';
 
   // mode: 'x01' or 'elimination'.
   let { players = [], mode } = $props();
   let showX01 = $derived(mode !== 'elimination');
-  let showElimination = $derived(mode !== 'x01');
 
   let selected = $state('');
   let data = $state(null);
@@ -43,6 +43,11 @@
     load(selected, pointsStart);
   }
 
+  function recordSub(r, showTarget) {
+    if (!r) return '';
+    const date = new Date(r.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${showTarget ? `had to beat ${r.target} · ` : ''}${date}`;
+  }
   function fmtPct(v) { return v.toFixed(0) + '%'; }
   function fmtAvg(v) { return v.toFixed(1); }
 </script>
@@ -64,21 +69,46 @@
   {@const a = data.activity}
   {@const p = data.performance}
 
-  <div class="dash-subtitle">Activity</div>
+  {#if mode !== 'elimination'}<div class="dash-subtitle">Activity</div>{/if}
   <div class="stat-tiles">
     <div class="stat-tile"><div class="stat-tile-label">Total darts</div><div class="stat-tile-value">{a.total_darts}</div></div>
+    {#if mode !== 'elimination'}
     <div class="stat-tile"><div class="stat-tile-label">Total games</div><div class="stat-tile-value">{a.total_games}</div></div>
+    {/if}
     <div class="stat-tile"><div class="stat-tile-label">Total playtime</div><div class="stat-tile-value">{a.total_playtime_hours.toFixed(2)}h</div></div>
     <div class="stat-tile"><div class="stat-tile-label">Total distance</div><div class="stat-tile-value">{a.total_distance_km.toFixed(2)}km</div></div>
   </div>
+  {#if mode === 'elimination'}
+    {@const rec = data.elimination_records}
+    <div class="stat-tiles records">
+      <div class="stat-tile">
+        <div class="stat-tile-label">Highest score</div>
+        <div class="stat-tile-value">{rec.highest_score?.score ?? '—'}</div>
+        <div class="stat-tile-sub">{recordSub(rec.highest_score, false)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-label">Highest score that still lost a life</div>
+        <div class="stat-tile-value">{rec.highest_lost_score?.score ?? '—'}</div>
+        <div class="stat-tile-sub">{recordSub(rec.highest_lost_score, true)}</div>
+      </div>
+    </div>
+  {/if}
   <div class="dash-charts-2col">
     <div class="dash-chart-card">
       <div class="dash-chart-title">Darts per day</div>
-      <BarChart data={data.activity_by_date.map((r) => ({ label: r.date, value: r.darts }))} />
+      {#if mode === 'elimination'}
+        <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: r.darts }))} unit="darts" />
+      {:else}
+        <BarChart data={data.activity_by_date.map((r) => ({ label: r.date, value: r.darts }))} />
+      {/if}
     </div>
     <div class="dash-chart-card">
       <div class="dash-chart-title">Minutes played per day</div>
-      <BarChart data={data.activity_by_date.map((r) => ({ label: r.date, value: Math.round(r.minutes) }))} />
+      {#if mode === 'elimination'}
+        <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: Math.round(r.minutes) }))} unit="min" />
+      {:else}
+        <BarChart data={data.activity_by_date.map((r) => ({ label: r.date, value: Math.round(r.minutes) }))} />
+      {/if}
     </div>
   </div>
 
@@ -112,6 +142,7 @@
   </div>
   {/if}
 
+  {#if mode !== 'elimination'}
   <div class="dash-charts-2col">
     <div class="dash-chart-card">
       <div class="dash-chart-title">Win / loss ({data.win_loss.wins}W &middot; {data.win_loss.losses}L)</div>
@@ -121,25 +152,6 @@
       ]} />
     </div>
   </div>
-
-  {#if showElimination && data.elimination?.games}
-    {@const e = data.elimination}
-    <div class="dash-subtitle">Elimination</div>
-    <div class="stat-tiles">
-      <div class="stat-tile"><div class="stat-tile-label">Games</div><div class="stat-tile-value">{e.games}</div></div>
-      <div class="stat-tile"><div class="stat-tile-label">Wins</div><div class="stat-tile-value">{e.wins}</div></div>
-      <div class="stat-tile"><div class="stat-tile-label">Win rate</div><div class="stat-tile-value">{fmtPct(e.win_pct)}</div></div>
-      <div class="stat-tile"><div class="stat-tile-label">Avg darts / turn</div><div class="stat-tile-value">{e.avg_darts_per_turn != null ? e.avg_darts_per_turn.toFixed(1) : '—'}</div></div>
-    </div>
-    <div class="dash-chart-card top">
-      <div class="dash-chart-title">Placements ({e.placements.first} 1st &middot; {e.placements.second} 2nd &middot; {e.placements.third} 3rd &middot; {e.placements.other} lower)</div>
-      <ProportionBar segments={[
-        { label: '1st', value: e.placements.first, color: 'var(--green)' },
-        { label: '2nd', value: e.placements.second, color: 'var(--accent)' },
-        { label: '3rd', value: e.placements.third, color: 'var(--muted)' },
-        { label: 'Lower', value: e.placements.other, color: 'var(--red)' },
-      ]} />
-    </div>
   {/if}
 
   {#if showX01}
@@ -236,6 +248,8 @@
   }
   .stat-tile-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }
   .stat-tile-value { font-size: 1.4rem; font-weight: 600; }
+  .stat-tile-sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; min-height: 1em; }
+  .stat-tiles.records { margin-top: 0.75rem; grid-template-columns: 1fr 1fr; }
   .dash-charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
   .dash-chart-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;

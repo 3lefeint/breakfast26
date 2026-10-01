@@ -432,11 +432,22 @@ async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|el
     return _stats_db.recent_matches(mode=mode)
 
 
-@app.get("/api/stats/elimination/players")
-async def stats_elimination_players():
+@app.get("/api/stats/elimination/overview")
+async def stats_elimination_overview():
     if not _stats_db:
-        return []
-    return _stats_db.all_elimination_stats()
+        return {"summary": {}, "head_to_head": [], "game_lengths": [],
+                "records": {"highest_score": None, "highest_lost_score": None}, "players": []}
+    form = _stats_db.elimination_form()
+    return {
+        "summary": _stats_db.elimination_summary(),
+        "head_to_head": _stats_db.elimination_head_to_head(),
+        "game_lengths": _stats_db.elimination_game_lengths(),
+        "records": _stats_db.elimination_records(),
+        "players": [
+            {**p, "form": form.get(p["player"], {"games": [], "current_streak": 0, "best_streak": 0})}
+            for p in _stats_db.all_elimination_stats()
+        ],
+    }
 
 
 @app.get("/api/stats/match/{match_id}")
