@@ -8,7 +8,10 @@
   import HBarChart from '../../lib/components/charts/HBarChart.svelte';
   import ProportionBar from '../../lib/components/charts/ProportionBar.svelte';
 
-  let { players = [] } = $props();
+  // mode: 'x01' or 'elimination'.
+  let { players = [], mode } = $props();
+  let showX01 = $derived(mode !== 'elimination');
+  let showElimination = $derived(mode !== 'x01');
 
   let selected = $state('');
   let data = $state(null);
@@ -27,8 +30,9 @@
   async function load(name, pointsStart = null) {
     error = false;
     try {
-      const qs = pointsStart != null ? `?points_start=${pointsStart}` : '';
-      data = await fetch(`/api/stats/dashboard/${encodeURIComponent(name)}${qs}`).then((r) => r.json());
+      const params = new URLSearchParams({ mode });
+      if (pointsStart != null) params.set('points_start', pointsStart);
+      data = await fetch(`/api/stats/dashboard/${encodeURIComponent(name)}?${params}`).then((r) => r.json());
     } catch (e) {
       data = null;
       error = true;
@@ -78,6 +82,7 @@
     </div>
   </div>
 
+  {#if showX01}
   <div class="dash-subtitle">Performance</div>
   <div class="stat-tiles">
     <div class="stat-tile"><div class="stat-tile-label">Best average</div><div class="stat-tile-value">{p.best_avg3.toFixed(1)}</div></div>
@@ -105,6 +110,7 @@
       <LineChart data={data.checkout_pct_by_date.map((r) => ({ label: r.date, value: r.co_pct }))} formatValue={fmtPct} />
     </div>
   </div>
+  {/if}
 
   <div class="dash-charts-2col">
     <div class="dash-chart-card">
@@ -114,16 +120,9 @@
         { label: 'Losses', value: data.win_loss.losses, color: 'var(--red)' },
       ]} />
     </div>
-    <div class="dash-chart-card">
-      <div class="dash-chart-title">Game type ({data.game_type_ratio.x01} X01 &middot; {data.game_type_ratio.elimination} Elim.)</div>
-      <ProportionBar segments={[
-        { label: 'X01', value: data.game_type_ratio.x01, color: 'var(--accent)' },
-        { label: 'Elimination', value: data.game_type_ratio.elimination, color: 'var(--muted)' },
-      ]} />
-    </div>
   </div>
 
-  {#if data.elimination?.games}
+  {#if showElimination && data.elimination?.games}
     {@const e = data.elimination}
     <div class="dash-subtitle">Elimination</div>
     <div class="stat-tiles">
@@ -143,6 +142,7 @@
     </div>
   {/if}
 
+  {#if showX01}
   <div class="dash-chart-card top">
     <div class="dash-chart-title">Doubles hit rate</div>
     <HBarChart
@@ -199,6 +199,7 @@
         {/each}
       </tbody>
     </table>
+  {/if}
   {/if}
 {/if}
 

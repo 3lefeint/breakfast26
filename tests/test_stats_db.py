@@ -595,6 +595,74 @@ class TestPlayerDashboard:
         assert len(dashboard["top_legs"]) == 1
 
 
+class TestStatsByMode:
+    """X01 and Elimination numbers can be separated for the Stats tab's chips."""
+
+    def _both_modes(self, db):
+        db.open_match("x1", "X01", 501)
+        db.insert_turn("x1", "alice", 1, 1, 501, 60, False, False, [("S20", 20, 481), ("S20", 20, 461), ("S20", 20, 441)])
+        db.insert_turn("x1", "bob", 1, 1, 501, 30, False, False, [("S10", 10, 491), ("S10", 10, 481), ("S10", 10, 471)])
+        db.close_match("x1")
+        db.open_match("e1", "Elimination", 3)
+        db.insert_elimination_turn("e1", "alice", 3)
+        db.insert_elimination_turn("e1", "alice", 2)
+        db.insert_elimination_turn("e1", "bob", 3)
+        db.record_elimination_result("e1", [("alice", 1, 2), ("bob", 2, None)])
+        db.set_winner("e1", "alice")
+        db.close_match("e1")
+
+    def test_recent_matches_can_be_limited_to_one_mode(self, db):
+        self._both_modes(db)
+        assert {m["game_mode"] for m in db.recent_matches()} == {"X01", "Elimination"}
+        assert [m["match_id"] for m in db.recent_matches(mode="x01")] == ["x1"]
+        assert [m["match_id"] for m in db.recent_matches(mode="elimination")] == ["e1"]
+
+    def test_the_limit_counts_per_mode(self, db):
+        self._both_modes(db)
+        db.open_match("x2", "X01", 301)
+        db.insert_turn("x2", "alice", 1, 1, 301, 60, False, False, [("S20", 20, 281)])
+        assert [m["match_id"] for m in db.recent_matches(limit=1, mode="elimination")] == ["e1"]
+
+    def test_activity_is_split_by_mode_and_adds_up(self, db):
+        self._both_modes(db)
+        x01, elim, both = (db.player_activity("alice", m) for m in ("x01", "elimination", "all"))
+        assert (x01["total_darts"], elim["total_darts"]) == (3, 5)
+        assert both["total_darts"] == 8
+        assert (x01["total_games"], elim["total_games"], both["total_games"]) == (1, 1, 2)
+
+    def test_activity_by_date_is_split_by_mode(self, db):
+        self._both_modes(db)
+        darts = lambda mode: sum(r["darts"] for r in db.player_activity_by_date("alice", mode))
+        assert (darts("x01"), darts("elimination"), darts("all")) == (3, 5, 8)
+
+    def test_dashboard_mode_reaches_activity_and_win_loss(self, db):
+        self._both_modes(db)
+        elim = db.player_dashboard("alice", mode="elimination")
+        assert elim["activity"]["total_darts"] == 5
+        assert elim["win_loss"] == {"wins": 1, "losses": 0}
+        assert db.player_dashboard("alice", mode="x01")["activity"]["total_darts"] == 3
+        assert db.player_dashboard("alice")["activity"]["total_darts"] == 8
+
+    def test_all_elimination_stats_lists_every_player_with_a_result(self, db):
+        self._both_modes(db)
+        rows = {r["player"]: r for r in db.all_elimination_stats()}
+        assert set(rows) == {"alice", "bob"}
+        assert rows["alice"]["wins"] == 1 and rows["alice"]["win_pct"] == 100.0
+        assert rows["bob"]["placements"]["second"] == 1
+        assert rows["alice"]["avg_darts_per_turn"] == 2.5
+
+    def test_all_elimination_stats_skips_hidden_players(self, db):
+        self._both_modes(db)
+        db.upsert_player("bob", hidden=True)
+        assert [r["player"] for r in db.all_elimination_stats()] == ["alice"]
+
+    def test_all_elimination_stats_matches_the_per_player_numbers(self, db):
+        self._both_modes(db)
+        for r in db.all_elimination_stats():
+            single = db.player_elimination_stats(r["player"])
+            assert {k: r[k] for k in single} == single
+
+
 class TestEliminationTurnDetails:
     def test_old_database_gets_the_new_columns_and_keeps_its_rows(self, tmp_path):
         import sqlite3
@@ -621,3 +689,4 @@ class TestEliminationTurnDetails:
         db.insert_elimination_turn("e1", "alice", 3)
         row = db._conn.execute("SELECT score, passed FROM elimination_turns").fetchone()
         assert (row["score"], row["passed"]) == (None, None)
+

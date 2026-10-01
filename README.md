@@ -272,7 +272,7 @@ The live scoreboard itself (X01 and Elimination) lives on the separate
 | **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
 | **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn; with no match running and the board connected, the idle screen shows the dart boxes and the dartboard instead of "Waiting for match…" |
 | **Players** | Known players list — name, Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
-| **Stats** | Lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
+| **Stats** | Two chips at the top pick the game mode: **X01** and **Elimination**, each with its own lifetime per-player stats table, collapsible recent matches (expandable per-match detail), leaderboards, and the Advanced dashboard (per-player charts, Top 10 Legs/Checkouts) |
 | **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
 
 All connected clients update in real time via WebSocket.
@@ -719,9 +719,10 @@ The web server exposes a REST API alongside the WebSocket.
 | `GET` | `/api/stats/players` | Lifetime stats for all players |
 | `GET` | `/api/stats/player/{name}` | Lifetime stats for one player |
 | `DELETE` | `/api/stats/player/{name}` | Delete all stats for a player (double-confirmed in the UI) |
-| `GET` | `/api/stats/matches` | Recent matches (up to 20) |
+| `GET` | `/api/stats/matches?mode=x01` | Recent matches (up to 20); `mode` (`x01` or `elimination`) limits the list to one game mode, without it both are mixed |
+| `GET` | `/api/stats/elimination/players` | Lifetime Elimination stats per player: games, wins, win rate, placement spread, average darts per turn |
 | `GET` | `/api/stats/match/{match_id}` | Per-player stats for one match; for an Elimination match, each player's placement, lives left, turns, and average darts per turn instead |
-| `GET` | `/api/stats/dashboard/{name}?points_start=501` | Advanced per-player dashboard (one bundled fetch); `points_start` picks the Top 10 Legs mode, defaults to 501 or the lowest played mode |
+| `GET` | `/api/stats/dashboard/{name}?points_start=501&mode=x01` | Advanced per-player dashboard (one bundled fetch); `points_start` picks the Top 10 Legs mode, defaults to 501 or the lowest played mode; `mode` (`x01` or `elimination`) limits the activity and win/loss numbers to one game mode, default is both |
 | `GET` | `/api/leaderboard?metric=avg3&limit=10` | Top-N players by metric (`avg3`, `s180`, `co_pct`, `dbl_pct`, `total_score`) |
 
 **Players**:

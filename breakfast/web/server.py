@@ -426,10 +426,17 @@ async def stats_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches():
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination)$")):
     if not _stats_db:
         return []
-    return _stats_db.recent_matches()
+    return _stats_db.recent_matches(mode=mode)
+
+
+@app.get("/api/stats/elimination/players")
+async def stats_elimination_players():
+    if not _stats_db:
+        return []
+    return _stats_db.all_elimination_stats()
 
 
 @app.get("/api/stats/match/{match_id}")
@@ -450,11 +457,15 @@ async def stats_delete_player(name: str):
 
 
 @app.get("/api/stats/dashboard/{name}")
-async def stats_dashboard(name: str, points_start: int | None = None):
+async def stats_dashboard(
+    name: str,
+    points_start: int | None = None,
+    mode: str = Query(default="all", pattern="^(all|x01|elimination)$"),
+):
     """Advanced per-player dashboard — one bundled fetch."""
     if not _stats_db:
         return {}
-    return _stats_db.player_dashboard(name, points_start=points_start)
+    return _stats_db.player_dashboard(name, points_start=points_start, mode=mode)
 
 
 # ── REST: leaderboard ────────────────────────────────────────────────────────

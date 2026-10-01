@@ -75,6 +75,11 @@ CREATE INDEX IF NOT EXISTS idx_elim_turns_match   ON elimination_turns   (match_
 """
 
 
+# Which per-turn tables feed a stat for each mode: "all" is both game modes
+# together, "x01" and "elimination" are one each.
+_TURN_TABLES = {"all": ("turns", "elimination_turns"), "x01": ("turns",), "elimination": ("elimination_turns",)}
+
+
 # A match counts as "solo" (practice, no opponent) when exactly one distinct
 # player ever appears in its `turns` rows — Elimination is excluded here
 # since EliminationController.start() already refuses fewer than 2 players,
@@ -528,13 +533,20 @@ class StatsDB:
             self._conn.commit()
         log.info("Deleted all stats for player: %s", player)
 
-    def recent_matches(self, limit: int = 20) -> list:
+    def recent_matches(self, limit: int = 20, mode: str | None = None) -> list:
+        """Newest first. `mode` ("x01" or "elimination") restricts which game mode
+        counts toward the limit; None returns both."""
+        mode_sql = {
+            "x01": " AND COALESCE(game_mode, '') != 'Elimination'",
+            "elimination": " AND game_mode = 'Elimination'",
+        }.get(mode, "")
         with self._lock:
             rows = self._conn.execute(
                 "SELECT match_id, started_at, ended_at, game_mode, points_start, players"
                 " FROM matches"
-                " WHERE EXISTS (SELECT 1 FROM turns WHERE turns.match_id = matches.match_id)"
-                "    OR EXISTS (SELECT 1 FROM elimination_turns WHERE elimination_turns.match_id = matches.match_id)"
+                " WHERE (EXISTS (SELECT 1 FROM turns WHERE turns.match_id = matches.match_id)"
+                "    OR EXISTS (SELECT 1 FROM elimination_turns WHERE elimination_turns.match_id = matches.match_id))"
+                + mode_sql +
                 " ORDER BY started_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
@@ -634,30 +646,23 @@ class StatsDB:
 
     # ── Advanced per-player dashboard ────────────────────────────────────────
 
-    def player_activity(self, player: str) -> dict:
-        """Total darts/games/playtime/walking-distance across X01 + Elimination."""
+    def player_activity(self, player: str, mode: str = "all") -> dict:
+        """Total darts/games/playtime/walking-distance for one game mode, or
+        X01 + Elimination together."""
+        tables = _TURN_TABLES[mode]
+        darts = " + ".join(f"COALESCE((SELECT SUM(darts_count) FROM {t} WHERE player = ?), 0)" for t in tables)
+        walks = " + ".join(f"COALESCE((SELECT COUNT(*) FROM {t} WHERE player = ?), 0)" for t in tables)
+        match_ids = " UNION ".join(f"SELECT match_id FROM {t} WHERE player = ?" for t in tables)
         with self._lock:
-            row = self._conn.execute("""
+            row = self._conn.execute(f"""
                 SELECT
-                    (COALESCE((SELECT SUM(darts_count) FROM turns WHERE player = ?), 0)
-                   + COALESCE((SELECT SUM(darts_count) FROM elimination_turns WHERE player = ?), 0)
-                    ) as total_darts,
-                    (COALESCE((SELECT COUNT(*) FROM turns WHERE player = ?), 0)
-                   + COALESCE((SELECT COUNT(*) FROM elimination_turns WHERE player = ?), 0)
-                    ) as total_walks,
-                    (SELECT COUNT(DISTINCT match_id) FROM (
-                        SELECT match_id FROM turns WHERE player = ?
-                        UNION
-                        SELECT match_id FROM elimination_turns WHERE player = ?
-                    )) as total_games,
+                    ({darts}) as total_darts,
+                    ({walks}) as total_walks,
+                    (SELECT COUNT(DISTINCT match_id) FROM ({match_ids})) as total_games,
                     (SELECT COALESCE(SUM((julianday(ended_at) - julianday(started_at)) * 24), 0)
                      FROM matches
-                     WHERE ended_at IS NOT NULL AND match_id IN (
-                        SELECT match_id FROM turns WHERE player = ?
-                        UNION
-                        SELECT match_id FROM elimination_turns WHERE player = ?
-                     )) as total_playtime_hours
-            """, (player,) * 8).fetchone()
+                     WHERE ended_at IS NOT NULL AND match_id IN ({match_ids})) as total_playtime_hours
+            """, (player,) * (4 * len(tables))).fetchone()
         walks = row["total_walks"] or 0
         return {
             "total_darts": row["total_darts"] or 0,
@@ -666,30 +671,25 @@ class StatsDB:
             "total_distance_km": round(walks * 4.74 / 1000, 2),
         }
 
-    def player_activity_by_date(self, player: str) -> list:
+    def player_activity_by_date(self, player: str, mode: str = "all") -> list:
         """[{date, darts, minutes}, ...] — one calendar day per match's start date."""
+        tables = _TURN_TABLES[mode]
+        darts_union = " UNION ALL ".join(f"SELECT match_id, darts_count as darts FROM {t} WHERE player = ?" for t in tables)
+        match_ids = " UNION ".join(f"SELECT match_id FROM {t} WHERE player = ?" for t in tables)
         with self._lock:
-            darts_rows = self._conn.execute("""
+            darts_rows = self._conn.execute(f"""
                 SELECT DATE(m.started_at) as date, SUM(darts) as darts FROM (
-                    SELECT t.match_id, t.darts_count as darts, t.player
-                    FROM turns t WHERE t.player = ?
-                    UNION ALL
-                    SELECT et.match_id, et.darts_count as darts, et.player
-                    FROM elimination_turns et WHERE et.player = ?
+                    {darts_union}
                 ) x JOIN matches m ON m.match_id = x.match_id
                 GROUP BY DATE(m.started_at)
-            """, (player, player)).fetchall()
-            minutes_rows = self._conn.execute("""
+            """, (player,) * len(tables)).fetchall()
+            minutes_rows = self._conn.execute(f"""
                 SELECT DATE(m.started_at) as date,
                        SUM((julianday(m.ended_at) - julianday(m.started_at)) * 1440) as minutes
                 FROM matches m
-                WHERE m.ended_at IS NOT NULL AND m.match_id IN (
-                    SELECT match_id FROM turns WHERE player = ?
-                    UNION
-                    SELECT match_id FROM elimination_turns WHERE player = ?
-                )
+                WHERE m.ended_at IS NOT NULL AND m.match_id IN ({match_ids})
                 GROUP BY DATE(m.started_at)
-            """, (player, player)).fetchall()
+            """, (player,) * len(tables)).fetchall()
         by_date = {}
         for r in darts_rows:
             by_date.setdefault(r["date"], {"date": r["date"], "darts": 0, "minutes": 0.0})
@@ -788,19 +788,17 @@ class StatsDB:
             for r in rows
         ]
 
-    def player_win_loss(self, player: str) -> dict:
+    def player_win_loss(self, player: str, mode: str = "all") -> dict:
         """Wins vs losses among decided (winner set) matches this player was
         in — excludes solo X01 matches, same as x01_win_counts()."""
+        tables = _TURN_TABLES[mode]
+        match_ids = " UNION ".join(f"SELECT match_id FROM {t} WHERE player = ?" for t in tables)
         with self._lock:
             rows = self._conn.execute(f"""
                 SELECT winner FROM matches m
-                WHERE winner IS NOT NULL AND match_id IN (
-                    SELECT match_id FROM turns WHERE player = ?
-                    UNION
-                    SELECT match_id FROM elimination_turns WHERE player = ?
-                )
+                WHERE winner IS NOT NULL AND match_id IN ({match_ids})
                 AND NOT ({_SOLO_X01_SQL})
-            """, (player, player)).fetchall()
+            """, (player,) * len(tables)).fetchall()
         wins = sum(1 for r in rows if r["winner"] == player)
         return {"wins": wins, "losses": len(rows) - wins}
 
@@ -827,23 +825,33 @@ class StatsDB:
                 "SELECT AVG(darts_count) as avg_darts FROM elimination_turns WHERE player = ?",
                 (player,),
             ).fetchone()
-        by_place = {r["placement"]: r["n"] for r in rows}
-        games = sum(by_place.values())
-        wins = by_place.get(1, 0)
-        return {
-            "games": games,
-            "wins": wins,
-            "win_pct": round(wins / games * 100, 1) if games else 0.0,
-            "placements": {
-                "first": wins,
-                "second": by_place.get(2, 0),
-                "third": by_place.get(3, 0),
-                "other": sum(n for place, n in by_place.items() if place > 3),
-            },
-            "avg_darts_per_turn": (
-                round(avg_row["avg_darts"], 2) if avg_row["avg_darts"] is not None else None
-            ),
-        }
+        return _elimination_summary({r["placement"]: r["n"] for r in rows}, avg_row["avg_darts"])
+
+    def all_elimination_stats(self) -> list:
+        """Lifetime Elimination numbers per player, same fields as
+        player_elimination_stats plus the name. Players flagged `hidden` are left
+        out, and so are players without a recorded result."""
+        with self._lock:
+            place_rows = self._conn.execute("""
+                SELECT r.player as player, r.placement as placement, COUNT(*) as n
+                FROM elimination_results r
+                LEFT JOIN players p ON p.name = r.player
+                WHERE COALESCE(p.hidden, 0) = 0
+                GROUP BY r.player, r.placement
+            """).fetchall()
+            avg_rows = self._conn.execute(
+                "SELECT player, AVG(darts_count) as avg_darts FROM elimination_turns GROUP BY player"
+            ).fetchall()
+        by_player = {}
+        for r in place_rows:
+            by_player.setdefault(r["player"], {})[r["placement"]] = r["n"]
+        avg = {r["player"]: r["avg_darts"] for r in avg_rows}
+        result = [
+            {"player": name, **_elimination_summary(by_place, avg.get(name))}
+            for name, by_place in by_player.items()
+        ]
+        result.sort(key=lambda r: (-r["games"], -r["wins"], r["player"]))
+        return result
 
     def player_doubles_by_number(self, player: str) -> list:
         """Attempts/hits per double target (D1-D20 + bullseye-as-25), inferred from
@@ -947,25 +955,28 @@ class StatsDB:
             for r in rows
         ]
 
-    def player_dashboard(self, player: str, points_start: int | None = None) -> dict:
+    def player_dashboard(self, player: str, points_start: int | None = None, mode: str = "all") -> dict:
         """Bundle every player_*/top_* method above into one payload — one fetch
         for the whole advanced-stats view instead of ~10 round trips.
 
         `points_start` picks the Top 10 Legs mode tab; when not given
         (first load), default to 501 if it's ever been played, else the
         lowest available mode — resolved here so the frontend never has
-        to guess before its first paint."""
+        to guess before its first paint.
+
+        `mode` ("x01" or "elimination") limits the activity and win/loss
+        numbers to one game mode; the other sections are per-mode already."""
         leg_modes = self.x01_points_start_values()
         if points_start is None:
             points_start = 501 if 501 in leg_modes else (leg_modes[0] if leg_modes else None)
         return {
-            "activity": self.player_activity(player),
-            "activity_by_date": self.player_activity_by_date(player),
+            "activity": self.player_activity(player, mode),
+            "activity_by_date": self.player_activity_by_date(player, mode),
             "performance": self.player_performance_summary(player),
             "scoring_buckets": self.player_scoring_buckets(player),
             "avg_by_date": self.player_avg_by_date(player),
             "checkout_pct_by_date": self.player_checkout_pct_by_date(player),
-            "win_loss": self.player_win_loss(player),
+            "win_loss": self.player_win_loss(player, mode),
             "game_type_ratio": self.player_game_type_ratio(player),
             "elimination": self.player_elimination_stats(player),
             "doubles": self.player_doubles_by_number(player),
@@ -974,6 +985,23 @@ class StatsDB:
             "selected_points_start": points_start,
             "top_checkouts": self.top_checkouts(player),
         }
+
+
+def _elimination_summary(by_place: dict, avg_darts) -> dict:
+    games = sum(by_place.values())
+    wins = by_place.get(1, 0)
+    return {
+        "games": games,
+        "wins": wins,
+        "win_pct": round(wins / games * 100, 1) if games else 0.0,
+        "placements": {
+            "first": wins,
+            "second": by_place.get(2, 0),
+            "third": by_place.get(3, 0),
+            "other": sum(n for place, n in by_place.items() if place > 3),
+        },
+        "avg_darts_per_turn": round(avg_darts, 2) if avg_darts is not None else None,
+    }
 
 
 def _row_stats(r) -> dict:
