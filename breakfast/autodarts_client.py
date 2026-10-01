@@ -282,7 +282,7 @@ class AutodartsCloudClient:
             log.warning("Unknown field '%s'", field)
             return
         idx = str(dart_number - 1)  # 0-based index for API
-        data = {"changes": {idx: {"point": coords, "type": "normal"}}}
+        data = {"changes": {idx: {"coords": coords, "type": "normal"}}}
         try:
             res = requests.patch(
                 f"{_MATCHES_URL}{mid}/throws",
@@ -291,6 +291,8 @@ class AutodartsCloudClient:
                 timeout=5,
             )
             log.info("Corrected throw D%s=%s → %s", dart_number, field, res.status_code)
+            if not res.ok:
+                log.warning("Throw correction rejected: %s", (res.text or "")[:300])
         except Exception as e:
             log.error("Throw correction failed: %s", e)
 

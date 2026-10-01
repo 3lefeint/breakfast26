@@ -349,7 +349,7 @@ Without that connection the board is hidden.
 | ⏭ Next Player | Skip to next player |
 | ▶▶ Next Leg | Start next leg/set |
 | ⟳ Reset Board | Hard-reset the local board |
-| ✓ Correct | Correct a misdetected throw (select dart 1/2/3, enter field e.g. `T20`) |
+| ✓ Correct | Correct a misdetected throw (select dart 1/2/3, enter field e.g. `T20`); tapping a dart box on the scoreboard opens the same correction dialog as the 🎯 Board button |
 | 🎯 Board | Same correction by clicking the spot on a dartboard (or picking a multiplier and number on the pad below it) |
 
 This is the X01 board-level undo (removes the last *detected throw*).

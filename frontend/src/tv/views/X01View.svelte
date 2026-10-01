@@ -45,6 +45,13 @@
   let selectedDartNum = $state(1);
   let correctField = $state('');
   let boardOpen = $state(false);
+  let canCorrect = $derived(hasCloudControl && game.match_started);
+
+  function openCorrect(n) {
+    if (!canCorrect || cur[`throw${n}_raw`] == null) return;
+    selectedDartNum = n;
+    boardOpen = true;
+  }
 
   async function ctrl(action) {
     await api('POST', `/api/control/${action}`);
@@ -96,11 +103,12 @@
           {@const raw = cur[`throw${n}_raw`]}
           {@const pts = cur[`throw${n}_points`]}
           {@const isBust = cur.is_bust && cur.last_dart_number >= n}
-          <div class="dart-box {dartBoxClass(pts, isBust)}">
+          <button type="button" class="dart-box {dartBoxClass(pts, isBust)}" class:correctable={canCorrect && raw != null}
+                  onclick={() => openCorrect(n)}>
             <div class="dlabel">D{n}</div>
             <div class="dval">{raw != null ? String(raw).toUpperCase() : '—'}</div>
             <div class="dsub">{raw != null && pts != null ? `(${pts})` : ''}</div>
-          </div>
+          </button>
         {/each}
         <div class="turn-total">
           <div class="tlabel">Total</div>
@@ -183,7 +191,14 @@
   .dart-box {
     background: color-mix(in srgb, var(--surface) 70%, var(--bg));
     border: 1px solid var(--border); border-radius: 12px; padding: 0.6vw 0.8vw; text-align: center;
+    font-family: inherit; color: inherit; cursor: default;
     transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  }
+  .dart-box.correctable { cursor: pointer; }
+  .dart-box.correctable:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent) 50%, transparent);
   }
   .dart-box .dlabel { font-size: clamp(0.6rem, 0.9vw, 1rem); color: var(--muted); margin-bottom: 2px; }
   .dart-box .dval { font-size: clamp(1.2rem, 2.5vw, 3rem); font-weight: 800; }

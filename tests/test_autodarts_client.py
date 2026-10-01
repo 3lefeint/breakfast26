@@ -260,3 +260,37 @@ def test_on_message_survives_a_failing_message(monkeypatch):
     client._msg_queue.join()
 
     assert seen == [1]
+
+
+class TestCorrectThrow:
+    def _patch_with(self, monkeypatch, status, text=""):
+        calls = []
+        resp = MagicMock(status_code=status, ok=status < 400, text=text)
+        monkeypatch.setattr(
+            "breakfast.autodarts_client.requests.patch",
+            lambda url, **kw: calls.append((url, kw)) or resp)
+        return calls
+
+    def test_patches_the_throw_with_the_field_center(self, monkeypatch):
+        calls = self._patch_with(monkeypatch, 200)
+        client = _make_client()
+        _start_match(client, "m1")
+        client.correct_throw(2, "t20")
+        url, kw = calls[0]
+        assert url.endswith("/m1/throws")
+        assert kw["json"] == {"changes": {"1": {"coords": {"x": 0.0, "y": 103 / 170}, "type": "normal"}}}
+
+    def test_rejected_correction_logs_the_response_body(self, monkeypatch, caplog):
+        self._patch_with(monkeypatch, 502, "upstream failed")
+        client = _make_client()
+        _start_match(client)
+        with caplog.at_level("WARNING"):
+            client.correct_throw(1, "50")
+        assert "upstream failed" in caplog.text
+
+    def test_unknown_field_sends_nothing(self, monkeypatch):
+        calls = self._patch_with(monkeypatch, 200)
+        client = _make_client()
+        _start_match(client)
+        client.correct_throw(1, "20")
+        assert calls == []

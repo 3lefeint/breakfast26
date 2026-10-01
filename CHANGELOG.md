@@ -3,10 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- X01: tapping a dart box opens the correction dialog.
 - TV view: live dart positions on a dartboard in X01 and Elimination (#12).
 - Clickable dartboard for correcting a misdetected dart (#9).
 - Expanded Elimination matches under Recent matches show placement, lives, turns and average (#5).
 - Per-player dashboard: Elimination section with games, wins, win rate, placements and darts per turn (#1).
+
+### Fixed
+- X01 throw corrections send the field as `coords`, which Autodarts accepts instead of answering 502.
+
+### Changed
+- A rejected X01 throw correction logs the Autodarts response.
 
 ## [0.4.1] - 2026-09-30
 
