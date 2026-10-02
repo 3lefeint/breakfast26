@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-02
+
 ### Added
 - About page behind an ℹ️ button in the footer: version, release time, joke of the day and changelog; `[web] joke_of_the_day` turns the joke off (#11).
 - The position of every dart is stored for X01 and Elimination; the Stats heatmap can show where the darts landed, with a density overlay from 30 darts on, and the Elimination view gets the same board (#15).
