@@ -73,6 +73,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
 - **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories (the voice-pack profile is picked from a dropdown of the installed profiles)
 - **About page**: the ℹ️ button in the footer opens the running version, its release time (UTC), a joke of the day (icanhazdadjoke.com, cached per day, a built-in joke if the request fails; `[web] joke_of_the_day = false` turns it off and makes no outbound call) and the changelog
+- **Online Elimination**: play one Elimination match with Breakfast installations elsewhere. One site hosts and gets a join code, the others join with the code and a shared match password, each adds its own players, the host sets lives and order, and after a match the host can start a rematch without a new lobby (the first eliminated starts, the winner is last; players can change). The darts of every player appear live on every TV, the calls play locally, and every site stores the whole match in its own `stats.db`. Needs a relay (`relay/`, a Cloudflare Worker) and `[online] relay_url`; without it online play stays off
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
 - **Per-player stats** (Stats tab, X01 and Elimination chips): activity and records, and for X01 a score histogram, board heatmap (by field, or where every dart landed), bust rate, win/loss, average and checkout % per match, doubles and the Top 10 legs (by starting score) and checkouts
 - **Modern Web UI**: Svelte 5 + Vite frontend (built to static assets, no client-side framework runtime overhead), dark-mode with swappable accent colors
@@ -161,6 +162,10 @@ password = "mqtt"
 [web]
 port = 8080
 # joke_of_the_day = true   # About page fetches a joke from icanhazdadjoke.com; false = no outbound call
+
+# [online]
+# relay_url = "wss://breakfast-relay.example.workers.dev"   # relay for online Elimination, see relay/README.md
+# site_name = "Home"                                       # how this installation shows up to the others
 
 # [stats]
 # db = "stats.db"       # SQLite file for per-turn data; "none" to disable
@@ -689,6 +694,14 @@ The web server exposes a REST API alongside the WebSocket.
 |--------|------|-------------|
 | `GET` | `/api/state` | Full app state snapshot (same payload pushed over `/ws`) |
 | `GET` | `/api/health` | Service health (uptime, MQTT/WS state, stats-db enabled) |
+| `GET` | `/api/online` | Whether a relay is configured, this site's name, and the open online match (if any) |
+| `POST` | `/api/online/create` | Host an online Elimination match: `{password, site?}` returns `{code}` |
+| `POST` | `/api/online/join` | Join one: `{code, password, site?}` |
+| `POST` | `/api/online/players` | The players of this site in the lobby: `{players}` |
+| `POST` | `/api/online/start` | Host only: `{lives, order}` starts the match |
+| `POST` | `/api/online/decision` | Host only, after a site did not come back: `{choice: "continue" \| "abort"}` |
+| `POST` | `/api/online/rematch` | Host only, after a finished match: back to the lobby with the same sites and players |
+| `POST` | `/api/online/leave` | Leave the online match |
 | `GET` | `/api/changelog` | `CHANGELOG.md` as versions with their sections, for the About page; `[Unreleased]` only if it has entries |
 | `GET` | `/api/joke` | Joke of the day (cached per day, built-in fallback); `{"enabled": false}` and no outbound call if `[web] joke_of_the_day = false` |
 | `GET` | `/api/board-address` | Local Autodarts board manager URL, for the Home hub's Board card |
@@ -792,6 +805,7 @@ breakfast26/
 ├── updater/                        # Self-update sidecar service (optional, see "Self-update" above)
 │   ├── app.py                     # FastAPI app: check/apply/status, fixed git+docker command sequences only
 │   └── Dockerfile                 # Debian + docker-ce-cli + docker-compose-plugin
+├── relay/                          # Relay for online Elimination: Cloudflare Worker + Durable Object (own package, see relay/README.md)
 ├── systemd/
 │   └── breakfast.service          # Systemd unit template
 ├── ESPHome/                       # ESPHome configs for LED strips
@@ -820,6 +834,10 @@ breakfast26/
     ├── state.py                   # Game state machine
     ├── stats.py                   # SQLite stats DB + event-driven tracker
     ├── elimination.py             # Elimination game controller
+    ├── online.py                  # Online Elimination: this site's side of the relay protocol, drives the local game
+    ├── dartboard.py               # Dartboard geometry and the center of every field
+    ├── changelog.py               # CHANGELOG.md parser for the About page
+    ├── joke.py                    # Joke of the day for the About page
     ├── caller.py                  # Voice caller: shared lifecycle calls + mode dispatch
     ├── caller_x01.py              # X01 call logic (per-dart, totals, checkout calls)
     ├── voicepack.py               # Sound directory resolution + voice-pack installer

@@ -47,6 +47,12 @@ port = 8080
 # accent_color = "#7c6aff"  # custom hex color, overrides the theme's accent
 # joke_of_the_day = true    # About page: joke from icanhazdadjoke.com; false = no outbound call
 
+# ── Online Elimination ───────────────────────────────────────────────────────
+# Play one Elimination match with Breakfast installations elsewhere, through a relay (see relay/README.md).
+# [online]
+# relay_url = "wss://breakfast-relay.example.workers.dev"
+# site_name = "Home"        # how this installation shows up to the others
+
 # ── Statistics (SQLite) ───────────────────────────────────────────────────────
 # Per-turn data is stored here; lifetime and session stats are derived from it.
 # Use "none" to disable stats collection entirely.

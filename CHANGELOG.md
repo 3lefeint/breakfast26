@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Online Elimination: sites at different places play one match through a relay; the host sets lives and order, every site stores the whole match, the host can start a rematch from the result page, and the relay (`relay/`) is a Cloudflare Worker (#10).
+
 ### Fixed
 - The X01 bust sound `ambient_noscore` no longer plays when the ambient volume is 0 (#8).
 - The player is named at every change again once the checkout limit applies (#6).

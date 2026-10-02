@@ -5,11 +5,11 @@
   // and navigate to Home's Elimination tab, just to different
   // views once there (setup vs. the hub's default Elimination view).
   import { cap } from '../../lib/util.js';
-  import { api } from '../../lib/api.js';
+  import { api, apiJson } from '../../lib/api.js';
   import { players } from '../../lib/stores/players.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
 
-  let { elimination } = $props();
+  let { elimination, online = null } = $props();
 
   let showModal = $state(false);
   let rematchPlayers = $state([]);
@@ -73,6 +73,12 @@
     await api('POST', '/api/elimination/stop');
     window.location.href = '/#elimination';
   }
+  let onlineError = $state('');
+  async function onlineRematch() {
+    const res = await apiJson('POST', '/api/online/rematch');
+    onlineError = res.error || '';
+    if (!res.error) window.location.href = '/#elimination';   // the lobby is on Home
+  }
   async function finishDone() {
     await api('POST', '/api/elimination/stop');
     window.location.href = '/#elimination';
@@ -96,10 +102,16 @@
     <div class="winner-label">Winner</div>
     <div class="finished-actions">
       <button class="btn btn-start" onclick={newGame}>New game</button>
-      <button class="btn btn-add" onclick={openRematchModal}>🔁 Rematch</button>
+      {#if !online}
+        <button class="btn btn-add" onclick={openRematchModal}>🔁 Rematch</button>
+      {:else if online.host}
+        <button class="btn btn-add" onclick={onlineRematch}>🔁 Rematch</button>
+      {/if}
       <button class="btn btn-add" onclick={finishDone}>✓ Done</button>
     </div>
-    <button class="btn-undo-win" onclick={undoWin}>↩ Undo winning turn</button>
+    {#if online && !online.host}<p class="online-note">Only the host can start a rematch.</p>{/if}
+    {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
+    {#if !online}<button class="btn-undo-win" onclick={undoWin}>↩ Undo winning turn</button>{/if}
   </div>
 </div>
 
@@ -157,6 +169,8 @@
   .winner-name { font-size: clamp(1.5rem, 4vw, 3rem); font-weight: 700; color: var(--green); }
   .winner-label { color: var(--muted); margin: 0.5rem 0 1.5rem; }
   .finished-actions { display: flex; gap: 0.5rem; justify-content: center; }
+  .online-note { color: var(--muted); font-size: 0.9rem; margin-top: 1rem; }
+  .online-error { color: var(--red); font-size: 0.9rem; margin-top: 1rem; }
   .btn-undo-win {
     display: block; margin: 1rem auto 0; background: none; border: none;
     color: var(--muted); font-size: 0.8rem; text-decoration: underline;

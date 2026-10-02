@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import json
 import logging
 import threading
@@ -47,7 +48,7 @@ def _parse_field(field):
 
 class EliminationGame:
     def __init__(self, players, lives_count, client, base_topic, audio=None, on_change=None,
-                 stats_db=None):
+                 stats_db=None, match_id=None, online=None, local_players=None):
         self.lives_max = lives_count
         self.order = list(players)
         self.lives = {p: lives_count for p in players}
@@ -63,8 +64,16 @@ class EliminationGame:
         self.audio = audio
         self.stats_db = stats_db
         # Elimination has no externally-supplied match id like X01's Autodarts
-        # event id, so it mints its own to give stats.db a matches/turns key.
-        self.match_id = uuid.uuid4().hex
+        # event id, so it mints its own to give stats.db a matches/turns key
+        # (an online match gets the one the relay assigned).
+        self.match_id = match_id or uuid.uuid4().hex
+        # Online play (see online.py): `online` sends this site's darts, turns and
+        # state hashes to the relay, `local_players` are the players whose turns
+        # are thrown at this site's board; None means every player is local.
+        self.online = online
+        self.local_players = set(local_players) if local_players is not None else None
+        self.turn_seq = 0          # finished turns of this match, local and remote
+        self._remote = False       # True while a remote turn is being replayed
         self._on_change = on_change
         self._prev_count = 0
         self._last_throws = []
@@ -175,7 +184,9 @@ class EliminationGame:
                     self._on_change()
                 if is_correction:
                     log.debug("Live correction detected: %s", new_vals)
-                if is_new_dart and self.audio:
+                if self.online and not self._remote:
+                    self.online.send_dart(self.turn_seq + 1, self.current_player, self._last_throws)
+                if is_new_dart and self.audio and not self._remote:
                     # Miss comment on any dart
                     latest = new_vals[count - 1] if count <= len(new_vals) else 0
                     if latest == 0:
@@ -215,7 +226,9 @@ class EliminationGame:
                     self._record_turn(player, score, len(self._last_throws))
                     self._push_history(self._snapshot_state(player), turn_recorded=self.stats_db is not None)
                     self.lives[player] = future_lives
+                    eliminated_before = len(self.elimination_order)
                     self._finish_match(player, score)
+                    self._after_turn(player, list(self._last_throws), eliminated_before)
                     return
                 self._outcome_published = True
                 if self.audio:
@@ -243,15 +256,7 @@ class EliminationGame:
         self.winner = self.active[0]
         self.state = "finished"
         self.current_idx = 0
-        if self.stats_db:
-            placements = [(self.winner, 1, self.lives[self.winner])]
-            placements += [
-                (name, i + 2, None)
-                for i, name in enumerate(reversed(self.elimination_order))
-            ]
-            self.stats_db.record_elimination_result(self.match_id, placements)
-            self.stats_db.set_winner(self.match_id, self.winner)
-            self.stats_db.close_match(self.match_id)
+        self._record_result()
         if self.audio:
             # Winner name before matchshot — reversed
             # from the old matchshot-then-name order. Wrapped in its own
@@ -268,6 +273,21 @@ class EliminationGame:
         self._publish_state()
         self._publish_turn(reset=True)
         log.info("Winner: %s", self.winner)
+
+    def _record_result(self):
+        """Store who won and how everybody placed, once the match is over."""
+        if not self.stats_db:
+            return
+        placements = []
+        if self.winner:
+            placements.append((self.winner, 1, self.lives[self.winner]))
+        placements += [
+            (name, i + 2 if self.winner else i + 1, None)
+            for i, name in enumerate(reversed(self.elimination_order))
+        ]
+        self.stats_db.record_elimination_result(self.match_id, placements)
+        self.stats_db.set_winner(self.match_id, self.winner)
+        self.stats_db.close_match(self.match_id)
 
     def _snapshot_state(self, player):
         """The game state as of right now, before this turn's outcome gets
@@ -294,6 +314,8 @@ class EliminationGame:
     def _end_turn(self):
         player = self.current_player
         score = sum(_dart_value(t) for t in self._last_throws)
+        throws = list(self._last_throws)
+        eliminated_before = len(self.elimination_order)
         self._turn_snapshot = self._snapshot_state(player)
         self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
         self._publish_last_turn(self._current_darts)
@@ -312,6 +334,97 @@ class EliminationGame:
         if not self._preview_fired and self.audio:
             self.audio.play(str(score))
         self._apply_turn(player, score)
+        self._after_turn(player, throws, eliminated_before)
+
+    def _after_turn(self, player, throws, eliminated_before):
+        """A turn is done and applied. Online: a turn thrown here goes to the relay as
+        the authoritative record, and either way the relay learns this site's state hash."""
+        self.turn_seq += 1
+        if not self.online:
+            return
+        if not self._remote:
+            finished = self.state == "finished"
+            self.online.send_turn(
+                self.turn_seq, player, throws,
+                next_player=None if finished else self.current_player,
+                eliminated=list(self.elimination_order[eliminated_before:]),
+                winner=self.winner if finished else None)
+        self.online.send_ack(self.turn_seq, self.state_hash())
+
+    def state_hash(self):
+        """A short digest of everything that decides how the match goes on, equal on all
+        sites that applied the same turns."""
+        state = {
+            "seq": self.turn_seq, "lives": self.lives, "active": self.active,
+            "current": self.current_player, "target": self.target, "freipass": self.freipass,
+            "state": self.state, "winner": self.winner, "eliminated": self.elimination_order,
+        }
+        return hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()[:16]
+
+    def is_local(self, player):
+        return self.local_players is None or player in self.local_players
+
+    # ── online: what comes in from the relay ─────────────────────────────────────
+
+    def remote_dart(self, player, throws):
+        """The darts of a remote player's turn in progress, shown like local ones."""
+        if self.state != "playing" or player != self.current_player or not throws:
+            return
+        self._replay(throws)
+
+    def remote_turn(self, player, throws):
+        """A remote player's finished turn: replay it through the same code a local turn
+        runs through, so scores, calls, stats and the next player come out identical."""
+        if self.state != "playing":
+            return
+        if player != self.current_player:
+            log.warning("Remote turn of %s while %s is up", player, self.current_player)
+            return
+        self._replay(throws, pull=True)
+
+    def _replay(self, throws, pull=False):
+        self._remote = True
+        try:
+            if throws:
+                self.on_board_state(len(throws), list(throws))
+            if pull:
+                self.on_board_state(0, [])
+        finally:
+            self._remote = False
+
+    def drop_players(self, names, next_player):
+        """The host chose to play on without a site: its players are out, in this order."""
+        if self.state != "playing":
+            return
+        was_current = self.current_player in names
+        for name in names:
+            if name in self.active:
+                self.active.remove(name)
+                self.lives[name] = 0
+                self.elimination_order.append(name)
+        self._current_darts = []
+        self._last_throws = []
+        self._dart_overrides = {}
+        self._prev_count = 0
+        if len(self.active) <= 1:
+            self.winner = self.active[0] if self.active else None
+            self.state = "finished"
+            self.current_idx = 0
+            self._record_result()
+        else:
+            self.current_idx = self.active.index(next_player) if next_player in self.active else 0
+            if was_current:
+                self.freipass = True
+        self._publish_state()
+        self._publish_turn(reset=True)
+        log.info("Dropped players %s, up next: %s", names, self.current_player)
+
+    def apply_placements(self, placements):
+        """The relay's result is the one every site stores."""
+        if self.stats_db and placements:
+            self.stats_db.replace_elimination_results(self.match_id, [
+                (x["player"], x["placement"], self.lives.get(x["player"]) if x["placement"] == 1 else None)
+                for x in placements])
 
     def _record_turn(self, player, score, darts_count):
         """Write a finished turn to the stats DB together with what it had to
@@ -397,6 +510,9 @@ class EliminationGame:
                     self.audio.play(str(self.target + 1))
 
     def correct_turn(self, new_total):
+        if self.online:
+            log.warning("Correcting a finished turn is not available in an online match yet")
+            return
         snap = self._turn_snapshot
         if not snap:
             log.warning("No turn to correct")
@@ -424,6 +540,9 @@ class EliminationGame:
         keep undoing further back. Returns False if there's nothing left
         to undo. Deliberately silent (no audio) — an undo is a
         correction, not a game event, same as `correct_turn()`."""
+        if self.online:
+            log.warning("Undo is not available in an online match yet")
+            return False
         if not self._history:
             return False
         snap = self._history.pop()
@@ -463,6 +582,8 @@ class EliminationGame:
             return
         if dart_index not in (0, 1, 2):
             return
+        if self.online and not self.is_local(self.current_player):
+            return      # a remote player's darts are corrected at their own site
         self._dart_overrides[dart_index] = _parse_field(field)
         self._apply_dart_overrides()
         self._publish_turn()
@@ -560,6 +681,7 @@ class EliminationController:
         self.audio = audio
         self.game = None
         self._on_change = on_change
+        self._lock = threading.RLock()
 
         mqtt_pub.subscribe(f"{base_topic}/elimination/command", self._handle_command)
         mqtt_pub.client.publish(
@@ -576,8 +698,45 @@ class EliminationController:
         return self.game is not None and self.game.state == "playing"
 
     def on_board_state(self, count, throws):
-        if self.game:
-            self.game.on_board_state(count, throws)
+        with self._lock:
+            game = self.game
+            if not game:
+                return
+            if game.online and game.state == "playing" and (
+                    not game.is_local(game.current_player) or not game.online.can_play()):
+                return      # online: only the board of the site whose player is up counts
+            game.on_board_state(count, throws)
+
+    def start_online(self, order, lives, match_id, local_players, online):
+        """The host started an online match: every player in `order` plays, the ones in
+        `local_players` at this site's board."""
+        with self._lock:
+            self.game = EliminationGame(
+                order, lives, self.mqtt_pub.client, self.base_topic,
+                audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
+                match_id=match_id, online=online, local_players=local_players,
+            )
+            self.game.announce_start()
+
+    def remote_dart(self, player, throws):
+        with self._lock:
+            if self.game:
+                self.game.remote_dart(player, throws)
+
+    def remote_turn(self, player, throws):
+        with self._lock:
+            if self.game:
+                self.game.remote_turn(player, throws)
+
+    def drop_players(self, names, next_player):
+        with self._lock:
+            if self.game:
+                self.game.drop_players(names, next_player)
+
+    def apply_placements(self, placements):
+        with self._lock:
+            if self.game:
+                self.game.apply_placements(placements)
 
     def start(self, players: list, lives: int):
         self.game = EliminationGame(

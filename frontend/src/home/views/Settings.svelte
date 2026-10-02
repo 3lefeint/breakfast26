@@ -25,6 +25,7 @@
       announce_change: true, call_player: true, ambient_volume: 0.6, call_misses: true,
     },
     record: { file: '' },
+    online: { relay_url: '', site_name: '' },
     // Read-only — not part of the editable form/save flow, set directly in
     // config.toml. Only gates whether the Dev tab below is shown at all.
     dev: { enabled: false },
@@ -264,6 +265,8 @@
     addIfChanged('audio', 'profile', cfg.audio.profile);
     addIfChanged('web', 'accent_color', cfg.web.accent_color);
     addIfChanged('record', 'file', cfg.record.file);
+    addIfChanged('online', 'relay_url', cfg.online.relay_url);
+    addIfChanged('online', 'site_name', cfg.online.site_name);
     addIfChanged('mqtt', 'port', cfg.mqtt.port, (v) => parseInt(v, 10));
     addIfChanged('caller', 'checkout_limit', cfg.caller.checkout_limit, (v) => parseInt(v, 10));
     addIfChanged('caller', 'ambient_volume', cfg.caller.ambient_volume, (v) => parseFloat(v));
@@ -482,6 +485,13 @@
         <input type="checkbox" id="sWebJoke" bind:checked={cfg.web.joke_of_the_day}>
       </div>
       <p class="note">The About page fetches the joke from icanhazdadjoke.com. Switch it off to make no outbound request.</p>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Online Elimination <span class="badge runtime">applies instantly</span></div>
+      <div class="settings-row"><label for="sOnlineRelay">Relay address</label><input type="text" id="sOnlineRelay" placeholder="wss://breakfast-relay.example.workers.dev" bind:value={cfg.online.relay_url}></div>
+      <div class="settings-row"><label for="sOnlineSite">This site's name</label><input type="text" id="sOnlineSite" placeholder="e.g. Home" maxlength="24" bind:value={cfg.online.site_name}></div>
+      <p class="note">Play one Elimination match with Breakfast installations elsewhere, through a relay. Without an address, online play stays off.</p>
     </div>
 
     <div class="settings-section">

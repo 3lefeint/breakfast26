@@ -12,8 +12,9 @@
   import Crown from '../../lib/components/Crown.svelte';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
+  import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
 
-  let { elimination, winsFor, boardDarts = null } = $props();
+  let { elimination, winsFor, boardDarts = null, online = null } = $props();
 
   let darts = $derived(elimination.current_darts || []);
   let total = $derived(darts.reduce((a, b) => a + b, 0));
@@ -32,11 +33,12 @@
   function openCorrect(index) {
     if (elimination.state !== 'playing') return;
     if (darts[index] == null) return;
+    if (online && online.match && online.match.owners[elimination.current_player] !== online.site) return;   // theirs
     correctingIndex = index;
   }
 
   async function stop() {
-    if (!confirm('Stop the current game?')) return;
+    if (!confirm(online ? 'Leave the online match?' : 'Stop the current game?')) return;
     await api('POST', '/api/elimination/stop');
     window.location.href = '/';
   }
@@ -48,6 +50,7 @@
 </script>
 
 <div class="player-card">
+  <OnlineBanner {online} currentPlayer={elimination.current_player} />
   <div class="player-name">{cap(elimination.current_player || '—')}</div>
   <div class="player-score">{total}</div>
   <div class="darts-row">
@@ -71,7 +74,7 @@
     {/if}
   </div>
   <div class="elim-endgame-row">
-    <button class="btn-end-game" onclick={undo}>↩ Undo</button>
+    {#if !online}<button class="btn-end-game" onclick={undo}>↩ Undo</button>{/if}
     <button class="btn-end-game" onclick={stop}>■ Stop</button>
   </div>
 </div>

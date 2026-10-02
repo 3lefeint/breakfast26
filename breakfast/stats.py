@@ -324,6 +324,13 @@ class StatsDB:
                 )
             self._conn.commit()
 
+    def replace_elimination_results(self, match_id: str, results: list):
+        """Like record_elimination_result(), but replaces what is stored for the match: an
+        online match stores the placements the relay decided."""
+        with self._lock:
+            self._conn.execute("DELETE FROM elimination_results WHERE match_id = ?", (match_id,))
+        self.record_elimination_result(match_id, results)
+
     def delete_elimination_results(self, match_id: str):
         """Un-record everything record_elimination_result() wrote for a
         match — used when undoing a match finish so a later

@@ -3,6 +3,7 @@
   import { gameState } from '../lib/stores/gameState.js';
   import { players } from '../lib/stores/players.js';
   import { elimination } from '../lib/stores/elimination.js';
+  import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
   import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
@@ -16,6 +17,14 @@
     connect();
     startHealthPolling();
     primeAutoplay();
+  });
+
+  // After a rematch every site goes back to the lobby on Home, where it picks its own players.
+  let lastPhase = null;
+  $effect(() => {
+    const phase = $online?.phase ?? null;
+    if (lastPhase === 'ended' && phase === 'lobby') window.location.href = '/#elimination';
+    lastPhase = phase;
   });
 
   let game = $derived($gameState.game || {});
@@ -88,10 +97,10 @@
   </div>
 {:else if view === 'elim-live'}
   <div id="activeElim">
-    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_darts} />
+    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_darts} online={$online} />
   </div>
 {:else if view === 'elim-finished'}
-  <EliminationFinishedTv elimination={$elimination} />
+  <EliminationFinishedTv elimination={$elimination} online={$online} />
 {/if}
 
 <footer>

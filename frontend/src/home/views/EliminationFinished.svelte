@@ -7,7 +7,8 @@
   // over from the last game.
   import { elimination } from '../../lib/stores/elimination.js';
   import { players } from '../../lib/stores/players.js';
-  import { api } from '../../lib/api.js';
+  import { online } from '../../lib/stores/online.js';
+  import { api, apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
 
@@ -78,6 +79,12 @@
     await api('POST', '/api/elimination/stop');
   }
 
+  let onlineError = $state('');
+  async function onlineRematch() {
+    const res = await apiJson('POST', '/api/online/rematch');
+    onlineError = res.error || '';
+  }
+
   async function undoWin() {
     // Resumes the match server-side and un-records the win from
     // stats.db — for a match-ending dart that turned out to be
@@ -96,9 +103,15 @@
   <div class="winner-label">Winner</div>
   <div class="finished-actions">
     <button class="btn btn-start" onclick={newGame}>New game</button>
-    <button class="btn btn-add" onclick={openRematchModal}>🔁 Rematch</button>
+    {#if !$online}
+      <button class="btn btn-add" onclick={openRematchModal}>🔁 Rematch</button>
+    {:else if $online.host}
+      <button class="btn btn-add" onclick={onlineRematch}>🔁 Rematch</button>
+    {/if}
   </div>
-  <button class="btn-undo-win" onclick={undoWin}>↩ Undo winning turn</button>
+  {#if $online && !$online.host}<p class="online-note">Only the host can start a rematch.</p>{/if}
+  {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
+  {#if !$online}<button class="btn-undo-win" onclick={undoWin}>↩ Undo winning turn</button>{/if}
 </div>
 
 {#if showModal}
@@ -155,6 +168,8 @@
     border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;
   }
   .finished { text-align: center; padding: 2rem; }
+  .online-note { color: var(--muted); font-size: 0.85rem; margin-top: 0.75rem; }
+  .online-error { color: var(--red); font-size: 0.85rem; margin-top: 0.75rem; }
   .trophy { font-size: 2rem; margin-bottom: 0.5rem; }
   .winner-name { font-size: 1.5rem; font-weight: 700; color: var(--green); }
   .winner-label { color: var(--muted); margin: 0.5rem 0 1.5rem; }

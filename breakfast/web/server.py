@@ -22,6 +22,7 @@ from breakfast import config as cfg_mod
 from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
 from breakfast import known_players as kp
+from breakfast import online as online_mod
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
 
@@ -41,6 +42,7 @@ _DIST_AUDIO_HTML_PATH = os.path.join(_DIST_DIR, "audio.html")
 
 _game_state = None
 _elim_ctrl = None
+_online = None
 _cloud_client = None
 _stats_tracker = None
 _stats_db = None
@@ -66,9 +68,10 @@ def wire(game_state, elim_ctrl,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None):
     global _game_state, _elim_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo
+           _dev_demo, _online
     _game_state = game_state
     _elim_ctrl = elim_ctrl
+    _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
     _stats_db = stats_tracker._db if stats_tracker else None
@@ -105,6 +108,7 @@ def _build_payload() -> dict:
         "session_stats": session_stats,
         "voicepack_generation": _voicepack_status,
         "dev_demo": _dev_demo.status() if _dev_demo else None,
+        "online": _online.status() if _online and _online.active else None,
     }
 
 
@@ -387,6 +391,8 @@ async def elim_start(body: StartBody):
     log.debug("Elimination start requested: players=%s lives=%s", body.players, body.lives)
     if not _elim_ctrl:
         return {"error": "no elimination controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -397,6 +403,8 @@ async def elim_start(body: StartBody):
 @app.post("/api/elimination/stop")
 async def elim_stop():
     log.debug("Elimination stop requested")
+    if _online and _online.active:
+        await asyncio.to_thread(_online.leave)
     if _elim_ctrl:
         _elim_ctrl.stop()
     return {"ok": True}
@@ -415,6 +423,8 @@ async def elim_undo():
     log.debug("Elimination undo requested")
     if not (_elim_ctrl and _elim_ctrl.game):
         return {"error": "no active or finished game"}
+    if _elim_ctrl.game.online:
+        return {"error": "undo is not available in an online match yet"}
     if not _elim_ctrl.game.undo():
         return {"error": "nothing to undo"}
     return {"ok": True}
@@ -429,6 +439,107 @@ async def elim_correct_dart(body: CorrectDartBody):
         _elim_ctrl.game.correct_current_dart(body.dart - 1, body.field)
     _move_board_dart(body.dart - 1, body.field)
     return {"ok": True}
+
+
+# ── REST: online Elimination ─────────────────────────────────────────────────
+
+class OnlineCreateBody(BaseModel):
+    password: str
+    site: str | None = None
+
+
+class OnlineJoinBody(OnlineCreateBody):
+    code: str
+
+
+class OnlinePlayersBody(BaseModel):
+    players: list[str]
+
+
+class OnlineStartBody(BaseModel):
+    lives: int = 3
+    order: list[str]
+
+
+class OnlineDecisionBody(BaseModel):
+    choice: str
+
+
+def _online_settings() -> tuple[str | None, str | None]:
+    raw = cfg_mod.load(_config_path) if _config_path else {}
+    section = raw.get("online", {})
+    return section.get("relay_url") or None, section.get("site_name") or None
+
+
+@app.get("/api/online")
+async def online_status():
+    relay_url, site_name = _online_settings()
+    return {"configured": bool(relay_url), "site_name": site_name,
+            "status": _online.status() if _online and _online.active else None}
+
+
+async def _online_call(fn, *args):
+    if not _online:
+        return {"error": "online play is not available"}
+    try:
+        result = await asyncio.to_thread(fn, *args)
+    except online_mod.RelayError as e:
+        return {"error": str(e)}
+    return {"ok": True, **({"code": result} if isinstance(result, str) else {})}
+
+
+@app.post("/api/online/create")
+async def online_create(body: OnlineCreateBody):
+    relay_url, site_name = _online_settings()
+    site = (body.site or site_name or "").strip()
+    if not relay_url:
+        return {"error": "set the relay address in Settings first"}
+    if not site:
+        return {"error": "give this site a name"}
+    if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
+        return {"error": "a game is running, stop it first"}
+    return await _online_call(_online.create, relay_url, site, body.password)
+
+
+@app.post("/api/online/join")
+async def online_join(body: OnlineJoinBody):
+    relay_url, site_name = _online_settings()
+    site = (body.site or site_name or "").strip()
+    if not relay_url:
+        return {"error": "set the relay address in Settings first"}
+    if not site:
+        return {"error": "give this site a name"}
+    if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
+        return {"error": "a game is running, stop it first"}
+    return await _online_call(_online.join, relay_url, body.code, site, body.password)
+
+
+@app.post("/api/online/players")
+async def online_players(body: OnlinePlayersBody):
+    return await _online_call(_online.set_players, [p.strip() for p in body.players if p.strip()])
+
+
+@app.post("/api/online/start")
+async def online_start(body: OnlineStartBody):
+    return await _online_call(_online.start, body.lives, body.order)
+
+
+@app.post("/api/online/decision")
+async def online_decision(body: OnlineDecisionBody):
+    return await _online_call(_online.decide, body.choice)
+
+
+@app.post("/api/online/rematch")
+async def online_rematch():
+    return await _online_call(_online.rematch)
+
+
+@app.post("/api/online/leave")
+async def online_leave():
+    result = await _online_call(_online.leave)
+    if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.online:
+        _elim_ctrl.stop()
+    return result
 
 
 # ── REST: stats ──────────────────────────────────────────────────────────────
@@ -607,6 +718,10 @@ async def get_config():
         },
         "record": {
             "file": record.get("file"),
+        },
+        "online": {
+            "relay_url": raw.get("online", {}).get("relay_url"),
+            "site_name": raw.get("online", {}).get("site_name"),
         },
         "runtime_fields": list(cfg_mod.RUNTIME_FIELDS),
         # Read-only — not part of the editable Settings form. True when
