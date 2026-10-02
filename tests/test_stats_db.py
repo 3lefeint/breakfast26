@@ -44,22 +44,22 @@ class TestStatsDB:
         assert stats["alice"]["co_hits"] == 0
         assert stats["alice"]["co_pct"] == 0.0
 
-    def test_double_attempt_counted(self, db):
+    def test_checkout_attempt_counted(self, db):
         _open(db)
         # remaining_before=32 (≤ 40) → dart1 was thrown at a double
         db.insert_turn("m1", "alice", 1, 1, 32, 20, False, False, [("20", 20, 12)])
         rows = db.all_players_stats()
         alice = next(r for r in rows if r["player"] == "alice")
-        assert alice["dbl_attempts"] == 1
+        assert alice["co_attempts"] == 1
 
-    def test_double_hit_counted(self, db):
+    def test_checkout_hit_counted(self, db):
         _open(db)
         # checkout with remaining_before=32 (≤ 40) → dart1 was a double hit
         db.insert_turn("m1", "alice", 1, 1, 32, 32, False, True, [("D16", 32, 0)])
         rows = db.all_players_stats()
         alice = next(r for r in rows if r["player"] == "alice")
-        assert alice["dbl_hits"] == 1
-        assert alice["dbl_pct"] == 100.0
+        assert alice["co_hits"] == 1
+        assert alice["co_pct"] == 100.0
 
     def test_all_players_stats_multiple_players(self, db):
         _open(db)
@@ -1042,17 +1042,17 @@ class TestCheckoutByMatch:
         db.insert_turn(match_id, player, 1, turn, remaining, remaining if checkout else 10, False, checkout,
                        [("S1", 1, 0)])
 
-    def test_hits_over_the_turns_started_in_checkout_range_per_match(self, db):
+    def test_hits_over_the_darts_thrown_at_a_double_per_match(self, db):
         _open(db, "m2", pts=301)
         _open(db, "m1", pts=301)
         db._conn.execute("UPDATE matches SET started_at = '2026-07-01T10:00:00+00:00' WHERE match_id = 'm1'")
         db._conn.execute("UPDATE matches SET started_at = '2026-07-02T10:00:00+00:00' WHERE match_id = 'm2'")
         for i, (remaining, checkout) in enumerate([(301, False), (170, False), (40, False), (32, True)], start=1):
             self._turn(db, "m1", i, remaining, checkout)
-        self._turn(db, "m2", 1, 100, True)
+        self._turn(db, "m2", 1, 40, True)
         result = db.player_checkout_by_match("alice")
         assert [(r["match_id"], r["attempts"], r["hits"], r["co_pct"]) for r in result] == [
-            ("m1", 3, 1, 33.3), ("m2", 1, 1, 100.0)]
+            ("m1", 2, 1, 50.0), ("m2", 1, 1, 100.0)]
 
     def test_matches_without_a_turn_in_checkout_range_are_left_out(self, db):
         _open(db, "m1")
@@ -1064,3 +1064,59 @@ class TestCheckoutByMatch:
         self._turn(db, "m1", 1, 40, player="alice")
         self._turn(db, "m1", 2, 40, player="bob")
         assert [r["attempts"] for r in db.player_checkout_by_match("alice")] == [1]
+
+
+class TestCheckoutIsCountedPerDart:
+    """A checkout dart is a dart thrown at a score a double can finish (even up to 40, or 50),
+    the way Autodarts counts its checkout %. Ten turns of a real 501 leg ending on D7."""
+
+    def _play(self, db):
+        _open(db)
+        turns = [
+            (106, 106 - 41, [("S1", 1, 105), ("S20", 20, 85), ("S20", 20, 65)]),
+            (65, 20, [("S13", 13, 52), ("S12", 12, 40), ("S20", 20, 20)]),
+            (20, 6, [("M0", 0, 20), ("S6", 6, 14), ("M0", 0, 14)]),
+            (14, 14, [("D7", 14, 0)]),
+        ]
+        for n, (before, score, darts) in enumerate(turns, start=1):
+            db.insert_turn("m1", "anna", 1, n, before, score, False, n == 4, darts)
+
+    def test_match_stats_count_one_of_five(self, db):
+        self._play(db)
+        s = db.match_stats("m1")["anna"]
+        assert (s["co_hits"], s["co_attempts"], s["co_pct"]) == (1, 5, 20.0)
+
+    def test_session_stats_count_one_of_five(self, db):
+        self._play(db)
+        s = db.session_stats("m1")["anna"]
+        assert (s["co_hits"], s["co_attempts"]) == (1, 5)
+
+    def test_player_and_leaderboard_stats_agree(self, db):
+        self._play(db)
+        p = db.player_stats("anna")
+        assert (p["co_hits"], p["co_attempts"]) == (1, 5)
+        a = db.all_players_stats()[0]
+        assert (a["co_hits"], a["co_attempts"]) == (1, 5)
+
+    def test_per_match_value_agrees(self, db):
+        self._play(db)
+        r = db.player_checkout_by_match("anna")[0]
+        assert (r["hits"], r["attempts"], r["co_pct"]) == (1, 5, 20.0)
+
+    def test_a_dart_at_an_odd_score_is_no_attempt(self, db):
+        _open(db)
+        db.insert_turn("m1", "anna", 1, 1, 39, 0, False, False, [("M0", 0, 39)])
+        assert db.match_stats("m1")["anna"]["co_attempts"] == 0
+
+    def test_a_dart_at_fifty_is_an_attempt(self, db):
+        _open(db)
+        db.insert_turn("m1", "anna", 1, 1, 50, 50, False, True, [("BULLSEYE", 50, 0)])
+        s = db.match_stats("m1")["anna"]
+        assert (s["co_hits"], s["co_attempts"]) == (1, 1)
+
+    def test_the_finishing_dart_is_not_counted_twice(self, db):
+        # a one-dart checkout stores 0 as the remaining after the dart; that must not be
+        # read as a further dart thrown at a double
+        _open(db)
+        db.insert_turn("m1", "anna", 1, 1, 14, 14, False, True, [("D7", 14, 0)])
+        assert db.match_stats("m1")["anna"]["co_attempts"] == 1

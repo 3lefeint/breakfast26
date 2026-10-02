@@ -94,7 +94,7 @@
               </table>
             {:else}
               <table class="players-table stats-table detail">
-                <thead><tr><th>Player</th><th class="num-cell">Avg</th><th class="num-cell">180</th><th class="num-cell">CO%</th><th class="num-cell">D%</th></tr></thead>
+                <thead><tr><th>Player</th><th class="num-cell">Avg</th><th class="num-cell">180</th><th class="num-cell">CO%</th></tr></thead>
                 <tbody>
                   {#each Object.entries(matchDetails[m.match_id]) as [name, s]}
                     <tr>
@@ -102,7 +102,6 @@
                       <td class="num-cell">{s.avg3 != null ? s.avg3.toFixed(1) : '—'}</td>
                       <td class="num-cell">{s.s180 ?? '—'}</td>
                       <td class="num-cell">{s.co_attempts ? s.co_pct + '%' : '—'}</td>
-                      <td class="num-cell">{s.dbl_attempts ? s.dbl_pct + '%' : '—'}</td>
                     </tr>
                   {/each}
                 </tbody>

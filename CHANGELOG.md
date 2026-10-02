@@ -10,6 +10,11 @@
 - X01: `announce_change` is on by default and follows `call_player` (#6, #8).
 - X01: the winner's name is called before `gameshot` and `matchshot` (#8).
 - X01: a checkout call without a `require_<n>` recording is skipped instead of stopping after "you require" (#8).
+- Checkout % counts the darts thrown at a score a double can finish instead of the turns that started in checkout range, like Autodarts.
+- Darts thrown at an odd score no longer count as checkout attempts.
+
+### Removed
+- Double %: it showed the same numbers as checkout %.
 
 ## [0.7.0] - 2026-10-02
 

@@ -36,7 +36,6 @@
     average: ranking(players.filter((p) => p.avg3 != null), (p) => p.avg3, (p) => p.avg3.toFixed(1), (p) => `${p.turns} turns`),
     tons: ranking(players, (p) => p.s100 + p.s140 + p.s180, (p) => `${p.s100 + p.s140 + p.s180}`, (p) => `of ${p.turns}`),
     checkout: ranking(players.filter((p) => p.co_attempts), (p) => p.co_pct, (p) => `${p.co_pct}%`, (p) => `${p.co_hits}/${p.co_attempts}`),
-    doubles: ranking(players.filter((p) => p.dbl_attempts), (p) => p.dbl_pct, (p) => `${p.dbl_pct}%`, (p) => `${p.dbl_hits}/${p.dbl_attempts}`),
   });
 </script>
 
@@ -80,7 +79,6 @@
     <RankBars title="Average (3 darts)" rows={rankings.average} />
     <RankBars title="Turns of 100 or more" rows={rankings.tons} />
     <RankBars title="Checkout %" rows={rankings.checkout} />
-    <RankBars title="Double %" rows={rankings.doubles} />
   </div>
 {/if}
 

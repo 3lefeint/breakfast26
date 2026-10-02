@@ -478,7 +478,7 @@ class StatsDB:
     def session_stats(self, match_id: str) -> dict:
         """Per-player stats dict for one match (queried from DB)."""
         with self._lock:
-            rows = self._conn.execute("""
+            rows = self._conn.execute(f"""
                 SELECT player,
                     COUNT(*) as turns,
                     SUM(score) as total_score,
@@ -486,8 +486,7 @@ class StatsDB:
                     SUM(CASE WHEN score = 180 THEN 1 ELSE 0 END) as s180,
                     SUM(CASE WHEN score >= 140 AND score < 180 THEN 1 ELSE 0 END) as s140,
                     SUM(CASE WHEN score >= 100 AND score < 140 THEN 1 ELSE 0 END) as s100,
-                    SUM(CASE WHEN remaining_before <= 170 THEN 1 ELSE 0 END) as co_attempts,
-                    SUM(is_checkout) as co_hits
+                    {_checkout_columns()}
                 FROM turns WHERE match_id = ?
                 GROUP BY player
             """, (match_id,)).fetchall()
@@ -498,7 +497,7 @@ class StatsDB:
         players flagged `hidden` (comparison/leaderboard views only — a
         direct player_stats() lookup still works for a hidden player)."""
         with self._lock:
-            rows = self._conn.execute("""
+            rows = self._conn.execute(f"""
                 SELECT t.player as player,
                     COUNT(DISTINCT t.match_id) as sessions,
                     COUNT(*) as turns,
@@ -507,25 +506,7 @@ class StatsDB:
                     SUM(CASE WHEN t.score = 180 THEN 1 ELSE 0 END) as s180,
                     SUM(CASE WHEN t.score >= 140 AND t.score < 180 THEN 1 ELSE 0 END) as s140,
                     SUM(CASE WHEN t.score >= 100 AND t.score < 140 THEN 1 ELSE 0 END) as s100,
-                    SUM(CASE WHEN t.remaining_before <= 170 THEN 1 ELSE 0 END) as co_attempts,
-                    SUM(t.is_checkout) as co_hits,
-                    -- Double attempts: darts actually thrown when remaining ≤ 40 or = 50 (bull)
-                    SUM(
-                        CASE WHEN t.darts_count >= 1
-                              AND (t.remaining_before <= 40 OR t.remaining_before = 50) THEN 1 ELSE 0 END
-                      + CASE WHEN t.darts_count >= 2 AND t.dart1_rem IS NOT NULL
-                              AND (t.dart1_rem <= 40 OR t.dart1_rem = 50) THEN 1 ELSE 0 END
-                      + CASE WHEN t.darts_count >= 3 AND t.dart2_rem IS NOT NULL
-                              AND (t.dart2_rem <= 40 OR t.dart2_rem = 50) THEN 1 ELSE 0 END
-                    ) as dbl_attempts,
-                    -- Double hits: checkout where the finishing dart was thrown at a double
-                    SUM(CASE WHEN t.is_checkout = 1 AND (
-                        (t.darts_count >= 1 AND (t.remaining_before  <= 40 OR t.remaining_before  = 50))
-                     OR (t.darts_count >= 2 AND t.dart1_rem IS NOT NULL
-                         AND (t.dart1_rem <= 40 OR t.dart1_rem = 50))
-                     OR (t.darts_count >= 3 AND t.dart2_rem IS NOT NULL
-                         AND (t.dart2_rem <= 40 OR t.dart2_rem = 50))
-                    ) THEN 1 ELSE 0 END) as dbl_hits
+                    {_checkout_columns('t.')}
                 FROM turns t
                 LEFT JOIN players p ON p.name = t.player
                 WHERE COALESCE(p.hidden, 0) = 0
@@ -535,8 +516,8 @@ class StatsDB:
         return [{"player": r["player"], **_row_stats_full(r)} for r in rows]
 
     def leaderboard(self, metric: str, limit: int = 10) -> list:
-        """Top-N players sorted by *metric* (desc). Valid metrics: avg3, s180, co_pct, dbl_pct, total_score."""
-        valid = {"avg3", "s180", "co_pct", "dbl_pct", "total_score"}
+        """Top-N players sorted by *metric* (desc). Valid metrics: avg3, s180, co_pct, total_score."""
+        valid = {"avg3", "s180", "co_pct", "total_score"}
         if metric not in valid:
             raise ValueError(f"Invalid leaderboard metric: {metric!r}")
         rows = self.all_players_stats()
@@ -546,7 +527,7 @@ class StatsDB:
     def player_stats(self, player: str) -> dict | None:
         """Lifetime stats for a single player."""
         with self._lock:
-            row = self._conn.execute("""
+            row = self._conn.execute(f"""
                 SELECT COUNT(DISTINCT match_id) as sessions,
                     COUNT(*) as turns,
                     SUM(score) as total_score,
@@ -554,22 +535,7 @@ class StatsDB:
                     SUM(CASE WHEN score = 180 THEN 1 ELSE 0 END) as s180,
                     SUM(CASE WHEN score >= 140 AND score < 180 THEN 1 ELSE 0 END) as s140,
                     SUM(CASE WHEN score >= 100 AND score < 140 THEN 1 ELSE 0 END) as s100,
-                    SUM(CASE WHEN remaining_before <= 170 THEN 1 ELSE 0 END) as co_attempts,
-                    SUM(is_checkout) as co_hits,
-                    SUM(
-                        CASE WHEN remaining_before <= 40 OR remaining_before = 50 THEN 1 ELSE 0 END
-                      + CASE WHEN dart1_rem IS NOT NULL
-                              AND (dart1_rem <= 40 OR dart1_rem = 50) THEN 1 ELSE 0 END
-                      + CASE WHEN dart2_rem IS NOT NULL
-                              AND (dart2_rem <= 40 OR dart2_rem = 50) THEN 1 ELSE 0 END
-                    ) as dbl_attempts,
-                    SUM(CASE WHEN is_checkout = 1 AND (
-                        (darts_count >= 1 AND (remaining_before  <= 40 OR remaining_before  = 50))
-                     OR (darts_count >= 2 AND dart1_rem IS NOT NULL
-                         AND (dart1_rem <= 40 OR dart1_rem = 50))
-                     OR (darts_count >= 3 AND dart2_rem IS NOT NULL
-                         AND (dart2_rem <= 40 OR dart2_rem = 50))
-                    ) THEN 1 ELSE 0 END) as dbl_hits
+                    {_checkout_columns()}
                 FROM turns WHERE player = ?
             """, (player,)).fetchone()
         if not row or not row["turns"]:
@@ -694,7 +660,7 @@ class StatsDB:
         if mode_row and mode_row["game_mode"] == "Elimination":
             return self.match_elimination_stats(match_id)
         with self._lock:
-            rows = self._conn.execute("""
+            rows = self._conn.execute(f"""
                 SELECT player,
                     COUNT(*) as turns,
                     SUM(score) as total_score,
@@ -702,22 +668,7 @@ class StatsDB:
                     SUM(CASE WHEN score = 180 THEN 1 ELSE 0 END) as s180,
                     SUM(CASE WHEN score >= 140 AND score < 180 THEN 1 ELSE 0 END) as s140,
                     SUM(CASE WHEN score >= 100 AND score < 140 THEN 1 ELSE 0 END) as s100,
-                    SUM(CASE WHEN remaining_before <= 170 THEN 1 ELSE 0 END) as co_attempts,
-                    SUM(is_checkout) as co_hits,
-                    SUM(
-                        CASE WHEN remaining_before <= 40 OR remaining_before = 50 THEN 1 ELSE 0 END
-                      + CASE WHEN dart1_rem IS NOT NULL
-                              AND (dart1_rem <= 40 OR dart1_rem = 50) THEN 1 ELSE 0 END
-                      + CASE WHEN dart2_rem IS NOT NULL
-                              AND (dart2_rem <= 40 OR dart2_rem = 50) THEN 1 ELSE 0 END
-                    ) as dbl_attempts,
-                    SUM(CASE WHEN is_checkout = 1 AND (
-                        (darts_count >= 1 AND (remaining_before  <= 40 OR remaining_before  = 50))
-                     OR (darts_count >= 2 AND dart1_rem IS NOT NULL
-                         AND (dart1_rem <= 40 OR dart1_rem = 50))
-                     OR (darts_count >= 3 AND dart2_rem IS NOT NULL
-                         AND (dart2_rem <= 40 OR dart2_rem = 50))
-                    ) THEN 1 ELSE 0 END) as dbl_hits
+                    {_checkout_columns()}
                 FROM turns WHERE match_id = ?
                 GROUP BY player
             """, (match_id,)).fetchall()
@@ -926,13 +877,13 @@ class StatsDB:
         ]
 
     def player_checkout_by_match(self, player: str) -> list:
-        """Checkout % of each match, oldest first: hits over the turns that started in
-        checkout range (170 or less). Matches without such a turn are left out."""
+        """Checkout % of each match, oldest first: hits over the darts thrown at a score a
+        double can finish. Matches without such a dart are left out."""
         with self._lock:
-            rows = self._conn.execute("""
+            rows = self._conn.execute(f"""
                 SELECT t.match_id as match_id, m.started_at as started_at,
-                       SUM(CASE WHEN t.remaining_before <= 170 THEN 1 ELSE 0 END) as attempts,
-                       SUM(t.is_checkout) as hits
+                       SUM({_checkout_exprs('t.')[0]}) as attempts,
+                       SUM({_checkout_exprs('t.')[1]}) as hits
                 FROM turns t JOIN matches m ON m.match_id = t.match_id
                 WHERE t.player = ?
                 GROUP BY t.match_id HAVING attempts > 0
@@ -1138,9 +1089,8 @@ class StatsDB:
 
     def player_doubles_by_number(self, player: str) -> list:
         """Attempts/hits per double target (D1-D20 + bullseye-as-25), inferred from
-        the remaining score before each dart — same approximation the existing
-        aggregate dbl_attempts/dbl_hits use, just broken out per number instead of
-        summed. Not a recorded "intended target", just the remaining that made a
+        the remaining score before each dart — same approximation the
+        checkout % uses, just broken out per number instead of summed. Not a recorded "intended target", just the remaining that made a
         double-out mathematically possible at that point."""
         with self._lock:
             rows = self._conn.execute("""
@@ -1378,6 +1328,42 @@ def _elimination_summary(by_place: dict, avg_darts) -> dict:
     }
 
 
+def _is_double_rem(rem) -> bool:
+    """True when a dart thrown at this remaining score can finish a double-out leg:
+    an even score up to 40, or 50 (the bull)."""
+    return rem is not None and (rem == 50 or (0 < rem <= 40 and rem % 2 == 0))
+
+
+def _checkout_exprs(p: str = "") -> tuple:
+    """SQL expressions for checkout darts and checkout hits of a `turns` row, `p` being
+    a table alias prefix such as "t.". Like Autodarts, a checkout is counted per dart
+    thrown at a score a double can finish, not per turn that started in checkout range.
+    The remaining before each dart is remaining_before, dart1_rem and dart2_rem; a hit
+    is the finishing dart of a turn that checked out."""
+    def d(col):
+        c = f"{p}{col}"
+        return f"({c} = 50 OR ({c} > 0 AND {c} <= 40 AND {c} % 2 = 0))"
+    attempts = (
+        f"(CASE WHEN {p}darts_count >= 1 AND {d('remaining_before')} THEN 1 ELSE 0 END"
+        f" + CASE WHEN {p}darts_count >= 2 AND {d('dart1_rem')} THEN 1 ELSE 0 END"
+        f" + CASE WHEN {p}darts_count >= 3 AND {d('dart2_rem')} THEN 1 ELSE 0 END)"
+    )
+    hits = (
+        f"(CASE WHEN {p}is_checkout = 1 AND ("
+        f"({p}darts_count = 1 AND {d('remaining_before')})"
+        f" OR ({p}darts_count = 2 AND {d('dart1_rem')})"
+        f" OR ({p}darts_count = 3 AND {d('dart2_rem')})"
+        f") THEN 1 ELSE 0 END)"
+    )
+    return attempts, hits
+
+
+def _checkout_columns(p: str = "") -> str:
+    """SELECT columns co_attempts and co_hits."""
+    attempts, hits = _checkout_exprs(p)
+    return f"SUM({attempts}) as co_attempts, SUM({hits}) as co_hits"
+
+
 def _row_stats(r) -> dict:
     td  = r["total_darts"] or 0
     ts  = r["total_score"] or 0
@@ -1397,15 +1383,9 @@ def _row_stats(r) -> dict:
 
 
 def _row_stats_full(r) -> dict:
-    base = _row_stats(r)
-    da = r["dbl_attempts"] or 0 if "dbl_attempts" in r.keys() else 0
-    dh = r["dbl_hits"] or 0 if "dbl_hits" in r.keys() else 0
     return {
-        **base,
+        **_row_stats(r),
         "sessions":    r["sessions"] or 0 if "sessions" in r.keys() else None,
-        "dbl_attempts": da,
-        "dbl_hits":     dh,
-        "dbl_pct":      round(dh / da * 100, 1) if da else 0.0,
     }
 
 
@@ -1493,7 +1473,7 @@ class StatsTracker:
             # match-started (e.g. an immediate rematch), whose handler
             # wipes self._buf unconditionally. That race silently drops
             # exactly the one turn per leg with is_checkout=True, pinning
-            # co_pct/dbl_pct at 0% regardless of how much is played.
+            # co_pct at 0% regardless of how much is played.
             # Flushing here removes the dependency on that later event
             # entirely; harmless no-op if darts-pulled already did fire.
             self._flush_turn()
@@ -1593,10 +1573,13 @@ class StatsTracker:
             s["s140"] += 1
         elif score >= 100:
             s["s100"] += 1
-        if buf["remaining_before"] <= 170:
-            s["co_attempts"] += 1
-        if is_checkout:
-            s["co_hits"] += 1
+        before = buf["remaining_before"]
+        for i, (_, _, after) in enumerate(darts):
+            if _is_double_rem(before):
+                s["co_attempts"] += 1
+                if is_checkout and i == len(darts) - 1:
+                    s["co_hits"] += 1
+            before = after
 
     def computed_session_stats(self) -> dict:
         """Derive avg3, co_pct etc. from raw accumulators."""

@@ -201,6 +201,25 @@ class TestStatsTracker:
         stats = db.session_stats("m1")
         assert stats["alice"]["co_pct"] == 100.0
 
+    def test_checkout_is_counted_per_dart_at_a_double(self, tracker):
+        tracker.process(ev_match_started(pts=40))
+        tracker.process(ev_dart(1, 6, 34, field="S6"))
+        tracker.process(ev_dart(2, 0, 34, field="M20"))
+        tracker.process(ev_dart(3, 34, 0, field="D17"))
+        tracker.process(ev_darts_pulled())
+        live = tracker.computed_session_stats()["alice"]
+        assert (live["co_hits"], live["co_attempts"]) == (1, 3)
+        tracker.process(ev_match_won())
+
+    def test_live_checkout_ignores_darts_at_odd_scores(self, tracker):
+        tracker.process(ev_match_started(pts=39))
+        tracker.process(ev_dart(1, 0, 39, field="M20"))
+        tracker.process(ev_dart(2, 0, 39, field="M20"))
+        tracker.process(ev_dart(3, 0, 39, field="M20"))
+        tracker.process(ev_darts_pulled())
+        live = tracker.computed_session_stats()["alice"]
+        assert live["co_attempts"] == 0
+
     def test_multiple_players_in_match(self, tracker, db):
         tracker.process(ev_match_started())
         tracker.process(ev_dart(1, 60, 441, player="alice"))
