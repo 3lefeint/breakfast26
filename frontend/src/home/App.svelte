@@ -92,23 +92,27 @@
      with TV/Audio). Vite mounts this app into <div id="app"> inside
      <body>, not body's direct children like the old template — so the
      flex-column page layout has to target #app instead of body.
-     #app is pinned to exactly one viewport tall (not min-height) so
-     header/footer never move — only <main> scrolls internally when its
-     content is taller than the space between them. <main> spans the whole
-     window so the wheel works anywhere and the scrollbar sits at the window
-     edge; the content is centred in .page. */
+     The document scrolls, not <main>: #app is at least one viewport tall
+     and grows with its content, so the page has its real height (full-page
+     screenshots and print capture all of it, the wheel works anywhere in
+     the window). Header and footer stay in view with position: sticky; the
+     header comes from the shared AppHeader, so it is targeted from here
+     and the TV and audio pages keep theirs. The content is centred in
+     .page. */
   :global(#app) {
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     background:
       radial-gradient(ellipse 900px 500px at 15% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent),
       radial-gradient(ellipse 700px 500px at 100% 0%, color-mix(in srgb, var(--accent) 6%, transparent), transparent);
   }
+  :global(#app > header) {
+    position: sticky;
+    top: 0;
+  }
   main {
     flex: 1;
-    min-height: 0;
-    overflow-y: auto;
     width: 100%;
     font-family: system-ui, sans-serif;
   }
@@ -121,6 +125,7 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 0.6rem 1.25rem; background: var(--surface); border-top: 1px solid var(--border);
     font-size: 0.8rem; color: var(--muted); flex-shrink: 0;
+    position: sticky; bottom: 0; z-index: 20;
   }
   .dot-group { display: flex; align-items: center; gap: 1rem; }
   .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 5px; transition: background 0.3s; }

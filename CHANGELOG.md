@@ -15,6 +15,7 @@
 - X01: a checkout call without a `require_<n>` recording is skipped instead of stopping after "you require" (#8).
 - Checkout % counts the darts thrown at a score a double can finish instead of the turns that started in checkout range, like Autodarts.
 - Darts thrown at an odd score no longer count as checkout attempts.
+- The Home pages scroll as a whole with header and footer pinned, so a full-page screenshot and a print capture the whole page (#17).
 
 ### Removed
 - Double %: it showed the same numbers as checkout %.
