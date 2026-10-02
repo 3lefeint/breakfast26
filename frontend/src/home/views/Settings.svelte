@@ -22,7 +22,7 @@
     audio: { dir: '', profile: '' },
     caller: {
       enabled: true, per_dart: true, turn_total: true, checkout_limit: 1,
-      announce_change: false, call_player: true, ambient_volume: 0.6, call_misses: true,
+      announce_change: true, call_player: true, ambient_volume: 0.6, call_misses: true,
     },
     record: { file: '' },
     // Read-only — not part of the editable form/save flow, set directly in

@@ -35,7 +35,7 @@ def from_config(audio, cfg=None):
         per_dart=bool(cfg.get("per_dart", True)),
         turn_total=bool(cfg.get("turn_total", True)),
         checkout_limit=int(cfg.get("checkout_limit", 1)),
-        announce_change=bool(cfg.get("announce_change", False)),
+        announce_change=bool(cfg.get("announce_change", True)),
         call_player=call_player,
         ambient_volume=ambient,
         call_misses=bool(cfg.get("call_misses", True)),
@@ -108,9 +108,9 @@ class Caller:
             self._match_won_seen = True
             if evt.get("scope") == "match":
                 with self.audio.batch():
+                    self._announce_player(snapshot)
                     if not self.audio.play("matchshot"):
                         self.audio.play("gameshot")
-                    self._announce_player(snapshot)
                     self._ambient_chain(snapshot, "matchshot", "gameshot")
             else:
                 self._leg_won(snapshot)
@@ -124,7 +124,8 @@ class Caller:
 
         elif etype == "bust":
             self.audio.play("busted")
-            self.audio.play("ambient_noscore", volume=self.ambient_volume)
+            if self.ambient_volume:
+                self.audio.play("ambient_noscore", volume=self.ambient_volume)
 
         elif etype == "dart":
             if handler:
@@ -158,6 +159,7 @@ class Caller:
         # so the leg just finished is current_leg - 1.
         leg = max(1, (snapshot.get("current_leg") or 2) - 1)
         with self.audio.batch():
+            self._announce_player(snapshot)
             # Real-life style first ("gameshot leg N" as one recording, which
             # the own sound set has); plain gameshot + leg number as fallback
             # chain.
@@ -166,7 +168,6 @@ class Caller:
                 self.audio.play(f"leg_{leg}")
                 if not gameshot_played:
                     log.debug("No gameshot sound for leg %d", leg)
-            self._announce_player(snapshot)
             self._ambient_chain(snapshot, "gameshot")
 
     def _ambient_chain(self, snapshot, *bases):

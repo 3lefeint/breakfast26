@@ -23,7 +23,7 @@ BOGEY_NUMBERS = {159, 162, 163, 165, 166, 168, 169}
 
 class X01Caller(ModeHandler):
     def __init__(self, per_dart=True, turn_total=True, checkout_limit=1,
-                 announce_change=False, call_player=True,
+                 announce_change=True, call_player=True,
                  ambient_volume=AMBIENT_VOLUME_DEFAULT, call_misses=True):
         """checkout_limit: how often the *same* remaining score is announced
         per player before going silent (0 disables checkout calls).
@@ -130,17 +130,19 @@ class X01Caller(ModeHandler):
                                           volume=self.ambient_volume):
                             audio.play("ambient_bogey_number", volume=self.ambient_volume)
                 elif self._under_checkout_limit(idx, remaining):
-                    if self.call_player:
-                        self._announce_player(snapshot, audio)
-                    if audio.play("you_require"):
-                        # Own namespace only — never fall back to the euphoric
-                        # score number.
+                    # Own namespace only — never fall back to the euphoric
+                    # score number. Without the number the whole call is
+                    # skipped rather than ending on "you require".
+                    if audio.has_audio("you_require") and audio.has_audio(f"require_{remaining}"):
+                        if self.call_player:
+                            self._announce_player(snapshot, audio)
+                        audio.play("you_require")
                         audio.play(f"require_{remaining}")
                         called = True
                 elif self.ambient_volume:
                     audio.play("ambient_checkout_call_limit", volume=self.ambient_volume)
 
-            if not called and self.announce_change and len(snapshot.get("players") or {}) > 1:
+            if not called and self.announce_change and self.call_player and len(snapshot.get("players") or {}) > 1:
                 self._announce_player(snapshot, audio)
 
             if not called and self.ambient_volume:
@@ -151,7 +153,7 @@ class X01Caller(ModeHandler):
                     audio.play("ambient_playerchange", volume=self.ambient_volume)
 
         log.debug("on_turn_end done: called=%s announce_change_fired=%s",
-                  called, not called and self.announce_change and len(snapshot.get("players") or {}) > 1)
+                  called, not called and self.announce_change and self.call_player and len(snapshot.get("players") or {}) > 1)
 
     def _under_checkout_limit(self, idx, remaining):
         entry = self._checkout_counter.get(idx)

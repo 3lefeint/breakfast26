@@ -10,6 +10,9 @@ FIELD_SET = {f"{p}{n}" for p in "dtm" for n in range(1, 21)} | \
             {"you_require", "anna", "carla", "unknown_player"}
 
 
+WITH_REQUIRE = FIELD_SET | {"require_40", "require_32"}
+
+
 def dart(number, multiplier, dartno=1, miss=False, field=None):
     points = 0 if multiplier == 0 else number * multiplier
     if field is None:
@@ -123,15 +126,19 @@ class TestTurnTotal:
 
 
 class TestCheckoutCall:
-    def test_checkout_possible(self):
-        c, audio = make()
+    def test_checkout_without_require_file_is_skipped(self):
+        c, audio = make(announce_change=False)
         c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=40), audio)
-        assert audio.played() == ["anna", "you_require"]
-        assert "require_40" in audio.calls          # attempted in own namespace
+        assert "you_require" not in audio.calls     # no half sentence
         assert audio.calls.count("40") == 0         # never the euphoric number
 
+    def test_missing_require_file_still_names_the_player(self):
+        c, audio = make()
+        c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=40), audio)
+        assert audio.played() == ["anna"]
+
     def test_require_file_used_when_available(self):
-        audio = FakeAudio(FIELD_SET | {"require_40"})
+        audio = FakeAudio(WITH_REQUIRE)
         c, _ = make(audio)
         c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=40), audio)
         assert audio.played() == ["anna", "you_require", "require_40"]
@@ -147,26 +154,26 @@ class TestCheckoutCall:
         assert "you_require" not in audio.calls
 
     def test_same_remaining_respects_limit(self):
-        c, audio = make()
+        c, audio = make(FakeAudio(WITH_REQUIRE))
         s = snap(remaining=40)
         c.on_turn_end({"type": "turn_end"}, s, audio)
         c.on_turn_end({"type": "turn_end"}, s, audio)   # same score again
         assert audio.calls.count("you_require") == 1
 
     def test_new_remaining_resets_counter(self):
-        c, audio = make()
+        c, audio = make(FakeAudio(WITH_REQUIRE))
         c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
         c.on_turn_end({"type": "turn_end"}, snap(remaining=32), audio)
         assert audio.calls.count("you_require") == 2
 
     def test_counter_is_per_player(self):
-        c, audio = make()
+        c, audio = make(FakeAudio(WITH_REQUIRE))
         c.on_turn_end({"type": "turn_end"}, snap(remaining=40, player="anna", idx=0), audio)
         c.on_turn_end({"type": "turn_end"}, snap(remaining=40, player="carla", idx=1), audio)
         assert audio.calls.count("you_require") == 2
 
     def test_match_start_resets_counters(self):
-        c, audio = make()
+        c, audio = make(FakeAudio(WITH_REQUIRE))
         c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
         c.on_match_start(snap())
         c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
@@ -192,18 +199,26 @@ class TestPlayerChange:
         assert audio.played() == ["unknown_player"]
 
     def test_announce_change_skipped_when_checkout_called(self):
-        c, audio = make(announce_change=True)
+        c, audio = make(FakeAudio(WITH_REQUIRE), announce_change=True)
         c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
         assert audio.calls.count("anna") == 1   # once for the checkout call only
 
     def test_announce_change_still_fires_when_limit_exceeded_across_turns(self):
-        c, audio = make(announce_change=True, checkout_limit=1)
+        c, audio = make(FakeAudio(WITH_REQUIRE), announce_change=True, checkout_limit=1)
         s = snap(remaining=40)
         c.on_turn_end({"type": "turn_end"}, s, audio)   # first time — limit not yet exceeded
         audio.calls.clear()
         c.on_turn_end({"type": "turn_end"}, s, audio)   # same remaining again — limit exceeded
         assert audio.played() == ["anna"]
         assert "you_require" not in audio.calls
+
+    def test_announce_change_is_on_by_default(self):
+        assert X01Caller().announce_change is True
+
+    def test_announce_change_respects_call_player(self):
+        c, audio = make(announce_change=True, call_player=False)
+        c.on_turn_end({"type": "turn_end"}, snap(remaining=301), audio)
+        assert audio.calls == []
 
     def test_single_player_no_change_announce(self):
         c, audio = make(announce_change=True)

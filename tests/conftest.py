@@ -15,6 +15,9 @@ class FakeAudio:
         self.calls.append(name)
         return name in self.available
 
+    def has_audio(self, name):
+        return name in self.available
+
     def played(self):
         return [c for c in self.calls if c in self.available]
 

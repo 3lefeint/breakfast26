@@ -600,7 +600,7 @@ async def get_config():
             "per_dart":        caller.get("per_dart", True),
             "turn_total":      caller.get("turn_total", True),
             "checkout_limit":  caller.get("checkout_limit", 1),
-            "announce_change": caller.get("announce_change", False),
+            "announce_change": caller.get("announce_change", True),
             "call_player":     caller.get("call_player", True),
             "ambient_volume":  caller.get("ambient_volume", 0.6),
             "call_misses":     caller.get("call_misses", True),

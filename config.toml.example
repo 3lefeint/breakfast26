@@ -72,7 +72,7 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # per_dart = true           # call every dart by field name (triple, double 16, ...)
 # turn_total = true         # announce the turn total after the third dart
 # checkout_limit = 1        # announce the same remaining score at most N times (0 = off)
-# announce_change = false   # announce the incoming player on every change
+# announce_change = true    # announce the incoming player on every change
 # call_player = true        # player names at match/leg start and checkout calls
 # ambient_volume = 0.6      # volume for ambient_* sounds (0 = ambient off)
 # call_misses = true        # announce "outside" on a missed dart; false keeps

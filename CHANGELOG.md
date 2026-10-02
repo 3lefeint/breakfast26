@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- The X01 bust sound `ambient_noscore` no longer plays when the ambient volume is 0 (#8).
+- The player is named at every change again once the checkout limit applies (#6).
+
+### Changed
+- X01: `announce_change` is on by default and follows `call_player` (#6, #8).
+- X01: the winner's name is called before `gameshot` and `matchshot` (#8).
+- X01: a checkout call without a `require_<n>` recording is skipped instead of stopping after "you require" (#8).
+
 ## [0.7.0] - 2026-10-02
 
 ### Added

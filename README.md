@@ -292,8 +292,8 @@ showing the scoreboard stay silent.
 Sound files are plain `key.mp3` files (`matchon.mp3`, `t20.mp3`, `180.mp3`,
 `you_require.mp3`, ...; `key+1.mp3` etc. for random variants). Checkout
 numbers use a separate calm-toned `require_{n}.mp3` namespace — if those
-recordings don't exist, the number is skipped rather than reusing the
-euphoric score file. Fine-tuning lives in the `[caller]` config section /
+recordings don't exist, the whole checkout call is skipped rather than
+reusing the euphoric score file. Fine-tuning lives in the `[caller]` config section /
 Settings tab; `--no-caller` disables calls for one run.
 
 See **[VOICE_PACKS.md](VOICE_PACKS.md)** for the full call-key reference

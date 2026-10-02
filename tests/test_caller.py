@@ -49,25 +49,37 @@ class TestWon:
     def test_match_won(self):
         audio = FakeAudio({"matchshot", "anna"})
         Caller(audio).on_event({"type": "won", "scope": "match", "mode": "X01"}, snap())
-        assert audio.played() == ["matchshot", "anna"]
+        assert audio.played() == ["anna", "matchshot"]
 
     def test_match_won_falls_back_to_gameshot(self):
         audio = FakeAudio({"gameshot", "anna"})
         Caller(audio).on_event({"type": "won", "scope": "match", "mode": "X01"}, snap())
-        assert audio.played() == ["gameshot", "anna"]
+        assert audio.played() == ["anna", "gameshot"]
 
     def test_leg_won_real_life_style(self):
         # snapshot leg already incremented by state.py: leg 2 => leg 1 finished
         audio = FakeAudio({"gameshot_l1_n", "anna"})
         Caller(audio).on_event({"type": "won", "scope": "game", "mode": "X01"},
                                snap(leg=2))
-        assert audio.played() == ["gameshot_l1_n", "anna"]
+        assert audio.played() == ["anna", "gameshot_l1_n"]
 
     def test_leg_won_fallback_plain_gameshot_plus_leg(self):
         audio = FakeAudio({"gameshot", "leg_3", "anna"})
         Caller(audio).on_event({"type": "won", "scope": "game", "mode": "X01"},
                                snap(leg=4))
-        assert audio.played() == ["gameshot", "leg_3", "anna"]
+        assert audio.played() == ["anna", "gameshot", "leg_3"]
+
+
+class TestBust:
+    def test_bust_ambient_skipped_at_volume_zero(self):
+        audio = FakeAudio({"busted", "ambient_noscore"})
+        Caller(audio, ambient_volume=0).on_event({"type": "bust", "mode": "X01"}, snap())
+        assert audio.calls == ["busted"]
+
+    def test_bust_plays_ambient_when_on(self):
+        audio = FakeAudio({"busted", "ambient_noscore"})
+        Caller(audio).on_event({"type": "bust", "mode": "X01"}, snap())
+        assert audio.played() == ["busted", "ambient_noscore"]
 
 
 class TestMatchEnded:
@@ -171,7 +183,7 @@ class TestFromConfig:
         assert isinstance(x01, X01Caller)
         assert x01.per_dart is True
         assert x01.checkout_limit == 1
-        assert x01.announce_change is False
+        assert x01.announce_change is True
         assert x01.call_misses is True
 
     def test_disabled_returns_none(self):
