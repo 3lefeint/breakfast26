@@ -1,0 +1,14 @@
+{
+  "name": "breakfast-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "MATCH", "class_name": "MatchRoom" },
+      { "name": "LIMITER", "class_name": "RateLimiter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MatchRoom", "RateLimiter"] }
+  ]
+}
