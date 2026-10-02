@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-02
+
 ### Added
 - Online Elimination: sites at different places play one match through a relay; the host sets lives and order, every site stores the whole match, the host can start a rematch from the result page, and the relay (`relay/`) is a Cloudflare Worker (#10).
 
