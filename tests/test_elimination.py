@@ -273,7 +273,7 @@ class TestAudioOrderCR007:
     ELIMINATION_AUDIO_ORDER.md for the full case-by-case decisions this
     codifies."""
 
-    def test_preview_announces_name_then_life_lost_when_not_fatal(self):
+    def test_preview_plays_life_lost_without_the_name_when_not_fatal(self):
         audio = FakeAudio()
         game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts", audio=audio)
         game.freipass = False
@@ -282,7 +282,7 @@ class TestAudioOrderCR007:
 
         game._publish_turn_preview()
 
-        assert audio.played == ["30", "alice", "life_lost"]
+        assert audio.played == ["30", "life_lost"]
 
     def test_preview_announces_name_then_eliminated_when_match_continues(self):
         audio = FakeAudio()
@@ -337,13 +337,13 @@ class TestAudioOrderCR007:
 
         assert "nice" not in audio.played
 
-    def test_apply_turn_fallback_announces_name_before_life_lost(self):
+    def test_apply_turn_fallback_plays_life_lost_without_the_name(self):
         audio = FakeAudio()
         game = EliminationGame(["alice", "bob", "carol"], 3, FakeMqttClient(), "autodarts", audio=audio)
 
         game._apply_turn(game.current_player, 0)  # alice fails, still has lives left
 
-        assert audio.played[:2] == ["alice", "life_lost"]
+        assert audio.played[0] == "life_lost"
 
     def test_apply_turn_fallback_announces_name_before_eliminated_when_not_match_over(self):
         audio = FakeAudio()

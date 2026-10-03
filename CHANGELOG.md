@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Elimination: `life_lost` is played without the player's name, also when fewer than three darts were detected; `eliminated` still follows the name.
+
 ### Fixed
 - Announcements are no longer cut off at the start or skipped: the `/audio` page, the TV page and the voice pack preview play through one shared audio context instead of opening a new stream per sound (#18).
 - A sound that fails to load or play is reported in the audio page log and the browser console instead of being skipped silently (#18).

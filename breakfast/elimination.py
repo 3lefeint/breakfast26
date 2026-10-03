@@ -232,7 +232,8 @@ class EliminationGame:
                     return
                 self._outcome_published = True
                 if self.audio:
-                    self._announce(player)
+                    if event == "eliminated":
+                        self._announce(player)
                     self.audio.play(event)
                     gap = self.target - score
                     if 1 <= gap <= 10:
@@ -489,7 +490,6 @@ class EliminationGame:
                     if not self._outcome_published and not silent:
                         self._publish_event("life_lost", player, score)
                         if self.audio:
-                            self._announce(player)
                             self.audio.play("life_lost")
                     self._advance()
 

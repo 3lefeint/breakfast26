@@ -67,6 +67,11 @@ loss brings the player to 0 lives, else `play("life_lost")`
 **Decision:** new order — **player name (new call, not previously
 announced here) → `eliminated` / `life_lost`**.
 
+**Later change:** the name is announced only before `eliminated`. A
+`life_lost` after the 3rd dart plays without the name (the score is
+followed directly by `life_lost`). The rare turn-end fallback (Case 7)
+follows the same rule.
+
 **Recordings must be re-recorded** to read as a natural continuation
 after a name, not a standalone phrase:
 - `life_lost`: "Peter, du hesch es Lebe verlore / minus eis"
