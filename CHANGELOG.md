@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-03
+
 ### Changed
 - Elimination: `life_lost` is played without the player's name, also when fewer than three darts were detected; `eliminated` still follows the name.
 
