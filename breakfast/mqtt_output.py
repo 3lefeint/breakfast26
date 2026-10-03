@@ -173,7 +173,7 @@ class MqttPublisher:
             if i <= len(throws):
                 seg = throws[i - 1].get("segment", {})
                 name = seg.get("name") or ""
-                value = (seg.get("number") or 0) * (seg.get("multiplier") or 1)
+                value = (seg.get("number") or 0) * (seg.get("multiplier") or 0)
                 total += value
             else:
                 name = ""

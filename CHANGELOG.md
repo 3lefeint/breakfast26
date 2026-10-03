@@ -10,6 +10,8 @@
 - A sound that fails to load or play is reported in the audio page log and the browser console instead of being skipped silently (#18).
 - Pages that connect get the current state, including the player list, instead of an older cached copy that could be empty until the next game event.
 - A player added, hidden, unhidden or deleted in the Players tab updates the open pages right away.
+- Freeplay: a dart outside the board no longer counts its sector number towards the turn total published over MQTT (`autodarts/freeplay/total`, `throw{1,2,3}_value`).
+- Freeplay LED display: a missed dart shows `0` instead of `-`, so it can be told apart from a dart not thrown yet (#7).
 
 ## [0.8.0] - 2026-10-02
 

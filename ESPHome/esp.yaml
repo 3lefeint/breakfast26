@@ -654,9 +654,10 @@ display:
         if (n.size() >= 2 && (n[0]=='S'||n[0]=='D'||n[0]=='T')) {
           char p = n[0]=='T' ? 't' : n[0]=='D' ? 'd' : 'S';
           snprintf(seg, sizeof(seg), "%c%3s", p, n.substr(1).c_str());
-        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M') {
+        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M' && n != "Outside") {
           snprintf(seg, sizeof(seg), "%4s", n.substr(0,4).c_str());
-        } else { strcpy(seg, "   -"); }
+        } else if (!n.empty()) { strcpy(seg, "   0");   // thrown, missed the board
+        } else { strcpy(seg, "   -"); }                  // not thrown yet
         it.print(seg);
         return;
       }
@@ -699,9 +700,10 @@ display:
         if (n.size() >= 2 && (n[0]=='S'||n[0]=='D'||n[0]=='T')) {
           char p = n[0]=='T' ? 't' : n[0]=='D' ? 'd' : 'S';
           snprintf(seg, sizeof(seg), "%c%3s", p, n.substr(1).c_str());
-        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M') {
+        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M' && n != "Outside") {
           snprintf(seg, sizeof(seg), "%4s", n.substr(0,4).c_str());
-        } else { strcpy(seg, "   -"); }
+        } else if (!n.empty()) { strcpy(seg, "   0");   // thrown, missed the board
+        } else { strcpy(seg, "   -"); }                  // not thrown yet
         it.print(seg);
         return;
       }
@@ -744,9 +746,10 @@ display:
         if (n.size() >= 2 && (n[0]=='S'||n[0]=='D'||n[0]=='T')) {
           char p = n[0]=='T' ? 't' : n[0]=='D' ? 'd' : 'S';
           snprintf(seg, sizeof(seg), "%c%3s", p, n.substr(1).c_str());
-        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M') {
+        } else if (!n.empty() && n[0] != 'm' && n[0] != 'M' && n != "Outside") {
           snprintf(seg, sizeof(seg), "%4s", n.substr(0,4).c_str());
-        } else { strcpy(seg, "   -"); }
+        } else if (!n.empty()) { strcpy(seg, "   0");   // thrown, missed the board
+        } else { strcpy(seg, "   -"); }                  // not thrown yet
         it.print(seg);
         return;
       }

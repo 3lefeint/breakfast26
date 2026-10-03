@@ -43,6 +43,35 @@ class TestMqttPublisherStartup:
         assert FakeThread.started == []
 
 
+class TestPublishFreeplay:
+    def _published(self, throws):
+        pub = MqttPublisher.__new__(MqttPublisher)
+        pub.client = MagicMock()
+        pub.base_topic = "autodarts"
+        pub.publish_freeplay(len(throws), throws)
+        return {c.args[0].split("freeplay/")[-1]: c.args[1]
+                for c in pub.client.publish.call_args_list if "/freeplay/" in c.args[0]}
+
+    @staticmethod
+    def _miss(sector):
+        # Shape of a dart outside the board in the local board stream.
+        return {"segment": {"name": f"M{sector}", "number": sector, "bed": "Outside", "multiplier": 0}}
+
+    def test_missed_darts_do_not_count_towards_the_total(self):
+        sent = self._published([self._miss(19), self._miss(3), self._miss(17)])
+
+        assert [sent["throw1_value"], sent["throw2_value"], sent["throw3_value"]] == ["0", "0", "0"]
+        assert sent["total"] == "0"
+        assert sent["throw1_name"] == "M19"
+
+    def test_hits_and_misses_in_one_turn(self):
+        hit = {"segment": {"name": "T20", "number": 20, "bed": "Triple", "multiplier": 3}}
+
+        sent = self._published([hit, self._miss(20), {"segment": {"name": "25", "number": 25, "multiplier": 1}}])
+
+        assert sent["total"] == "85"
+
+
 class TestNullMqttPublisher:
     """No-op stand-in used when MQTT/HA/LED output is disabled —
     Elimination is built against the same interface either way."""
