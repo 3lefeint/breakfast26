@@ -2,9 +2,9 @@
 
 Every X01 audio trigger, one at a time: what plays today, what stands out, the options, and a
 proposal. The decisions are recorded here when they are made, the same way
-`ELIMINATION_AUDIO_ORDER.md` does it for Elimination. The decisions are implemented, except case 12.
+`ELIMINATION_AUDIO_ORDER.md` does it for Elimination. All decisions are implemented.
 
-**Status: cases 1 to 11 are decided, case 12 (pacing) stays open until it can be measured with the real voice pack.** The decisions are implemented, except case 12.
+**Status: all 12 cases are decided and implemented.**
 
 ## How X01 audio works
 
@@ -321,7 +321,9 @@ call when only two players play.
 
 **Proposal:** measure first; the options above are cheap to try once there is a number.
 
-**Decision:** open until the real voice pack is measured (needs the sound files, not on this machine).
+**Decision:** keep as is. With the shared browser audio player (one audio context, phrases queued
+on the context clock) the sounds follow each other without the gaps the old per-sound players
+added, and the turn-end phrases no longer feel slow. No gap or pause setting, no code change.
 
 ---
 
