@@ -292,7 +292,9 @@ checkout calls (*you require ...*), bust, leg and match won. Sound plays in
 the browser: open `http://<host>:8080/audio` on the device wired to the
 room's speakers, click **Enable sound** once (browser autoplay policy), and
 leave the tab open. Only tabs on `/audio` play sound — phones or tablets
-showing the scoreboard stay silent.
+showing the scoreboard stay silent. The tab keeps one audio stream open
+between calls, so the volume mixer shows a permanent entry for the browser;
+that is what keeps the start of a call from being cut off.
 
 Sound files are plain `key.mp3` files (`matchon.mp3`, `t20.mp3`, `180.mp3`,
 `you_require.mp3`, ...; `key+1.mp3` etc. for random variants). Checkout

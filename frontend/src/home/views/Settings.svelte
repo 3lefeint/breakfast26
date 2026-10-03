@@ -11,6 +11,7 @@
   import { gameState } from '../../lib/stores/gameState.js';
   import { api } from '../../lib/api.js';
   import PageHeader from '../../lib/components/PageHeader.svelte';
+  import { createPlayer } from '../../lib/audioPlayer.js';
 
   const MASK = '●●●●●';
   const emptyCfg = () => ({
@@ -118,14 +119,15 @@
     vpFormVariants = next.length ? next : [''];
   }
 
+  const previewPlayer = createPlayer();
+
   async function playAudioBlobResponse(res) {
     const ct = res.headers.get('content-type') || '';
     if (!res.ok || !ct.includes('audio')) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${res.status}`);
     }
-    const blob = await res.blob();
-    new Audio(URL.createObjectURL(blob)).play();
+    await previewPlayer.playData(await res.arrayBuffer());
   }
 
   async function previewVpVariant(text) {

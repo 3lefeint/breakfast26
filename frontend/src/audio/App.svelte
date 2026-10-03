@@ -7,47 +7,20 @@
   // TV, where the role is a user toggle).
   import { onMount } from 'svelte';
   import AppHeader from '../lib/components/AppHeader.svelte';
+  import { createPlayer } from '../lib/audioPlayer.js';
 
   let unlocked = $state(false);
   let connOk = $state(false);
   let queueLen = $state(0);
   let log = $state([]); // newest first, capped at 50
 
-  let voicePlaying = null;
-  let ambientPlaying = null;
-  const voiceQueue = [];
-
-  function soundUrl(file, v) { return '/api/sound/' + encodeURIComponent(file) + (v ? '?v=' + encodeURIComponent(v) : ''); }
-
-  function playNextVoice() {
-    if (voicePlaying || voiceQueue.length === 0) return;
-    const inst = voiceQueue.shift();
-    // A batch item already has its Audio element under construction (see
-    // handleSoundBatch) — reuse it instead of only starting the fetch now,
-    // so batched phrases don't pay serial fetch latency between each other.
-    const a = inst.audio || new Audio(soundUrl(inst.file, inst.v));
-    a.volume = Math.max(0, Math.min(1, inst.volume ?? 1));
-    voicePlaying = a;
-    const done = () => { if (voicePlaying === a) voicePlaying = null; updateQueueInfo(); playNextVoice(); };
-    a.onended = done;
-    a.onerror = done;
-    a.play().catch(done);
-    updateQueueInfo();
-  }
-
-  function stopVoice() {
-    voiceQueue.length = 0;
-    if (voicePlaying) {
-      voicePlaying.onended = null;
-      voicePlaying.onerror = null;
-      voicePlaying.pause();
-      voicePlaying = null;
-    }
-  }
-
-  function updateQueueInfo() {
-    queueLen = voiceQueue.length + (voicePlaying ? 1 : 0);
-  }
+  const player = createPlayer({
+    onQueueChange: (n) => { queueLen = n; },
+    onError: (msg) => {
+      console.warn('[audio] ' + msg);
+      log = [{ channel: 'error', text: `${new Date().toLocaleTimeString()}  ${msg}` }, ...log].slice(0, 50);
+    },
+  });
 
   function logLine(inst) {
     const flags = inst.break_last ? ' [break]' : '';
@@ -57,53 +30,15 @@
 
   function handleSound(inst) {
     logLine(inst);
-    if (!unlocked) return;
-
-    if (inst.channel === 'ambient') {
-      if (ambientPlaying) ambientPlaying.pause();
-      const a = new Audio(soundUrl(inst.file, inst.v));
-      a.volume = Math.max(0, Math.min(1, inst.volume ?? 1));
-      ambientPlaying = a;
-      a.play().catch(() => {});
-      return;
-    }
-
-    if (inst.break_last) stopVoice();
-    voiceQueue.push(inst);
-    playNextVoice();
+    if (unlocked) player.handle(inst);
   }
 
   function handleSoundBatch(msg) {
-    // Construct + load every item's Audio element immediately, in parallel,
-    // instead of one fetch-then-play step at a time — the whole sequence is
-    // already known up front, so there's no reason to wait for phrase N's
-    // playback to end before even starting phrase N+1's fetch.
-    for (const item of msg.items) {
-      const inst = { ...item, v: msg.v };
-      logLine(inst);
-      if (!unlocked) continue;
-
-      if (inst.channel === 'ambient') {
-        if (ambientPlaying) ambientPlaying.pause();
-        const a = new Audio(soundUrl(inst.file, inst.v));
-        a.volume = Math.max(0, Math.min(1, inst.volume ?? 1));
-        ambientPlaying = a;
-        a.play().catch(() => {});
-        continue;
-      }
-
-      if (inst.break_last) stopVoice();
-      const a = new Audio(soundUrl(inst.file, inst.v));
-      a.volume = Math.max(0, Math.min(1, inst.volume ?? 1));
-      a.load();
-      voiceQueue.push({ ...inst, audio: a });
-    }
-    if (unlocked) playNextVoice();
+    for (const item of msg.items) handleSound({ ...item, v: msg.v });
   }
 
   function unlock() {
-    const silent = new Audio('data:audio/wav;base64,UklGRkQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
-    silent.play().catch(() => {});
+    player.unlock();
     unlocked = true;
   }
 
@@ -192,4 +127,5 @@
   .log div { padding: 1px 0; }
   .log .voice { color: var(--text); }
   .log .ambient { color: var(--accent); }
+  .log .error { color: var(--red); }
 </style>
