@@ -5,6 +5,8 @@
 ### Fixed
 - Announcements are no longer cut off at the start or skipped: the `/audio` page, the TV page and the voice pack preview play through one shared audio context instead of opening a new stream per sound (#18).
 - A sound that fails to load or play is reported in the audio page log and the browser console instead of being skipped silently (#18).
+- Pages that connect get the current state, including the player list, instead of an older cached copy that could be empty until the next game event.
+- A player added, hidden, unhidden or deleted in the Players tab updates the open pages right away.
 
 ## [0.8.0] - 2026-10-02
 

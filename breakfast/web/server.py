@@ -60,7 +60,6 @@ _dev_demo = None
 _loop: asyncio.AbstractEventLoop | None = None
 _clients: set[WebSocket] = set()
 _audio_clients: set[WebSocket] = set()
-_last_payload: dict = {}
 
 
 def wire(game_state, elim_ctrl,
@@ -130,10 +129,8 @@ async def _send_to(clients: set, data: dict):
 
 def push():
     """Call from any thread after state changes to push to all browser clients."""
-    global _last_payload
-    _last_payload = _build_payload()
     if _loop and _loop.is_running() and _clients:
-        asyncio.run_coroutine_threadsafe(_send_to(_clients, _last_payload), _loop)
+        asyncio.run_coroutine_threadsafe(_send_to(_clients, _build_payload()), _loop)
 
 
 def push_sound(instruction: dict):
@@ -188,7 +185,7 @@ async def ws_endpoint(ws: WebSocket):
         _audio_clients.add(ws)
     log.info("WS connected (role=%s, clients=%d)", role or "default", len(_clients))
     try:
-        await ws.send_json(_last_payload if _last_payload else _build_payload())
+        await ws.send_json(_build_payload())
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
@@ -604,6 +601,7 @@ async def stats_delete_player(name: str):
     if not _stats_db:
         return {"error": "stats not enabled"}
     _stats_db.delete_player(name)
+    push()
     return {"ok": True}
 
 
@@ -1102,7 +1100,9 @@ async def add_player(body: PlayerBody):
     name = body.name.strip()
     if not name:
         return {"error": "empty name"}
-    return kp.add(name, _stats_db)
+    players = kp.add(name, _stats_db)
+    push()
+    return players
 
 
 class HiddenBody(BaseModel):
@@ -1118,6 +1118,7 @@ async def set_player_hidden(name: str, body: HiddenBody):
     if not _stats_db:
         return {"error": "stats not enabled"}
     _stats_db.upsert_player(name, hidden=body.hidden)
+    push()
     return {"ok": True}
 
 

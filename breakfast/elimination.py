@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 # so the old page's audio-role connection is already gone and the new one
 # hasn't registered yet by the time this would otherwise fire synchronously.
 # Sound instructions are a live, ephemeral broadcast (unlike state, which
-# new connections get resent via _last_payload), so anything sent into that
+# new connections get a fresh payload on connect), so anything sent into that
 # gap is lost for good rather than merely delayed.
 _START_ANNOUNCE_AUDIO_DELAY_S = 0.5
 
