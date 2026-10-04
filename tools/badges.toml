@@ -84,6 +84,71 @@ difficulty = "easy"
 subject = "A single upright dart standing in a breakfast plate seen from the front, a small winner's crown floating above it."
 
 [[badge]]
+id = "raising_the_bar"
+mode = "elimination"
+difficulty = "easy"
+subject = "A high-jump bar: a thick horizontal bar resting on two short upright posts."
+
+[[badge]]
+id = "one_is_enough"
+mode = "elimination"
+difficulty = "easy"
+label = "+1"
+subject = "One plump, simple heart."
+
+[[badge]]
+id = "second_chance"
+mode = "elimination"
+difficulty = "easy"
+subject = "A heart with a round bandage plaster stuck across it."
+
+[[badge]]
+id = "last_life_standing"
+mode = "elimination"
+difficulty = "medium"
+subject = "A single heart with a clear zigzag crack through it and a small crown resting on top."
+
+[[badge]]
+id = "untouchable"
+mode = "elimination"
+difficulty = "hard"
+subject = "A knight's shield with a single heart in its centre."
+
+[[badge]]
+id = "full_house"
+mode = "elimination"
+difficulty = "hard"
+label = "6"
+subject = "A small cosy house with a door and two windows."
+
+[[badge]]
+id = "hat_trick"
+mode = "elimination"
+difficulty = "hard"
+label = "3"
+subject = "A black top hat with a band around it."
+
+[[badge]]
+id = "no_free_ride"
+mode = "elimination"
+difficulty = "hard"
+label = "5"
+subject = "A flexed arm showing a round biceps muscle, a thick rounded shape."
+
+[[badge]]
+id = "maximum_beaten"
+mode = "elimination"
+difficulty = "very_hard"
+label = "180"
+subject = "A walnut with a clear crack through its shell."
+
+[[badge]]
+id = "back_from_the_brink"
+mode = "elimination"
+difficulty = "hard"
+subject = "A lifebuoy ring."
+
+[[badge]]
 id = "first_breakfast"
 mode = "general"
 difficulty = "easy"
@@ -268,3 +333,215 @@ id = "extended_breakfast"
 mode = "target_battle"
 difficulty = "hidden"
 subject = "A long breakfast tray with three small cups in a row."
+
+[[badge]]
+id = "regular_guest"
+mode = "general"
+difficulty = "endurance"
+label = "30"
+subject = "A coffee cup on a saucer."
+
+[[badge]]
+id = "heavy_hitter"
+mode = "x01"
+difficulty = "endurance"
+label = "140"
+subject = "A heavy dumbbell with thick round weights."
+
+[[badge]]
+id = "average_class"
+mode = "x01"
+difficulty = "endurance"
+subject = "A round speedometer gauge with a single needle."
+
+[[badge]]
+id = "short_order"
+mode = "x01"
+difficulty = "medium"
+label = "18"
+subject = "A round kitchen timer with a twist dial."
+
+[[badge]]
+id = "bullseye_finish"
+mode = "x01"
+difficulty = "medium"
+subject = "A shiny red round push button on a small base."
+
+[[badge]]
+id = "streak_master"
+mode = "x01"
+difficulty = "hard"
+label = "3"
+subject = "A single thick chain link."
+
+[[badge]]
+id = "closing_routine"
+mode = "x01"
+difficulty = "endurance"
+subject = "A rubber stamp with a round handle."
+
+[[badge]]
+id = "checkout_collector"
+mode = "x01"
+difficulty = "endurance"
+label = "21"
+subject = "A round medal hanging from a short ribbon."
+
+[[badge]]
+id = "roughly_pi"
+mode = "x01"
+difficulty = "hidden"
+label = "314"
+subject = "A large, thick pi symbol."
+
+[[badge]]
+id = "repdigit"
+mode = "x01"
+difficulty = "hidden"
+label = "333"
+subject = "A small shot glass."
+
+[[badge]]
+id = "small_fry"
+mode = "x01"
+difficulty = "hidden"
+label = "111"
+subject = "A small plump ant."
+
+[[badge]]
+id = "fasting"
+mode = "x01"
+difficulty = "hidden"
+subject = "An empty round plate."
+
+[[badge]]
+id = "deja_vu"
+mode = "x01"
+difficulty = "hidden"
+subject = "A round hand mirror."
+
+[[badge]]
+id = "case_of_the_jitters"
+mode = "x01"
+difficulty = "hidden"
+subject = "One large water droplet."
+
+[[badge]]
+id = "spoilsport"
+mode = "x01"
+difficulty = "hidden"
+subject = "A single party balloon with a short string."
+
+[[badge]]
+id = "lonely_one"
+mode = "x01"
+difficulty = "hidden"
+subject = "A small rain cloud."
+
+[[badge]]
+id = "early_bird"
+mode = "x01"
+difficulty = "hidden"
+subject = "A plump round little bird."
+
+[[badge]]
+id = "night_owl"
+mode = "x01"
+difficulty = "hidden"
+subject = "A plump owl sitting upright."
+
+[[badge]]
+id = "answer_to_everything"
+mode = "x01"
+difficulty = "hidden"
+label = "42"
+subject = "A small planet with a ring around it."
+
+[[badge]]
+id = "burnt_toast"
+mode = "x01"
+difficulty = "hidden"
+subject = "A slice of toast burnt completely black."
+colour = "natural"
+
+[[badge]]
+id = "breakfast_switch"
+mode = "x01"
+difficulty = "hidden"
+subject = "Two thick curved arrows chasing each other in a circle."
+
+[[badge]]
+id = "not_found"
+mode = "easter_egg"
+difficulty = "hidden"
+label = "404"
+subject = "A magnifying glass."
+
+[[badge]]
+id = "service_unavailable"
+mode = "easter_egg"
+difficulty = "hidden"
+label = "503"
+subject = "A silver serving dome with a small knob on top."
+
+[[badge]]
+id = "full_english"
+mode = "easter_egg"
+difficulty = "hidden"
+subject = "A fried egg with a bright yolk."
+colour = "natural"
+
+[[badge]]
+id = "copying_costs"
+mode = "elimination"
+difficulty = "hidden"
+label = "="
+subject = "A heart broken into two halves."
+
+[[badge]]
+id = "a_new_low"
+mode = "elimination"
+difficulty = "hidden"
+subject = "A thick arrow pointing down."
+
+[[badge]]
+id = "free_pass_failed"
+mode = "elimination"
+difficulty = "hidden"
+label = "0"
+subject = "A torn paper ticket."
+
+[[badge]]
+id = "one_crumb_is_enough"
+mode = "elimination"
+difficulty = "hidden"
+label = "1"
+subject = "A single small bread roll."
+
+[[badge]]
+id = "tied_to_the_grave"
+mode = "elimination"
+difficulty = "hidden"
+label = "="
+subject = "A simple rounded gravestone."
+
+[[badge]]
+id = "after_me_the_deluge"
+mode = "elimination"
+difficulty = "hidden"
+label = "180"
+subject = "One big ocean wave."
+
+[[badge]]
+id = "chips_for_breakfast"
+mode = "elimination"
+difficulty = "hidden"
+subject = "A paper cone filled with french fries."
+colour = "natural"
+
+[[badge]]
+id = "close_still_costs"
+mode = "elimination"
+difficulty = "hidden"
+label = "-1"
+subject = "A heart with a single small piece missing at its edge."

@@ -50,6 +50,7 @@ class Turn:
     target: int | None = None  # Target Battle: the target number of the round
     round_no: int | None = None   # Target Battle: the round, or the tiebreak round
     tiebreak: bool = False     # Target Battle: a tiebreak round
+    at: str | None = None      # X01: when the turn was stored (UTC, ISO)
 
 
 class MatchContext:
@@ -63,6 +64,9 @@ class MatchContext:
         self._participants = None
         self._tb_results = None
         self._tb_turns = None
+        self._elim_turns = None
+        self._elim_results = None
+        self._x01_turns = None
 
     @property
     def turns(self) -> list:
@@ -93,6 +97,32 @@ class MatchContext:
         return self._tb_turns
 
     @property
+    def x01_turns(self) -> list:
+        """X01: every turn of every player, in the order played."""
+        if self._x01_turns is None:
+            self._x01_turns = self.db.x01_turn_rows(self.match["match_id"])
+        return self._x01_turns
+
+    @property
+    def elim_turns(self) -> list:
+        """Elimination: every turn of every player, in the order played."""
+        if self._elim_turns is None:
+            self._elim_turns = self.db.elimination_turn_rows(self.match["match_id"])
+        return self._elim_turns
+
+    @property
+    def own_elim_turns(self) -> list:
+        """Elimination: the player's own turns."""
+        return [t for t in self.elim_turns if t["player"] == self.player]
+
+    @property
+    def elim_lives_left(self) -> int | None:
+        """Elimination: the lives the winner had left."""
+        if self._elim_results is None:
+            self._elim_results = self.db.elimination_results(self.match["match_id"])
+        return next((r["lives_left"] for r in self._elim_results if r["placement"] == 1), None)
+
+    @property
     def won(self) -> bool:
         return self.match["winner"] == self.player
 
@@ -110,6 +140,7 @@ class Achievement:
     tiers: tuple | None = None  # counter thresholds, None for an event
     check: Callable | None = None   # event: does this match satisfy it
     count: Callable | None = None   # counter: what this match adds to the total
+    peak: bool = False         # counter: the total is the highest value of any match, not the sum
     motif: str | None = None   # id of the badge motif to share, default: its own
 
     def applies_to(self, game_mode: str) -> bool:
@@ -154,6 +185,321 @@ def _first_bite(ctx):
 
 def _last_at_the_table(ctx):
     return ctx.won
+
+
+_MISS = re.compile(r"^(MISS|M\d{1,2})$")
+
+
+def _is_miss(field):
+    """A dart outside every scoring field: a miss next to a number, or without any number."""
+    return bool(_MISS.match(field))
+
+
+def _field_points(field):
+    if field in INNER_BULL:
+        return 50
+    if field == "25":
+        return 25
+    match = _FIELD.match(field)
+    return int(match.group(2)) * {"S": 1, "D": 2, "T": 3}[match.group(1)] if match else 0
+
+
+def _one_dart_finish(remaining):
+    """Can this rest be finished with one dart: a double, or the inner bull."""
+    return remaining == 50 or (remaining is not None and 2 <= remaining <= 40 and remaining % 2 == 0)
+
+
+def _remaining_before_each_dart(turn):
+    """What was left before each dart of an X01 turn, up to the dart that busts."""
+    before = turn.remaining_before
+    for field in turn.darts:
+        if before is None or before < 2:
+            return
+        yield field, before
+        before -= _field_points(field)
+
+
+def _history_through(ctx):
+    """The player's closed matches since the achievements start, up to and including this one."""
+    matches = ctx.db.player_final_matches(ctx.player, ctx.db.achievements_start())
+    ids = [m["match_id"] for m in matches]
+    if ctx.match["match_id"] not in ids:
+        return []
+    return matches[:ids.index(ctx.match["match_id"]) + 1]
+
+
+def _won_in_a_row(ctx, kind, minimum_players, length):
+    """This match is the last of `length` wins in a row among the player's closed matches of this
+    kind that had `minimum_players` or more players (a smaller one neither counts nor breaks the run)."""
+    played = [m for m in ctx.db.player_final_matches(ctx.player, ctx.db.achievements_start())
+              if game_kind(m["game_mode"]) == kind
+              and len(ctx.db.match_participants(m["match_id"])) >= minimum_players]
+    ids = [m["match_id"] for m in played]
+    if ctx.match["match_id"] not in ids:
+        return False
+    at = ids.index(ctx.match["match_id"])
+    return at >= length - 1 and all(m["winner"] == ctx.player for m in played[at - length + 1:at + 1])
+
+
+def _distinct_days(ctx):
+    return len({ctx.db.local_time(m["ended_at"]).date() for m in _history_through(ctx)})
+
+
+def _heavy_hitter(ctx):
+    return sum(1 for turn in ctx.turns if not turn.is_bust and (turn.score or 0) >= 140)
+
+
+def _best_average(ctx):
+    """The 3-dart average of this match, rounded down, 0 under five turns."""
+    turns = ctx.turns
+    darts = sum(len(t.darts) for t in turns)
+    if len(turns) < 5 or not darts:
+        return 0
+    return int(3 * sum(t.score or 0 for t in turns if not t.is_bust) / darts)
+
+
+def _short_order(ctx):
+    """A 501 leg finished in at most 18 darts."""
+    if ctx.match.get("points_start") != 501:
+        return False
+    legs = {}
+    for turn in ctx.turns:
+        legs.setdefault(turn.leg, []).append(turn)
+    return any(turns[0].remaining_before == 501 and turns[-1].is_checkout and not turns[-1].is_bust
+               and sum(len(t.darts) for t in turns) <= 18 for turns in legs.values())
+
+
+def _bullseye_finish(ctx):
+    return any(turn.darts and turn.darts[-1] in INNER_BULL for turn in _checkouts(ctx))
+
+
+def _streak_master(ctx):
+    return ctx.won and len(ctx.participants) >= 2 and _won_in_a_row(ctx, X01, 2, 3)
+
+
+def _closing_routine(ctx):
+    return len(_checkouts(ctx))
+
+
+_CHECKOUT_TARGETS = {f"D{n}" for n in range(1, 21)} | {"BULL"}
+
+
+def _checkout_collection(ctx):
+    """How many of the 21 finishing fields (D1 to D20, inner bull) the player has finished a leg on
+    in the closed X01 matches up to this one."""
+    found = set()
+    for m in _history_through(ctx):
+        if game_kind(m["game_mode"]) != X01:
+            continue
+        mine = ctx if m["match_id"] == ctx.match["match_id"] else MatchContext(ctx.db, m, ctx.player)
+        for turn in _checkouts(mine):
+            if turn.darts:
+                found.add("BULL" if turn.darts[-1] in INNER_BULL else turn.darts[-1])
+    return len(found & _CHECKOUT_TARGETS)
+
+
+def _rest_after_turn_is(*rests):
+    def check(ctx):
+        return any(not t.is_bust and t.remaining_before - (t.score or 0) in rests for t in ctx.turns)
+    return check
+
+
+def _small_fry(ctx):
+    return any(turn.darts == ("S1", "S1", "S1") for turn in ctx.turns)
+
+
+def _fasting(ctx):
+    return any(len(turn.darts) == 3 and all(_is_miss(d) for d in turn.darts) for turn in ctx.turns)
+
+
+def _deja_vu(ctx):
+    turns = ctx.turns
+    return any(len(a.darts) == 3 and a.darts == b.darts and not any(_is_miss(d) for d in a.darts)
+               for a, b in zip(turns, turns[1:]))
+
+
+def _case_of_the_jitters(ctx):
+    """At least nine darts in one leg thrown at a rest that one dart could finish, none of them finishing."""
+    per_leg = {}
+    for turn in ctx.turns:
+        finishing = turn.is_checkout and not turn.is_bust
+        for i, (field, before) in enumerate(_remaining_before_each_dart(turn)):
+            if _one_dart_finish(before) and not (finishing and i == len(turn.darts) - 1):
+                per_leg[turn.leg] = per_leg.get(turn.leg, 0) + 1
+    return any(n >= 9 for n in per_leg.values())
+
+
+def _spoilsport(ctx):
+    """The player finishes a leg while an opponent has a rest that one dart could finish."""
+    left = {}        # (leg, player) -> what the player had left after the latest turn of the leg
+    for row in ctx.x01_turns:
+        if row["player"] == ctx.player and row["is_checkout"] and not row["is_bust"]:
+            if any(_one_dart_finish(rest) for (leg, who), rest in left.items()
+                   if leg == row["leg"] and who != ctx.player):
+                return True
+        left[(row["leg"], row["player"])] = (row["remaining_before"] if row["is_bust"]
+                                             else row["remaining_before"] - row["score"])
+    return False
+
+
+def _lonely_one(ctx):
+    """A bust that left exactly one."""
+    for turn in ctx.turns:
+        if not turn.is_bust or turn.remaining_before is None:
+            continue
+        rest = turn.remaining_before
+        for field in turn.darts:
+            rest -= _field_points(field)
+            if rest == 1:
+                return True
+            if rest < 1:
+                break
+    return False
+
+
+def _finished_at(ctx, start_hour, end_hour):
+    return any(turn.at and start_hour <= ctx.db.local_time(turn.at).hour < end_hour
+               for turn in _checkouts(ctx))
+
+
+def _early_bird(ctx):
+    return _finished_at(ctx, 0, 7)
+
+
+def _night_owl(ctx):
+    return _finished_at(ctx, 0, 4)
+
+
+def _answer_to_everything(ctx):
+    return any(turn.remaining_before == 42 and turn.darts == ("S10", "D16") for turn in _checkouts(ctx))
+
+
+def _burnt_toast(ctx):
+    return any(field == "T20" and before == 2
+               for turn in ctx.turns for field, before in _remaining_before_each_dart(turn))
+
+
+def _breakfast_switch(ctx):
+    return any(turn.remaining_before == 110 and turn.darts == ("T20", "S10", "D20") for turn in _checkouts(ctx))
+
+
+def _not_found(ctx):
+    return any(len(t.darts) == 3 and t.darts[0] == "S4" and _is_miss(t.darts[1]) and t.darts[2] == "S4"
+               for t in ctx.turns)
+
+
+def _service_unavailable(ctx):
+    return any(len(t.darts) == 3 and t.darts[0] == "S5" and _is_miss(t.darts[1]) and t.darts[2] == "S3"
+               for t in ctx.turns)
+
+
+def _full_english(ctx):
+    return any(sorted(t.darts) == ["D20", "S20", "T20"] for t in ctx.turns)
+
+
+# Elimination. A turn "beats the bar" when it passes without a freipass; `to_beat` is what it had
+# to beat, and a freipass turn has nothing to beat.
+
+def _beats_the_bar(turn):
+    return turn["passed"] and not turn["freipass"]
+
+
+def _raising_the_bar(ctx):
+    return any(_beats_the_bar(t) for t in ctx.own_elim_turns)
+
+
+def _one_is_enough(ctx):
+    return any(_beats_the_bar(t) and t["score"] == t["to_beat"] + 1 for t in ctx.own_elim_turns)
+
+
+def _second_chance(ctx):
+    turns = ctx.own_elim_turns
+    return any(not before["passed"] and _beats_the_bar(after) for before, after in zip(turns, turns[1:]))
+
+
+def _last_life_standing(ctx):
+    return ctx.won and (ctx.match["points_start"] or 0) >= 2 and ctx.elim_lives_left == 1
+
+
+def _untouchable(ctx):
+    regular = sum(1 for t in ctx.own_elim_turns if not t["freipass"])
+    return (ctx.won and len(ctx.participants) >= 3 and ctx.elim_lives_left == ctx.match["points_start"]
+            and regular >= 3)
+
+
+def _full_house(ctx):
+    return ctx.won and len(ctx.participants) >= 6
+
+
+def _hat_trick(ctx):
+    return ctx.won and len(ctx.participants) >= 3 and _won_in_a_row(ctx, ELIMINATION, 3, 3)
+
+
+def _no_free_ride(ctx):
+    run = 0
+    for turn in ctx.own_elim_turns:
+        run = run + 1 if _beats_the_bar(turn) else 0
+        if run >= 5:
+            return True
+    return False
+
+
+def _maximum_beaten(ctx):
+    return any(_beats_the_bar(t) and t["to_beat"] == 179 and t["score"] == 180 for t in ctx.own_elim_turns)
+
+
+def _back_from_the_brink(ctx):
+    """Won after falling to one life, with at least three regular turns passed since then."""
+    if not (ctx.won and (ctx.match["points_start"] or 0) >= 3 and len(ctx.participants) >= 3):
+        return False
+    turns = ctx.own_elim_turns
+    low = next((i for i, t in enumerate(turns) if t["lives_before"] == 1), None)
+    return low is not None and sum(1 for t in turns[low:] if _beats_the_bar(t)) >= 3
+
+
+def _copying_costs(ctx):
+    return any(not t["freipass"] and not t["passed"] and t["score"] == t["to_beat"] for t in ctx.own_elim_turns)
+
+
+def _a_new_low(ctx):
+    """A turn below a positive bar without a free pass, and the next player below that new bar too."""
+    rows = ctx.elim_turns
+    for a, b in zip(rows, rows[1:]):
+        if ctx.player in (a["player"], b["player"]) and a["player"] != b["player"] \
+                and not a["freipass"] and not a["passed"] and a["to_beat"] > 0 and a["score"] < a["to_beat"] \
+                and not b["freipass"] and not b["passed"] and b["score"] < a["score"]:
+            return True
+    return False
+
+
+def _free_pass_failed(ctx):
+    return any(t["freipass"] and t["score"] == 0 for t in ctx.own_elim_turns)
+
+
+def _one_crumb_is_enough(ctx):
+    return any(t["freipass"] and t["score"] == 1 for t in ctx.own_elim_turns)
+
+
+def _tied_to_the_grave(ctx):
+    return any(not t["freipass"] and not t["passed"] and t["score"] == t["to_beat"] and t["lives_before"] == 1
+               for t in ctx.own_elim_turns)
+
+
+def _after_me_the_deluge(ctx):
+    rows = ctx.elim_turns
+    return any(a["player"] == ctx.player and a["score"] == 180 and not b["freipass"] and not b["passed"]
+               for a, b in zip(rows, rows[1:]))
+
+
+def _chips_for_breakfast(ctx):
+    darts = {t.number: t.darts for t in ctx.turns}
+    return any(_beats_the_bar(t) and sorted(darts.get(number, ())) == ["S1", "S20", "S5"]
+               for number, t in enumerate(ctx.own_elim_turns, start=1))
+
+
+def _close_still_costs(ctx):
+    return any(not t["freipass"] and not t["passed"] and t["to_beat"] > 0 and t["score"] == t["to_beat"] - 1
+               for t in ctx.own_elim_turns)
 
 
 def _first_breakfast(ctx):
@@ -398,6 +744,55 @@ ACHIEVEMENTS = (
                 {"en": "Last at the Table", "de": "Letzter am Tisch"},
                 {"en": "Win an Elimination match.", "de": "Ein Elimination-Spiel gewinnen."},
                 game_modes=ELIMINATION, check=_last_at_the_table),
+    Achievement("raising_the_bar", "elimination", "easy",
+                {"en": "Raising the Bar", "de": "Latte höher"},
+                {"en": "Beat the previous score without a free pass for the first time.",
+                 "de": "Ohne Freipass erstmals die Punktzahl des Vorgängers überbieten."},
+                game_modes=ELIMINATION, check=_raising_the_bar),
+    Achievement("one_is_enough", "elimination", "easy",
+                {"en": "One Is Enough", "de": "Ein Punkt reicht"},
+                {"en": "Beat the previous score by exactly one point, without a free pass.",
+                 "de": "Ohne Freipass die Punktzahl des Vorgängers um genau einen Punkt überbieten."},
+                game_modes=ELIMINATION, label="+1", check=_one_is_enough),
+    Achievement("second_chance", "elimination", "easy",
+                {"en": "Second Chance", "de": "Zweite Chance"},
+                {"en": "Lose a life and beat the score to beat in your very next turn, without a free pass.",
+                 "de": "Nach einem Lebensverlust in der nächsten eigenen Aufnahme ohne Freipass die Vorgabe überbieten."},
+                game_modes=ELIMINATION, check=_second_chance),
+    Achievement("last_life_standing", "elimination", "medium",
+                {"en": "Last Life Standing", "de": "Letztes Leben"},
+                {"en": "Win a match that started with at least two lives with exactly one life left.",
+                 "de": "Ein Spiel mit mindestens zwei Startleben mit genau einem verbleibenden Leben gewinnen."},
+                game_modes=ELIMINATION, check=_last_life_standing),
+    Achievement("untouchable", "elimination", "hard",
+                {"en": "Untouchable", "de": "Unantastbar"},
+                {"en": "Win a match of at least three players without losing a life, after at least three turns without a free pass.",
+                 "de": "Ein Spiel mit mindestens drei Teilnehmern ohne Lebensverlust gewinnen, nach mindestens drei eigenen Aufnahmen ohne Freipass."},
+                game_modes=ELIMINATION, check=_untouchable),
+    Achievement("full_house", "elimination", "hard",
+                {"en": "Full House", "de": "Volles Haus"},
+                {"en": "Win a match with at least six players.",
+                 "de": "Ein Spiel mit mindestens sechs Teilnehmern gewinnen."},
+                game_modes=ELIMINATION, label="6", check=_full_house),
+    Achievement("hat_trick", "elimination", "hard",
+                {"en": "Hat-Trick", "de": "Hattrick"},
+                {"en": "Win three of your Elimination matches in a row, each with at least three players.",
+                 "de": "Drei eigene Elimination-Spiele in Folge gewinnen, jeweils mit mindestens drei Teilnehmern."},
+                game_modes=ELIMINATION, label="3", check=_hat_trick),
+    Achievement("no_free_ride", "elimination", "hard",
+                {"en": "No Free Ride", "de": "Aus eigener Kraft"},
+                {"en": "Beat the score to beat in five turns in a row, none of them with a free pass.",
+                 "de": "Fünf eigene Aufnahmen hintereinander ohne Freipass spielen und jedes Mal die Vorgabe überbieten."},
+                game_modes=ELIMINATION, label="5", check=_no_free_ride),
+    Achievement("maximum_beaten", "elimination", "very_hard",
+                {"en": "Maximum Beaten", "de": "Maximum geknackt"},
+                {"en": "Beat a score of 179 with 180.", "de": "Eine Vorgabe von 179 mit 180 überbieten."},
+                game_modes=ELIMINATION, label="180", check=_maximum_beaten),
+    Achievement("back_from_the_brink", "elimination", "hard",
+                {"en": "Back from the Brink", "de": "Dem Tod von der Schippe"},
+                {"en": "With at least three lives and three players, fall to one life, pass at least three turns without a free pass from there and win.",
+                 "de": "Bei mindestens drei Startleben und drei Teilnehmern auf ein Leben fallen, danach mindestens drei eigene Aufnahmen ohne Freipass überstehen und gewinnen."},
+                game_modes=ELIMINATION, check=_back_from_the_brink),
     Achievement("target_acquired", "target_battle", "easy",
                 {"en": "Target Acquired", "de": "Ziel erfasst"},
                 {"en": "Hit the target number with all three darts of a turn.",
@@ -473,6 +868,166 @@ ACHIEVEMENTS = (
                 {"en": "Win a Target Battle after at least three tiebreak rounds.",
                  "de": "Ein Target-Battle-Spiel gewinnen, nachdem mindestens drei Stechrunden gespielt wurden."},
                 game_modes=TARGET_BATTLE, hidden=True, check=_extended_breakfast),
+    Achievement("regular_guest", "general", "endurance",
+                {"en": "Regular Guest", "de": "Stammgast"},
+                {"en": "Finish at least one match on 30 different calendar days.",
+                 "de": "An 30 unterschiedlichen lokalen Kalendertagen mindestens ein Spiel abschliessen."},
+                game_modes=ANY, label="30", tiers=(30,), peak=True, count=_distinct_days),
+    Achievement("heavy_hitter", "x01", "endurance",
+                {"en": "Heavy Hitter", "de": "Schwerer Brocken"},
+                {"en": "Score 140 or more in a turn of an X01 match.",
+                 "de": "In einer Aufnahme eines X01-Spiels mindestens 140 Punkte erzielen."},
+                game_modes=X01, label="140", tiers=(1, 10, 100), count=_heavy_hitter),
+    Achievement("average_class", "x01", "endurance",
+                {"en": "Average Class", "de": "Durchschnittsklasse"},
+                {"en": "Reach a 3-dart average of 40, 60, 80 or 100 in a match with at least five turns of your own.",
+                 "de": "In einem Spiel mit mindestens fünf eigenen Aufnahmen einen 3-Dart-Schnitt von 40, 60, 80 und 100 erreichen."},
+                game_modes=X01, tiers=(40, 60, 80, 100), peak=True, count=_best_average),
+    Achievement("short_order", "x01", "medium",
+                {"en": "Short Order", "de": "Kurzer Prozess"},
+                {"en": "Finish a 501 leg in at most 18 darts.",
+                 "de": "Ein 501-Leg in höchstens 18 Darts beenden."},
+                game_modes=X01, label="18", check=_short_order),
+    Achievement("bullseye_finish", "x01", "medium",
+                {"en": "Bullseye Finish", "de": "Volltreffer"},
+                {"en": "Finish a leg on the inner bull.",
+                 "de": "Ein Leg mit dem inneren Bull beenden."},
+                game_modes=X01, check=_bullseye_finish),
+    Achievement("streak_master", "x01", "hard",
+                {"en": "Streak Master", "de": "Serienmeister"},
+                {"en": "Win three X01 matches in a row.",
+                 "de": "Drei X01-Spiele in Folge gewinnen."},
+                game_modes=X01, label="3", check=_streak_master),
+    Achievement("closing_routine", "x01", "endurance",
+                {"en": "Closing Routine", "de": "Abschluss-Routine"},
+                {"en": "Finish legs with a checkout: 10, 50 and 250 times.",
+                 "de": "Legs mit einem Checkout beenden: zehnmal, 50-mal und 250-mal."},
+                game_modes=X01, tiers=(10, 50, 250), count=_closing_routine),
+    Achievement("checkout_collector", "x01", "endurance",
+                {"en": "Checkout Collector", "de": "Checkout-Sammler"},
+                {"en": "Finish a leg on every double D1 to D20 and on the inner bull.",
+                 "de": "Auf jedem Double D1 bis D20 und auf dem inneren Bull mindestens ein Leg beenden."},
+                game_modes=X01, label="21", tiers=(21,), peak=True, count=_checkout_collection),
+    Achievement("roughly_pi", "x01", "hidden",
+                {"en": "Roughly Pi", "de": "Pi mal Daumen"},
+                {"en": "Leave exactly 314 after a turn.",
+                 "de": "Nach einer Aufnahme stehen genau 314 Punkte aus."},
+                game_modes=X01, hidden=True, label="314", check=_rest_after_turn_is(314)),
+    Achievement("repdigit", "x01", "hidden",
+                {"en": "Repdigit", "de": "Schnapszahl"},
+                {"en": "Leave exactly 111, 222, 333 or 444 after a turn.",
+                 "de": "Nach einer Aufnahme stehen genau 111, 222, 333 oder 444 Punkte aus."},
+                game_modes=X01, hidden=True, label="333", check=_rest_after_turn_is(111, 222, 333, 444)),
+    Achievement("small_fry", "x01", "hidden",
+                {"en": "Small Fry", "de": "Kleinvieh macht auch Mist"},
+                {"en": "Hit three S1 in one turn.",
+                 "de": "Drei S1 in einer Aufnahme treffen."},
+                game_modes=X01, hidden=True, label="111", check=_small_fry),
+    Achievement("fasting", "x01", "hidden",
+                {"en": "Fasting", "de": "Diät"},
+                {"en": "Throw all three darts of a turn outside every scoring field.",
+                 "de": "Alle drei Darts einer Aufnahme ausserhalb aller Wertungsfelder werfen."},
+                game_modes=X01, hidden=True, check=_fasting),
+    Achievement("deja_vu", "x01", "hidden",
+                {"en": "Déjà Vu", "de": "Déjà-vu"},
+                {"en": "Hit the same three fields in the same order in two turns in a row.",
+                 "de": "In zwei aufeinanderfolgenden eigenen Aufnahmen dieselben drei Felder in derselben Reihenfolge treffen."},
+                game_modes=X01, hidden=True, check=_deja_vu),
+    Achievement("case_of_the_jitters", "x01", "hidden",
+                {"en": "Case of the Jitters", "de": "Nervenflattern"},
+                {"en": "Throw at least nine darts in one leg at a rest that one dart could finish, without finishing.",
+                 "de": "In einem Leg mindestens neun Darts werfen, bei denen der Rest mit einem Dart auscheckbar war, ohne auszuchecken."},
+                game_modes=X01, hidden=True, check=_case_of_the_jitters),
+    Achievement("spoilsport", "x01", "hidden",
+                {"en": "Spoilsport", "de": "Spielverderber"},
+                {"en": "Finish a leg while an opponent has a rest that one dart could finish.",
+                 "de": "Ein Leg beenden, während ein Gegner einen Rest hat, der mit einem Dart auscheckbar ist."},
+                game_modes=X01, hidden=True, check=_spoilsport),
+    Achievement("lonely_one", "x01", "hidden",
+                {"en": "Lonely One", "de": "Einsamer Einser"},
+                {"en": "Bust by leaving exactly one.",
+                 "de": "Einen Bust verursachen, der 1 Rest hinterlassen würde."},
+                game_modes=X01, hidden=True, check=_lonely_one),
+    Achievement("early_bird", "x01", "hidden",
+                {"en": "Early Bird", "de": "Frühaufsteher"},
+                {"en": "Win a leg before 7:00 local time.",
+                 "de": "Ein Leg vor 7:00 Uhr lokaler Zeit gewinnen."},
+                game_modes=X01, hidden=True, check=_early_bird),
+    Achievement("night_owl", "x01", "hidden",
+                {"en": "Night Owl", "de": "Nachtschwärmer"},
+                {"en": "Win a leg between 0:00 and 4:00 local time.",
+                 "de": "Ein Leg zwischen 0:00 und 4:00 Uhr lokaler Zeit gewinnen."},
+                game_modes=X01, hidden=True, check=_night_owl),
+    Achievement("answer_to_everything", "x01", "hidden",
+                {"en": "Answer to Everything", "de": "Antwort auf alles"},
+                {"en": "Check out 42 with S10 and then D16 in one turn.",
+                 "de": "42 Rest mit S10 und anschliessend D16 in einer Aufnahme auschecken."},
+                game_modes=X01, hidden=True, label="42", check=_answer_to_everything),
+    Achievement("burnt_toast", "x01", "hidden",
+                {"en": "Burnt Toast", "de": "Toast verbrannt"},
+                {"en": "Hit T20 with 2 left and bust.",
+                 "de": "Bei 2 Rest T20 treffen und dadurch einen Bust verursachen."},
+                game_modes=X01, hidden=True, check=_burnt_toast),
+    Achievement("breakfast_switch", "x01", "hidden",
+                {"en": "Breakfast Switch", "de": "Frühstückswechsel"},
+                {"en": "Check out 110 with T20, S10 and D20 in this order.",
+                 "de": "110 Rest mit T20, S10 und D20 in dieser Reihenfolge auschecken."},
+                game_modes=X01, hidden=True, check=_breakfast_switch),
+    Achievement("not_found", "easter_egg", "hidden",
+                {"en": "Not Found", "de": "Nicht gefunden"},
+                {"en": "Throw S4, a miss outside every scoring field and S4, in this order in one turn.",
+                 "de": "S4, einen Fehlwurf ausserhalb aller Wertungsfelder und S4 in genau dieser Reihenfolge in einer Aufnahme werfen."},
+                game_modes=ANY, hidden=True, label="404", check=_not_found),
+    Achievement("service_unavailable", "easter_egg", "hidden",
+                {"en": "Service Unavailable", "de": "Dienst nicht verfügbar"},
+                {"en": "Throw S5, a miss outside every scoring field and S3, in this order in one turn.",
+                 "de": "S5, einen Fehlwurf ausserhalb aller Wertungsfelder und S3 in genau dieser Reihenfolge in einer Aufnahme werfen."},
+                game_modes=ANY, hidden=True, label="503", check=_service_unavailable),
+    Achievement("full_english", "easter_egg", "hidden",
+                {"en": "Full English", "de": "Englisches Frühstück"},
+                {"en": "Hit S20, D20 and T20 in one turn, in any order.",
+                 "de": "S20, D20 und T20 in einer Aufnahme treffen, Reihenfolge beliebig."},
+                game_modes=ANY, hidden=True, check=_full_english),
+    Achievement("copying_costs", "elimination", "hidden",
+                {"en": "Copying Costs", "de": "Kopieren kostet"},
+                {"en": "Score exactly the score to beat without a free pass and lose a life.",
+                 "de": "Ohne Freipass genau die Vorgabe werfen und dadurch ein Leben verlieren."},
+                game_modes=ELIMINATION, hidden=True, label="=", check=_copying_costs),
+    Achievement("a_new_low", "elimination", "hidden",
+                {"en": "A New Low", "de": "Tiefer geht immer"},
+                {"en": "Score below a positive score to beat without a free pass, and the next player scores below that new score too. Both of you lose a life and earn it.",
+                 "de": "Eine positive Vorgabe ohne Freipass unterbieten, der nächste Spieler unterbietet ohne Freipass auch diese neue Vorgabe. Beide verlieren ein Leben und erhalten den Erfolg."},
+                game_modes=ELIMINATION, hidden=True, check=_a_new_low),
+    Achievement("free_pass_failed", "elimination", "hidden",
+                {"en": "Free Pass, Failed", "de": "Freipass verpasst"},
+                {"en": "Score nothing with a free pass and lose a life.",
+                 "de": "Bei einem Freipass null Punkte werfen und ein Leben verlieren."},
+                game_modes=ELIMINATION, hidden=True, label="0", check=_free_pass_failed),
+    Achievement("one_crumb_is_enough", "elimination", "hidden",
+                {"en": "One Crumb Is Enough", "de": "Ein Krümel genügt"},
+                {"en": "Score exactly one point with a free pass and keep your life.",
+                 "de": "Bei einem Freipass insgesamt genau einen Punkt werfen und das Leben behalten."},
+                game_modes=ELIMINATION, hidden=True, label="1", check=_one_crumb_is_enough),
+    Achievement("tied_to_the_grave", "elimination", "hidden",
+                {"en": "Tied to the Grave", "de": "Gleichstand im Grab"},
+                {"en": "Score exactly the score to beat with your last life, without a free pass, and be out.",
+                 "de": "Mit dem letzten Leben ohne Freipass genau die Vorgabe treffen und dadurch ausscheiden."},
+                game_modes=ELIMINATION, hidden=True, label="=", check=_tied_to_the_grave),
+    Achievement("after_me_the_deluge", "elimination", "hidden",
+                {"en": "After Me, the Deluge", "de": "Nach mir die Sintflut"},
+                {"en": "Score 180, and the next player loses a life without a free pass.",
+                 "de": "180 werfen, der nächste Spieler spielt ohne Freipass und verliert ein Leben."},
+                game_modes=ELIMINATION, hidden=True, label="180", check=_after_me_the_deluge),
+    Achievement("chips_for_breakfast", "elimination", "hidden",
+                {"en": "Chips for Breakfast", "de": "Chips zum Frühstück"},
+                {"en": "Hit S5, S20 and S1 without a free pass and beat the score to beat with the 26 points, in any order.",
+                 "de": "Ohne Freipass je S5, S20 und S1 treffen und mit den 26 Punkten die Vorgabe überbieten, Reihenfolge beliebig."},
+                game_modes=ELIMINATION, hidden=True, check=_chips_for_breakfast),
+    Achievement("close_still_costs", "elimination", "hidden",
+                {"en": "Close Still Costs", "de": "Knapp vorbei ist auch verloren"},
+                {"en": "Stay exactly one point below the score to beat without a free pass and lose a life.",
+                 "de": "Ohne Freipass genau einen Punkt unter der Vorgabe bleiben und ein Leben verlieren."},
+                game_modes=ELIMINATION, hidden=True, label="-1", check=_close_still_costs),
     Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
                 {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
                 hidden=True, label="666", check=_beast_mode),
@@ -540,8 +1095,8 @@ class AchievementEngine:
                     "percent": None}
             if a.count:
                 item["tier"] = max(earned) if earned else 0
-                item["progress"] = sum(a.count(self._context(m, player)) for m in matches
-                                       if a.applies_to(m["game_mode"]))
+                item["progress"] = _total(a, [a.count(self._context(m, player)) for m in matches
+                                              if a.applies_to(m["game_mode"])])
                 item["next"] = a.tiers[item["tier"]] if item["tier"] < len(a.tiers) else None
             else:
                 item["tier"] = 1 if earned else 0
@@ -604,8 +1159,9 @@ class AchievementEngine:
         result["revoked"].append(_change(player, a, 0))
 
     def _reconcile_counter(self, a, player, match, start, result):
-        total = sum(a.count(self._context(m, player))
-                    for m in self.db.player_final_matches(player, start))
+        total = _total(a, [a.count(self._context(m, player))
+                           for m in self.db.player_final_matches(player, start)
+                           if a.applies_to(m["game_mode"])])
         reached = sum(1 for threshold in a.tiers if total >= threshold)
         rows = {r["tier"]: r for r in self.db.earned_rows(player, a.id)}
         for tier in range(1, reached + 1):
@@ -626,6 +1182,11 @@ class AchievementEngine:
                     callback(change)
                 except Exception:
                     log.exception("Achievement callback failed for %s", change)
+
+
+def _total(a, values):
+    """What a counter has reached: the sum of the matches, or for a `peak` counter the best one."""
+    return (max(values, default=0) if a.peak else sum(values))
 
 
 def _change(player, achievement, tier):

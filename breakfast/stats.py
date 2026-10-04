@@ -1055,13 +1055,43 @@ class StatsDB:
                 return [{"number": n, "score": None, "is_bust": False, "darts": tuple(d)}
                         for n, d in sorted(turns.items())]
             rows = self._conn.execute(
-                "SELECT turn, leg, score, is_bust, is_checkout, remaining_before, dart1, dart2, dart3"
-                " FROM turns WHERE match_id = ? AND player = ? ORDER BY id", (match_id, player)).fetchall()
+                "SELECT turn, leg, score, is_bust, is_checkout, remaining_before, dart1, dart2, dart3,"
+                " created_at FROM turns WHERE match_id = ? AND player = ? ORDER BY id",
+                (match_id, player)).fetchall()
         return [{"number": r["turn"], "score": r["score"], "is_bust": bool(r["is_bust"]),
                  "darts": tuple(d.upper() for d in (r["dart1"], r["dart2"], r["dart3"]) if d),
                  "is_checkout": bool(r["is_checkout"]), "remaining_before": r["remaining_before"],
-                 "leg": r["leg"]}
+                 "leg": r["leg"], "at": r["created_at"]}
                 for r in rows]
+
+    def x01_turn_rows(self, match_id: str) -> list:
+        """Every turn of every player of an X01 match, in the order played."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, leg, remaining_before, score, is_bust, is_checkout FROM turns"
+                " WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+        return [{"player": r["player"], "leg": r["leg"], "remaining_before": r["remaining_before"],
+                 "score": r["score"], "is_bust": bool(r["is_bust"]), "is_checkout": bool(r["is_checkout"])}
+                for r in rows]
+
+    def elimination_turn_rows(self, match_id: str) -> list:
+        """Every turn of an Elimination match, in the order played: player, score, `to_beat`
+        (what the turn had to beat, 0 with a freipass), freipass, passed and lives_before."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, score, target, freipass, passed, lives_before FROM elimination_turns"
+                " WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+        return [{"player": r["player"], "score": r["score"], "to_beat": r["target"] or 0,
+                 "freipass": bool(r["freipass"]), "passed": bool(r["passed"]),
+                 "lives_before": r["lives_before"]} for r in rows]
+
+    def elimination_results(self, match_id: str) -> list:
+        """The result of an Elimination match: player, placement and, for the winner, the lives left."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, placement, lives_left FROM elimination_results WHERE match_id = ?"
+                " ORDER BY placement, player", (match_id,)).fetchall()
+        return [dict(r) for r in rows]
 
     def target_battle_results(self, match_id: str) -> list:
         """The result of a Target Battle game: player, placement and total of everybody."""
