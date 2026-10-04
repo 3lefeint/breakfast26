@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS legs (
 CREATE TABLE IF NOT EXISTS players (
     name       TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
-    hidden     INTEGER NOT NULL DEFAULT 0
+    hidden     INTEGER NOT NULL DEFAULT 0,
+    color      TEXT
 );
 CREATE TABLE IF NOT EXISTS elimination_results (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,6 +194,7 @@ class StatsDB:
             self._migrate_elimination_turn_details()
             self._migrate_turn_times()
             self._migrate_misread()
+            self._migrate_player_color()
             self._migrate_backfill_x01_winner()
             self._migrate_drop_in_roster()
             self._conn.commit()
@@ -228,6 +230,11 @@ class StatsDB:
         if "misread" not in cols:
             self._conn.execute("ALTER TABLE dart_positions ADD COLUMN misread INTEGER NOT NULL DEFAULT 0")
             self._conn.execute("UPDATE dart_positions SET misread = corrected WHERE game_mode = 'Elimination'")
+
+    def _migrate_player_color(self):
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(players)")}
+        if "color" not in cols:
+            self._conn.execute("ALTER TABLE players ADD COLUMN color TEXT")
 
     def local_time(self, iso: str) -> datetime:
         """A stored UTC time as a datetime in the configured timezone."""
@@ -331,6 +338,25 @@ class StatsDB:
                     "UPDATE players SET hidden = ? WHERE name = ?", (int(hidden), name)
                 )
             self._conn.commit()
+
+    def set_player_color(self, name: str, color: str | None) -> bool:
+        """Set a player's color (`#rrggbb`, stored lowercase) or clear it with None. Returns
+        False when there is no such player; an invalid value raises ValueError."""
+        if color is not None:
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+                raise ValueError("color must look like #rrggbb")
+            color = color.lower()
+        log.debug("DB write: set_player_color name=%s color=%s", name, color)
+        with self._lock:
+            cur = self._conn.execute("UPDATE players SET color = ? WHERE name = ?", (color, name))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def player_colors(self) -> dict:
+        """Name -> color of every player that has one."""
+        with self._lock:
+            rows = self._conn.execute("SELECT name, color FROM players WHERE color IS NOT NULL").fetchall()
+        return {r["name"]: r["color"] for r in rows}
 
     def list_players(self) -> list:
         """Every known player, shown by default in the Players tab /

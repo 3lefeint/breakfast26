@@ -10,6 +10,7 @@
 - An achievement without a badge motif yet shows a star (#23).
 - Badge motifs for every achievement, drawn in a style per game mode (#23).
 - Every X01 and Elimination turn stores the time it was played (#27).
+- Player profile: a color picker for the player's color, stored with the player (#29).
 - Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
 
 ### Changed

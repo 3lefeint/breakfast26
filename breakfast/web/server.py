@@ -97,6 +97,7 @@ def _build_payload() -> dict:
         "elimination": elim_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
+        "player_colors": _stats_db.player_colors() if _stats_db else {},
         "elimination_wins": kp.load_wins(_stats_db),
         "x01_wins": kp.load_x01_wins(_stats_db),
         "players_missing_audio": (
@@ -1131,6 +1132,27 @@ async def set_player_hidden(name: str, body: HiddenBody):
     if not _stats_db:
         return {"error": "stats not enabled"}
     _stats_db.upsert_player(name, hidden=body.hidden)
+    push()
+    return {"ok": True}
+
+
+class ColorBody(BaseModel):
+    color: str | None = None
+
+
+@app.patch("/api/players/{name}/color")
+async def set_player_color(name: str, body: ColorBody):
+    """Set a player's color (`#rrggbb`), or clear it with `null`. Games use it to draw the
+    player's darts; a player without one gets a random color for the game."""
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    try:
+        found = _stats_db.set_player_color(name, body.color)
+    except ValueError as e:
+        return {"error": str(e)}
+    if not found:
+        return {"error": "unknown player"}
+    log.info("Player %s: color %s", name, body.color or "cleared")
     push()
     return {"ok": True}
 

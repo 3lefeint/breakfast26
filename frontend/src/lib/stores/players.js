@@ -9,11 +9,13 @@ export const players = derived(gameState, ($gameState) => {
   const x01Wins = $gameState.x01_wins || {};
   const missingAudio = new Set($gameState.players_missing_audio || []);
   const hidden = $gameState.hidden_players || [];
+  const colors = $gameState.player_colors || {};
   return {
     known,
     hidden,
     winsFor: (name) => wins[name] || 0,
     x01WinsFor: (name) => x01Wins[name] || 0,
     missingAudio: (name) => missingAudio.has(name),
+    colorFor: (name) => colors[name] || null,
   };
 });
