@@ -56,6 +56,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - **Leg tracking**: legs won per player recorded per match; shown live in the scoreboard and in match history
 - **MQTT auto-reconnect**: reconnects with exponential backoff when the broker drops mid-session
 - **Elimination** game mode with unlimited players, life management, turn correction
+- **Target Battle**: one or more players throw at the same target number each round, and only a dart on it scores. A wheel (a needle turning around the dartboard) picks a random target at the start of every round, or you set a fixed order; scoring is single 1, double 2, triple 3, or only one of them as a training profile, with an optional tiebreak. The TV shows the darts of the whole round on the board in the color of each player (set in the profile)
   and undo (repeatable, walks back any completed turn — including reopening an
   already-finished match if the winning turn itself gets undone), optional
   random turn order for a new game, and a win-count crown for the current leader
@@ -271,15 +272,15 @@ the app (`npm run dev` above) against real or replayed data.
 ## Web UI
 
 Open `http://<host>:8080` in a browser — a card-based hub landing page
-(**Games**, **TV**, **Board**, **Players**, **Stats**, **Settings**), each a
-deep-linkable view (`/#elimination`, `/#players`, `/#stats`, `/#settings`).
-The live scoreboard itself (X01 and Elimination) lives on the separate
+(**Games**, **Target Battle**, **TV**, **Board**, **Players**, **Stats**, **Settings**), each a
+deep-linkable view (`/#elimination`, `/#target-battle`, `/#players`, `/#stats`, `/#settings`).
+The live scoreboard itself (X01, Elimination and Target Battle) lives on the separate
 `/tv` page, not on the hub — see below.
 
 | View | What it shows |
 |------|--------------|
-| **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
-| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, or the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn; with no match running and the board connected, the idle screen shows the dart boxes and the dartboard instead of "Waiting for match…" |
+| **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), Target Battle (setup, result and rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
+| **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) or the live Target Battle (a large board with the wheel and the darts of the round, the players with their darts, a table of every round, tap-to-correct darts) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn; with no match running and the board connected, the idle screen shows the dart boxes and the dartboard instead of "Waiting for match…" |
 | **Players** | Known players list — name (opens the player's profile), Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Profile** (`#profile/<name>`) | A color picker for the player (games use it for the player's darts, none set means a random one per game), and the player's achievements as badges, in sections by game mode, each split into earned and still to earn (with the progress to the next tier); secret ones that are not earned yet come last as a question mark |
 | **Stats** | Two chips at the top pick the game mode: **X01** and **Elimination**. **X01** shows totals and records, the players compared as bars (average, turns of 100 or more, checkout %), collapsible recent matches (expandable per-match detail) and a per-player section (activity and performance tiles, a histogram of the turn scores, a heatmap of the dartboard (how often each field was hit, misses per sector in a ring, or switched to where every dart landed, with a density overlay from 30 darts on), the bust rate by remaining score, win/loss as a donut, the average and the checkout % per match as lines, doubles, Top 10 Legs/Checkouts). **Elimination** shows overview tiles with the records (highest score, and the highest score that still lost a life; both from turns recorded with a score, also per player in the activity section), a placement bar per player compared with the wins expected by chance, the form of the last 15 games with win streaks, a head-to-head matrix of how often each player finished ahead of each other player, the game length by lives setting, collapsible recent matches and per-player activity with the positions of the player's darts on the board |
@@ -340,6 +341,12 @@ currently active:
   Undo control (walks back the last completed turn — repeatable, and works
   even from the finished/winner screen to reopen a match), and the
   Stop/rematch/finished-match flow
+- **Target Battle**: a large board with the wheel that picks a random target
+  and every dart of the round in the color of its player (a ring around the
+  marker tells apart players with the same or a very similar color), the
+  round and its target, the players with their darts of the round and their
+  total, a table of every round with its target and each player's points,
+  tap-to-correct darts, Undo and Stop, and a result screen with the placements, the table of every round and a rematch
 
 The header glows green/yellow/red in real time to reflect the board's
 current status (ready / mid-takeout-or-calibration / stopped-or-disconnected),

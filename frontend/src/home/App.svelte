@@ -7,6 +7,7 @@
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
   import Home from './views/Home.svelte';
   import Elimination from './views/Elimination.svelte';
+  import TargetBattle from './views/TargetBattle.svelte';
   import Players from './views/Players.svelte';
   import Profile from './views/Profile.svelte';
   import Stats from './views/Stats.svelte';
@@ -62,6 +63,8 @@
   <div class="page">
     {#if $route === 'elimination'}
       <Elimination />
+    {:else if $route === 'target-battle'}
+      <TargetBattle />
     {:else if $route === 'players'}
       <Players />
     {:else if $route.startsWith('profile/')}

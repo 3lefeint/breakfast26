@@ -20,6 +20,7 @@
 
   let cards = $derived([
     { href: '#elimination', icon: '🎯', label: 'Games', sub: 'Elimination', featured: true },
+    { href: '#target-battle', icon: '🎡', label: 'Target Battle', sub: 'All throw at one number' },
     { href: '/tv', icon: '📺', label: 'TV', sub: 'Live display & controls' },
     { href: boardAddress, icon: '🎮', label: 'Board', sub: boardAddress ? 'Board manager' : 'Not configured', external: true, disabled: !boardAddress },
     { href: '#players', icon: '👤', label: 'Players' },

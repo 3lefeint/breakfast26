@@ -3,6 +3,7 @@
   import { gameState } from '../lib/stores/gameState.js';
   import { players } from '../lib/stores/players.js';
   import { elimination } from '../lib/stores/elimination.js';
+  import { targetBattle } from '../lib/stores/targetBattle.js';
   import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
   import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
@@ -13,6 +14,8 @@
   import IdleView from './views/IdleView.svelte';
   import EliminationTv from './views/EliminationTv.svelte';
   import EliminationFinishedTv from './views/EliminationFinishedTv.svelte';
+  import TargetBattleTv from './views/TargetBattleTv.svelte';
+  import TargetBattleFinishedTv from './views/TargetBattleFinishedTv.svelte';
 
   onMount(() => {
     connect();
@@ -33,6 +36,7 @@
 
   let matchMeta = $derived.by(() => {
     if ($elimination && ($elimination.state === 'finished' || $elimination.active)) return 'Elimination';
+    if ($targetBattle && ($targetBattle.state === 'finished' || $targetBattle.active)) return 'Target Battle';
     if (!game.match_started) return game.board_status ? `Board: ${game.board_status}` : '—';
     const legLabel = game.current_leg > 1 ? ` · Leg ${game.current_leg}` : '';
     return [game.game_mode, game.points_start ? `${game.points_start} pts` : null].filter(Boolean).join(' · ') + legLabel;
@@ -41,6 +45,8 @@
   let view = $derived.by(() => {
     if ($elimination && $elimination.state === 'finished') return 'elim-finished';
     if ($elimination && $elimination.active) return 'elim-live';
+    if ($targetBattle && $targetBattle.state === 'finished') return 'tb-finished';
+    if ($targetBattle && $targetBattle.active) return 'tb-live';
     if (game.match_started) return 'x01';
     return 'idle';
   });
@@ -104,6 +110,12 @@
   </div>
 {:else if view === 'elim-finished'}
   <EliminationFinishedTv elimination={$elimination} online={$online} />
+{:else if view === 'tb-live'}
+  <div id="activeElim">
+    <TargetBattleTv tb={$targetBattle} />
+  </div>
+{:else if view === 'tb-finished'}
+  <TargetBattleFinishedTv tb={$targetBattle} />
 {/if}
 
 <footer>

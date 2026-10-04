@@ -559,3 +559,79 @@ class TestAchievements:
         assert ("bullseye", 0) in self._earned(db, "ana")
         game.undo()
         assert self._earned(db, "ana") == set()
+
+
+class TestColorsAndWheel:
+    def test_the_players_carry_their_colors_into_the_snapshot(self):
+        colors = {"ana": {"color": "#ff0000", "ring": None},
+                  "bo": {"color": "#ff0000", "ring": {"color": "#ffffff", "dash": False}}}
+        game = new_game(colors=colors)
+        players = {p["name"]: p for p in game.snapshot()["players"]}
+        assert players["ana"]["color"] == "#ff0000" and players["ana"]["ring"] is None
+        assert players["bo"]["ring"] == {"color": "#ffffff", "dash": False}
+
+    def test_a_player_without_a_color_has_none_in_the_snapshot(self):
+        assert new_game().snapshot()["players"][0]["color"] is None
+
+    def test_the_controller_uses_the_profile_colors_and_fills_in_the_rest(self):
+        db = StatsDB(":memory:")
+        db.upsert_player("ana")
+        db.set_player_color("ana", "#123456")
+        ctrl = TargetBattleController(FakeMqttPub(), "autodarts", stats_db=db)
+        ctrl.start(["ana", "bo"], rounds=1, targets=[20])
+        players = {p["name"]: p for p in ctrl.game.snapshot()["players"]}
+        assert players["ana"]["color"] == "#123456"
+        assert players["bo"]["color"] is not None and players["bo"]["color"] != "#123456"
+
+    def test_the_wheel_turns_for_random_targets_and_in_a_tiebreak_only(self):
+        assert new_game(targets=None).snapshot()["wheel"] is True
+        game = new_game(players=("ana", "bo"), rounds=1, targets=[20], tiebreak=True, rng=random.Random(3))
+        assert game.snapshot()["wheel"] is False
+        play(game, hit(20, 1))
+        play(game, hit(20, 1))
+        assert game.snapshot()["tiebreak"] is True and game.snapshot()["wheel"] is True
+
+    def test_a_new_round_is_fresh_and_an_old_one_restored_by_undo_is_not(self):
+        game = new_game(players=("ana",), rounds=2, targets=[5, 12])
+        assert game.snapshot()["round_age"] < 3
+        play(game, MISS)
+        assert game.snapshot()["round_age"] < 3
+        game.undo()
+        assert game.snapshot()["round_age"] > 60
+
+
+class TestHistory:
+    def test_every_round_is_listed_with_its_target_and_the_scores_so_far(self):
+        game = new_game(players=("ana", "bo"), rounds=3, targets=[5, 12, 7])
+        play(game, hit(5, 3))
+        history = game.snapshot()["history"]
+        assert history == [{"round": 1, "tiebreak": False, "target": 5, "scores": {"ana": 3}, "current": True}]
+        play(game, hit(5, 1))
+        play(game, hit(12, 2))
+        history = game.snapshot()["history"]
+        assert history[0] == {"round": 1, "tiebreak": False, "target": 5, "scores": {"ana": 3, "bo": 1}}
+        assert history[1] == {"round": 2, "tiebreak": False, "target": 12, "scores": {"ana": 2}, "current": True}
+
+    def test_the_finished_game_lists_all_rounds_and_none_as_current(self):
+        game = new_game(players=("ana",), rounds=2, targets=[5, 12])
+        play(game, hit(5, 1))
+        play(game, hit(12, 1))
+        history = game.snapshot()["history"]
+        assert [r["round"] for r in history] == [1, 2] and not any(r.get("current") for r in history)
+
+    def test_a_tiebreak_round_is_marked(self):
+        game = new_game(players=("ana", "bo"), rounds=1, targets=[20], tiebreak=True, rng=random.Random(3))
+        play(game, hit(20, 1))
+        play(game, hit(20, 1))
+        assert [(r["tiebreak"], r["round"]) for r in game.snapshot()["history"]] == [(False, 1), (True, 1)]
+
+    def test_a_corrected_total_and_undo_keep_the_history_right(self):
+        game = new_game(players=("ana",), rounds=3, targets=[5, 12, 7])
+        play(game, hit(5, 3))
+        game.correct_turn(2)
+        history = game.snapshot()["history"]
+        assert [r["round"] for r in history] == [1, 2]
+        assert history[0]["scores"] == {"ana": 2} and history[1].get("current")
+        game.undo()
+        history = game.snapshot()["history"]
+        assert [r["round"] for r in history] == [1] and history[0]["scores"] == {} and history[0]["current"]

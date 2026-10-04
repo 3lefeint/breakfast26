@@ -14,7 +14,9 @@ import copy
 import json
 import logging
 import random
+import time
 
+from .player_colors import assign_colors
 from .target_battle_scoring import SCORING
 from .turn_game import TurnGame, TurnGameController, dart_positions
 
@@ -29,8 +31,10 @@ class TargetBattleGame(TurnGame):
     TOPIC = "target_battle"
 
     def __init__(self, players, client, base_topic, rounds=10, targets=None, scoring="standard",
-                 tiebreak=False, audio=None, on_change=None, stats_db=None, rng=None, match_id=None):
-        """*targets*: None for a random target each round, or one target per round."""
+                 tiebreak=False, audio=None, on_change=None, stats_db=None, rng=None, match_id=None,
+                 colors=None):
+        """*targets*: None for a random target each round, or one target per round. *colors*:
+        {player: {"color", "ring"}} for drawing the darts, see player_colors.assign_colors()."""
         players = list(players)
         if not players:
             raise ValueError("need at least one player")
@@ -52,6 +56,7 @@ class TargetBattleGame(TurnGame):
         self.tiebreak_enabled = bool(tiebreak)
         self.fixed_targets = targets
         self._rng = rng or random.Random()
+        self.colors = colors or {}
         self._targets = {}           # (tiebreak, round) -> target, so a round keeps its target
         self._targets_picked = []    # the targets in the order they were picked
         self.scores = {p: 0 for p in players}
@@ -61,9 +66,11 @@ class TargetBattleGame(TurnGame):
         self.turn_idx = 0
         self.round_scores = {}       # player -> points of this round, once the turn is over
         self.round_darts = {}        # player -> darts of this round, once the turn is over
+        self.history = []            # the rounds that are over: round, tiebreak, target, scores
         self.target = self._target_for(1, False)
         self.winners = []
         self.placements = {}
+        self._round_started = time.monotonic()
         if self.stats_db:
             self.stats_db.open_match(self.match_id, self.MODE, rounds)
         log.info("Game started: %s, %d rounds, %s", players, rounds, scoring)
@@ -136,6 +143,8 @@ class TargetBattleGame(TurnGame):
             self._publish_turn(reset=True)
 
     def _end_round(self):
+        self.history.append({"round": self.round, "tiebreak": self.in_tiebreak, "target": self.target,
+                             "scores": dict(self.round_scores)})
         if self.in_tiebreak:
             best = max(self.round_scores.values())
             leaders = [p for p in self.contenders if self.round_scores[p] == best]
@@ -158,6 +167,7 @@ class TargetBattleGame(TurnGame):
         self.round_scores = {}
         self.round_darts = {}
         self.target = self._target_for(round_no, tiebreak)
+        self._round_started = time.monotonic()
         self._publish_event("round_start", round=round_no, target=self.target, tiebreak=tiebreak)
         self._publish_state()
         self._publish_turn(reset=True)
@@ -189,8 +199,8 @@ class TargetBattleGame(TurnGame):
             "player": player, "round": self.round, "in_tiebreak": self.in_tiebreak,
             "contenders": self.contenders, "turn_idx": self.turn_idx, "scores": self.scores,
             "round_scores": self.round_scores, "round_darts": self.round_darts,
-            "target": self.target, "state": self.state, "winners": self.winners,
-            "placements": self.placements,
+            "history": self.history, "target": self.target, "state": self.state,
+            "winners": self.winners, "placements": self.placements,
         })
 
     def _restore(self, snap):
@@ -202,10 +212,12 @@ class TargetBattleGame(TurnGame):
         self.scores = snap["scores"]
         self.round_scores = snap["round_scores"]
         self.round_darts = snap["round_darts"]
+        self.history = snap["history"]
         self.target = snap["target"]
         self.state = snap["state"]
         self.winners = snap["winners"]
         self.placements = snap["placements"]
+        self._round_started = time.monotonic() - 3600     # an old round again: no wheel
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
@@ -249,6 +261,13 @@ class TargetBattleGame(TurnGame):
             "tiebreak": self.in_tiebreak,
             "target": self.target,
             "scoring": self.scoring,
+            # What it takes to start the same game again.
+            "setup": {"rounds": self.rounds, "scoring": self.scoring, "tiebreak": self.tiebreak_enabled,
+                      "targets": list(self.fixed_targets) if self.fixed_targets else None},
+            # The wheel turns for a random target; a fixed order has nothing to pick. A screen
+            # shows the turn when the round is only seconds old, also if it opened just now.
+            "wheel": self.fixed_targets is None or self.in_tiebreak,
+            "round_age": round(time.monotonic() - self._round_started, 1),
             "current_player": cp,
             "current_darts": list(self._current_darts),
             "order": list(self.order),
@@ -261,10 +280,16 @@ class TargetBattleGame(TurnGame):
                     "round_score": self.round_scores.get(p),
                     "current": p == cp,
                     "placement": self.placements.get(p),
+                    "color": self.colors.get(p, {}).get("color"),
+                    "ring": self.colors.get(p, {}).get("ring"),
                 }
                 for p in self.order
             ],
             "round_darts": darts,
+            # Every round so far, the one in progress last: what each player scored in it.
+            "history": self.history + (
+                [{"round": self.round, "tiebreak": self.in_tiebreak, "target": self.target,
+                  "scores": dict(self.round_scores), "current": True}] if self.state == "playing" else []),
         }
 
     def _publish_state(self):
@@ -288,10 +313,11 @@ class TargetBattleController(TurnGameController):
 
     def start(self, players, rounds=10, targets=None, scoring="standard", tiebreak=False):
         """Start a game. Raises ValueError for a setup that cannot be played."""
+        chosen = self.stats_db.player_colors() if self.stats_db else {}
         game = TargetBattleGame(
             players, self.mqtt_pub.client, self.base_topic, rounds=rounds, targets=targets,
             scoring=scoring, tiebreak=tiebreak, audio=self.audio, on_change=self._on_change,
-            stats_db=self.stats_db)
+            stats_db=self.stats_db, colors=assign_colors(players, chosen))
         with self._lock:
             self.game = game
         game.announce_start()

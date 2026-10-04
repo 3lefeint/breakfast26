@@ -5,7 +5,12 @@
   // of the double ring, y up) as numbered markers.
   import { SEGMENT_ORDER, RINGS_MM, fieldAtMm } from '../dartboard.js';
 
-  let { onSelect, disabled = false, readonly = false, darts = [] } = $props();
+  // Optional extras for games that play on the board: a dart can carry its own `color` (and a
+  // `ring` of { color, dash } to tell players of similar colors apart, and a `label` instead of the
+  // number), `highlight` marks the
+  // field of one number and dims the rest, `pointer` ({ angle, ms }) draws a needle from the
+  // center that turns to `angle` degrees clockwise from the top in `ms` milliseconds.
+  let { onSelect, disabled = false, readonly = false, darts = [], highlight = null, pointer = null } = $props();
 
   const HALF = 200;           // viewBox is -200..200 on both axes
   const BOARD_R = 165;        // rendered radius of the double ring's outer edge
@@ -41,6 +46,20 @@
       innerSingle: band(RINGS_MM.OUTER_BULL, RINGS_MM.TRIPLE_IN, a0, a1),
     };
   });
+
+  const R = BOARD_R + 4;
+  const disc = `M${-R},0 A${R},${R} 0 1 0 ${R},0 A${R},${R} 0 1 0 ${-R},0 Z`;
+  let highlightPath = $derived.by(() => {
+    const i = SEGMENT_ORDER.indexOf(highlight);
+    return i < 0 ? null : band(RINGS_MM.OUTER_BULL, RINGS_MM.DOUBLE_OUT, i * 18 - 9, i * 18 + 9);
+  });
+
+  // Dark text on a light marker, light text on a dark one.
+  function labelColor(color) {
+    if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return '#0c0c0f';
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+    return 0.299 * r + 0.587 * g + 0.114 * b > 140 ? '#0c0c0f' : '#ffffff';
+  }
 
   function fieldFromEvent(e) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -80,10 +99,24 @@
         <circle r={r * K} />
       {/each}
     </g>
+    {#if highlightPath}
+      <path class="dim" d="{disc} {highlightPath}" fill-rule="evenodd" />
+      <path class="highlight" d={highlightPath} />
+    {/if}
+    {#if pointer}
+      <g class="pointer" style="transform: rotate({pointer.angle}deg); transition: transform {pointer.ms}ms cubic-bezier(0.15, 0.7, 0.15, 1)">
+        <line x1="0" y1="0" x2="0" y2={-(BOARD_R - 10)} />
+        <path d="M-10,{-(BOARD_R + 16)} L10,{-(BOARD_R + 16)} L0,{-(BOARD_R - 6)} Z" />
+        <circle r="9" />
+      </g>
+    {/if}
     {#each darts.filter((d) => d.x != null) as d (d.n)}
       <g class="dart" style="transform: translate({d.x * BOARD_R}px, {-d.y * BOARD_R}px)">
-        <circle r="12" />
-        <text class="dart-n">{d.n}</text>
+        {#if d.ring}
+          <circle class="dart-ring" r="16.5" style="stroke: {d.ring.color}" stroke-dasharray={d.ring.dash ? '5 3' : null} />
+        {/if}
+        <circle r="12" style={d.color ? `fill: ${d.color}` : null} />
+        <text class="dart-n" style={d.color ? `fill: ${labelColor(d.color)}` : null}>{d.label ?? d.n}</text>
       </g>
     {/each}
   </svg>
@@ -99,6 +132,13 @@
   .wires circle { stroke: rgba(255, 255, 255, 0.18); stroke-width: 0.6; pointer-events: none; }
   .dart { transition: transform 0.25s ease-out; pointer-events: none; }
   .dart circle { fill: var(--accent); stroke: #0c0c0f; stroke-width: 1.5; }
+  .dart-ring { fill: none; stroke-width: 3; }
+  .dim { fill: rgba(8, 8, 12, 0.45); pointer-events: none; }
+  .highlight { fill: rgba(255, 255, 255, 0.16); stroke: var(--accent); stroke-width: 3; pointer-events: none; }
+  .pointer { pointer-events: none; }
+  .pointer line { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
+  .pointer path { fill: var(--accent); stroke: #0c0c0f; stroke-width: 1.5; stroke-linejoin: round; }
+  .pointer circle { fill: var(--accent); stroke: #0c0c0f; stroke-width: 2; }
   .dart-n { fill: #0c0c0f; font-size: 14px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
   .hover-label { margin-top: 0.3rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2em; }
 </style>
