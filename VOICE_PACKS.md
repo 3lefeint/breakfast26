@@ -116,7 +116,10 @@ The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
 `triple_bull`, `maximum_collector`, `a_hundred_served`, `ton_up`, `first_bite`,
 `job_done`, `last_dart_finish`, `double_trouble`, `high_finish`,
 `straight_to_the_double`, `big_fish`, `perfect_leg`, `last_at_the_table`,
-`beast_mode`. Without any file nothing plays, the banner still shows.
+`beast_mode`, `target_acquired`, `nine_out_of_nine`, `no_empty_rounds`, `on_target`,
+`sharpshooter`, `perfect_battle`, `photo_finish`, `final_round_comeback`,
+`double_focus`, `triple_focus`, `either_side_of_twenty`, `wrong_maximum`,
+`better_late_than_never`, `exactly_sixty`, `extended_breakfast`. Without any file nothing plays, the banner still shows.
 
 ### X01-specific
 

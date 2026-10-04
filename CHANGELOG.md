@@ -14,6 +14,7 @@
 - Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
 - Target Battle game with a setup page, a live view with a wheel for the target and a result page (#21).
 
+- 15 Target Battle achievements, five of them secret (#23).
 - Target Battle voice calls, and a `wheel` sound if you supply one (#21).
 
 - Stats: a Target Battle chip with a scoring profile filter (#21).

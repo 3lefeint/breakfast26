@@ -989,8 +989,10 @@ class StatsDB:
     def match_row(self, match_id: str) -> dict | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT match_id, game_mode, points_start, winner, started_at, ended_at FROM matches"
-                " WHERE match_id = ?", (match_id,)).fetchone()
+                "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at,"
+                " COALESCE(g.scoring, 'standard') AS scoring FROM matches m"
+                " LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
+                " WHERE m.match_id = ?", (match_id,)).fetchone()
         return dict(row) if row else None
 
     def match_participants(self, match_id: str) -> list:
@@ -1009,7 +1011,9 @@ class StatsDB:
         oldest first."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at FROM matches m"
+                "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at,"
+                " COALESCE(g.scoring, 'standard') AS scoring FROM matches m"
+                " LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ? AND ("
                 " EXISTS (SELECT 1 FROM turns t WHERE t.match_id = m.match_id AND t.player = ?)"
                 " OR EXISTS (SELECT 1 FROM elimination_turns e WHERE e.match_id = m.match_id AND e.player = ?)"
@@ -1021,11 +1025,26 @@ class StatsDB:
 
     def turns_for_achievements(self, match_id: str, player: str, game_mode: str) -> list:
         """The player's turns of a match as {number, score, is_bust, darts}. `darts` are the
-        field names that can be trusted: all stored X01 darts, and for Elimination the
-        stored darts except those of a turn whose total was corrected (a dart set by a
-        correction counts, its field is known)."""
+        field names that can be trusted: all stored X01 darts, and for Elimination and Target
+        Battle the stored darts except those of a turn whose total was corrected (a dart set
+        by a correction counts, its field is known). A Target Battle turn also has its target,
+        its round and whether it belongs to a tiebreak."""
         with self._lock:
-            if game_mode in ("Elimination", "Target Battle"):
+            if game_mode == "Target Battle":
+                turn_rows = self._conn.execute(
+                    "SELECT round_no, target, tiebreak, score FROM target_battle_turns"
+                    " WHERE match_id = ? AND player = ? ORDER BY id", (match_id, player)).fetchall()
+                dart_rows = self._conn.execute(
+                    "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"
+                    " AND game_mode = 'Target Battle' AND misread = 0 ORDER BY turn, dart_number",
+                    (match_id, player)).fetchall()
+                fields = {}
+                for r in dart_rows:
+                    fields.setdefault(r["turn"], []).append((r["field"] or "").upper())
+                return [{"number": n, "score": r["score"], "is_bust": False, "darts": tuple(fields.get(n, ())),
+                         "target": r["target"], "round_no": r["round_no"], "tiebreak": bool(r["tiebreak"])}
+                        for n, r in enumerate(turn_rows, start=1)]
+            if game_mode == "Elimination":
                 rows = self._conn.execute(
                     "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"
                     " AND game_mode = ? AND misread = 0 ORDER BY turn, dart_number",
@@ -1043,6 +1062,23 @@ class StatsDB:
                  "is_checkout": bool(r["is_checkout"]), "remaining_before": r["remaining_before"],
                  "leg": r["leg"]}
                 for r in rows]
+
+    def target_battle_results(self, match_id: str) -> list:
+        """The result of a Target Battle game: player, placement and total of everybody."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, placement, score FROM target_battle_results WHERE match_id = ?"
+                " ORDER BY placement, player", (match_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def target_battle_turn_rows(self, match_id: str) -> list:
+        """Every turn of a Target Battle game, of every player, in the order they were played."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, round_no, tiebreak, score FROM target_battle_turns"
+                " WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+        return [{"player": r["player"], "round_no": r["round_no"], "tiebreak": bool(r["tiebreak"]),
+                 "score": r["score"]} for r in rows]
 
     def achievement_distribution(self, since: str) -> tuple:
         """(number of players, {(achievement_id, tier): number who earned it}). The players

@@ -18,6 +18,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from .target_battle_scoring import SCORING
+
 log = logging.getLogger(__name__)
 
 # A dart on the inner bull is "50" in Breakfast's own field names and "BULL" in some
@@ -45,6 +47,9 @@ class Turn:
     is_checkout: bool = False  # X01: this turn finished the leg
     remaining_before: int | None = None   # X01: what was left before the turn
     leg: int = 1
+    target: int | None = None  # Target Battle: the target number of the round
+    round_no: int | None = None   # Target Battle: the round, or the tiebreak round
+    tiebreak: bool = False     # Target Battle: a tiebreak round
 
 
 class MatchContext:
@@ -56,6 +61,8 @@ class MatchContext:
         self.player = player
         self._turns = None
         self._participants = None
+        self._tb_results = None
+        self._tb_turns = None
 
     @property
     def turns(self) -> list:
@@ -70,6 +77,20 @@ class MatchContext:
         if self._participants is None:
             self._participants = self.db.match_participants(self.match["match_id"])
         return self._participants
+
+    @property
+    def tb_results(self) -> list:
+        """Target Battle: everybody's placement and total."""
+        if self._tb_results is None:
+            self._tb_results = self.db.target_battle_results(self.match["match_id"])
+        return self._tb_results
+
+    @property
+    def tb_turns(self) -> list:
+        """Target Battle: every turn of every player."""
+        if self._tb_turns is None:
+            self._tb_turns = self.db.target_battle_turn_rows(self.match["match_id"])
+        return self._tb_turns
 
     @property
     def won(self) -> bool:
@@ -205,6 +226,106 @@ def _perfect_leg(ctx):
                and sum(len(t.darts) for t in turns) == 9 for turns in legs.values())
 
 
+# Target Battle. The "standard game" of the descriptions is the standard scoring profile with ten
+# rounds, the training games are the profiles with only doubles or only triples, also with ten.
+
+def _dart_number(field):
+    match = _FIELD.match(field)
+    return int(match.group(2)) if match else None
+
+
+def _standard_game(ctx):
+    return ctx.match.get("scoring") == "standard" and ctx.match.get("points_start") == 10
+
+
+def _tb_total(ctx):
+    return sum(turn.score or 0 for turn in ctx.turns if not turn.tiebreak)
+
+
+def _tb_dart_points(ctx, field, target):
+    """What a dart is worth in this game: only a dart on the target scores."""
+    match = _FIELD.match(field)
+    if not match or int(match.group(2)) != target:
+        return 0
+    return SCORING[ctx.match.get("scoring", "standard")].get({"S": 1, "D": 2, "T": 3}[match.group(1)], 0)
+
+
+def _target_acquired(ctx):
+    return any(len(t.darts) == 3 and all(_dart_number(d) == t.target for d in t.darts) for t in ctx.turns)
+
+
+def _nine_out_of_nine(ctx):
+    return ctx.match.get("scoring") == "standard" and any(
+        len(t.darts) == 3 and t.darts == (f"T{t.target}",) * 3 for t in ctx.turns)
+
+
+def _no_empty_rounds(ctx):
+    rounds = [t for t in ctx.turns if not t.tiebreak]
+    return _standard_game(ctx) and len(rounds) == 10 and all((t.score or 0) >= 1 for t in rounds)
+
+
+def _points_at_least(minimum):
+    return lambda ctx: _standard_game(ctx) and _tb_total(ctx) >= minimum
+
+
+def _training_focus(profile):
+    return lambda ctx: (ctx.match.get("scoring") == profile and ctx.match.get("points_start") == 10
+                        and _tb_total(ctx) >= 15)
+
+
+def _decided_without_tiebreak(ctx):
+    return ctx.won and len(ctx.participants) >= 2 and not any(t["tiebreak"] for t in ctx.tb_turns)
+
+
+def _photo_finish(ctx):
+    if not (_standard_game(ctx) and _decided_without_tiebreak(ctx)):
+        return False
+    others = [r["score"] for r in ctx.tb_results if r["player"] != ctx.player]
+    mine = next((r["score"] for r in ctx.tb_results if r["player"] == ctx.player), None)
+    return mine is not None and bool(others) and mine - max(others) == 1
+
+
+def _final_round_comeback(ctx):
+    if not (_standard_game(ctx) and _decided_without_tiebreak(ctx)):
+        return False
+    before_last = {}
+    for t in ctx.tb_turns:
+        if not t["tiebreak"] and t["round_no"] <= 9:
+            before_last[t["player"]] = before_last.get(t["player"], 0) + t["score"]
+    best = max(before_last.values(), default=None)
+    leaders = [p for p, total in before_last.items() if total == best]
+    return len(leaders) == 1 and leaders[0] != ctx.player
+
+
+def _either_side_of_twenty(ctx):
+    for t in ctx.turns:
+        numbers = {_dart_number(d) for d in t.darts}
+        if t.target == 20 and len(t.darts) == 3 and numbers == {1, 5}:
+            return True
+    return False
+
+
+def _wrong_maximum(ctx):
+    return ctx.match.get("scoring") == "standard" and any(
+        t.target != 20 and t.darts == ("T20",) * 3 for t in ctx.turns)
+
+
+def _better_late_than_never(ctx):
+    return any(
+        len(t.darts) == 3 and _tb_dart_points(ctx, t.darts[0], t.target) == 0
+        and _tb_dart_points(ctx, t.darts[1], t.target) == 0 and t.darts[2] == f"T{t.target}"
+        for t in ctx.turns)
+
+
+def _exactly_sixty(ctx):
+    return _standard_game(ctx) and _tb_total(ctx) == 60
+
+
+def _extended_breakfast(ctx):
+    tiebreak_rounds = {t["round_no"] for t in ctx.tb_turns if t["tiebreak"]}
+    return ctx.won and len(ctx.participants) >= 2 and len(tiebreak_rounds) >= 3
+
+
 ACHIEVEMENTS = (
     Achievement("first_breakfast", "general", "easy",
                 {"en": "First Breakfast", "de": "Erstes Frühstück"},
@@ -277,6 +398,81 @@ ACHIEVEMENTS = (
                 {"en": "Last at the Table", "de": "Letzter am Tisch"},
                 {"en": "Win an Elimination match.", "de": "Ein Elimination-Spiel gewinnen."},
                 game_modes=ELIMINATION, check=_last_at_the_table),
+    Achievement("target_acquired", "target_battle", "easy",
+                {"en": "Target Acquired", "de": "Ziel erfasst"},
+                {"en": "Hit the target number with all three darts of a turn.",
+                 "de": "Mit allen drei Darts einer Aufnahme die Zielzahl treffen."},
+                game_modes=TARGET_BATTLE, check=_target_acquired),
+    Achievement("nine_out_of_nine", "target_battle", "hard",
+                {"en": "Nine out of Nine", "de": "Neun von neun"},
+                {"en": "Hit three triples of the target in a turn, nine points, with the standard scoring.",
+                 "de": "Im Standard-Wertungsprofil mit drei Triples der Zielzahl neun Punkte in einer Aufnahme erzielen."},
+                game_modes=TARGET_BATTLE, label="9", check=_nine_out_of_nine),
+    Achievement("no_empty_rounds", "target_battle", "medium",
+                {"en": "No Empty Rounds", "de": "Keine leere Runde"},
+                {"en": "Score at least one point in every round of a standard game of ten rounds.",
+                 "de": "Im Standardspiel mit zehn Runden in jeder Runde mindestens einen Punkt erzielen."},
+                game_modes=TARGET_BATTLE, check=_no_empty_rounds),
+    Achievement("on_target", "target_battle", "hard",
+                {"en": "On Target", "de": "Treffsicher"},
+                {"en": "Score at least 60 of 90 points in a standard game of ten rounds.",
+                 "de": "Im Standardspiel mit zehn Runden mindestens 60 von 90 Punkten erzielen."},
+                game_modes=TARGET_BATTLE, label="60", check=_points_at_least(60)),
+    Achievement("sharpshooter", "target_battle", "very_hard",
+                {"en": "Sharpshooter", "de": "Meisterschütze"},
+                {"en": "Score at least 75 of 90 points in a standard game of ten rounds.",
+                 "de": "Im Standardspiel mit zehn Runden mindestens 75 von 90 Punkten erzielen."},
+                game_modes=TARGET_BATTLE, label="75", check=_points_at_least(75)),
+    Achievement("perfect_battle", "target_battle", "extreme",
+                {"en": "Perfect Battle", "de": "Perfektes Battle"},
+                {"en": "Score all 90 of 90 points in a standard game of ten rounds.",
+                 "de": "Im Standardspiel mit zehn Runden 90 von 90 Punkten erzielen."},
+                game_modes=TARGET_BATTLE, label="90", check=_points_at_least(90)),
+    Achievement("photo_finish", "target_battle", "medium",
+                {"en": "Photo Finish", "de": "Fotofinish"},
+                {"en": "Win a standard game against at least one opponent by exactly one point, without a tiebreak.",
+                 "de": "Ein Standardspiel gegen mindestens einen Gegner mit genau einem Punkt Vorsprung auf den Zweitplatzierten gewinnen, ohne Stechen."},
+                game_modes=TARGET_BATTLE, check=_photo_finish),
+    Achievement("final_round_comeback", "target_battle", "hard",
+                {"en": "Final-Round Comeback", "de": "Schlussattacke"},
+                {"en": "Be behind the only leader before the last round of a standard game and win it alone, without a tiebreak.",
+                 "de": "Vor der letzten regulären Runde hinter dem alleinigen Führenden liegen und nach dieser Runde allein gewinnen, ohne Stechen."},
+                game_modes=TARGET_BATTLE, check=_final_round_comeback),
+    Achievement("double_focus", "target_battle", "hard",
+                {"en": "Double Focus", "de": "Double-Fokus"},
+                {"en": "Score at least 15 of 30 points in the doubles-only profile with ten rounds.",
+                 "de": "Im Trainingsprofil „Nur Doubles“ mit zehn Runden mindestens 15 von 30 Punkten erzielen."},
+                game_modes=TARGET_BATTLE, label="15", check=_training_focus("doubles")),
+    Achievement("triple_focus", "target_battle", "very_hard",
+                {"en": "Triple Focus", "de": "Triple-Fokus"},
+                {"en": "Score at least 15 of 30 points in the triples-only profile with ten rounds.",
+                 "de": "Im Trainingsprofil „Nur Triples“ mit zehn Runden mindestens 15 von 30 Punkten erzielen."},
+                game_modes=TARGET_BATTLE, label="15", check=_training_focus("triples")),
+    Achievement("either_side_of_twenty", "target_battle", "hidden",
+                {"en": "Either Side of Twenty", "de": "Rechts und links vorbei"},
+                {"en": "With target 20, hit only 1 and 5 with the three darts of a turn, both of them.",
+                 "de": "Bei Zielzahl 20 mit allen drei Darts ausschliesslich die Zahlen 1 oder 5 treffen, beide müssen vorkommen."},
+                game_modes=TARGET_BATTLE, hidden=True, label="1 5", check=_either_side_of_twenty),
+    Achievement("wrong_maximum", "target_battle", "hidden",
+                {"en": "Wrong Maximum", "de": "Falsches Maximum"},
+                {"en": "Hit three T20 in a turn when the target is not 20, with the standard scoring.",
+                 "de": "Im Standard-Wertungsprofil bei einer anderen Zielzahl als 20 drei T20 treffen."},
+                game_modes=TARGET_BATTLE, hidden=True, label="180", check=_wrong_maximum),
+    Achievement("better_late_than_never", "target_battle", "hidden",
+                {"en": "Better Late Than Never", "de": "Besser spät als nie"},
+                {"en": "Score nothing with the first two darts of a turn and hit the triple of the target with the third.",
+                 "de": "In einer Aufnahme mit den ersten beiden Darts keine Punkte erzielen und mit dem dritten Dart das Triple der Zielzahl treffen."},
+                game_modes=TARGET_BATTLE, hidden=True, check=_better_late_than_never),
+    Achievement("exactly_sixty", "target_battle", "hidden",
+                {"en": "Exactly Sixty", "de": "Punktlandung"},
+                {"en": "Finish a standard game of ten rounds with exactly 60 points.",
+                 "de": "Ein Standardspiel mit zehn Runden mit genau 60 Punkten abschliessen."},
+                game_modes=TARGET_BATTLE, hidden=True, label="60", check=_exactly_sixty),
+    Achievement("extended_breakfast", "target_battle", "hidden",
+                {"en": "Extended Breakfast", "de": "Verlängerter Frühstückstisch"},
+                {"en": "Win a Target Battle after at least three tiebreak rounds.",
+                 "de": "Ein Target-Battle-Spiel gewinnen, nachdem mindestens drei Stechrunden gespielt wurden."},
+                game_modes=TARGET_BATTLE, hidden=True, check=_extended_breakfast),
     Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
                 {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
                 hidden=True, label="666", check=_beast_mode),

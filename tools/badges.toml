@@ -167,3 +167,104 @@ mode = "x01"
 difficulty = "extreme"
 label = "501"
 subject = "One large flawless cut diamond with a small dart standing in its top."
+
+
+[[badge]]
+id = "target_acquired"
+mode = "target_battle"
+difficulty = "easy"
+subject = "A radar-style crosshair circle with thin cross lines and one single dart standing in its centre."
+
+[[badge]]
+id = "nine_out_of_nine"
+mode = "target_battle"
+difficulty = "hard"
+label = "9"
+subject = "A three-by-three grid of nine identical round dots, all filled."
+
+[[badge]]
+id = "no_empty_rounds"
+mode = "target_battle"
+difficulty = "medium"
+subject = "A calendar sheet showing two rows of five squares, every square ticked."
+
+[[badge]]
+id = "on_target"
+mode = "target_battle"
+difficulty = "hard"
+label = "60"
+subject = "A hand with the thumb up, a soft rounded shape."
+
+[[badge]]
+id = "sharpshooter"
+mode = "target_battle"
+difficulty = "very_hard"
+label = "75"
+subject = "A rifle scope seen from the front: a round lens with a crosshair."
+
+[[badge]]
+id = "perfect_battle"
+mode = "target_battle"
+difficulty = "extreme"
+label = "90"
+subject = "A golden trophy cup with a single star on its front."
+colour = "natural"
+
+[[badge]]
+id = "photo_finish"
+mode = "target_battle"
+difficulty = "medium"
+subject = "A compact camera seen from the front, with its lens and a small flash."
+
+[[badge]]
+id = "final_round_comeback"
+mode = "target_battle"
+difficulty = "hard"
+subject = "A thick curved arrow rising from low left to high right, ending in a small finish flag."
+
+[[badge]]
+id = "double_focus"
+mode = "target_battle"
+difficulty = "hard"
+label = "15"
+subject = "A pair of binoculars seen from the front."
+
+[[badge]]
+id = "triple_focus"
+mode = "target_battle"
+difficulty = "very_hard"
+label = "15"
+subject = "A camera lens seen from the front with three concentric rings."
+
+[[badge]]
+id = "either_side_of_twenty"
+mode = "target_battle"
+difficulty = "hidden"
+label = "1 5"
+subject = "A signpost with two arrows, one pointing left and one pointing right."
+
+[[badge]]
+id = "wrong_maximum"
+mode = "target_battle"
+difficulty = "hidden"
+label = "180"
+subject = "A round sign with a big cross mark on it."
+
+[[badge]]
+id = "better_late_than_never"
+mode = "target_battle"
+difficulty = "hidden"
+subject = "A snail wearing a small party hat."
+
+[[badge]]
+id = "exactly_sixty"
+mode = "target_battle"
+difficulty = "hidden"
+label = "60"
+subject = "A stopwatch with its hand exactly at twelve o'clock."
+
+[[badge]]
+id = "extended_breakfast"
+mode = "target_battle"
+difficulty = "hidden"
+subject = "A long breakfast tray with three small cups in a row."
