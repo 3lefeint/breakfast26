@@ -734,7 +734,7 @@ async def achievements_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle)$")):
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer)$")):
     if not _stats_db:
         return []
     return _stats_db.recent_matches(mode=mode)
@@ -771,6 +771,13 @@ async def stats_target_battle_overview(scoring: str = Query(default="standard", 
         return {"scoring": scoring, "summary": {}, "records": {"best_game": None, "best_turn": None},
                 "players": [], "head_to_head": []}
     return _stats_db.target_battle_overview(scoring)
+
+
+@app.get("/api/stats/killer/overview")
+async def stats_killer_overview():
+    if not _stats_db:
+        return {}
+    return _stats_db.killer_overview()
 
 
 @app.get("/api/stats/match/{match_id}")

@@ -854,6 +854,167 @@ class StatsDB:
             self._conn.execute("DELETE FROM killer_results WHERE match_id = ?", (match_id,))
             self._conn.commit()
 
+    def match_killer_stats(self, match_id: str) -> dict:
+        """One Killer game: its rules and the players by placement with what each did: the number,
+        the lives left, lives taken from others, knockouts, own goals, lives lost and the own turn on
+        which the player became a killer."""
+        with self._lock:
+            setup = self._conn.execute(
+                "SELECT own_goal, singles FROM killer_games WHERE match_id = ?", (match_id,)).fetchone()
+            results = self._conn.execute(
+                "SELECT player, placement, lives_left, number FROM killer_results WHERE match_id = ?"
+                " ORDER BY placement, player", (match_id,)).fetchall()
+            turns = self._conn.execute(
+                "SELECT id, player FROM killer_turns WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+            events = self._conn.execute(
+                "SELECT turn_id, player, kind, victim FROM killer_events WHERE match_id = ? ORDER BY id",
+                (match_id,)).fetchall()
+        own_turn, count = {}, {}
+        for t in turns:
+            count[t["player"]] = count.get(t["player"], 0) + 1
+            own_turn[t["id"]] = count[t["player"]]
+        stats = {r["player"]: {"taken": 0, "knockouts": 0, "own_goals": 0, "lost": 0, "killer_turn": None}
+                 for r in results}
+        for e in events:
+            actor, victim = stats.get(e["player"]), stats.get(e["victim"])
+            if e["kind"] == "killer" and actor and actor["killer_turn"] is None:
+                actor["killer_turn"] = own_turn.get(e["turn_id"])
+            elif e["kind"] == "hit" and actor:
+                actor["taken"] += 1
+                if victim:
+                    victim["lost"] += 1
+            elif e["kind"] == "own_goal" and actor:
+                actor["own_goals"] += 1
+                actor["lost"] += 1
+            elif e["kind"] == "out" and actor and e["victim"] != e["player"]:
+                actor["knockouts"] += 1
+        return {
+            "rules": {"own_goal": bool(setup["own_goal"]), "singles": bool(setup["singles"])} if setup else None,
+            "players": [{"player": r["player"], "placement": r["placement"], "number": r["number"],
+                         "lives_left": r["lives_left"], "turns": count.get(r["player"], 0),
+                         **stats[r["player"]]} for r in results],
+        }
+
+    def killer_overview(self) -> dict:
+        """The Killer statistics over every finished game. Wins, placements, form and head to head
+        come from the games of players not flagged `hidden`. A killer is made on an own turn: the
+        average counts the turns up to and including it, a number thrown before the game that was
+        a double counts as the first. Lives taken are the hits on others, a knockout is the hit
+        that put a player out."""
+        scope = "m.game_mode = 'Killer' AND EXISTS (SELECT 1 FROM killer_results x WHERE x.match_id = m.match_id)"
+        with self._lock:
+            matches = self._conn.execute(
+                "SELECT m.match_id, m.started_at, m.ended_at FROM matches m WHERE " + scope +
+                " ORDER BY m.started_at").fetchall()
+            results = self._conn.execute(
+                "SELECT r.match_id, r.player, r.placement, COALESCE(p.hidden, 0) AS hidden FROM killer_results r"
+                " JOIN matches m ON m.match_id = r.match_id LEFT JOIN players p ON p.name = r.player"
+                " WHERE " + scope + " ORDER BY r.id").fetchall()
+        started = {m["match_id"]: m["started_at"][:10] for m in matches}
+        minutes = [(datetime.fromisoformat(m["ended_at"]) - datetime.fromisoformat(m["started_at"])).total_seconds() / 60
+                   for m in matches if m["ended_at"]]
+        in_match = {}
+        for r in results:
+            in_match.setdefault(r["match_id"], []).append(r)
+        stats = {}
+
+        def player(name):
+            return stats.setdefault(name, {
+                "player": name, "placed": {}, "expected": 0.0, "form": [], "turns": 0, "taken": 0, "knockouts": 0,
+                "own_goals": 0, "lost": 0, "killer_games": 0, "killer_turns": [], "best_taken": None,
+                "best_knockouts": None})
+
+        pairs = {}
+        for match in matches:
+            match_id = match["match_id"]
+            rows = in_match.get(match_id, [])
+            size = len(rows)
+            visible = [r for r in rows if not r["hidden"]]
+            for r in visible:
+                s = player(r["player"])
+                s["placed"][r["placement"]] = s["placed"].get(r["placement"], 0) + 1
+                s["expected"] += 1.0 / size
+                s["form"].append({
+                    "match_id": match_id, "date": started[match_id], "placement": r["placement"], "size": size,
+                    "opponents": sorted(o["player"] for o in rows if o["player"] != r["player"])})
+            for i, r1 in enumerate(visible):
+                for r2 in visible[i + 1:]:
+                    (a, pa), (b, pb) = sorted([(r1["player"], r1["placement"]), (r2["player"], r2["placement"])])
+                    entry = pairs.setdefault((a, b), {"a": a, "b": b, "a_ahead": 0, "b_ahead": 0, "games": 0})
+                    entry["games"] += 1
+                    if pa != pb:
+                        entry["a_ahead" if pa < pb else "b_ahead"] += 1
+            detail = self.match_killer_stats(match_id)
+            for d in detail["players"]:
+                if d["player"] not in {r["player"] for r in visible}:
+                    continue
+                s = player(d["player"])
+                s["turns"] += d["turns"]
+                s["taken"] += d["taken"]
+                s["knockouts"] += d["knockouts"]
+                s["own_goals"] += d["own_goals"]
+                s["lost"] += d["lost"]
+                if d["killer_turn"] is not None:
+                    s["killer_games"] += 1
+                    s["killer_turns"].append(d["killer_turn"])
+                for key, field in (("best_taken", "taken"), ("best_knockouts", "knockouts")):
+                    if d[field] and (s[key] is None or d[field] > s[key]["count"]):
+                        s[key] = {"count": d[field], "date": started[match_id], "match_id": match_id}
+
+        players = []
+        for name, s in stats.items():
+            games = sum(s["placed"].values())
+            wins = s["placed"].get(1, 0)
+            best, run = 0, 0
+            for g in s["form"]:
+                run = run + 1 if g["placement"] == 1 else 0
+                best = max(best, run)
+            turns_to = s["killer_turns"]
+            players.append({
+                "player": name,
+                "games": games, "wins": wins, "win_pct": round(wins / games * 100, 1) if games else 0.0,
+                "placements": {"first": wins, "second": s["placed"].get(2, 0), "third": s["placed"].get(3, 0),
+                               "other": sum(n for place, n in s["placed"].items() if place > 3)},
+                "expected_wins": round(s["expected"], 2),
+                "form": {"games": s["form"][-15:], "current_streak": run, "best_streak": best},
+                "turns": s["turns"],
+                "killer_games": s["killer_games"],
+                "killer_pct": round(s["killer_games"] / games * 100, 1) if games else None,
+                "avg_turns_to_killer": round(sum(turns_to) / len(turns_to), 1) if turns_to else None,
+                "fastest_killer": min(turns_to) if turns_to else None,
+                "lives_taken": s["taken"], "knockouts": s["knockouts"], "own_goals": s["own_goals"],
+                "lives_lost": s["lost"],
+                "lives_taken_per_game": round(s["taken"] / games, 2) if games else None,
+                "best_taken": s["best_taken"], "best_knockouts": s["best_knockouts"],
+            })
+        players.sort(key=lambda p: (-p["games"], -p["wins"], p["player"]))
+
+        def record(key):
+            best = None
+            for p in players:
+                if p[key] and (best is None or p[key]["count"] > best["count"]):
+                    best = {"count": p[key]["count"], "player": p["player"], "date": p[key]["date"]}
+            return best
+
+        fastest = None
+        for p in players:
+            if p["fastest_killer"] is not None and (fastest is None or p["fastest_killer"] < fastest["turns"]):
+                fastest = {"turns": p["fastest_killer"], "player": p["player"]}
+        sizes = [len(in_match.get(m["match_id"], [])) for m in matches]
+        return {
+            "summary": {
+                "games": len(matches),
+                "avg_players": round(sum(sizes) / len(sizes), 1) if sizes else None,
+                "total_minutes": round(sum(minutes), 1),
+                "avg_minutes": round(sum(minutes) / len(minutes), 1) if minutes else None,
+                "longest_minutes": round(max(minutes), 1) if minutes else None,
+            },
+            "records": {"most_lives_taken": record("best_taken"), "most_knockouts": record("best_knockouts"),
+                        "fastest_killer": fastest},
+            "players": players,
+            "head_to_head": sorted(pairs.values(), key=lambda e: (-e["games"], e["a"], e["b"])),
+        }
+
     def reopen_match(self, match_id: str):
         """Clear `ended_at` — undoing a match finish walks the
         match back to `state == "playing"`, so it shouldn't still look
@@ -1379,6 +1540,8 @@ class StatsDB:
             return self.match_elimination_stats(match_id)
         if mode_row and mode_row["game_mode"] == "Target Battle":
             return self.match_target_battle_stats(match_id)
+        if mode_row and mode_row["game_mode"] == "Killer":
+            return self.match_killer_stats(match_id)
         with self._lock:
             rows = self._conn.execute(f"""
                 SELECT player,

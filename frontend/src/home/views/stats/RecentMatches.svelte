@@ -50,6 +50,7 @@
     if (m.game_mode === 'Target Battle') {
       return `Target Battle · ${m.points_start} ${m.points_start === 1 ? 'round' : 'rounds'} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
     }
+    if (m.game_mode === 'Killer') return 'Killer';
     return [m.game_mode, m.points_start ? m.points_start + ' pts' : ''].filter(Boolean).join(' ');
   }
   function matchPlayers(m) { return (m.players || []).map(cap).join(' · '); }
@@ -109,6 +110,31 @@
                       <td>{r.tiebreak ? `Tiebreak ${r.round}` : r.round}</td>
                       <td class="num-cell">{r.target}</td>
                       {#each matchDetails[m.match_id].players as p}<td class="num-cell">{r.scores[p.player] ?? '—'}</td>{/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else if mode === 'killer'}
+              <table class="players-table stats-table detail">
+                <thead>
+                  <tr>
+                    <th>Player</th><th class="num-cell">Place</th><th class="num-cell">Number</th>
+                    <th class="num-cell">Lives left</th><th class="num-cell">Killer on turn</th>
+                    <th class="num-cell">Taken</th><th class="num-cell">Knockouts</th>
+                    <th class="num-cell">Own goals</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each matchDetails[m.match_id].players as p}
+                    <tr>
+                      <td>{cap(p.player)}</td>
+                      <td class="num-cell">{ordinal(p.placement)}</td>
+                      <td class="num-cell">{p.number}</td>
+                      <td class="num-cell">{p.lives_left ?? '—'}</td>
+                      <td class="num-cell">{p.killer_turn ?? '—'}</td>
+                      <td class="num-cell">{p.taken}</td>
+                      <td class="num-cell">{p.knockouts}</td>
+                      <td class="num-cell">{p.own_goals}</td>
                     </tr>
                   {/each}
                 </tbody>
