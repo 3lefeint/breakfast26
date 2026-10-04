@@ -3,11 +3,11 @@
   // Players/Stats/Settings) — replaces the old always-visible 5-item nav
   // bar, which duplicated the hub cards. The hub cards are the primary
   // navigation now; this is just "how do I get back".
-  let { title } = $props();
+  let { title, back = '#home' } = $props();
 </script>
 
 <div class="page-header">
-  <a class="back" href="#home" aria-label="Back to Home">
+  <a class="back" href={back} aria-label={back === '#home' ? 'Back to Home' : 'Back'}>
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M15 18l-6-6 6-6" />
     </svg>

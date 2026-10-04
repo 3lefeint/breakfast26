@@ -148,6 +148,9 @@ def run_direct(email, password, board_id, record_file=None,
         log.warning("[caller] is configured but [audio] dir is not set — "
                     "voice caller disabled")
 
+    if achievements:
+        achievements.announce(web.push_achievement, audio)
+
     if mqtt_enabled and mqtt_host:
         mqtt_pub = MqttPublisher(
             host=mqtt_host,

@@ -3,11 +3,15 @@
   // sync with this file's grid-template-columns) — Name | Elimination
   // Wins | X01 Wins | Audio | Hide, so the two win-count types read as
   // labeled columns instead of unlabeled icons.
-  let { name, wins = 0, x01Wins = 0, missingAudio = false, onHide = null } = $props();
+  let { name, wins = 0, x01Wins = 0, missingAudio = false, onHide = null, href = null } = $props();
 </script>
 
 <li class="player-card">
-  <span class="pname">{name}</span>
+  {#if href}
+    <a class="pname" {href}>{name}</a>
+  {:else}
+    <span class="pname">{name}</span>
+  {/if}
   <span class="pwins">{#if wins}🏆 {wins}{/if}</span>
   <span class="pwins">{#if x01Wins}🎯 {x01Wins}{/if}</span>
   <span class="paudio">
@@ -31,6 +35,8 @@
     padding: 0.5rem 0;
     border-bottom: 1px solid var(--border, #333);
   }
+  a.pname { color: inherit; text-decoration: none; }
+  a.pname:hover { color: var(--accent); }
   .pwins { color: var(--muted, #888); font-size: 0.8rem; }
   .paudio, .phide { display: flex; justify-content: flex-end; }
   .no-audio-icon { opacity: 0.5; }

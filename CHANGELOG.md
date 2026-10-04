@@ -4,6 +4,9 @@
 
 ### Added
 - Achievements: the stats database records which player earned which achievement, with tiers, taken back when an undo or correction reopens the match (#23)
+- Achievements: `/tv` shows an unlock banner when a player earns one, several one after the other, and plays `achievement_<id>` or `achievement` from the `achievements/` folder of the sound directory if a file exists (#23).
+- Player profile: the Players tab opens a profile with the player's achievements as badges, in sections by game mode, with the progress to the next tier and the share of players who have each (#23).
+- An achievement without a badge motif yet shows a star (#23).
 
 ## [0.8.1] - 2026-10-03
 

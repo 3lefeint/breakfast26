@@ -139,6 +139,12 @@ def push_sound(instruction: dict):
         asyncio.run_coroutine_threadsafe(_send_to(_audio_clients, instruction), _loop)
 
 
+def push_achievement(message: dict):
+    """Call from any thread to tell every browser client about an earned achievement."""
+    if _loop and _loop.is_running() and _clients:
+        asyncio.run_coroutine_threadsafe(_send_to(_clients, message), _loop)
+
+
 def audio_client_count() -> int:
     return len(_audio_clients)
 

@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import { gameState } from '../../lib/stores/gameState.js';
 import { createPlayer } from '../../lib/audioPlayer.js';
+import { announceAchievement } from '../../lib/stores/achievementQueue.js';
 
 // TV-specific WS connection + voice-call playback. /tv is the audio-role
 // device by default (this is the one meant to be heard next to the board),
@@ -39,6 +40,7 @@ export function connect() {
     const msg = JSON.parse(e.data);
     if (msg.type === 'sound') { handleSound(msg); return; }
     if (msg.type === 'sound_batch') { handleSoundBatch(msg); return; }
+    if (msg.type === 'achievement') { announceAchievement(msg); return; }
     gameState.set(msg);
   };
 }

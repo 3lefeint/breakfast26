@@ -112,6 +112,27 @@ class AchievementEngine:
         self.db.achievement_engine = self
         return self
 
+    def notification(self, change: dict) -> dict:
+        """The message the browsers get for one earned achievement: everything the badge
+        needs, with the name shown (it is earned now, a secret one too)."""
+        a = next(d for d in self.definitions if d.id == change["achievement"])
+        return {"type": "achievement", "player": change["player"], "id": a.id,
+                "mode": a.mode, "difficulty": a.difficulty, "hidden": a.hidden, "motif": a.motif or a.id,
+                "names": a.names, "descriptions": a.descriptions, "label": a.label,
+                "tiers": list(a.tiers) if a.tiers else None,
+                "tier": change["tier"] or 1}
+
+    def announce(self, push, audio=None):
+        """Send every newly earned achievement to the browsers with `push` and play its
+        sound: `achievement_<id>` if there is a file for that achievement, else the general
+        `achievement`. No file means no sound. Revoked ones are not announced."""
+        def on_earned(change):
+            push(self.notification(change))
+            if audio:
+                audio.play(f"achievement_{change['achievement']}") or audio.play("achievement")
+        self.on_earned = on_earned
+        return self
+
     def overview(self, player: str) -> list:
         """Every achievement with the player's state, for the profile. `tier` is how many
         tiers are earned (an event counts as one), `progress` and `next` only exist for

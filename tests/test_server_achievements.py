@@ -1,3 +1,7 @@
+import asyncio
+import threading
+import time
+
 from starlette.testclient import TestClient
 
 from breakfast.achievements import INNER_BULL, Achievement, AchievementEngine
@@ -50,3 +54,31 @@ def test_lists_the_achievements_of_a_player(tmp_path):
         assert by_id["beast_mode"]["names"] is None
     finally:
         server.wire(None, None)
+
+
+def test_an_achievement_message_is_sent_to_every_websocket_client(monkeypatch):
+    # The server runs its own event loop (server.start()); give it one here and two fake clients.
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_forever, daemon=True).start()
+    received = []
+
+    class FakeClient:
+        async def send_json(self, data):
+            received.append(data)
+
+    monkeypatch.setattr(server, "_loop", loop)
+    monkeypatch.setattr(server, "_clients", {FakeClient(), FakeClient()})
+    try:
+        message = {"type": "achievement", "player": "ana", "id": "bullseye"}
+        server.push_achievement(message)
+        deadline = time.time() + 2
+        while len(received) < 2 and time.time() < deadline:
+            time.sleep(0.01)
+        assert received == [message, message]
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+
+
+def test_nothing_is_sent_while_the_server_is_not_running(monkeypatch):
+    monkeypatch.setattr(server, "_loop", None)
+    server.push_achievement({"type": "achievement"})      # must not raise

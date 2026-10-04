@@ -5,6 +5,9 @@ Layout (single mount point, container-friendly):
     sounds/                     # [audio] dir — your own set, always the fallback
       matchon.mp3
       freipass.mp3
+      achievements/             # jingles for earned achievements, searched last
+        achievement.mp3
+        achievement_ton_up.mp3
       profiles/                 # installed voice packs, one subdirectory each
         en-US-Joey-Male/
           matchon.mp3
@@ -27,6 +30,9 @@ import zipfile
 log = logging.getLogger(__name__)
 
 PROFILES_SUBDIR = "profiles"
+# Jingles for earned achievements: not spoken, not part of a voice, so they live apart from
+# the calls. Searched last; see achievements.AchievementEngine.announce().
+ACHIEVEMENTS_SUBDIR = "achievements"
 
 _CDN = "https://darts-downloads.peschi.org/soundfiles"
 
@@ -109,6 +115,7 @@ def search_dirs(audio_dir, profile=None):
             log.warning("Audio profile '%s' not found under %s — using own set only",
                         profile, os.path.join(audio_dir, PROFILES_SUBDIR))
     dirs.append(audio_dir)
+    dirs.append(os.path.join(audio_dir, ACHIEVEMENTS_SUBDIR))
     return dirs
 
 

@@ -295,3 +295,73 @@ class TestOverview:
         _x01_match(db, "m1", {"ana": [["S6", "S6", "S6"]], "bo": [["S20"]]})
         assert self._by_id(engine, "bo")["beast_mode"]["percent"] is None
         assert self._by_id(engine, "ana")["beast_mode"]["percent"] == 50.0
+
+
+class TestAnnounce:
+    class FakeAudio:
+        def __init__(self):
+            self.played = []
+
+        def play(self, name, **kw):
+            self.played.append(name)
+            return True
+
+    def test_notification_carries_what_the_badge_needs(self, db, engine):
+        note = engine.notification({"player": "ana", "achievement": "ton_up", "tier": 2})
+        assert note["type"] == "achievement" and note["player"] == "ana"
+        assert (note["id"], note["tier"], note["tiers"], note["label"]) == ("ton_up", 2, [1, 10, 100, 1000], "100")
+        assert note["names"]["en"] == "Ton Up" and note["difficulty"] == "endurance"
+
+    def test_an_event_is_shown_as_tier_one_and_a_secret_one_by_name(self, db, engine):
+        note = engine.notification({"player": "ana", "achievement": "beast_mode", "tier": 0})
+        assert note["tier"] == 1 and note["tiers"] is None
+        assert note["hidden"] and note["names"]["en"] == "Beast Mode"
+
+    def test_earned_achievements_are_pushed_and_sound_played(self, db):
+        pushed, audio = [], self.FakeAudio()
+        AchievementEngine(db, definitions=PILOT).attach().announce(pushed.append, audio)
+        _elimination_match(db, "e1", ["ana", "bo"], winner="ana")
+        assert [n["id"] for n in pushed] == ["last_at_the_table"]
+        assert audio.played == ["achievement_last_at_the_table"]
+
+    def test_taking_one_back_announces_nothing(self, db):
+        pushed, audio = [], self.FakeAudio()
+        AchievementEngine(db, definitions=PILOT).attach().announce(pushed.append, audio)
+        _elimination_match(db, "e1", ["ana", "bo"], winner="ana")
+        pushed.clear(); audio.played.clear()
+        db.reopen_match("e1")
+        assert pushed == [] and audio.played == []
+
+    def test_works_without_audio(self, db):
+        pushed = []
+        AchievementEngine(db, definitions=PILOT).attach().announce(pushed.append)
+        _elimination_match(db, "e1", ["ana", "bo"], winner="ana")
+        assert len(pushed) == 1
+
+    def test_a_sound_for_that_achievement_wins_over_the_general_one(self, db):
+        audio = self.FakeAudio()
+        audio.available = {"achievement_last_at_the_table", "achievement"}
+        audio.play = lambda name, **kw: (audio.played.append(name), name in audio.available)[1]
+        AchievementEngine(db, definitions=PILOT).attach().announce(lambda n: None, audio)
+        _elimination_match(db, "e1", ["ana", "bo"], winner="ana")
+        assert audio.played == ["achievement_last_at_the_table"]
+
+    def test_the_general_sound_plays_when_there_is_none_for_that_achievement(self, db):
+        audio = self.FakeAudio()
+        audio.available = {"achievement"}
+        audio.play = lambda name, **kw: (audio.played.append(name), name in audio.available)[1]
+        AchievementEngine(db, definitions=PILOT).attach().announce(lambda n: None, audio)
+        _elimination_match(db, "e1", ["ana", "bo"], winner="ana")
+        assert audio.played == ["achievement_last_at_the_table", "achievement"]
+
+    def test_the_sound_is_found_in_the_achievements_folder(self, tmp_path):
+        from breakfast.audio_engine import AudioEngine
+        from breakfast.voicepack import search_dirs
+        (tmp_path / "achievements").mkdir()
+        (tmp_path / "achievements" / "achievement_ton_up+1.mp3").write_bytes(b"x")
+        (tmp_path / "achievements" / "achievement.mp3").write_bytes(b"x")
+        sent = []
+        engine = AudioEngine(search_dirs(str(tmp_path)), broadcast=sent.append)
+        assert engine.play("achievement_ton_up") and engine.play("achievement")
+        assert [m["file"] for m in sent] == ["achievement_ton_up+1.mp3", "achievement.mp3"]
+        assert engine.resolve("achievement.mp3") == str(tmp_path / "achievements" / "achievement.mp3")

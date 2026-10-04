@@ -8,6 +8,7 @@
   import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
   import AppHeader from '../lib/components/AppHeader.svelte';
+  import AchievementBanner from './views/AchievementBanner.svelte';
   import X01View from './views/X01View.svelte';
   import IdleView from './views/IdleView.svelte';
   import EliminationTv from './views/EliminationTv.svelte';
@@ -76,6 +77,8 @@
   // actually sure of.
   let headerGlow = $derived(boardStatusColor === 'grey' ? null : boardStatusColor);
 </script>
+
+<AchievementBanner />
 
 <AppHeader title={matchMeta} glowColor={headerGlow}>
   {#snippet right()}

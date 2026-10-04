@@ -38,6 +38,7 @@
     {#each $players.known as name (name)}
       <PlayerCard
         {name}
+        href={`#profile/${encodeURIComponent(name)}`}
         wins={$players.winsFor(name)}
         x01Wins={$players.x01WinsFor(name)}
         missingAudio={$players.missingAudio(name)}

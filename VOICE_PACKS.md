@@ -23,6 +23,9 @@ sound is missing.
   180.mp3
   freipass.mp3
   ...
+  achievements/               # jingles for earned achievements, see below
+    achievement.mp3
+    achievement_ton_up.mp3
   profiles/                   # installed/downloaded voice packs
     en-US-Joey-Male/
       matchon.mp3
@@ -95,6 +98,21 @@ missing, that specific call is skipped — everything else keeps working.
 | `matchcancel` | The match ends without a winner (aborted) | Optional |
 | `busted` | A turn busts (would take the player below 0/1) | Recommended |
 | `ambient_matchon` / `_gameon` / `_matchshot` / `_gameshot` / `_matchcancel` (each with an optional `_{player}` variant) | Same moments as above, played on a separate ambient channel that never interrupts voice calls | Optional — the whole ambient layer can be left empty |
+
+### Achievements
+
+Not spoken and not part of a voice, so these sounds live in their own folder,
+`<audio dir>/achievements/`, searched after your own set and the voice pack.
+They play with the unlock banner on `/tv` when the match is over, once per
+earned achievement.
+
+| Key(s) | When it plays | Required? |
+|---|---|---|
+| `achievement_<id>` (e.g. `achievement_ton_up`) | That achievement is earned | Optional |
+| `achievement` | Any achievement is earned and there is no file for its own `achievement_<id>` | Optional |
+
+Variants work as everywhere else (`achievement+1.mp3`, `achievement_ton_up+1.mp3`, ...).
+Without any file nothing plays, the banner still shows.
 
 ### X01-specific
 

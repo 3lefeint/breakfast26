@@ -8,6 +8,7 @@
   import Home from './views/Home.svelte';
   import Elimination from './views/Elimination.svelte';
   import Players from './views/Players.svelte';
+  import Profile from './views/Profile.svelte';
   import Stats from './views/Stats.svelte';
   import Settings from './views/Settings.svelte';
   import About from './views/About.svelte';
@@ -63,6 +64,8 @@
       <Elimination />
     {:else if $route === 'players'}
       <Players />
+    {:else if $route.startsWith('profile/')}
+      <Profile name={decodeURIComponent($route.slice('profile/'.length))} />
     {:else if $route === 'stats'}
       <Stats />
     {:else if $route === 'settings'}

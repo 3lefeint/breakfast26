@@ -24,17 +24,17 @@ def build_pack(path):
 
 
 class TestSearchDirs:
-    def test_no_profile_is_own_dir_only(self, tmp_path):
-        assert search_dirs(str(tmp_path)) == [str(tmp_path)]
+    def test_no_profile_is_own_dir_and_the_achievement_sounds(self, tmp_path):
+        assert search_dirs(str(tmp_path)) == [str(tmp_path), str(tmp_path / "achievements")]
 
     def test_profile_searched_first(self, tmp_path):
         prof = tmp_path / "profiles" / "en-US-Joey-Male"
         prof.mkdir(parents=True)
         assert search_dirs(str(tmp_path), "en-US-Joey-Male") == \
-            [str(prof), str(tmp_path)]
+            [str(prof), str(tmp_path), str(tmp_path / "achievements")]
 
     def test_missing_profile_falls_back_to_own_dir(self, tmp_path):
-        assert search_dirs(str(tmp_path), "nope") == [str(tmp_path)]
+        assert search_dirs(str(tmp_path), "nope") == [str(tmp_path), str(tmp_path / "achievements")]
 
 
 class TestInstallProfile:
@@ -66,7 +66,7 @@ class TestInstallProfile:
 
     def test_installed_pack_found_by_search_dirs(self, audio_dir, pack):
         dest = install_profile(audio_dir, "test-voice", url=pack)
-        assert search_dirs(audio_dir, "test-voice") == [dest, audio_dir]
+        assert search_dirs(audio_dir, "test-voice") == [dest, audio_dir, os.path.join(audio_dir, "achievements")]
         assert list_profiles(audio_dir) == ["test-voice"]
 
     def test_already_installed_skips(self, audio_dir, pack):

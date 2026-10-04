@@ -21,7 +21,11 @@ export function connect() {
   };
 
   socket.onmessage = (e) => {
-    gameState.set(JSON.parse(e.data));
+    const msg = JSON.parse(e.data);
+    // An earned achievement is announced on /tv; Home has nothing to show for it, and it
+    // is not a state payload.
+    if (msg.type === 'achievement') return;
+    gameState.set(msg);
   };
 
   socket.onclose = () => {
