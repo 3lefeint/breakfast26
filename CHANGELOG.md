@@ -15,6 +15,7 @@
 - Target Battle game with a setup page, a live view with a wheel for the target and a result page (#21).
 - Killer game, started through `/api/killer/*` or MQTT (#20).
 - Killer: a setup page, a live view on `/tv` and a result page with a rematch and a correction of the last turn (#20).
+- Killer: a bull-off for the first player and a throw for the numbers before the game, both on by default (#20).
 
 - 42 more achievements for X01, Elimination and across all games, 24 of them secret (#23).
 - 15 Target Battle achievements, five of them secret (#23).

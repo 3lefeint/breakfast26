@@ -7,7 +7,7 @@
   import { flip } from 'svelte/animate';
   import { cap } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
-  import { ruleChips, dartLabel, eventText, boardZones } from '../../lib/killer.js';
+  import { ruleChips, dartLabel, eventText, boardZones, phaseLabel } from '../../lib/killer.js';
   import LivesDisplay from '../../lib/components/LivesDisplay.svelte';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
@@ -16,10 +16,17 @@
 
   let me = $derived((killer.players || []).find((p) => p.current) || null);
   let darts = $derived(killer.darts || []);
-  let markers = $derived(darts.map((d, i) => ({ n: i + 1, x: d.x, y: d.y, color: me?.color, ring: me?.ring })));
+  // Before the game one dart counts as it lands, so what is shown is the last throw, not the turn in progress.
+  let preGame = $derived(killer.phase !== 'playing');
+  let lastThrow = $derived(killer.last_turn?.darts?.[0] || null);
+  let thrower = $derived((killer.players || []).find((p) => p.name === killer.last_turn?.player) || null);
+  let markers = $derived(preGame
+    ? (lastThrow ? [{ n: 1, x: lastThrow.x, y: lastThrow.y, color: thrower?.color, ring: thrower?.ring }] : [])
+    : darts.map((d, i) => ({ n: i + 1, x: d.x, y: d.y, color: me?.color, ring: me?.ring })));
   let events = $derived(killer.turn_events || []);
   let livesMax = $derived(killer.lives_max || 3);
   let correctingIndex = $state(null);
+  let correctingLast = $state(false);
 
   function ringStyle(p) {
     return p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : '';
@@ -47,6 +54,7 @@
     <div class="turn">
       <span class="swatch" style="background: {me?.color || 'var(--muted)'}; {me ? ringStyle(me) : ''}"></span>
       <span class="turn-name">{cap(killer.current_player || '—')}</span>
+      {#if phaseLabel(killer)}<span class="turn-hint">{phaseLabel(killer)}</span>{/if}
     </div>
     <div class="rules">
       {#each ruleChips(killer) as chip}<span class="rule-chip">{chip}</span>{/each}
@@ -71,8 +79,10 @@
                 <span class="tag">OUT</span>
               {:else if p.killer}
                 <span class="tag killer">KILLER</span>
+              {:else if killer.phase === 'bull_off'}
+                <span class="num">{p.bull_off_mm != null ? `${p.bull_off_mm} mm` : '—'}</span>
               {:else}
-                <span class="num">{p.number}</span>
+                <span class="num">{p.number ?? '—'}</span>
               {/if}
             </span>
             <span class="lives">{#if !p.out}<LivesDisplay lives={p.lives} {livesMax} />{/if}</span>
@@ -80,6 +90,14 @@
         {/each}
       </ul>
 
+      {#if preGame}
+        <div class="darts-row single">
+          <button type="button" class="dart-box" disabled={lastThrow == null} onclick={() => (correctingLast = true)}>
+            <span class="dlabel">Last throw{thrower ? ` · ${cap(thrower.name)}` : ''}</span>
+            <span class="dval">{lastThrow ? dartLabel(lastThrow) : '—'}</span>
+          </button>
+        </div>
+      {:else}
       <div class="darts-row">
         {#each [0, 1, 2] as i}
           <button type="button" class="dart-box" class:miss={darts[i] && dartLabel(darts[i]) === 'Miss'}
@@ -89,6 +107,7 @@
           </button>
         {/each}
       </div>
+      {/if}
 
       <ul class="events">
         {#each events as e}
@@ -108,6 +127,10 @@
   <DartCorrectModal dartIndex={correctingIndex} onClose={() => (correctingIndex = null)}
                     endpoint="/api/killer/correct-dart" />
 {/if}
+{#if correctingLast}
+  <DartCorrectModal dartIndex={0} onClose={() => (correctingLast = false)}
+                    endpoint="/api/killer/correct-last-dart" />
+{/if}
 
 <style>
   .stage {
@@ -118,6 +141,7 @@
   .turn { display: flex; align-items: baseline; gap: 1vw; flex-wrap: wrap; min-width: 0; }
   .turn .swatch { align-self: center; width: 1.2em; height: 1.2em; font-size: clamp(1.4rem, 3vw, 3rem); }
   .turn-name { font-size: clamp(1.6rem, 3.6vw, 3.6rem); font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
+  .turn-hint { font-size: clamp(0.9rem, 1.6vw, 1.6rem); color: var(--muted); font-weight: 600; }
   .rules { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .rule-chip { font-size: clamp(0.65rem, 1vw, 1rem); color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.1em 0.7em; }
 
@@ -152,6 +176,7 @@
   .tag.killer { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, transparent); background: color-mix(in srgb, var(--red) 14%, var(--surface)); }
 
   .darts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8vw; }
+  .darts-row.single { grid-template-columns: 1fr; }
   .dart-box {
     display: flex; flex-direction: column; align-items: center;
     background: color-mix(in srgb, var(--surface) 70%, var(--bg)); border: 1px solid var(--border); border-radius: 12px;

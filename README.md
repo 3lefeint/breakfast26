@@ -57,7 +57,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - **MQTT auto-reconnect**: reconnects with exponential backoff when the broker drops mid-session
 - **Elimination** game mode with unlimited players, life management, turn correction
 - **Target Battle**: one or more players throw at the same target number each round, and only a dart on it scores. A wheel (a needle turning around the dartboard) picks a random target at the start of every round, or you set a fixed order; scoring is single 1, double 2, triple 3, or only one of them as a training profile, with an optional tiebreak. The TV shows the darts of the whole round on the board in the color of each player (set in the profile)
-- **Killer**: every player gets a random number and three lives, a double on the own number makes a killer, and a killer takes a life with every double on an opponent's number (optionally singles too, and an own goal costs the killer a life). The last player left wins and the game ends with the decisive dart. Every player has a color (set in the profile) and the TV colors the field of every number on the board in the color of its owner for the whole game. The board also shows what is open for whoever is up: the double of the own number until they are a killer, then the fields that take a life from each opponent in the color of its owner (an own goal is marked as a warning). The players list shows numbers, lives and status, darts are tap-to-correct, and the result page lets you correct a dart of the last turn, which resumes a game that was won by mistake
+- **Killer**: the closest dart at the bull starts and everybody throws one dart with the other hand for their number (the number it hits, a number that is taken or the bull and a miss are thrown again, a double makes a killer at once); only one dart counts in each, as it lands, and the other darts of the visit are ignored until they are pulled; both steps are on by default and can be switched off, then the numbers are drawn at random. Every player has three lives, a double on the own number makes a killer, and a killer takes a life with every double on an opponent's number (optionally singles too, and an own goal costs the killer a life). The last player left wins and the game ends with the decisive dart. Every player has a color (set in the profile) and the TV colors the field of every number on the board in the color of its owner for the whole game. The board also shows what is open for whoever is up: the double of the own number until they are a killer, then the fields that take a life from each opponent in the color of its owner (an own goal is marked as a warning). The players list shows numbers, lives and status, darts are tap-to-correct, and the result page lets you correct a dart of the last turn, which resumes a game that was won by mistake
   and undo (repeatable, walks back any completed turn — including reopening an
   already-finished match if the winning turn itself gets undone), optional
   random turn order for a new game, and a win-count crown for the current leader
@@ -535,7 +535,7 @@ All topics are relative to `base_topic` (default: `autodarts`).
 | `autodarts/killer/current/dart{1,2,3}`, `.../current/total` | The turn in progress, face values |
 | `autodarts/killer/last_turn/dart{1,2,3}`, `.../last_turn/total` | The most recently finished turn |
 | `autodarts/killer/events/{event_type}` | Non-retained event (`killer`, `hit`, `own_goal`, `out`, `game_won`) |
-| `autodarts/killer/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `players`, `own_goal`, `singles`; `stop`, `undo`, `add_player`, `remove_player`) |
+| `autodarts/killer/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `players`, `own_goal`, `singles`, `bull_off`, `throw_numbers`; `stop`, `undo`, `add_player`, `remove_player`) |
 
 ### Freeplay
 
@@ -772,7 +772,7 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/target-battle/correct` | Correct the last turn's points (`total`) |
 | `POST` | `/api/target-battle/correct-dart` | Correct one dart of the current turn |
 | `POST` | `/api/target-battle/undo` | Undo the most recently completed turn — repeatable; reopens the game if the undone turn had finished it |
-| `POST` | `/api/killer/start` | Start a Killer game (`players`, two or more up to 20; `own_goal`, `singles`, both default off); every player gets a different random number |
+| `POST` | `/api/killer/start` | Start a Killer game (`players`, two or more up to 20; `own_goal`, `singles`, both default off; `bull_off` and `throw_numbers`, both default on, else the first player starts and the numbers are drawn at random); every player gets a different number |
 | `POST` | `/api/killer/stop` | Stop the current game |
 | `POST` | `/api/killer/correct-dart` | Correct one dart of the current turn |
 | `POST` | `/api/killer/correct-last-dart` | Correct one dart of the last finished turn, also after it ended the game |

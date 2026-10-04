@@ -542,6 +542,8 @@ class KillerStartBody(BaseModel):
     players: list[str]
     own_goal: bool = False     # a valid hit on the own number costs an active killer a life
     singles: bool = False      # singles take lives too, not only doubles
+    bull_off: bool = True      # the closest dart at the bull starts
+    throw_numbers: bool = True # everybody throws a dart for their number, else they are drawn
 
 
 @app.post("/api/killer/start")
@@ -558,7 +560,8 @@ async def killer_start(body: KillerStartBody):
         return {"error": "a Target Battle is running, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
-        _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles)
+        _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles,
+                           bull_off=body.bull_off, throw_numbers=body.throw_numbers)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}

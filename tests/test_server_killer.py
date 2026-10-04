@@ -20,7 +20,7 @@ def client(tmp_path):
     server.wire(None, None)
 
 
-START = {"players": ["ana", "bo"]}
+START = {"players": ["ana", "bo"], "bull_off": False, "throw_numbers": False}
 
 
 def number(killer, name):
@@ -34,19 +34,29 @@ def test_a_game_can_be_started_and_shows_up_in_the_state(client):
     snap = server._build_payload()["killer"]
     assert snap["active"] and snap["order"] == ["ana", "bo"]
     assert [p["lives"] for p in snap["players"]] == [3, 3]
-    assert snap["rules"] == {"own_goal": False, "singles": False}
+    assert snap["rules"] == {"own_goal": False, "singles": False, "bull_off": False, "throw_numbers": False}
 
 
 def test_the_options_reach_the_game(client):
     c, killer, *_ = client
     c.post("/api/killer/start", json={**START, "own_goal": True, "singles": True})
     assert killer.game.own_goal is True and killer.game.singles is True
-    assert server._build_payload()["killer"]["setup"] == {"own_goal": True, "singles": True}
+    assert server._build_payload()["killer"]["setup"] == {
+        "own_goal": True, "singles": True, "bull_off": False, "throw_numbers": False}
+
+
+def test_the_bull_off_and_the_thrown_numbers_are_on_by_default(client):
+    c, killer, *_ = client
+    c.post("/api/killer/start", json={"players": ["ana", "bo"]})
+    snap = server._build_payload()["killer"]
+    assert snap["phase"] == "bull_off" and snap["current_player"] == "ana"
+    assert snap["setup"]["bull_off"] is True and snap["setup"]["throw_numbers"] is True
+    assert [p["number"] for p in snap["players"]] == [None, None]
 
 
 def test_names_are_trimmed_and_empty_ones_dropped(client):
     c, killer, *_ = client
-    c.post("/api/killer/start", json={"players": [" ana ", "", "bo", "  "]})
+    c.post("/api/killer/start", json={**START, "players": [" ana ", "", "bo", "  "]})
     assert killer.game.order == ["ana", "bo"]
 
 

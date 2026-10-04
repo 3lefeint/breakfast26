@@ -10,6 +10,8 @@
   let gamePlayers = $state([]);
   let ownGoal = $state(false);
   let singles = $state(false);
+  let bullOff = $state(true);
+  let throwNumbers = $state(true);
   let randomOrder = $state(false);
 
   function toggle(name) {
@@ -36,7 +38,9 @@
   async function start() {
     if (gamePlayers.length < 2) { alert('Select at least 2 players.'); return; }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
-    const res = await apiJson('POST', '/api/killer/start', { players: order, own_goal: ownGoal, singles });
+    const res = await apiJson('POST', '/api/killer/start', {
+      players: order, own_goal: ownGoal, singles, bull_off: bullOff, throw_numbers: throwNumbers,
+    });
     if (res.error) { alert(res.error); return; }
     window.location.href = '/tv';
   }
@@ -46,9 +50,18 @@
   <div class="section-title">Setup</div>
 
   <p class="rules">
-    Everyone gets a random number and three lives. A double on your own number makes you a killer,
+    Everyone gets a number and three lives. A double on your own number makes you a killer,
     from then on you take one life from an opponent with every double on their number. Last one standing wins.
   </p>
+
+  <label class="check-row">
+    <input type="checkbox" bind:checked={bullOff}>
+    <span>Bull-off: everybody throws one dart at the bull, the closest one starts</span>
+  </label>
+  <label class="check-row">
+    <input type="checkbox" bind:checked={throwNumbers}>
+    <span>Throw for the numbers: everybody throws one dart with the other hand and gets the number it hits (a double makes a killer at once). Off: the numbers are drawn at random</span>
+  </label>
 
   <label class="check-row">
     <input type="checkbox" bind:checked={singles}>

@@ -48,7 +48,8 @@ class TestSetup:
         snap = game.snapshot()
         assert all(p["lives"] == 3 and not p["killer"] and not p["out"] for p in snap["players"])
         assert snap["current_player"] == "ana" and snap["state"] == "playing"
-        assert snap["rules"] == {"own_goal": False, "singles": False}
+        assert snap["rules"] == {"own_goal": False, "singles": False, "bull_off": False, "throw_numbers": False}
+        assert snap["phase"] == "playing"
 
 
 class TestBecomingAKiller:
@@ -393,7 +394,7 @@ class TestMqtt:
     def test_the_controller_hands_the_board_to_the_game(self):
         pub = FakeMqttPub()
         ctrl = KillerController(pub, "autodarts")
-        ctrl.start(["ana", "bo"])
+        ctrl.start(["ana", "bo"], bull_off=False, throw_numbers=False)
         number = ctrl.game.numbers["ana"]
         ctrl.on_board_state(1, [hit(number, 2)])
         assert ctrl.game.snapshot()["players"][0]["killer"]
@@ -427,3 +428,253 @@ class TestColors:
     def test_a_game_without_colors_has_none(self):
         game, _ = new_game()
         assert [p["color"] for p in game.snapshot()["players"]] == [None, None]
+def pre_game(players=("ana", "bo", "cy"), db=None, **kw):
+    client = FakeMqttClient()
+    kw.setdefault("bull_off", True)
+    kw.setdefault("throw_numbers", True)
+    game = KillerGame(list(players), client, "autodarts", stats_db=db, **kw)
+    game.announce_start()
+    return game, client
+
+
+NEAR = hit(20, 1, x=0.02, y=0.01)       # next to the center
+MID = hit(20, 1, x=0.15, y=0.1)
+FAR = hit(20, 1, x=0.5, y=0.5)
+
+
+class TestBullOff:
+    def test_the_game_starts_with_the_bull_off_for_the_first_player(self):
+        game, _ = pre_game()
+        snap = game.snapshot()
+        assert snap["phase"] == "bull_off" and snap["current_player"] == "ana"
+        assert snap["setup"]["bull_off"] is True
+
+    def test_the_closest_dart_starts(self):
+        game, client = pre_game(throw_numbers=False)
+        play(game, FAR); play(game, NEAR)
+        assert game.snapshot()["phase"] == "bull_off"
+        play(game, MID)
+        snap = game.snapshot()
+        assert snap["phase"] == "playing" and snap["current_player"] == "bo"
+        assert [e["player"] for e in client.events("starts")] == ["bo"]
+
+    def test_the_players_after_the_starter_follow_the_seating(self):
+        game, _ = pre_game(throw_numbers=False)
+        play(game, FAR); play(game, NEAR); play(game, MID)        # bo starts
+        play(game, hit(3, 1))
+        assert game.snapshot()["current_player"] == "cy"
+        play(game, hit(3, 1))
+        assert game.snapshot()["current_player"] == "ana"
+
+    def test_only_the_first_dart_of_a_visit_counts(self):
+        game, _ = pre_game(throw_numbers=False)
+        play(game, FAR, NEAR, NEAR)
+        play(game, MID); play(game, MID)
+        assert game.snapshot()["current_player"] == "bo"
+
+    def test_players_tied_for_the_closest_throw_again(self):
+        game, client = pre_game(players=("ana", "bo", "cy", "dan"), throw_numbers=False)
+        for dart in (NEAR, NEAR, FAR, FAR):
+            play(game, dart)
+        snap = game.snapshot()
+        assert snap["phase"] == "bull_off" and snap["current_player"] == "ana"
+        assert client.events("bull_off_tie")
+        play(game, FAR)
+        assert game.snapshot()["current_player"] == "bo"
+        play(game, MID)
+        assert game.snapshot()["current_player"] == "bo" and game.snapshot()["phase"] == "playing"
+
+    def test_a_miss_is_the_farthest(self):
+        game, _ = pre_game(throw_numbers=False)
+        play(game, MISS); play(game, FAR); play(game, MISS)
+        assert game.snapshot()["current_player"] == "bo"
+
+    def test_the_distance_is_shown_in_millimetres(self):
+        game, _ = pre_game(throw_numbers=False)
+        play(game, BULL)
+        assert 0 < game.snapshot()["players"][0]["bull_off_mm"] < 10
+
+    def test_the_first_dart_counts_as_it_lands(self):
+        game, _ = pre_game(throw_numbers=False)
+        game.on_board_state(1, [FAR])
+        assert game.snapshot()["current_player"] == "bo" and game.snapshot()["players"][0]["bull_off_mm"] > 0
+
+    def test_further_darts_of_the_visit_are_ignored_until_they_are_pulled(self):
+        game, client = pre_game(throw_numbers=False)
+        game.on_board_state(1, [FAR])
+        game.on_board_state(2, [FAR, NEAR])
+        game.on_board_state(3, [FAR, NEAR, NEAR])
+        snap = game.snapshot()
+        assert snap["current_player"] == "bo" and snap["darts"] == [] and snap["players"][1]["bull_off_mm"] is None
+        assert len(client.events("bull_off")) == 1
+        game.on_board_state(0, [])
+        play(game, MID)
+        assert game.snapshot()["players"][1]["bull_off_mm"] > 0
+
+    def test_a_dart_after_the_last_throw_does_not_play_the_game(self):
+        game, _ = pre_game(throw_numbers=False)
+        play(game, FAR); play(game, NEAR)
+        game.on_board_state(1, [MID])
+        game.on_board_state(2, [MID, hit(3, 1)])
+        game.on_board_state(0, [])
+        snap = game.snapshot()
+        assert snap["phase"] == "playing" and snap["current_player"] == "bo" and snap["last_turn"]["player"] == "cy"
+        assert all(p["lives"] == 3 for p in snap["players"])
+
+    def test_the_last_throw_is_shown_and_can_be_corrected(self):
+        game, _ = pre_game(throw_numbers=False)
+        play(game, FAR)
+        assert game.snapshot()["last_turn"]["player"] == "ana" and len(game.snapshot()["last_turn"]["darts"]) == 1
+        play(game, MID)                                  # bo
+        assert game.correct_last_dart(0, "50")           # bo's dart was in the bull after all
+        assert game.snapshot()["current_player"] == "cy"
+        play(game, MID)
+        snap = game.snapshot()
+        assert snap["phase"] == "playing" and snap["current_player"] == "bo"
+
+
+class TestThrownNumbers:
+    def test_without_a_bull_off_the_first_player_throws_first(self):
+        game, _ = pre_game(bull_off=False)
+        snap = game.snapshot()
+        assert snap["phase"] == "numbers" and snap["current_player"] == "ana"
+        assert [p["number"] for p in snap["players"]] == [None, None, None]
+
+    def test_the_number_of_the_field_is_the_players_number_in_any_ring(self):
+        game, client = pre_game(bull_off=False)
+        play(game, hit(7, 1)); play(game, hit(12, 3))
+        assert {p["name"]: p["number"] for p in game.snapshot()["players"]} == {"ana": 7, "bo": 12, "cy": None}
+        assert [e["number"] for e in client.events("number")] == [7, 12]
+
+    def test_a_taken_number_is_thrown_again(self):
+        game, client = pre_game(bull_off=False)
+        play(game, hit(7, 1)); play(game, hit(7, 2))
+        assert game.snapshot()["current_player"] == "bo" and game.numbers == {"ana": 7}
+        assert client.events("again")[0]["reason"] == "taken"
+        assert not player(game, "bo")["killer"]
+
+    @pytest.mark.parametrize("dart", [BULL, MISS, hit(25, 1)])
+    def test_the_bull_and_a_miss_do_not_give_a_number(self, dart):
+        game, client = pre_game(bull_off=False)
+        play(game, dart)
+        assert game.snapshot()["current_player"] == "ana" and game.numbers == {}
+        assert client.events("again")[0]["reason"] == "no_number"
+
+    def test_a_double_makes_a_killer_at_once(self):
+        game, client = pre_game(bull_off=False)
+        play(game, hit(9, 2))
+        assert player(game, "ana")["killer"] and game.numbers["ana"] == 9
+        assert [e["player"] for e in client.events("killer")] == ["ana"]
+
+    def test_a_triple_or_a_single_does_not(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(9, 3)); play(game, hit(4, 1))
+        assert not player(game, "ana")["killer"] and not player(game, "bo")["killer"]
+
+    def test_the_game_starts_when_everybody_has_a_number(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(7, 1)); play(game, hit(12, 1))
+        assert game.snapshot()["phase"] == "numbers"
+        play(game, hit(3, 1))
+        snap = game.snapshot()
+        assert snap["phase"] == "playing" and snap["current_player"] == "ana"
+
+    def test_the_bull_off_winner_throws_first_and_starts_the_game(self):
+        game, _ = pre_game()
+        play(game, FAR); play(game, MID); play(game, NEAR)          # cy starts
+        snap = game.snapshot()
+        assert snap["phase"] == "numbers" and snap["current_player"] == "cy"
+        play(game, hit(7, 1)); play(game, hit(12, 1)); play(game, hit(3, 1))
+        assert game.snapshot()["current_player"] == "cy" and game.snapshot()["phase"] == "playing"
+        assert game.numbers == {"cy": 7, "ana": 12, "bo": 3}
+
+    def test_the_game_plays_with_the_thrown_numbers(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(7, 1)); play(game, hit(12, 1)); play(game, hit(3, 1))
+        play(game, hit(7, 2))                                   # ana is a killer
+        play(game, MISS); play(game, MISS)
+        play(game, hit(12, 2))
+        assert lives(game)["bo"] == 2
+
+    def test_the_first_dart_gives_the_number_as_it_lands_and_the_others_are_ignored(self):
+        game, _ = pre_game(bull_off=False)
+        game.on_board_state(1, [hit(7, 1)])
+        game.on_board_state(2, [hit(7, 1), hit(12, 1)])
+        assert game.numbers == {"ana": 7} and game.snapshot()["current_player"] == "bo"
+        game.on_board_state(0, [])
+        assert game.numbers == {"ana": 7}
+
+    def test_a_tapped_dart_gives_the_number_of_its_field(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(7, 1))
+        assert game.correct_last_dart(0, "D12")
+        assert game.numbers == {"ana": 12} and player(game, "ana")["killer"]
+        assert game.snapshot()["current_player"] == "bo"
+
+    def test_correcting_a_thrown_number_into_a_taken_one_throws_again(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(7, 1)); play(game, hit(12, 1))
+        assert game.correct_last_dart(0, "S7")
+        assert game.numbers == {"ana": 7} and game.snapshot()["current_player"] == "bo"
+
+    def test_undo_takes_a_number_back_and_the_killer_status_with_it(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(9, 2))
+        assert game.undo()
+        snap = game.snapshot()
+        assert snap["current_player"] == "ana" and game.numbers == {} and not player(game, "ana")["killer"]
+
+    def test_undo_goes_back_from_the_first_turn_into_the_numbers(self):
+        game, _ = pre_game(bull_off=False)
+        play(game, hit(7, 1)); play(game, hit(12, 1)); play(game, hit(3, 1))
+        play(game, MISS)
+        assert game.undo() and game.undo()
+        assert game.snapshot()["phase"] == "numbers" and game.snapshot()["current_player"] == "cy"
+
+    def test_without_the_option_the_numbers_are_drawn(self):
+        game, _ = pre_game(bull_off=False, throw_numbers=False)
+        assert game.snapshot()["phase"] == "playing" and len(set(game.numbers.values())) == 3
+
+    def test_fixed_numbers_skip_the_throw(self):
+        game, _ = pre_game(numbers={"ana": 1, "bo": 2, "cy": 3}, bull_off=False)
+        assert game.snapshot()["phase"] == "playing" and game.throw_numbers is False
+
+
+class TestBeforeTheGameStats:
+    @pytest.fixture
+    def db(self):
+        return StatsDB(":memory:")
+
+    def test_a_killer_made_by_the_number_throw_is_stored_and_undone(self, db):
+        game, _ = pre_game(bull_off=False, db=db)
+        play(game, hit(9, 2))
+        assert db._conn.execute("SELECT kind FROM killer_events").fetchall()[0]["kind"] == "killer"
+        game.undo()
+        assert db._conn.execute("SELECT COUNT(*) FROM killer_events").fetchone()[0] == 0
+        assert db._conn.execute("SELECT COUNT(*) FROM killer_turns").fetchone()[0] == 0
+
+    def test_a_game_after_the_throws_stores_the_thrown_numbers(self, db):
+        game, _ = pre_game(players=("ana", "bo"), bull_off=False, db=db)
+        play(game, hit(9, 1)); play(game, hit(4, 1))
+        play(game, hit(9, 2)); play(game, MISS)
+        play(game, hit(4, 2), hit(4, 2), hit(4, 2))
+        rows = db._conn.execute("SELECT player, number FROM killer_results ORDER BY placement").fetchall()
+        assert [tuple(r) for r in rows] == [("ana", 9), ("bo", 4)]
+
+
+
+
+
+
+class TestBeforeTheGameController:
+    def test_a_started_game_begins_with_the_bull_off(self):
+        ctrl = KillerController(FakeMqttPub(), "autodarts")
+        ctrl.start(["ana", "bo"])
+        assert ctrl.game.phase == "bull_off" and ctrl.game.throw_numbers is True
+
+    def test_the_command_can_switch_both_off(self):
+        pub = FakeMqttPub()
+        ctrl = KillerController(pub, "autodarts")
+        pub.subscribed["autodarts/killer/command"](json.dumps(
+            {"action": "start", "players": ["ana", "bo"], "bull_off": False, "throw_numbers": False}))
+        assert ctrl.game.phase == "playing"

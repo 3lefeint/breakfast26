@@ -8,6 +8,8 @@ export async function rematch(k) {
     players: k.order,
     own_goal: k.setup.own_goal,
     singles: k.setup.singles,
+    bull_off: k.setup.bull_off,
+    throw_numbers: k.setup.throw_numbers,
   });
   if (res.error) alert(res.error);
   return !res.error;
@@ -22,7 +24,9 @@ export function stopGame() {
 export function ruleChips(k) {
   const rules = k?.rules || {};
   return [rules.singles ? 'Singles and doubles take lives' : 'Only doubles take lives',
-          ...(rules.own_goal ? ['Own goals cost a life'] : [])];
+          ...(rules.own_goal ? ['Own goals cost a life'] : []),
+          ...(rules.bull_off ? ['Bull-off'] : []),
+          ...(rules.throw_numbers ? ['Numbers thrown'] : [])];
 }
 
 // A dart of the board view as the chip shows it: its field, or "Miss" outside every field.
@@ -40,6 +44,11 @@ export function eventText(e) {
     case 'hit': return `${who} hits ${victim}, ${e.lives} left`;
     case 'own_goal': return `${who} own goal, ${e.lives} left`;
     case 'out': return `${victim} is out`;
+    case 'bull_off': return `${who}: ${e.distance} mm from the bull`;
+    case 'bull_off_tie': return 'Tied for the closest, they throw again';
+    case 'starts': return `${who} starts`;
+    case 'number': return `${who} gets ${e.number}`;
+    case 'again': return e.reason === 'taken' ? `${e.number} is taken, ${who} throws again` : `No number, ${who} throws again`;
     default: return '';
   }
 }
@@ -51,11 +60,11 @@ export function eventText(e) {
 // on a warning on the own number.
 export function boardZones(k) {
   const players = k?.players || [];
-  const zones = players.map((p) => (p.out
+  const zones = players.filter((p) => p.number != null).map((p) => (p.out
     ? { n: p.number, parts: 'all', level: 'dead' }
     : { n: p.number, color: p.color, parts: 'all', level: 'owned' }));
   const me = players.find((p) => p.current);
-  if (!me || k.state !== 'playing' || me.out) return zones;
+  if (!me || k.state !== 'playing' || k.phase !== 'playing' || me.out) return zones;
   if (!me.killer) return [...zones, { n: me.number, color: me.color, parts: ['double'], level: 'strong' }];
   const parts = k.rules?.singles ? ['double', 'outerSingle', 'innerSingle'] : ['double'];
   for (const p of players) {
@@ -63,4 +72,11 @@ export function boardZones(k) {
   }
   if (k.rules?.own_goal) zones.push({ n: me.number, parts, level: 'danger' });
   return zones;
+}
+
+// The line next to the name of the player who is up before the game, nothing in the game.
+export function phaseLabel(k) {
+  if (k?.phase === 'bull_off') return 'Bull-off: one dart at the bull';
+  if (k?.phase === 'numbers') return 'Throw for the number, with the other hand';
+  return '';
 }
