@@ -431,6 +431,59 @@ variants = ["s ziel isch", "es ziel isch"]
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Killer-specific phrases (the names and numbers come from the other groups;
+# life_lost, eliminated, filler_after_name and matchshot are played too)
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Killer"
+rate = "+15%"
+pitch = "+0Hz"
+volume = "+0%"
+
+[group.keys.your_number]
+# Played after a player-name call when the player is up for the first time,
+# right before the number ("Peter, dini Zahl isch 17").
+variants = ["dini zahl isch", "du hesch d zahl"]
+
+[group.keys.bull_off]
+# Played after a player-name call when the player throws at the bull to
+# decide who starts ("Peter, uf s Bull").
+variants = ["uf s bull", "wirf ufs bull"]
+
+[group.keys.bull_off_tie]
+# Played when players are tied for the closest dart at the bull and throw
+# again ("Gliichstand, nomal ufs Bull").
+variants = ["gliichstand, nomal ufs bull", "es unentschide, nomal"]
+
+[group.keys.starts_game]
+# Played after a player-name call when the bull-off is won and the numbers
+# are thrown next ("Peter, du fangsch aa").
+variants = ["du fangsch aa", "du darfsch aafah"]
+
+[group.keys.throw_number]
+# Played after a player-name call when the player throws for their number
+# with the other hand ("Peter, wirf mit links dini Zahl").
+variants = ["wirf mit dim schwache arm", "mit de andere hand dini zahl"]
+
+[group.keys.throw_again]
+# Played after a player-name call when the throw gave no number: the
+# number is taken, or the dart hit the bull or missed ("Peter, nomal").
+variants = ["nomal", "das het nöd gzellt, nomal"]
+
+[group.keys.is_killer]
+# Played right after a player-name call when a double on the own number
+# makes a killer ("Peter, du bisch en Killer").
+variants = ["du bisch en killer", "du bisch jetzt scharf"]
+pitch = "-5Hz"
+
+[group.keys.own_goal]
+# Played right after a player-name call when a killer hits their own
+# number ("Peter, es Eigetor").
+variants = ["es eigetor", "das isch es eigetor"]
+pitch = "-5Hz"
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Player names — one entry per PERSON, key = the exact lowercase name they
 # are registered under in the app's player list (that's what the caller
 # looks up at announce time, e.g. registered as "Peter" -> looks for

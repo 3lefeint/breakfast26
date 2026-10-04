@@ -428,6 +428,147 @@ class TestColors:
     def test_a_game_without_colors_has_none(self):
         game, _ = new_game()
         assert [p["color"] for p in game.snapshot()["players"]] == [None, None]
+class FakeAudio:
+    def __init__(self, missing=()):
+        self.played = []
+        self.missing = set(missing)
+
+    def play(self, name, **kwargs):
+        self.played.append(name)
+        return name not in self.missing
+
+    def batch(self):
+        import contextlib
+        return contextlib.nullcontext()
+
+
+class FakeTimer:
+    created = []
+
+    def __init__(self, interval, function, args=None, kwargs=None):
+        self.interval, self.function = interval, function
+        FakeTimer.created.append(self)
+
+    def start(self):
+        pass
+
+    def fire(self):
+        self.function()
+
+
+@pytest.fixture
+def timers(monkeypatch):
+    FakeTimer.created = []
+    monkeypatch.setattr("breakfast.killer.threading.Timer", FakeTimer)
+    return FakeTimer.created
+
+
+def with_audio(players=("ana", "bo"), audio=None, **kw):
+    audio = audio or FakeAudio()
+    game, _ = new_game(players, audio=audio, **kw)
+    return game, audio
+
+
+def heard(audio):
+    played, audio.played = audio.played, []
+    return played
+
+
+class TestCalls:
+    def test_the_match_starts_with_the_number_of_the_first_player_only(self, timers):
+        game, audio = with_audio(("ana", "bo", "cy"))
+        assert audio.played == [] and timers[0].interval == 0.5
+        timers[0].fire()
+        assert heard(audio) == ["matchon", "ana", "your_number", "20"]
+
+    def test_every_player_hears_their_number_once_on_their_first_turn(self, timers):
+        game, audio = with_audio(("ana", "bo", "cy"))
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(3, 1)]); game.on_board_state(0, [])
+        assert heard(audio) == ["bo", "your_number", "5"]
+        game.on_board_state(1, [hit(3, 1)]); game.on_board_state(0, [])
+        assert heard(audio) == ["cy", "your_number", "12"]
+        game.on_board_state(1, [hit(3, 1)]); game.on_board_state(0, [])
+        assert heard(audio) == ["ana", "filler_after_name"]
+
+    def test_a_player_who_is_told_their_number_is_not_also_told_it_is_their_turn(self, timers):
+        game, audio = with_audio()
+        timers[0].fire()
+        assert "filler_after_name" not in heard(audio)
+
+    def test_a_game_without_audio_makes_no_timer(self, timers):
+        new_game()
+        assert timers == []
+
+    def test_a_killer_is_called_when_the_double_lands_and_the_next_player_when_the_darts_are_pulled(self, timers):
+        game, audio = with_audio()
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(20, 2)])
+        assert heard(audio) == ["ana", "is_killer"]
+        game.on_board_state(0, [])
+        assert heard(audio) == ["bo", "your_number", "5"]
+
+    def test_a_dart_that_does_nothing_is_silent(self, timers):
+        game, audio = with_audio()
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(3, 1)])
+        assert heard(audio) == []
+
+    def test_a_life_taken_names_the_victim(self, timers):
+        game, audio = with_audio()
+        play(game, hit(20, 2)); play(game, MISS)
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(5, 2)])
+        assert heard(audio) == ["bo", "life_lost"]
+
+    def test_a_hit_that_puts_a_player_out_is_only_called_as_the_elimination(self, timers):
+        game, audio = with_audio(("ana", "bo", "cy"))
+        play(game, hit(20, 2)); play(game, MISS); play(game, MISS)
+        timers[0].fire(); heard(audio)
+        for i in range(1, 4):
+            game.on_board_state(i, [hit(5, 2)] * i)
+        assert heard(audio) == ["bo", "life_lost", "bo", "life_lost", "bo", "eliminated"]
+
+    def test_the_winner_is_called_with_the_dart_that_decides_it(self, timers):
+        game, audio = with_audio()
+        play(game, hit(20, 2)); play(game, MISS)
+        timers[0].fire(); heard(audio)
+        for i in range(1, 4):
+            game.on_board_state(i, [hit(5, 2)] * i)
+        assert heard(audio) == ["bo", "life_lost", "bo", "life_lost", "bo", "eliminated", "ana", "matchshot"]
+
+    def test_an_own_goal_is_called(self, timers):
+        game, audio = with_audio(own_goal=True)
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(20, 2)])
+        game.on_board_state(2, [hit(20, 2), hit(20, 2)])
+        assert heard(audio) == ["ana", "is_killer", "ana", "own_goal"]
+
+    def test_a_name_without_a_recording_falls_back(self, timers):
+        game, audio = with_audio(audio=FakeAudio(missing={"bo"}))
+        play(game, hit(20, 2)); play(game, MISS)
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(5, 2)])
+        assert heard(audio) == ["bo", "unknown_player", "life_lost"]
+
+    def test_a_tapped_dart_that_changes_the_outcome_is_called(self, timers):
+        game, audio = with_audio()
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(3, 1)])
+        game.correct_current_dart(0, "D20")
+        assert heard(audio) == ["ana", "is_killer"]
+
+    def test_undo_and_a_corrected_last_turn_make_no_calls(self, timers):
+        game, audio = with_audio()
+        play(game, hit(20, 2)); play(game, MISS)
+        play(game, hit(5, 2), hit(5, 2), hit(5, 1))
+        timers[0].fire(); heard(audio)
+        assert game.correct_last_dart(2, "D5")
+        assert heard(audio) == []
+        assert game.undo()
+        assert heard(audio) == []
+
+
 def pre_game(players=("ana", "bo", "cy"), db=None, **kw):
     client = FakeMqttClient()
     kw.setdefault("bull_off", True)
@@ -662,8 +803,60 @@ class TestBeforeTheGameStats:
         assert [tuple(r) for r in rows] == [("ana", 9), ("bo", 4)]
 
 
+class TestBeforeTheGameCalls:
+    def test_the_bull_off_is_called(self, timers):
+        game, audio = with_audio(("ana", "bo"), numbers=None, bull_off=True, throw_numbers=True)
+        timers[0].fire()
+        assert heard(audio) == ["matchon", "ana", "bull_off"]
+        play(game, FAR)
+        assert heard(audio) == ["bo", "bull_off"]
+
+    def test_the_number_throw_is_called_and_the_number_is_not_told_again_on_the_first_turn(self, timers):
+        game, audio = with_audio(("ana", "bo"), numbers=None, bull_off=False, throw_numbers=True)
+        timers[0].fire()
+        assert heard(audio) == ["matchon", "ana", "throw_number"]
+        play(game, hit(7, 1))
+        assert heard(audio) == ["ana", "your_number", "7", "bo", "throw_number"]
+        play(game, hit(12, 1))
+        assert heard(audio) == ["bo", "your_number", "12", "ana", "filler_after_name"]
+
+    def test_a_number_that_does_not_count_is_thrown_again(self, timers):
+        game, audio = with_audio(("ana", "bo"), numbers=None, bull_off=False, throw_numbers=True)
+        timers[0].fire(); heard(audio)
+        play(game, MISS)
+        assert heard(audio) == ["ana", "throw_again", "ana", "throw_number"]
+
+    def test_a_double_is_called_as_a_killer(self, timers):
+        game, audio = with_audio(("ana", "bo"), numbers=None, bull_off=False, throw_numbers=True)
+        timers[0].fire(); heard(audio)
+        play(game, hit(7, 2))
+        assert heard(audio) == ["ana", "your_number", "7", "ana", "is_killer", "bo", "throw_number"]
 
 
+class TestBullOffCalls:
+    def test_the_winner_is_called_and_then_throws_for_the_number(self, timers):
+        game, audio = with_audio(("ana", "bo"), numbers=None, bull_off=True, throw_numbers=True)
+        timers[0].fire(); heard(audio)
+        play(game, FAR)
+        heard(audio)
+        play(game, NEAR)
+        assert heard(audio) == ["bo", "starts_game", "bo", "throw_number"]
+
+    def test_a_tie_is_called_and_the_tied_players_are_up_again(self, timers):
+        game, audio = with_audio(("ana", "bo", "cy"), numbers=None, bull_off=True, throw_numbers=True)
+        timers[0].fire(); heard(audio)
+        play(game, NEAR); play(game, NEAR)
+        heard(audio)
+        play(game, FAR)
+        assert heard(audio) == ["bull_off_tie", "ana", "bull_off"]
+
+    def test_without_the_number_throw_the_winner_is_just_called_as_the_first_one_up(self, timers):
+        game, audio = with_audio(("ana", "bo"), numbers=None, bull_off=True, throw_numbers=False)
+        timers[0].fire(); heard(audio)
+        play(game, FAR)
+        heard(audio)
+        play(game, NEAR)
+        assert heard(audio) == ["bo", "your_number", str(game.numbers["bo"])]
 
 
 class TestBeforeTheGameController:

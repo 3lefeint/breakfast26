@@ -30,6 +30,7 @@ import copy
 import json
 import logging
 import random
+import threading
 
 from .player_colors import assign_colors
 from .turn_game import TurnGame, TurnGameController, dart_positions
@@ -39,6 +40,10 @@ log = logging.getLogger(__name__)
 LIVES = 3
 MAX_PLAYERS = 20
 NUMBERS = range(1, 21)
+
+# The opening calls follow the match start by this long, like in Elimination, so the screen has time
+# to come up and its audio page to connect.
+START_CALLS_DELAY_S = 0.5
 
 
 class KillerGame(TurnGame):
@@ -93,6 +98,7 @@ class KillerGame(TurnGame):
         self._last_turn_throws = []
         self._last_turn_events = []
         self._last_turn_player = None
+        self._silent = False             # a correction of a finished turn makes no calls
         self._one_dart_taken = False     # before the game: the dart of this visit has counted
         if self.stats_db:
             self.stats_db.open_match(self.match_id, self.MODE, LIVES)
@@ -203,6 +209,8 @@ class KillerGame(TurnGame):
             self._publish_event(event["kind"], **{k: v for k, v in event.items() if k != "kind"})
         self._publish_state()
         self._publish_turn(reset=True)
+        if self.audio and not self._silent:
+            self._call_pre_visit(events)
 
     def _bull_off_throw(self, player, throw):
         distance = self._bull_distance(throw)
@@ -318,11 +326,89 @@ class KillerGame(TurnGame):
             self.placements[name] = place
 
     def _announce_new_events(self):
+        new = []
         for event in self.turn_events:
             key = (event["kind"], event["dart"], event["victim"])
             if key not in self._published_events:
                 self._published_events.add(key)
                 self._publish_event(event["kind"], **{k: v for k, v in event.items() if k != "kind"})
+                new.append(event)
+        if new and self.audio and not self._silent:
+            self._call_events(new)
+
+    # ── the calls ────────────────────────────────────────────────────────────
+
+    def _play_start_calls(self):
+        """The match starts and the first player is up."""
+        with self._audio_batch():
+            self.audio.play("matchon")
+            self._call_thrower()
+
+    def _first_turn(self, player):
+        """Has this player not played a turn yet? A throw before the game is not a turn."""
+        return all(h["player"] != player or h["phase"] != "playing" for h in self._history)
+
+    def _call_player_up(self, player):
+        """A player is up. On their first turn they are told their number instead of that it is
+        their turn, later it is only their turn. Each player hears their number once, when it is
+        their turn, not all of them at once at the start."""
+        self._announce(player)
+        if self._first_turn(player) and not self.throw_numbers:
+            self.audio.play("your_number")
+            self.audio.play(str(self.numbers[player]))
+        else:
+            self.audio.play("filler_after_name")
+
+    def _call_thrower(self):
+        """Whoever is up now, before the game or in it."""
+        player = self.current_player
+        if self.phase == "playing":
+            self._call_player_up(player)
+        else:
+            self._announce(player)
+            self.audio.play("bull_off" if self.phase == "bull_off" else "throw_number")
+
+    def _call_pre_visit(self, events):
+        """What a throw before the game did, then who is up next. A number that is drawn is told
+        to the player, so they do not hear it again on their first turn."""
+        with self._audio_batch():
+            for e in events:
+                if e["kind"] == "again":
+                    self._announce(e["player"])
+                    self.audio.play("throw_again")
+                elif e["kind"] == "number":
+                    self._announce(e["player"])
+                    self.audio.play("your_number")
+                    self.audio.play(str(e["number"]))
+                elif e["kind"] == "killer":
+                    self._announce(e["player"])
+                    self.audio.play("is_killer")
+                elif e["kind"] == "bull_off_tie":
+                    self.audio.play("bull_off_tie")
+                elif e["kind"] == "starts" and self.phase != "playing":
+                    self._announce(e["player"])
+                    self.audio.play("starts_game")
+            if self.state == "playing":
+                self._call_thrower()
+
+    def _call_events(self, events):
+        """What the darts did: who became a killer, who lost a life, who is out. A hit that puts a
+        player out is only called as the elimination."""
+        out = {(e["dart"], e["victim"]) for e in events if e["kind"] == "out"}
+        with self._audio_batch():
+            for e in events:
+                if e["kind"] == "killer":
+                    self._announce(e["player"])
+                    self.audio.play("is_killer")
+                elif e["kind"] == "hit" and (e["dart"], e["victim"]) not in out:
+                    self._announce(e["victim"])
+                    self.audio.play("life_lost")
+                elif e["kind"] == "own_goal":
+                    self._announce(e["victim"])
+                    self.audio.play("own_goal")
+                elif e["kind"] == "out":
+                    self._announce(e["victim"])
+                    self.audio.play("eliminated")
 
     def _dart_seen(self, count, is_new_dart, is_correction):
         if self.phase != "playing" or self._one_dart_taken:
@@ -372,6 +458,13 @@ class KillerGame(TurnGame):
         self._turn_start = self._state_of(self._current)
         self._publish_state()
         self._publish_turn(reset=True)
+        if self.audio and not self._silent:
+            with self._audio_batch():
+                if self.state == "finished":
+                    self._announce(self.winner)
+                    self.audio.play("matchshot")
+                else:
+                    self._call_player_up(self._current)
 
     def _next_after(self, player):
         i = self.order.index(player)
@@ -396,6 +489,8 @@ class KillerGame(TurnGame):
         self._publish_state()
         self._publish_turn(reset=True)
         self._publish_last_turn([])
+        if self.audio:
+            threading.Timer(START_CALLS_DELAY_S, self._play_start_calls).start()
 
     # ── undo and corrections ─────────────────────────────────────────────────
 
@@ -439,9 +534,13 @@ class KillerGame(TurnGame):
         self._restore(snap)
         self._last_throws = throws
         self._current_darts = [self.value_of(t) for t in throws]
-        self._replay_turn()
-        if self.state == "playing":
-            self._complete_turn(list(self._last_throws))
+        self._silent = True
+        try:
+            self._replay_turn()
+            if self.state == "playing":
+                self._complete_turn(list(self._last_throws))
+        finally:
+            self._silent = False
         log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
         return True
 
@@ -452,7 +551,11 @@ class KillerGame(TurnGame):
         if self.stats_db:
             self._forget_stored_turn(snap, False)
         self._restore(snap)
-        self._pre_throw(parse_field(field))
+        self._silent = True
+        try:
+            self._pre_throw(parse_field(field))
+        finally:
+            self._silent = False
         log.info("Last throw corrected: %s", field)
         return True
 

@@ -179,6 +179,27 @@ The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
 
 There is no call per dart. Undo and a corrected total make no calls.
 
+### Killer-specific
+
+| Key(s) | When it plays | Required? |
+|---|---|---|
+| `matchon` | The game starts | Recommended |
+| `<player name>` + `bull_off` | The player throws at the bull to decide who starts | Recommended |
+| `bull_off_tie` | Players are tied for the closest dart at the bull and throw again | Recommended |
+| `<player name>` + `starts_game` | The bull-off is won (and the numbers are thrown next); without the number throw the player is called as the first one up instead | Recommended |
+| `<player name>` + `throw_number` | The player throws for their number with the other hand | Recommended |
+| `<player name>` + `throw_again` | The throw gave no number (taken, the bull, a miss), the player throws again | Recommended |
+| `<player name>` + `your_number` + `{n}` | A number was thrown: the player is told it. With the numbers drawn at random it is told when the player is up for the first time instead of that it is their turn | | Recommended |
+| `<player name>` + `filler_after_name` | A player is up: from the first turn on when the numbers were thrown, else from the second | Recommended |
+| `<player name>` + `is_killer` | A double on the own number makes a killer | Recommended |
+| `<player name>` + `life_lost` | A killer took a life from this player (the victim is named, a hit that puts a player out is only called as `eliminated`) | Recommended |
+| `<player name>` + `own_goal` | A killer hit their own number, with the own goal option on | Recommended |
+| `<player name>` + `eliminated` | A player is out | Recommended |
+| `<winner name>` + `matchshot` | The game ends, with the dart that decides it | Recommended |
+
+The calls follow the darts as they land, there is one group of calls per dart that did something and
+none for a dart that did not. Before the game only the first dart of a visit counts and is called at once. Undo and a corrected last turn make no calls.
+
 ## Recording your own pack
 
 You don't need full coverage to get started — missing keys are just
