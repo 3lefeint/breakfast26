@@ -25,6 +25,13 @@ export const SCORING_LABELS = {
   triples: 'Triples only',
 };
 
+export const SCORING_SHORT = {
+  standard: 'Standard',
+  singles: 'Singles only',
+  doubles: 'Doubles only',
+  triples: 'Triples only',
+};
+
 // The players, best first; players on the same total keep their seating order.
 export function ranked(tb) {
   return [...(tb.players || [])].sort((a, b) => b.score - a.score);

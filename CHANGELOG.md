@@ -16,6 +16,8 @@
 
 - Target Battle voice calls, and a `wheel` sound if you supply one (#21).
 
+- Stats: a Target Battle chip with a scoring profile filter (#21).
+
 ### Changed
 - Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).
 

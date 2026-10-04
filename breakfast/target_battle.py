@@ -82,6 +82,8 @@ class TargetBattleGame(TurnGame):
         self._score_called = False      # the points of the turn in progress were already said
         if self.stats_db:
             self.stats_db.open_match(self.match_id, self.MODE, rounds)
+            self.stats_db.record_target_battle_setup(
+                self.match_id, scoring, rounds, self.tiebreak_enabled, targets is not None)
         log.info("Game started: %s, %d rounds, %s", players, rounds, scoring)
 
     # ── targets and scoring ──────────────────────────────────────────────────

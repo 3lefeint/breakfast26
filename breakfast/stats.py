@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from breakfast.dartboard import field_centers
+from breakfast.target_battle_scoring import SCORING
 
 log = logging.getLogger(__name__)
 
@@ -92,6 +93,13 @@ CREATE TABLE IF NOT EXISTS target_battle_results (
     placement  INTEGER NOT NULL,
     score      INTEGER NOT NULL,
     UNIQUE(match_id, player)
+);
+CREATE TABLE IF NOT EXISTS target_battle_games (
+    match_id      TEXT PRIMARY KEY,
+    scoring       TEXT NOT NULL,
+    rounds        INTEGER NOT NULL,
+    tiebreak      INTEGER NOT NULL DEFAULT 0,
+    fixed_targets INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS dart_positions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -329,8 +337,9 @@ class StatsDB:
             players = [
                 r[0] for r in self._conn.execute(
                     "SELECT DISTINCT player FROM turns WHERE match_id = ?"
-                    " UNION SELECT DISTINCT player FROM elimination_turns WHERE match_id = ?",
-                    (match_id, match_id),
+                    " UNION SELECT DISTINCT player FROM elimination_turns WHERE match_id = ?"
+                    " UNION SELECT DISTINCT player FROM target_battle_turns WHERE match_id = ?",
+                    (match_id, match_id, match_id),
                 ).fetchall()
             ]
             log.debug("DB write: close_match match_id=%s players=%s", match_id, players)
@@ -559,6 +568,185 @@ class StatsDB:
         with self._lock:
             self._conn.execute("DELETE FROM target_battle_results WHERE match_id = ?", (match_id,))
             self._conn.commit()
+
+    def record_target_battle_setup(self, match_id: str, scoring: str, rounds: int, tiebreak: bool,
+                                   fixed_targets: bool):
+        """The rules a game was played under, so the statistics can keep the scoring profiles
+        apart."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO target_battle_games (match_id, scoring, rounds, tiebreak, fixed_targets)"
+                " VALUES (?, ?, ?, ?, ?)", (match_id, scoring, rounds, int(tiebreak), int(fixed_targets)))
+            self._conn.commit()
+
+    def match_target_battle_stats(self, match_id: str) -> dict:
+        """One Target Battle game: its rules, the players by placement with their totals, and every
+        round with its target and what each player scored."""
+        with self._lock:
+            setup = self._conn.execute(
+                "SELECT scoring, rounds FROM target_battle_games WHERE match_id = ?", (match_id,)).fetchone()
+            results = self._conn.execute(
+                "SELECT player, placement, score FROM target_battle_results WHERE match_id = ?"
+                " ORDER BY placement, score DESC, player", (match_id,)).fetchall()
+            turns = self._conn.execute(
+                "SELECT round_no, target, tiebreak, player, score FROM target_battle_turns"
+                " WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+        history = {}
+        for t in turns:
+            row = history.setdefault((bool(t["tiebreak"]), t["round_no"]), {
+                "round": t["round_no"], "tiebreak": bool(t["tiebreak"]), "target": t["target"], "scores": {}})
+            row["scores"][t["player"]] = t["score"]
+        return {
+            "scoring": setup["scoring"] if setup else "standard",
+            "rounds": setup["rounds"] if setup else None,
+            "players": [{"player": r["player"], "placement": r["placement"], "score": r["score"]} for r in results],
+            "history": list(history.values()),
+        }
+
+    def target_battle_overview(self, scoring: str = "standard") -> dict:
+        """The Target Battle statistics of one scoring profile (older games count as standard).
+
+        Wins, placements, form and head to head come from games with at least two players, the
+        numbers about the throwing from every finished game, played alone or not. Players flagged
+        `hidden` are left out. Tiebreak turns are not part of the throwing numbers. A dart is a hit
+        when it lands on the target number, in any ring; darts of a turn whose total was corrected
+        are not counted."""
+        scope = ("m.game_mode = 'Target Battle' AND COALESCE(g.scoring, 'standard') = ?"
+                 " AND EXISTS (SELECT 1 FROM target_battle_results x WHERE x.match_id = m.match_id)")
+        joins = "JOIN matches m ON m.match_id = {t}.match_id LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
+        with self._lock:
+            matches = self._conn.execute(
+                "SELECT m.match_id, m.started_at, m.ended_at, m.points_start AS rounds FROM matches m"
+                " LEFT JOIN target_battle_games g ON g.match_id = m.match_id WHERE " + scope +
+                " ORDER BY m.started_at", (scoring,)).fetchall()
+            results = self._conn.execute(
+                "SELECT r.match_id, r.player, r.placement, r.score, COALESCE(p.hidden, 0) AS hidden"
+                " FROM target_battle_results r " + joins.format(t="r") +
+                " LEFT JOIN players p ON p.name = r.player WHERE " + scope + " ORDER BY r.id", (scoring,)).fetchall()
+            turns = self._conn.execute(
+                "SELECT t.match_id, t.player, t.target, t.tiebreak, t.darts_count, t.score"
+                " FROM target_battle_turns t " + joins.format(t="t") + " WHERE " + scope + " ORDER BY t.id",
+                (scoring,)).fetchall()
+            darts = self._conn.execute(
+                "SELECT d.match_id, d.player, d.turn, d.field FROM dart_positions d " + joins.format(t="d") +
+                " WHERE d.game_mode = 'Target Battle' AND d.misread = 0 AND " + scope, (scoring,)).fetchall()
+        started = {m["match_id"]: m["started_at"][:10] for m in matches}
+        rounds_of = {m["match_id"]: m["rounds"] for m in matches}
+        minutes = [(datetime.fromisoformat(m["ended_at"]) - datetime.fromisoformat(m["started_at"])).total_seconds() / 60
+                   for m in matches if m["ended_at"]]
+        summary = {
+            "games": len(matches),
+            "total_minutes": round(sum(minutes), 1),
+            "avg_minutes": round(sum(minutes) / len(minutes), 1) if minutes else None,
+            "longest_minutes": round(max(minutes), 1) if minutes else None,
+        }
+
+        in_match = {}
+        for r in results:
+            in_match.setdefault(r["match_id"], []).append(r)
+        stats = {}
+
+        def player(name):
+            return stats.setdefault(name, {
+                "player": name, "placed": {}, "expected": 0.0, "form": [], "solo_games": 0,
+                "turns": 0, "points": 0, "darts": 0, "hits": 0, "perfect_turns": 0, "best_turn": None,
+                "by_target": {}})
+
+        pairs = {}
+        best_dart = max(SCORING.get(scoring, {1: 1}).values())
+        for match_id in (m["match_id"] for m in matches):
+            rows = in_match.get(match_id, [])
+            size = len(rows)
+            visible = [r for r in rows if not r["hidden"]]
+            if size < 2:
+                for r in visible:
+                    player(r["player"])["solo_games"] += 1
+                continue
+            for r in visible:
+                s = player(r["player"])
+                s["placed"][r["placement"]] = s["placed"].get(r["placement"], 0) + 1
+                s["expected"] += 1.0 / size
+                s["form"].append({
+                    "match_id": match_id, "date": started[match_id], "placement": r["placement"], "size": size,
+                    "opponents": sorted(o["player"] for o in rows if o["player"] != r["player"])})
+            for i, r1 in enumerate(visible):
+                for r2 in visible[i + 1:]:
+                    (a, pa), (b, pb) = sorted([(r1["player"], r1["placement"]), (r2["player"], r2["placement"])])
+                    entry = pairs.setdefault((a, b), {"a": a, "b": b, "a_ahead": 0, "b_ahead": 0, "games": 0})
+                    entry["games"] += 1
+                    if pa != pb:
+                        entry["a_ahead" if pa < pb else "b_ahead"] += 1
+
+        # The throwing: the n-th turn of a player in a game is the one its darts are stored under.
+        hidden = {r["player"] for r in results if r["hidden"]}
+        ordinal, target_of = {}, {}
+        for t in turns:
+            key = (t["match_id"], t["player"])
+            ordinal[key] = ordinal.get(key, 0) + 1
+            target_of[key + (ordinal[key],)] = (t["target"], t["tiebreak"])
+            if t["tiebreak"] or t["player"] in hidden:
+                continue
+            s = player(t["player"])
+            s["turns"] += 1
+            s["points"] += t["score"]
+            if t["darts_count"] == 3 and t["score"] == 3 * best_dart:
+                s["perfect_turns"] += 1
+            if s["best_turn"] is None or t["score"] > s["best_turn"]["score"]:
+                s["best_turn"] = {"score": t["score"], "date": started[t["match_id"]], "match_id": t["match_id"]}
+        for d in darts:
+            target = target_of.get((d["match_id"], d["player"], d["turn"]))
+            if target is None or target[1] or d["player"] in hidden:
+                continue
+            s = player(d["player"])
+            field = re.fullmatch(r"[SDT](\d{1,2})", (d["field"] or "").upper())
+            hit = bool(field and int(field.group(1)) == target[0])
+            s["darts"] += 1
+            s["hits"] += hit
+            by = s["by_target"].setdefault(target[0], {"target": target[0], "darts": 0, "hits": 0})
+            by["darts"] += 1
+            by["hits"] += hit
+
+        players = []
+        for name, s in stats.items():
+            games = sum(s["placed"].values())
+            wins = s["placed"].get(1, 0)
+            best, run = 0, 0
+            for g in s["form"]:
+                run = run + 1 if g["placement"] == 1 else 0
+                best = max(best, run)
+            players.append({
+                "player": name,
+                "games": games, "wins": wins, "win_pct": round(wins / games * 100, 1) if games else 0.0,
+                "placements": {"first": wins, "second": s["placed"].get(2, 0), "third": s["placed"].get(3, 0),
+                               "other": sum(n for place, n in s["placed"].items() if place > 3)},
+                "expected_wins": round(s["expected"], 2),
+                "form": {"games": s["form"][-15:], "current_streak": run, "best_streak": best},
+                "solo_games": s["solo_games"],
+                "turns": s["turns"],
+                "avg_points_per_round": round(s["points"] / s["turns"], 2) if s["turns"] else None,
+                "darts": s["darts"], "hits": s["hits"],
+                "hit_pct": round(s["hits"] / s["darts"] * 100, 1) if s["darts"] else None,
+                "perfect_turns": s["perfect_turns"], "best_turn": s["best_turn"],
+                "by_target": sorted(s["by_target"].values(), key=lambda b: b["target"]),
+            })
+        players.sort(key=lambda p: (-p["games"], -p["wins"], -p["turns"], p["player"]))
+
+        best_game = None
+        for r in results:
+            if not r["hidden"] and (best_game is None or r["score"] > best_game["score"]):
+                best_game = {"score": r["score"], "rounds": rounds_of[r["match_id"]], "player": r["player"],
+                             "date": started[r["match_id"]], "match_id": r["match_id"]}
+        best_turn = None
+        for p in players:
+            if p["best_turn"] and (best_turn is None or p["best_turn"]["score"] > best_turn["score"]):
+                best_turn = {"score": p["best_turn"]["score"], "player": p["player"], "date": p["best_turn"]["date"]}
+        return {
+            "scoring": scoring,
+            "summary": summary,
+            "records": {"best_game": best_game, "best_turn": best_turn},
+            "players": players,
+            "head_to_head": sorted(pairs.values(), key=lambda e: (-e["games"], e["a"], e["b"])),
+        }
 
     def reopen_match(self, match_id: str):
         """Clear `ended_at` — undoing a match finish walks the
@@ -921,13 +1109,15 @@ class StatsDB:
         mode_sql = {
             "x01": f" AND COALESCE(game_mode, '') NOT IN {_OTHER_MODES_SQL}",
             "elimination": " AND game_mode = 'Elimination'",
+            "target_battle": " AND game_mode = 'Target Battle'",
         }.get(mode, "")
         with self._lock:
             rows = self._conn.execute(
                 "SELECT match_id, started_at, ended_at, game_mode, points_start, players"
                 " FROM matches"
                 " WHERE (EXISTS (SELECT 1 FROM turns WHERE turns.match_id = matches.match_id)"
-                "    OR EXISTS (SELECT 1 FROM elimination_turns WHERE elimination_turns.match_id = matches.match_id))"
+                "    OR EXISTS (SELECT 1 FROM elimination_turns WHERE elimination_turns.match_id = matches.match_id)"
+                "    OR EXISTS (SELECT 1 FROM target_battle_turns WHERE target_battle_turns.match_id = matches.match_id))"
                 + mode_sql +
                 " ORDER BY started_at DESC LIMIT ?",
                 (limit,),
@@ -944,8 +1134,15 @@ class StatsDB:
                 total_row = self._conn.execute(
                     "SELECT COUNT(*) as n FROM legs WHERE match_id=?", (mid,)
                 ).fetchone()
+            scoring = None
+            if r["game_mode"] == "Target Battle":
+                with self._lock:
+                    setup = self._conn.execute(
+                        "SELECT scoring FROM target_battle_games WHERE match_id = ?", (mid,)).fetchone()
+                scoring = setup["scoring"] if setup else "standard"
             result.append({
                 "match_id":    mid,
+                "scoring":     scoring,
                 "started_at":  r["started_at"],
                 "ended_at":    r["ended_at"],
                 "game_mode":   r["game_mode"],
@@ -996,6 +1193,8 @@ class StatsDB:
             ).fetchone()
         if mode_row and mode_row["game_mode"] == "Elimination":
             return self.match_elimination_stats(match_id)
+        if mode_row and mode_row["game_mode"] == "Target Battle":
+            return self.match_target_battle_stats(match_id)
         with self._lock:
             rows = self._conn.execute(f"""
                 SELECT player,

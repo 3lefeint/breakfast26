@@ -3,10 +3,12 @@
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import StatsX01 from './stats/StatsX01.svelte';
   import StatsElimination from './stats/StatsElimination.svelte';
+  import StatsTargetBattle from './stats/StatsTargetBattle.svelte';
 
   const MODES = [
     { id: 'x01', label: 'X01' },
     { id: 'elimination', label: 'Elimination' },
+    { id: 'target_battle', label: 'Target Battle' },
   ];
 
   function remembered() {
@@ -37,6 +39,8 @@
 
 {#if mode === 'x01'}
   <StatsX01 />
+{:else if mode === 'target_battle'}
+  <StatsTargetBattle />
 {:else}
   <StatsElimination />
 {/if}

@@ -647,7 +647,7 @@ async def achievements_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination)$")):
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle)$")):
     if not _stats_db:
         return []
     return _stats_db.recent_matches(mode=mode)
@@ -676,6 +676,14 @@ async def stats_elimination_overview():
             for p in _stats_db.all_elimination_stats()
         ],
     }
+
+
+@app.get("/api/stats/target-battle/overview")
+async def stats_target_battle_overview(scoring: str = Query(default="standard", pattern="^(standard|singles|doubles|triples)$")):
+    if not _stats_db:
+        return {"scoring": scoring, "summary": {}, "records": {"best_game": None, "best_turn": None},
+                "players": [], "head_to_head": []}
+    return _stats_db.target_battle_overview(scoring)
 
 
 @app.get("/api/stats/match/{match_id}")

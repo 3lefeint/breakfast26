@@ -3,6 +3,7 @@
   // its per-player detail.
   import { onMount } from 'svelte';
   import { cap } from '../../../lib/util.js';
+  import { SCORING_SHORT } from '../../../lib/targetBattle.js';
 
   let { mode } = $props();
 
@@ -45,7 +46,12 @@
     return n + suffix;
   }
   function matchDate(m) { return m.started_at ? new Date(m.started_at).toLocaleString() : '?'; }
-  function matchMode(m) { return [m.game_mode, m.points_start ? m.points_start + ' pts' : ''].filter(Boolean).join(' '); }
+  function matchMode(m) {
+    if (m.game_mode === 'Target Battle') {
+      return `Target Battle · ${m.points_start} ${m.points_start === 1 ? 'round' : 'rounds'} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
+    }
+    return [m.game_mode, m.points_start ? m.points_start + ' pts' : ''].filter(Boolean).join(' ');
+  }
   function matchPlayers(m) { return (m.players || []).map(cap).join(' · '); }
   function legsLine(m) {
     const lw = m.legs_won || {};
@@ -77,6 +83,36 @@
           <div class="stats-match-detail open">
             {#if matchDetails[m.match_id] == null}
               <div class="stats-empty">Load failed.</div>
+            {:else if mode === 'target_battle'}
+              <table class="players-table stats-table detail">
+                <thead><tr><th>Player</th><th class="num-cell">Place</th><th class="num-cell">Points</th></tr></thead>
+                <tbody>
+                  {#each matchDetails[m.match_id].players as p}
+                    <tr>
+                      <td>{cap(p.player)}</td>
+                      <td class="num-cell">{ordinal(p.placement)}</td>
+                      <td class="num-cell">{p.score}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              <table class="players-table stats-table detail">
+                <thead>
+                  <tr>
+                    <th>Round</th><th class="num-cell">Target</th>
+                    {#each matchDetails[m.match_id].players as p}<th class="num-cell">{cap(p.player)}</th>{/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each matchDetails[m.match_id].history as r}
+                    <tr>
+                      <td>{r.tiebreak ? `Tiebreak ${r.round}` : r.round}</td>
+                      <td class="num-cell">{r.target}</td>
+                      {#each matchDetails[m.match_id].players as p}<td class="num-cell">{r.scores[p.player] ?? '—'}</td>{/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
             {:else if mode === 'elimination'}
               <table class="players-table stats-table detail">
                 <thead><tr><th>Player</th><th class="num-cell">Place</th><th class="num-cell">Lives left</th><th class="num-cell">Turns</th><th class="num-cell">Avg darts</th></tr></thead>

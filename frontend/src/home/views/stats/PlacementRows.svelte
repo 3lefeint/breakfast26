@@ -6,7 +6,7 @@
   import { cap } from '../../../lib/util.js';
   import { RANKS } from './ranks.js';
 
-  let { players = [] } = $props();
+  let { players = [], emptyText = 'No Elimination games yet — play one first.' } = $props();
 
   let rows = $derived(players.map((p) => {
     const share = (n) => (p.games ? (n / p.games) * 100 : 0);
@@ -25,7 +25,7 @@
 </script>
 
 {#if !rows.length}
-  <div class="empty">No Elimination games yet — play one first.</div>
+  <div class="empty">{emptyText}</div>
 {:else}
   <div class="legend">
     {#each RANKS.filter((r) => r.key !== 'other' || hasLower) as r}
