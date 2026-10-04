@@ -645,6 +645,7 @@
   <button type="submit" class="btn btn-save">Save</button>
 </form>
 
+{#if activeTab === 'general'}
 <div class="settings-section maintenance">
   <div class="settings-section-title">Application</div>
   <p class="note">Restarts the whole Breakfast process — needed to apply any "restart to apply" setting above. Relies on the container's restart policy (or your process supervisor) to bring it back up; if you're running it bare (no supervisor), it just stops.</p>
@@ -676,6 +677,7 @@
     {/if}
   {/if}
 </div>
+{/if}
 
 <style>
   .settings-section {
