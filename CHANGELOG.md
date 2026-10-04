@@ -21,6 +21,7 @@
 
 ### Changed
 - Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).
+- Home: the cards are grouped as Elimination, Target Battle, Killer (coming soon) and TV, then Players and Stats, then Board and Settings.
 
 ## [0.8.1] - 2026-10-03
 

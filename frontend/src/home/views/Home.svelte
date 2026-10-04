@@ -1,9 +1,8 @@
 <script>
-  // Card/hub landing page (decided 2026-07-06) — Games/TV/Board/Players/
-  // Stats/Settings. Explicitly not a hamburger menu or bottom tab bar.
-  // Games is the featured/primary card (accent gradient, spans 2
-  // columns) since starting a game is the most common action; the rest
-  // sit in a regular grid. Cards stagger in on mount (fly + fade).
+  // Card/hub landing page (decided 2026-07-06). Explicitly not a hamburger
+  // menu or bottom tab bar. Rows: the games and the TV (four cards), then
+  // Players and Stats, then Board and Settings (two cards each, half the
+  // width). Cards stagger in on mount (fly + fade).
   import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
 
@@ -19,13 +18,14 @@
   });
 
   let cards = $derived([
-    { href: '#elimination', icon: '🎯', label: 'Games', sub: 'Elimination', featured: true },
+    { href: '#elimination', icon: '🎯', label: 'Elimination', sub: 'Beat the last score' },
     { href: '#target-battle', icon: '🎡', label: 'Target Battle', sub: 'All throw at one number' },
+    { icon: '🗡️', label: 'Killer', sub: 'Coming soon', disabled: true },
     { href: '/tv', icon: '📺', label: 'TV', sub: 'Live display & controls' },
-    { href: boardAddress, icon: '🎮', label: 'Board', sub: boardAddress ? 'Board manager' : 'Not configured', external: true, disabled: !boardAddress },
-    { href: '#players', icon: '👤', label: 'Players' },
-    { href: '#stats', icon: '📊', label: 'Stats' },
-    { href: '#settings', icon: '⚙️', label: 'Settings' },
+    { href: '#players', icon: '👤', label: 'Players', wide: true },
+    { href: '#stats', icon: '📊', label: 'Stats', wide: true },
+    { href: boardAddress, icon: '🎮', label: 'Board', sub: boardAddress ? 'Board manager' : 'Not configured', external: true, disabled: !boardAddress, wide: true },
+    { href: '#settings', icon: '⚙️', label: 'Settings', wide: true },
   ]);
 </script>
 
@@ -33,7 +33,7 @@
   {#each cards as card, i (card.label)}
     <a
       class="card"
-      class:featured={card.featured}
+      class:wide={card.wide}
       class:disabled={card.disabled}
       href={card.disabled ? undefined : card.href}
       target={card.external ? '_blank' : undefined}
@@ -50,7 +50,7 @@
 <style>
   .hub {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
   }
   .card {
@@ -69,22 +69,7 @@
   }
   .card:hover .icon-badge { transform: scale(1.08); }
   .card.disabled { opacity: 0.4; pointer-events: none; }
-  .card.featured {
-    grid-column: span 2;
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 1rem;
-    padding: 1.5rem 1.75rem;
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--surface)), var(--surface) 65%);
-    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  }
-  .card.featured .icon-badge {
-    width: 3.5rem; height: 3.5rem; font-size: 1.6rem;
-    background: color-mix(in srgb, var(--accent) 30%, var(--surface));
-  }
-  .card.featured .label { font-size: 1.15rem; }
-  .card.featured .sub { text-align: left; }
+  .card.wide { grid-column: span 2; }
   .icon-badge {
     display: flex; align-items: center; justify-content: center;
     width: 3rem; height: 3rem; border-radius: 999px;
@@ -94,4 +79,10 @@
   .icon { font-size: 1.4rem; line-height: 1; }
   .label { font-weight: 700; }
   .sub { font-size: 0.75rem; color: var(--muted); }
+
+  /* Narrow screens: two cards per row, in the same order. */
+  @media (max-width: 640px) {
+    .hub { grid-template-columns: repeat(2, 1fr); }
+    .card.wide { grid-column: span 1; }
+  }
 </style>

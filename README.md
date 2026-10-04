@@ -279,7 +279,7 @@ The live scoreboard itself (X01, Elimination and Target Battle) lives on the sep
 
 | View | What it shows |
 |------|--------------|
-| **Home** (`/`) | Hub landing page: Games (Elimination setup/rematch), Target Battle (setup, result and rematch), TV, Board (jump-off link to the local Autodarts board manager, if configured), Players, Stats, Settings |
+| **Home** (`/`) | Hub landing page: Elimination (setup/rematch), Target Battle (setup, result and rematch), Killer (marked as coming soon), TV, then Players, Stats, Board (jump-off link to the local Autodarts board manager, if configured) and Settings |
 | **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) or the live Target Battle (a large board with the wheel and the darts of the round, the players with their darts, a table of every round, tap-to-correct darts) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn; with no match running and the board connected, the idle screen shows the dart boxes and the dartboard instead of "Waiting for match…" |
 | **Players** | Known players list — name (opens the player's profile), Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Profile** (`#profile/<name>`) | A color picker for the player (games use it for the player's darts, none set means a random one per game), and the player's achievements as badges, in sections by game mode, each split into earned and still to earn (with the progress to the next tier); secret ones that are not earned yet come last as a question mark |
