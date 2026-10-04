@@ -2,32 +2,23 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-04
+
 ### Added
-- Achievements: the stats database records which player earned which achievement, with tiers, taken back when an undo or correction reopens the match (#23)
+- Achievements: 91 of them for every game mode, from Bullseye to the Four-Course Meal, some with tiers and 34 secret ones. The stats database records who earned which, an undo or correction that reopens a match takes it back (#23).
 - Achievements: `/tv` shows an unlock banner when a player earns one, several one after the other, and plays `achievement_<id>` or `achievement` from the `achievements/` folder of the sound directory if a file exists (#23).
 - Player profile: the Players tab opens a profile with the player's achievements as badges, in sections by game mode, with the progress to the next tier and the share of players who have each (#23).
-- 19 achievements in all: First Breakfast, Shanghai, Triple Double, 180!, Triple Bull, Maximum Collector and A Hundred Served for every game, and Job Done, Last-Dart Finish, Double Trouble, High Finish, Straight to the Double, Big Fish and Perfect Leg for X01 (#23).
-- An achievement without a badge motif yet shows a star (#23).
-- Badge motifs for every achievement, drawn in a style per game mode (#23).
-- Every X01 and Elimination turn stores the time it was played (#27).
-- Player profile: a color picker for the player's color, stored with the player (#29).
-- Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
-- Target Battle game with a setup page, a live view with a wheel for the target and a result page (#21).
-- Killer game, started through `/api/killer/*` or MQTT (#20).
-- Killer: a setup page, a live view on `/tv` and a result page with a rematch and a correction of the last turn (#20).
+- Badge motifs for every achievement, drawn in a style per game mode; an achievement without a motif shows a star (#23).
+- Target Battle game with a setup page, a live view with a wheel for the target, a result page, voice calls, a `wheel` sound if you supply one, and a Stats chip with a scoring profile filter (#21).
+- Killer game, started through `/api/killer/*` or MQTT, with a setup page, a live view on `/tv` that colors the field of every number in the color of its player, a result page with a rematch and a correction of the last turn, voice calls and a Stats chip (#20).
 - Killer: a bull-off for the first player and a throw for the numbers before the game, both on by default (#20).
-- Killer voice calls (#20).
-- Stats: a Killer chip with the records, placements, form, head to head and what each player did (#20).
-
-- 42 more achievements for X01, Elimination and across all games, 24 of them secret (#23).
-- 15 Killer achievements, four of them secret, and the Four-Course Meal (#23).
-- 15 Target Battle achievements, five of them secret (#23).
-- Target Battle voice calls, and a `wheel` sound if you supply one (#21).
-
-- Stats: a Target Battle chip with a scoring profile filter (#21).
+- Every X01 and Elimination turn stores the time it was played (#27).
+- Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
+- Player profile: a color picker for the player's color, stored with the player (#29).
 
 ### Changed
 - Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).
+- Elimination, Target Battle and Killer share one base for the darts of a turn, corrections and undo; nothing changes from the outside (#28).
 - Home: the cards are grouped as Elimination, Target Battle, Killer and TV, then Players and Stats, then Board and Settings.
 
 ## [0.8.1] - 2026-10-03
