@@ -64,6 +64,24 @@ class TestHandleBoardMessage:
         assert mqtt_pub.freeplay_calls == []
         assert audio.calls == []
 
+    def test_active_target_battle_routes_to_its_controller_not_freeplay(self):
+        state = GameState()
+        mqtt_pub, audio = FakeMqttPub(), FakeAudio()
+        tb_ctrl = FakeElimCtrl(active=True)
+        _handle_board_message(
+            {"numThrows": 1, "throws": [_throw(20, 3)]}, state, mqtt_pub, FakeElimCtrl(), audio,
+            prev_count=0, tb_ctrl=tb_ctrl)
+        assert tb_ctrl.board_state_calls == [(1, [_throw(20, 3)])]
+        assert mqtt_pub.freeplay_calls == [] and audio.calls == []
+
+    def test_a_running_elimination_wins_over_target_battle(self):
+        state = GameState()
+        elim_ctrl, tb_ctrl = FakeElimCtrl(active=True), FakeElimCtrl(active=True)
+        _handle_board_message(
+            {"numThrows": 1, "throws": [_throw(20, 3)]}, state, None, elim_ctrl, None,
+            prev_count=0, tb_ctrl=tb_ctrl)
+        assert elim_ctrl.board_state_calls and tb_ctrl.board_state_calls == []
+
     def test_freeplay_publishes_mqtt_on_count_change(self):
         state = GameState()
         mqtt_pub = FakeMqttPub()

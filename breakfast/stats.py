@@ -74,6 +74,25 @@ CREATE TABLE IF NOT EXISTS elimination_turns (
     lives_before INTEGER,
     created_at  TEXT
 );
+CREATE TABLE IF NOT EXISTS target_battle_turns (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id    TEXT NOT NULL,
+    player      TEXT NOT NULL,
+    round_no    INTEGER NOT NULL,
+    target      INTEGER NOT NULL,
+    tiebreak    INTEGER NOT NULL DEFAULT 0,
+    darts_count INTEGER NOT NULL,
+    score       INTEGER NOT NULL,
+    created_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS target_battle_results (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id   TEXT NOT NULL,
+    player     TEXT NOT NULL,
+    placement  INTEGER NOT NULL,
+    score      INTEGER NOT NULL,
+    UNIQUE(match_id, player)
+);
 CREATE TABLE IF NOT EXISTS dart_positions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id    TEXT    NOT NULL,
@@ -117,13 +136,16 @@ CREATE INDEX IF NOT EXISTS idx_elim_turns_match   ON elimination_turns   (match_
 _TURN_TABLES = {"all": ("turns", "elimination_turns"), "x01": ("turns",), "elimination": ("elimination_turns",)}
 
 
+# The games that are not X01. Everything else in `matches` is an X01 variant.
+_OTHER_MODES_SQL = "('Elimination', 'Target Battle')"
+
 # A match counts as "solo" (practice, no opponent) when exactly one distinct
 # player ever appears in its `turns` rows — Elimination is excluded here
 # since EliminationController.start() already refuses fewer than 2 players,
 # so this predicate only ever matches X01. Shared by every query that must
 # not let solo sessions inflate competitive win/loss stats.
 _SOLO_X01_SQL = (
-    "m.game_mode != 'Elimination' AND "
+    f"m.game_mode NOT IN {_OTHER_MODES_SQL} AND "
     "(SELECT COUNT(DISTINCT player) FROM turns WHERE turns.match_id = m.match_id) <= 1"
 )
 
@@ -249,7 +271,7 @@ class StatsDB:
         reaches the required leg count) so pre-existing history isn't
         silently missing from x01_win_counts()."""
         rows = self._conn.execute(
-            "SELECT match_id FROM matches WHERE winner IS NULL AND game_mode != 'Elimination'"
+            f"SELECT match_id FROM matches WHERE winner IS NULL AND game_mode NOT IN {_OTHER_MODES_SQL}"
         ).fetchall()
         for r in rows:
             last_leg = self._conn.execute(
@@ -394,7 +416,7 @@ class StatsDB:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT winner as player, COUNT(*) as n FROM matches m"
-                " WHERE winner IS NOT NULL AND game_mode != 'Elimination'"
+                f" WHERE winner IS NOT NULL AND game_mode NOT IN {_OTHER_MODES_SQL}"
                 f" AND NOT ({_SOLO_X01_SQL})"
                 " GROUP BY winner"
             ).fetchall()
@@ -460,6 +482,83 @@ class StatsDB:
                 )
                 self._conn.commit()
         self._match_changed(match_id)
+
+    # ── Target Battle ─────────────────────────────────────────────────────────
+
+    def insert_target_battle_turn(self, match_id, player, round_no, target, tiebreak, score,
+                                  darts_count, positions=None):
+        """One finished turn: the round it belonged to, the target of that round and what the
+        darts scored. positions: one {"field", "x", "y"} (or None) per dart."""
+        log.debug("DB write: insert_target_battle_turn match_id=%s player=%s round=%s target=%s "
+                  "tiebreak=%s score=%s darts_count=%s",
+                  match_id, player, round_no, target, tiebreak, score, darts_count)
+        with self._lock:
+            self._ensure_player(player)
+            self._conn.execute(
+                "INSERT INTO target_battle_turns"
+                " (match_id, player, round_no, target, tiebreak, darts_count, score, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (match_id, player, round_no, target, int(tiebreak), darts_count, score, _now_iso()))
+            turn = self._conn.execute(
+                "SELECT COUNT(*) FROM target_battle_turns WHERE match_id = ? AND player = ?",
+                (match_id, player)).fetchone()[0]
+            self._insert_positions(match_id, "Target Battle", player, 1, turn,
+                                   [((p or {}).get("field"), p) for p in positions or []])
+            self._conn.commit()
+
+    def correct_last_target_battle_turn(self, match_id: str, player: str, score: int):
+        """The total of a finished turn was corrected: rewrite the score of the player's most
+        recent turn. Its darts were misread, so neither their fields nor positions are trusted."""
+        log.debug("DB write: correct_last_target_battle_turn match_id=%s player=%s score=%s",
+                  match_id, player, score)
+        with self._lock:
+            self._conn.execute(
+                "UPDATE target_battle_turns SET score = ? WHERE id = ("
+                " SELECT id FROM target_battle_turns WHERE match_id = ? AND player = ?"
+                " ORDER BY id DESC LIMIT 1)", (score, match_id, player))
+            self._conn.execute(
+                "UPDATE dart_positions SET corrected = 1, misread = 1"
+                " WHERE match_id = ? AND game_mode = 'Target Battle' AND player = ? AND turn = ("
+                " SELECT COUNT(*) FROM target_battle_turns WHERE match_id = ? AND player = ?)",
+                (match_id, player, match_id, player))
+            self._conn.commit()
+        self._match_changed(match_id)
+
+    def delete_last_target_battle_turn(self, match_id: str, player: str):
+        """Undo insert_target_battle_turn() for the player's most recent turn."""
+        log.debug("DB write: delete_last_target_battle_turn match_id=%s player=%s", match_id, player)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id FROM target_battle_turns WHERE match_id = ? AND player = ?"
+                " ORDER BY id DESC LIMIT 1", (match_id, player)).fetchone()
+            if row:
+                turn = self._conn.execute(
+                    "SELECT COUNT(*) FROM target_battle_turns WHERE match_id = ? AND player = ?",
+                    (match_id, player)).fetchone()[0]
+                self._conn.execute(
+                    "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'Target Battle'"
+                    " AND player = ? AND turn = ?", (match_id, player, turn))
+                self._conn.execute("DELETE FROM target_battle_turns WHERE id = ?", (row["id"],))
+                self._conn.commit()
+        self._match_changed(match_id)
+
+    def record_target_battle_results(self, match_id: str, results: list):
+        """results: (player, placement, score) per player. Players who tie share a placement."""
+        log.debug("DB write: record_target_battle_results match_id=%s results=%s", match_id, results)
+        with self._lock:
+            for player, placement, score in results:
+                self._ensure_player(player)
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO target_battle_results (match_id, player, placement, score)"
+                    " VALUES (?, ?, ?, ?)", (match_id, player, placement, score))
+            self._conn.commit()
+
+    def delete_target_battle_results(self, match_id: str):
+        """Un-record the results of a match, used when undoing the turn that finished it."""
+        log.debug("DB write: delete_target_battle_results match_id=%s", match_id)
+        with self._lock:
+            self._conn.execute("DELETE FROM target_battle_results WHERE match_id = ?", (match_id,))
+            self._conn.commit()
 
     def reopen_match(self, match_id: str):
         """Clear `ended_at` — undoing a match finish walks the
@@ -677,6 +776,9 @@ class StatsDB:
             self._conn.execute("DELETE FROM turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM elimination_turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM elimination_results WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM target_battle_turns WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM target_battle_results WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Target Battle'", (player,))
             self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
             self._conn.commit()
@@ -708,8 +810,10 @@ class StatsDB:
             rows = self._conn.execute(
                 "SELECT player FROM turns WHERE match_id = ?"
                 " UNION SELECT player FROM elimination_turns WHERE match_id = ?"
-                " UNION SELECT player FROM elimination_results WHERE match_id = ?",
-                (match_id, match_id, match_id)).fetchall()
+                " UNION SELECT player FROM elimination_results WHERE match_id = ?"
+                " UNION SELECT player FROM target_battle_turns WHERE match_id = ?"
+                " UNION SELECT player FROM target_battle_results WHERE match_id = ?",
+                (match_id, match_id, match_id, match_id, match_id)).fetchall()
         return sorted(r[0] for r in rows)
 
     def player_final_matches(self, player: str, since: str) -> list:
@@ -721,8 +825,10 @@ class StatsDB:
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ? AND ("
                 " EXISTS (SELECT 1 FROM turns t WHERE t.match_id = m.match_id AND t.player = ?)"
                 " OR EXISTS (SELECT 1 FROM elimination_turns e WHERE e.match_id = m.match_id AND e.player = ?)"
-                " OR EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id AND r.player = ?))"
-                " ORDER BY m.started_at, m.match_id", (since, player, player, player)).fetchall()
+                " OR EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id AND r.player = ?)"
+                " OR EXISTS (SELECT 1 FROM target_battle_turns b WHERE b.match_id = m.match_id AND b.player = ?)"
+                " OR EXISTS (SELECT 1 FROM target_battle_results c WHERE c.match_id = m.match_id AND c.player = ?))"
+                " ORDER BY m.started_at, m.match_id", (since, player, player, player, player, player)).fetchall()
         return [dict(r) for r in rows]
 
     def turns_for_achievements(self, match_id: str, player: str, game_mode: str) -> list:
@@ -731,11 +837,11 @@ class StatsDB:
         stored darts except those of a turn whose total was corrected (a dart set by a
         correction counts, its field is known)."""
         with self._lock:
-            if game_mode == "Elimination":
+            if game_mode in ("Elimination", "Target Battle"):
                 rows = self._conn.execute(
                     "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"
-                    " AND game_mode = 'Elimination' AND misread = 0 ORDER BY turn, dart_number",
-                    (match_id, player)).fetchall()
+                    " AND game_mode = ? AND misread = 0 ORDER BY turn, dart_number",
+                    (match_id, player, game_mode)).fetchall()
                 turns = {}
                 for r in rows:
                     turns.setdefault(r["turn"], []).append((r["field"] or "").upper())
@@ -758,7 +864,9 @@ class StatsDB:
                 "SELECT COUNT(DISTINCT p.player) FROM ("
                 " SELECT player, match_id FROM turns"
                 " UNION SELECT player, match_id FROM elimination_turns"
-                " UNION SELECT player, match_id FROM elimination_results) p"
+                " UNION SELECT player, match_id FROM elimination_results"
+                " UNION SELECT player, match_id FROM target_battle_turns"
+                " UNION SELECT player, match_id FROM target_battle_results) p"
                 " JOIN matches m ON m.match_id = p.match_id"
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ?"
                 " AND p.player NOT IN (SELECT name FROM players WHERE hidden = 1)",
@@ -811,7 +919,7 @@ class StatsDB:
         """Newest first. `mode` ("x01" or "elimination") restricts which game mode
         counts toward the limit; None returns both."""
         mode_sql = {
-            "x01": " AND COALESCE(game_mode, '') != 'Elimination'",
+            "x01": f" AND COALESCE(game_mode, '') NOT IN {_OTHER_MODES_SQL}",
             "elimination": " AND game_mode = 'Elimination'",
         }.get(mode, "")
         with self._lock:
@@ -1074,7 +1182,7 @@ class StatsDB:
         """Where this player's darts landed, newest `limit` darts: `darts` as {x, y, field},
         unit = outer edge of the double ring, y up. Darts set by a correction are not
         listed, they only count in `corrected`. `total` is everything recorded."""
-        where = "game_mode = 'Elimination'" if mode == "elimination" else "game_mode != 'Elimination'"
+        where = "game_mode = 'Elimination'" if mode == "elimination" else f"game_mode NOT IN {_OTHER_MODES_SQL}"
         with self._lock:
             rows = self._conn.execute(
                 f"SELECT x, y, field, corrected FROM dart_positions WHERE player = ? AND {where}"
@@ -1361,7 +1469,7 @@ class StatsDB:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT DISTINCT points_start FROM matches"
-                " WHERE game_mode != 'Elimination' AND points_start IS NOT NULL"
+                f" WHERE game_mode NOT IN {_OTHER_MODES_SQL} AND points_start IS NOT NULL"
                 " ORDER BY points_start"
             ).fetchall()
         return [r["points_start"] for r in rows]

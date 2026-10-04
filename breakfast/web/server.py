@@ -42,6 +42,7 @@ _DIST_AUDIO_HTML_PATH = os.path.join(_DIST_DIR, "audio.html")
 
 _game_state = None
 _elim_ctrl = None
+_tb_ctrl = None
 _online = None
 _cloud_client = None
 _stats_tracker = None
@@ -64,12 +65,14 @@ _audio_clients: set[WebSocket] = set()
 
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
-         audio_engine=None, board_manager_url: str | None = None, dev_demo=None):
-    global _game_state, _elim_ctrl, _cloud_client, _stats_tracker, \
+         audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
+         tb_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online
     _game_state = game_state
     _elim_ctrl = elim_ctrl
+    _tb_ctrl = tb_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
@@ -89,12 +92,19 @@ def _build_payload() -> dict:
         elim_snap = {"active": False}
     else:
         elim_snap = None
+    if _tb_ctrl and _tb_ctrl.game:
+        tb_snap = _tb_ctrl.game.snapshot()
+    elif _tb_ctrl:
+        tb_snap = {"active": False}
+    else:
+        tb_snap = None
     session_stats = _stats_tracker.computed_session_stats() if _stats_tracker else {}
     known_players = kp.load(_stats_db)
     return {
         "game": game_snap,
         "board_darts": _game_state.board_darts.snapshot() if _game_state else None,
         "elimination": elim_snap,
+        "target_battle": tb_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
         "player_colors": _stats_db.player_colors() if _stats_db else {},
@@ -397,6 +407,8 @@ async def elim_start(body: StartBody):
         return {"error": "no elimination controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if _tb_ctrl and _tb_ctrl.active:
+        return {"error": "a Target Battle is running, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -441,6 +453,72 @@ async def elim_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _elim_ctrl and _elim_ctrl.game:
         _elim_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field)
+    return {"ok": True}
+
+
+# ── REST: target battle ───────────────────────────────────────────────────────
+
+class TargetBattleStartBody(BaseModel):
+    players: list[str]
+    rounds: int = 10
+    targets: list[int] | None = None     # one target per round, None for a random one each round
+    scoring: str = "standard"            # standard, singles, doubles or triples
+    tiebreak: bool = False
+
+
+@app.post("/api/target-battle/start")
+async def tb_start(body: TargetBattleStartBody):
+    log.debug("Target Battle start requested: players=%s rounds=%s scoring=%s",
+              body.players, body.rounds, body.scoring)
+    if not _tb_ctrl:
+        return {"error": "no target battle controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    if _elim_ctrl and _elim_ctrl.active:
+        return {"error": "an Elimination game is running, stop it first"}
+    players = [p.strip() for p in body.players if p.strip()]
+    try:
+        _tb_ctrl.start(players, rounds=body.rounds, targets=body.targets,
+                       scoring=body.scoring, tiebreak=body.tiebreak)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/target-battle/stop")
+async def tb_stop():
+    log.debug("Target Battle stop requested")
+    if _tb_ctrl:
+        _tb_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/target-battle/correct")
+async def tb_correct(body: CorrectBody):
+    log.debug("Target Battle correct requested: total=%s", body.total)
+    if _tb_ctrl and _tb_ctrl.game:
+        _tb_ctrl.game.correct_turn(body.total)
+    return {"ok": True}
+
+
+@app.post("/api/target-battle/undo")
+async def tb_undo():
+    log.debug("Target Battle undo requested")
+    if not (_tb_ctrl and _tb_ctrl.game):
+        return {"error": "no active or finished game"}
+    if not _tb_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/target-battle/correct-dart")
+async def tb_correct_dart(body: CorrectDartBody):
+    log.debug("Target Battle correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _tb_ctrl and _tb_ctrl.game:
+        _tb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
     _move_board_dart(body.dart - 1, body.field)
     return {"ok": True}
 

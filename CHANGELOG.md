@@ -12,6 +12,7 @@
 - Every X01 and Elimination turn stores the time it was played (#27).
 - Player profile: a color picker for the player's color, stored with the player (#29).
 - Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
+- Target Battle game, started through `/api/target-battle/*` or MQTT (#21).
 
 ### Changed
 - Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).

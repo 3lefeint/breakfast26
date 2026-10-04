@@ -505,6 +505,19 @@ All topics are relative to `base_topic` (default: `autodarts`).
 | `autodarts/elimination/events/{event_type}` | Non-retained event (`turn_pass`, `life_lost`, `eliminated`, `game_won`) |
 | `autodarts/elimination/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start`, `stop`, `correct_turn`, `undo`, `add_player`, `remove_player`); every action also has a REST equivalent (see **REST API** below) |
 
+### Target Battle
+
+| Topic | Value |
+|-------|-------|
+| `autodarts/target_battle/active` | `true` / `false` |
+| `autodarts/target_battle/state` | Full game state as JSON (retained): round, target, scoring, order, scores, winners |
+| `autodarts/target_battle/round`, `.../rounds` | Current round and number of rounds |
+| `autodarts/target_battle/target` | The target number of the current round |
+| `autodarts/target_battle/current/dart{1,2,3}`, `.../current/total` | The turn in progress, in points |
+| `autodarts/target_battle/last_turn/dart{1,2,3}`, `.../last_turn/total` | The most recently finished turn |
+| `autodarts/target_battle/events/{event_type}` | Non-retained event (`turn_end`, `round_start`, `game_won`) |
+| `autodarts/target_battle/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `players`, `rounds`, `targets`, `scoring`, `tiebreak`; `stop`, `correct_turn`, `undo`, `add_player`, `remove_player`) |
+
 ### Freeplay
 
 Published whenever darts land with no match active — lets an ESPHome
@@ -735,6 +748,11 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/elimination/correct` | Correct the last turn's total |
 | `POST` | `/api/elimination/correct-dart` | Correct one dart of the current turn |
 | `POST` | `/api/elimination/undo` | Undo the most recently completed turn — repeatable; reopens the match if the undone turn had finished it |
+| `POST` | `/api/target-battle/start` | Start a Target Battle (`players`, `rounds` default 10, `targets` one number per round or none for random, `scoring` `standard`/`singles`/`doubles`/`triples`, `tiebreak`); one player is enough |
+| `POST` | `/api/target-battle/stop` | Stop the current game |
+| `POST` | `/api/target-battle/correct` | Correct the last turn's points (`total`) |
+| `POST` | `/api/target-battle/correct-dart` | Correct one dart of the current turn |
+| `POST` | `/api/target-battle/undo` | Undo the most recently completed turn — repeatable; reopens the game if the undone turn had finished it |
 
 **Stats**:
 
@@ -843,6 +861,8 @@ breakfast26/
     ├── state.py                   # Game state machine
     ├── stats.py                   # SQLite stats DB + event-driven tracker
     ├── elimination.py             # Elimination game controller
+    ├── turn_game.py               # What board games share: darts of a turn, corrections, undo, MQTT output
+    ├── target_battle.py           # Target Battle game and controller
     ├── online.py                  # Online Elimination: this site's side of the relay protocol, drives the local game
     ├── dartboard.py               # Dartboard geometry and the center of every field
     ├── changelog.py               # CHANGELOG.md parser for the About page

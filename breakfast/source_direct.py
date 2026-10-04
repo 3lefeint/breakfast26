@@ -13,6 +13,7 @@ from breakfast.recorder import Recorder
 from breakfast.output_console import print_state
 from breakfast.mqtt_output import MqttPublisher, NullMqttPublisher
 from breakfast.elimination import EliminationController
+from breakfast.target_battle import TargetBattleController
 from breakfast.autodarts_client import AutodartsCloudClient
 from breakfast.dev_demo import DemoRunner
 
@@ -27,7 +28,7 @@ def _dart_value(throw):
     return (seg.get("number") or 0) * multiplier
 
 
-def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count):
+def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl=None):
     """Process one board-WS state message. Returns the new prev_count.
 
     Split out from _start_board_ws()'s on_message closure so this logic is
@@ -58,6 +59,8 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count):
     try:
         if elim_ctrl and elim_ctrl.active:
             elim_ctrl.on_board_state(count, throws)
+        elif tb_ctrl and tb_ctrl.active:
+            tb_ctrl.on_board_state(count, throws)
         else:
             is_new_dart = count > prev_count
             if count != prev_count and mqtt_pub:
@@ -76,8 +79,9 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count):
     return count
 
 
-def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None):
-    """Background thread: local board WebSocket for elimination and freeplay."""
+def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None,
+                    tb_ctrl=None):
+    """Background thread: local board WebSocket for Elimination, Target Battle and freeplay."""
     prev_count = 0
 
     def on_message(ws, message):
@@ -89,7 +93,7 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
         if msg.get("type") != "state":
             return
         prev_count = _handle_board_message(
-            msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count)
+            msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl)
 
     def set_connected(connected):
         if state.board_darts.set_connected(connected):
@@ -168,7 +172,11 @@ def run_direct(email, password, board_id, record_file=None,
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
     )
-    _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio)
+    tb_ctrl = TargetBattleController(
+        mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
+        audio=audio, on_change=web.push,
+    )
+    _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio, tb_ctrl=tb_ctrl)
 
     def on_event(data):
         if recorder:
@@ -211,7 +219,7 @@ def run_direct(email, password, board_id, record_file=None,
     web.wire(state, elim_ctrl, cloud_client=client,
              stats_tracker=stats_tracker, mqtt_pub=mqtt_pub,
              config_path=config_path, audio_engine=audio,
-             board_manager_url=board_manager_url, dev_demo=dev_demo)
+             board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl)
     if web_port:
         web.start(web_port)
 
