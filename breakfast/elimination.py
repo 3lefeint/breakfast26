@@ -6,8 +6,11 @@ import threading
 import uuid
 
 from . import known_players as kp
+from .dartboard import field_centers
 
 log = logging.getLogger(__name__)
+
+_FIELD_CENTERS = field_centers()
 
 # Give the browser time to redirect to /tv and reconnect its WebSocket with
 # role=audio before the opening calls fire — a fresh game (the frontend's
@@ -449,8 +452,25 @@ class EliminationGame:
                                   "x": float(coords["x"]), "y": float(coords["y"]),
                                   "entry": throw.get("entry")})
             else:
-                positions.append(None)
+                positions.append(self._set_by_hand_position(throw))
         return positions
+
+    @staticmethod
+    def _set_by_hand_position(throw):
+        """A dart set by tapping carries no coordinates, only its field. It is stored with the
+        center of that field and marked as entered by hand; a miss has no field center."""
+        seg = throw.get("segment") or {}
+        number, multiplier = seg.get("number") or 0, seg.get("multiplier") or 0
+        if not multiplier:
+            return None
+        if number == 25:
+            field = "25" if multiplier == 1 else "50"
+        else:
+            field = f"{'SDT'[multiplier - 1]}{number}"
+        center = _FIELD_CENTERS.get(field)
+        if not center:
+            return None
+        return {"field": field, "x": center["x"], "y": center["y"], "entry": "manual"}
 
     def _apply_turn(self, player, score, silent=False):
         passes = score > (0 if self.freipass else self.target)

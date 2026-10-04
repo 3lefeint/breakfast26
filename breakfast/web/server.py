@@ -698,6 +698,7 @@ async def get_config():
         },
         "stats": {
             "db": stats.get("db", "stats.db"),
+            "timezone": stats.get("timezone"),
         },
         "web": {
             "port":         web.get("port", 8080),

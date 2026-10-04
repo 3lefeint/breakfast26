@@ -9,6 +9,11 @@
 - 19 achievements in all: First Breakfast, Shanghai, Triple Double, 180!, Triple Bull, Maximum Collector and A Hundred Served for every game, and Job Done, Last-Dart Finish, Double Trouble, High Finish, Straight to the Double, Big Fish and Perfect Leg for X01 (#23).
 - An achievement without a badge motif yet shows a star (#23).
 - Badge motifs for every achievement, drawn in a style per game mode (#23).
+- Every X01 and Elimination turn stores the time it was played (#27).
+- Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
+
+### Changed
+- Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).
 
 ## [0.8.1] - 2026-10-03
 

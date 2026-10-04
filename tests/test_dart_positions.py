@@ -203,8 +203,24 @@ class TestEliminationPositions:
         game.on_board_state(3, throws)
         game.on_board_state(0, [])
         rows = _positions(db, game_mode="Elimination")
-        assert [(r["player"], r["dart_number"], r["field"], r["turn"]) for r in rows] == [
-            ("alice", 1, "T20", 1), ("alice", 2, "S5", 1)]
+        assert [(r["player"], r["dart_number"], r["field"], r["turn"], r["corrected"]) for r in rows] == [
+            ("alice", 1, "T20", 1, 0), ("alice", 2, "S5", 1, 0), ("alice", 3, "S1", 1, 1)]
+
+    def test_a_dart_set_by_tapping_is_stored_with_its_field_center(self):
+        db, game = self._game()
+        game.on_board_state(1, [_t(20, 3, 0.0, 0.6, "T20")])
+        game.correct_current_dart(0, "D16")
+        game.on_board_state(0, [])
+        row = _positions(db, game_mode="Elimination")[0]
+        assert (row["field"], row["entry"], row["corrected"], row["misread"]) == ("D16", "manual", 1, 0)
+        assert (row["x"], row["y"]) == (CENTERS["D16"]["x"], CENTERS["D16"]["y"])
+
+    def test_a_dart_corrected_to_a_miss_has_no_field_to_store(self):
+        db, game = self._game()
+        game.on_board_state(1, [_t(20, 3, 0.0, 0.6, "T20")])
+        game.correct_current_dart(0, "0")
+        game.on_board_state(0, [])
+        assert _positions(db, game_mode="Elimination") == []
 
     def test_the_match_ending_turn_is_stored_too(self):
         db, game = self._game(lives=1)
@@ -228,3 +244,4 @@ class TestEliminationPositions:
         game.on_board_state(0, [])
         game.correct_turn(100)
         assert {r["corrected"] for r in _positions(db)} == {1}
+        assert {r["misread"] for r in _positions(db)} == {1}

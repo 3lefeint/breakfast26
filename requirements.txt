@@ -4,5 +4,6 @@ requests
 fastapi
 uvicorn[standard]
 tomli_w
+tzdata
 tomlkit
 edge-tts

@@ -58,6 +58,7 @@ port = 8080
 # Use "none" to disable stats collection entirely.
 # [stats]
 # db = "stats.db"
+# timezone = "UTC"      # IANA name such as "Europe/Zurich"; turns stored UTC times into local days and hours
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 [logging]

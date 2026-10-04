@@ -116,7 +116,7 @@ def run_direct(email, password, board_id, record_file=None,
                mqtt_password=None, mqtt_base_topic="autodarts",
                audio_dir=None, audio_profile=None, caller_cfg=None,
                web_port=None,
-               stats_db=None, log_events=False, config_path=None,
+               stats_db=None, stats_timezone="UTC", log_events=False, config_path=None,
                board_ws_url=DEFAULT_BOARD_WS_URL, board_manager_url=None):
 
     from breakfast.web import server as web
@@ -131,7 +131,7 @@ def run_direct(email, password, board_id, record_file=None,
     achievements = None
 
     if stats_db and stats_db.lower() != "none":
-        stats_db_instance = StatsDB(stats_db)
+        stats_db_instance = StatsDB(stats_db, tz=stats_timezone)
         achievements = AchievementEngine(stats_db_instance).attach()
         stats_tracker = StatsTracker(stats_db_instance)
 

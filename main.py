@@ -255,6 +255,7 @@ def main():
             caller_cfg=caller_cfg,
             web_port=args.web_port,
             stats_db=args.stats_db,
+            stats_timezone=args.stats_timezone,
             log_events=args.log_events,
             config_path=cfg_path,
             board_ws_url=args.board_ws_url,

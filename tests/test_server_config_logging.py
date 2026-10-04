@@ -22,3 +22,15 @@ def test_patch_config_never_logs_secret_values(tmp_path, caplog):
         assert "mqtt.host" in log_text
     finally:
         server.wire(None, None)
+
+
+def test_the_timezone_is_null_until_one_is_configured(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg_mod.write(str(config_path), {})
+    server.wire(None, None, config_path=str(config_path))
+    try:
+        assert asyncio.run(server.get_config())["stats"]["timezone"] is None
+        asyncio.run(server.patch_config({"stats": {"timezone": "Europe/Zurich"}}))
+        assert asyncio.run(server.get_config())["stats"]["timezone"] == "Europe/Zurich"
+    finally:
+        server.wire(None, None)

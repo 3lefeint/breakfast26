@@ -10,6 +10,7 @@ import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from breakfast.dartboard import field_centers
 
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS turns (
     dart1     TEXT, dart1_val INTEGER, dart1_rem INTEGER,
     dart2     TEXT, dart2_val INTEGER, dart2_rem INTEGER,
     dart3     TEXT, dart3_val INTEGER, dart3_rem INTEGER,
+    created_at TEXT,
     FOREIGN KEY (match_id) REFERENCES matches(match_id)
 );
 CREATE TABLE IF NOT EXISTS legs (
@@ -68,7 +70,8 @@ CREATE TABLE IF NOT EXISTS elimination_turns (
     target      INTEGER,
     freipass    INTEGER,
     passed      INTEGER,
-    lives_before INTEGER
+    lives_before INTEGER,
+    created_at  TEXT
 );
 CREATE TABLE IF NOT EXISTS dart_positions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +85,8 @@ CREATE TABLE IF NOT EXISTS dart_positions (
     x           REAL    NOT NULL,
     y           REAL    NOT NULL,
     entry       TEXT,
-    corrected   INTEGER NOT NULL DEFAULT 0
+    corrected   INTEGER NOT NULL DEFAULT 0,
+    misread     INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS achievements_earned (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,6 +144,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def load_timezone(name: str | None) -> ZoneInfo:
+    """The zone for `[stats] timezone` (an IANA name); an unknown name falls back to UTC."""
+    try:
+        return ZoneInfo(name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        log.warning("Unknown timezone %r in [stats], using UTC", name)
+        return ZoneInfo("UTC")
+
+
 def _position(game: dict):
     """{x, y, entry} from a dart event's coords, or None if it carries none."""
     coords = game.get("coords")
@@ -162,7 +175,8 @@ def _safe_name(raw) -> str | None:
 # ── Database ──────────────────────────────────────────────────────────────────
 
 class StatsDB:
-    def __init__(self, path: str):
+    def __init__(self, path: str, tz: str | None = "UTC"):
+        self.tz = load_timezone(tz)
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
@@ -177,6 +191,8 @@ class StatsDB:
                 (_now_iso(),))
             self._migrate_matches_winner()
             self._migrate_elimination_turn_details()
+            self._migrate_turn_times()
+            self._migrate_misread()
             self._migrate_backfill_x01_winner()
             self._migrate_drop_in_roster()
             self._conn.commit()
@@ -196,6 +212,26 @@ class StatsDB:
         for name in ("score", "target", "freipass", "passed", "lives_before"):
             if name not in cols:
                 self._conn.execute(f"ALTER TABLE elimination_turns ADD COLUMN {name} INTEGER")
+
+    def _migrate_turn_times(self):
+        """Turns recorded before the time was stored keep NULL in `created_at`."""
+        for table in ("turns", "elimination_turns"):
+            cols = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+            if "created_at" not in cols:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN created_at TEXT")
+
+    def _migrate_misread(self):
+        """`misread` separates darts whose field is unknown (the total of their turn was
+        corrected) from darts set by a correction, whose field is known. Before it existed
+        `corrected` meant both, so every corrected Elimination dart stays untrusted."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(dart_positions)")}
+        if "misread" not in cols:
+            self._conn.execute("ALTER TABLE dart_positions ADD COLUMN misread INTEGER NOT NULL DEFAULT 0")
+            self._conn.execute("UPDATE dart_positions SET misread = corrected WHERE game_mode = 'Elimination'")
+
+    def local_time(self, iso: str) -> datetime:
+        """A stored UTC time as a datetime in the configured timezone."""
+        return datetime.fromisoformat(iso).astimezone(self.tz)
 
     def _migrate_backfill_x01_winner(self):
         """`matches.winner` was only ever written by elimination.py — X01
@@ -425,11 +461,11 @@ class StatsDB:
             self._ensure_player(player)
             self._conn.execute(
                 "INSERT INTO elimination_turns"
-                " (match_id, player, darts_count, score, target, freipass, passed, lives_before)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " (match_id, player, darts_count, score, target, freipass, passed, lives_before,"
+                " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (match_id, player, darts_count, score, target,
                  None if freipass is None else int(freipass),
-                 None if passed is None else int(passed), lives_before),
+                 None if passed is None else int(passed), lives_before, _now_iso()),
             )
             turn = self._conn.execute(
                 "SELECT COUNT(*) FROM elimination_turns WHERE match_id = ? AND player = ?",
@@ -450,10 +486,10 @@ class StatsDB:
                 " ORDER BY id DESC LIMIT 1)",
                 (score, int(passed), match_id, player),
             )
-            # The darts of a turn whose total was corrected were misread: their
-            # positions do not tell where the darts landed.
+            # The darts of a turn whose total was corrected were misread: neither their
+            # fields nor their positions tell what was hit.
             self._conn.execute(
-                "UPDATE dart_positions SET corrected = 1"
+                "UPDATE dart_positions SET corrected = 1, misread = 1"
                 " WHERE match_id = ? AND game_mode = 'Elimination' AND player = ? AND turn = ("
                 " SELECT COUNT(*) FROM elimination_turns WHERE match_id = ? AND player = ?)",
                 (match_id, player, match_id, player),
@@ -489,13 +525,13 @@ class StatsDB:
                 " is_bust, is_checkout, darts_count,"
                 " dart1, dart1_val, dart1_rem,"
                 " dart2, dart2_val, dart2_rem,"
-                " dart3, dart3_val, dart3_rem)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " dart3, dart3_val, dart3_rem, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (match_id, player, leg, turn, remaining_before, score,
                  int(is_bust), int(is_checkout), len(darts),
                  d[0][0], d[0][1], d[0][2],
                  d[1][0], d[1][1], d[1][2],
-                 d[2][0], d[2][1], d[2][2]),
+                 d[2][0], d[2][1], d[2][2], _now_iso()),
             )
             self._insert_positions(match_id, "X01", player, leg, turn,
                                    [(f, p) for (f, _, _), p in zip(darts, positions or [])])
@@ -666,12 +702,13 @@ class StatsDB:
     def turns_for_achievements(self, match_id: str, player: str, game_mode: str) -> list:
         """The player's turns of a match as {number, score, is_bust, darts}. `darts` are the
         field names that can be trusted: all stored X01 darts, and for Elimination the
-        darts with a recorded position that was not set by a correction."""
+        stored darts except those of a turn whose total was corrected (a dart set by a
+        correction counts, its field is known)."""
         with self._lock:
             if game_mode == "Elimination":
                 rows = self._conn.execute(
                     "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"
-                    " AND game_mode = 'Elimination' AND corrected = 0 ORDER BY turn, dart_number",
+                    " AND game_mode = 'Elimination' AND misread = 0 ORDER BY turn, dart_number",
                     (match_id, player)).fetchall()
                 turns = {}
                 for r in rows:

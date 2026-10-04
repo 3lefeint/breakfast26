@@ -17,7 +17,7 @@
   const emptyCfg = () => ({
     logging: { level: 'INFO', events: false, file: '' },
     mqtt: { enabled: true, host: '', port: '', username: '', password: '', base_topic: '' },
-    stats: { db: '' },
+    stats: { db: '', timezone: '' },
     web: { port: '', theme: 'default', accent_color: '' },
     direct: { email: '', password: '', board_id: '', board_ws_url: '', board_manager_url: '' },
     audio: { dir: '', profile: '' },
@@ -50,6 +50,8 @@
   // actually remove the key (see save()'s addIfChanged()).
   let loadedCfg = emptyCfg();
   let banner = $state(null); // { kind: 'ok'|'warn'|'error', text }
+  // Set when the time zone field was filled from this browser because none is configured.
+  let timezoneSuggested = $state(false);
   let voicepackForce = $state(false);
 
   // Voice Pack tab — add/edit/browse/delete individual voice-pack entries,
@@ -210,6 +212,11 @@
       }
       cfg = fresh;
       loadedCfg = JSON.parse(JSON.stringify(fresh));
+      if (!cfg.stats.timezone) {
+        // Nothing configured: suggest the zone of this browser, saved like any other change.
+        cfg.stats.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        timezoneSuggested = !!cfg.stats.timezone;
+      }
     } catch (e) {
       console.error('loadConfig failed:', e);
     }
@@ -258,6 +265,7 @@
     addIfChanged('mqtt', 'password', cfg.mqtt.password);
     addIfChanged('mqtt', 'base_topic', cfg.mqtt.base_topic);
     addIfChanged('stats', 'db', cfg.stats.db);
+    addIfChanged('stats', 'timezone', cfg.stats.timezone);
     addIfChanged('direct', 'email', cfg.direct.email);
     addIfChanged('direct', 'password', cfg.direct.password);
     addIfChanged('direct', 'board_id', cfg.direct.board_id);
@@ -499,6 +507,12 @@
     <div class="settings-section">
       <div class="settings-section-title">Statistics <span class="badge restart">restart to apply</span></div>
       <div class="settings-row"><label for="sStatsDb">Database file</label><input type="text" id="sStatsDb" placeholder="stats.db" bind:value={cfg.stats.db}></div>
+      <div class="settings-row"><label for="sStatsTimezone">Time zone</label><input type="text" id="sStatsTimezone" placeholder="UTC" bind:value={cfg.stats.timezone} oninput={() => (timezoneSuggested = false)}></div>
+      {#if timezoneSuggested}
+        <p class="note">No time zone is set, so UTC applies. This one is taken from your browser: save to use it.</p>
+      {:else}
+        <p class="note">An IANA name such as Europe/Zurich. It sets the local days and hours used for achievements.</p>
+      {/if}
     </div>
   {:else if activeTab === 'mqtt'}
     <div class="settings-section">

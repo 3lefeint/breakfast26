@@ -69,6 +69,7 @@ def merge(args, cfg: dict) -> None:
     # stats
     stats_cfg = cfg.get("stats", {})
     _fill("stats_db", stats_cfg.get("db"))
+    _fill("stats_timezone", stats_cfg.get("timezone"))
 
     # logging
     log_cfg = cfg.get("logging", {})
@@ -135,6 +136,8 @@ def _apply_defaults(args) -> None:
         args.speed = 1.0
     if getattr(args, "stats_db", None) is None:
         args.stats_db = "stats.db"
+    if getattr(args, "stats_timezone", None) is None:
+        args.stats_timezone = "UTC"
     if getattr(args, "log_level", None) is None:
         args.log_level = "INFO"
     if getattr(args, "log_events", None) is None:

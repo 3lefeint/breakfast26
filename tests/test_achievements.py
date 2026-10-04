@@ -103,6 +103,15 @@ class TestEvents:
         assert ("beast_mode", 0) in _earned(db, "ana")
         assert ("bullseye", 0) in _earned(db, "bo")
 
+    def test_a_dart_set_by_hand_counts_for_hits(self, db, engine):
+        _elimination_match(db, "e1", ["ana", "bo"], winner="bo",
+                           fields_by_player={"ana": ["50", "S1", "S1"]}, close=False)
+        db._conn.execute("UPDATE dart_positions SET corrected = 1 WHERE player = 'ana' AND dart_number = 1")
+        db.record_elimination_result("e1", [("ana", 2, None), ("bo", 1, 1)])
+        db.set_winner("e1", "bo")
+        db.close_match("e1")
+        assert ("bullseye", 0) in _earned(db, "ana")
+
     def test_a_corrected_elimination_turn_does_not_count_for_hits(self, db, engine):
         _elimination_match(db, "e1", ["ana", "bo"], winner="bo",
                            fields_by_player={"ana": ["50", "S1", "S1"]}, close=False)

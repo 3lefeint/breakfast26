@@ -170,6 +170,7 @@ port = 8080
 
 # [stats]
 # db = "stats.db"       # SQLite file for per-turn data; "none" to disable
+# timezone = "UTC"      # IANA name such as "Europe/Zurich"; local days and hours for achievements
 
 [logging]
 level = "INFO"          # DEBUG, INFO, WARNING, ERROR
@@ -384,6 +385,8 @@ Per-turn data (score, remaining, bust/checkout flag, all three dart fields + rem
 Reset all stats for a player: Stats tab → ✕ button → two confirmation dialogs.
 
 To disable stats collection: `--stats-db none` or `[stats] db = "none"` in config.
+
+Every turn stores the time it was played (UTC). `[stats] timezone` (an IANA name such as `Europe/Zurich`, default `UTC`) sets the zone used for local days and hours, also under Settings → Statistics, which suggests the zone of your browser while none is set.
 
 ### Accessing the database directly
 
