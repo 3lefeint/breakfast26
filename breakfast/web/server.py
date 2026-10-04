@@ -11,13 +11,15 @@ from pathlib import Path
 
 import requests
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
+from breakfast import achievement_sounds as ach_sounds
+from breakfast import achievements as ach_mod
 from breakfast import config as cfg_mod
 from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
@@ -1171,6 +1173,96 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
     log.info("Voice-pack variant deleted: group=%s key=%s index=%d",
               body.group, body.key, body.variant_index)
     return {"ok": True}
+
+
+# ── REST: achievement sounds ─────────────────────────────────────────────────
+
+def assigned_achievement_sounds(achievement_id: str) -> list:
+    """The files assigned to an achievement in `config.toml` that exist, for the unlock sound. Read
+    from the file each time, so a change on the page takes effect without a restart."""
+    if not (_config_path and _audio_engine):
+        return []
+    return ach_sounds.files_for(_audio_engine, cfg_mod.load(_config_path), achievement_id)
+
+
+def _admin_locked():
+    """The admin area opens like the Dev tab: `[dev] enabled`, or the version-number tap."""
+    if not _dev_enabled():
+        return {"error": "locked: unlock the Dev tab first"}
+    if not (_config_path and _audio_engine):
+        return {"error": "no config file or sound directory"}
+    return None
+
+
+@app.get("/api/admin/achievement-sounds")
+async def admin_achievement_sounds():
+    locked = _admin_locked()
+    if locked:
+        return locked
+    return ach_sounds.overview(_audio_engine, cfg_mod.load(_config_path), ach_mod.ACHIEVEMENTS)
+
+
+class AchievementSoundsBody(BaseModel):
+    files: list[str] = []      # an empty list clears the assignment
+
+
+@app.put("/api/admin/achievement-sounds/{achievement_id}")
+async def admin_set_achievement_sounds(achievement_id: str, body: AchievementSoundsBody):
+    locked = _admin_locked()
+    if locked:
+        return locked
+    if achievement_id not in ach_mod.BY_ID:
+        return {"error": "unknown achievement"}
+    unknown = [f for f in body.files if not ach_sounds.playable(_audio_engine, f)]
+    if unknown:
+        return {"error": f"not a sound of the achievements folder: {', '.join(unknown)}"}
+    stored = ach_sounds.set_assignment(_config_path, achievement_id, list(dict.fromkeys(body.files)))
+    log.info("Achievement sound set: %s -> %s", achievement_id, stored)
+    return {"ok": True, "assigned": stored}
+
+
+class RenameSoundBody(BaseModel):
+    name: str
+
+
+@app.patch("/api/admin/achievement-sounds/files/{filename}")
+async def admin_rename_achievement_sound(filename: str, body: RenameSoundBody):
+    """Rename a file of the achievements folder, also in the assignments that use it."""
+    locked = _admin_locked()
+    if locked:
+        return locked
+    problem = ach_sounds.rename_file(_audio_engine, _config_path, filename, body.name)
+    if problem:
+        return {"error": problem}
+    log.info("Achievement sound renamed: %s -> %s", filename, body.name)
+    return {"ok": True, "file": body.name}
+
+
+@app.delete("/api/admin/achievement-sounds/files/{filename}")
+async def admin_delete_achievement_sound(filename: str):
+    """Delete a file of the achievements folder and take it out of the assignments."""
+    locked = _admin_locked()
+    if locked:
+        return locked
+    problem = ach_sounds.delete_file(_audio_engine, _config_path, filename)
+    if problem:
+        return {"error": problem}
+    log.info("Achievement sound deleted: %s", filename)
+    return {"ok": True}
+
+
+@app.post("/api/admin/achievement-sounds/upload")
+async def admin_upload_achievement_sound(request: Request, name: str = Query(...)):
+    """Upload an mp3 into the achievements folder; the file is the request body."""
+    locked = _admin_locked()
+    if locked:
+        return locked
+    data = await request.body()
+    problem = ach_sounds.save_upload(_audio_engine, name, data)
+    if problem:
+        return {"error": problem}
+    log.info("Achievement sound uploaded: %s (%d bytes)", name, len(data))
+    return {"ok": True, "file": name}
 
 
 # ── REST: dev demo ────────────────────────────────────────────────────────────

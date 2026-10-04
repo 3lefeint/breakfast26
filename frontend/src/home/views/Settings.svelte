@@ -11,6 +11,7 @@
   import { gameState } from '../../lib/stores/gameState.js';
   import { api } from '../../lib/api.js';
   import PageHeader from '../../lib/components/PageHeader.svelte';
+  import AchievementSounds from './AchievementSounds.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
 
   const MASK = '●●●●●';
@@ -40,7 +41,8 @@
     { id: 'voicepack', label: 'Voice Pack' },
   ];
   let activeTab = $state('general');
-  let tabs = $derived(cfg.dev?.enabled ? [...TABS, { id: 'dev', label: 'Dev' }] : TABS);
+  let tabs = $derived(cfg.dev?.enabled
+    ? [...TABS, { id: 'achievements', label: 'Achievements' }, { id: 'dev', label: 'Dev' }] : TABS);
 
   let cfg = $state(emptyCfg());
   let voicePackProfiles = $state([]);
@@ -450,7 +452,11 @@
   {/each}
 </div>
 
-<form onsubmit={save}>
+{#if activeTab === 'achievements'}
+  <AchievementSounds />
+{/if}
+
+<form onsubmit={save} hidden={activeTab === 'achievements'}>
   {#if activeTab === 'general'}
     <div class="settings-section">
       <div class="settings-section-title">Logging <span class="badge runtime">applies instantly</span></div>

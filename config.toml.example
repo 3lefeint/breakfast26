@@ -94,3 +94,10 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # default; not meant to be enabled on a shared/production instance.
 # [dev]
 # enabled = true
+
+# [achievements.sounds]
+# The sound an achievement plays when it is earned: one or more files of the achievements folder
+# (<audio dir>/achievements/), one of them picked at random. Without an entry the file name
+# convention applies (achievement_<id>.mp3, else achievement.mp3). Normally set on the page under
+# Settings → Achievements, which shows with the Dev tab.
+# ton_up = ["fanfare.mp3", "drumroll.mp3"]

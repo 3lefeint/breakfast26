@@ -110,6 +110,7 @@ earned achievement.
 |---|---|---|
 | `achievement_<id>` (e.g. `achievement_ton_up`) | That achievement is earned | Optional |
 | `achievement` | Any achievement is earned and there is no file for its own `achievement_<id>` | Optional |
+| any file of the folder, assigned to an achievement | Settings → Achievements (Dev tab) gives an achievement one or more files, uploaded there or put into the folder (the same page renames and deletes the files); one of them is picked at random and wins over the two file names above. Stored in `[achievements.sounds]` of `config.toml` | Optional |
 
 Variants work as everywhere else (`achievement+1.mp3`, `achievement_ton_up+1.mp3`, ...).
 The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,

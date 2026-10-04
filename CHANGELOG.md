@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Settings → Achievements (shown with the Dev tab): every achievement with the sound it plays now, one or more files of the achievements folder to assign to it, a preview, an upload of new sounds, and renaming and deleting the files; the assignment is stored in `[achievements.sounds]` and applies at once (#25).
+
+
 ## [0.9.0] - 2026-10-04
 
 ### Added

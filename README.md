@@ -78,7 +78,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - **Online Elimination**: play one Elimination match with Breakfast installations elsewhere. One site hosts and gets a join code, the others join with the code and a shared match password, each adds its own players, the host sets lives and order, and after a match the host can start a rematch without a new lobby (the first eliminated starts, the winner is last; players can change). The darts of every player appear live on every TV, the calls play locally, and every site stores the whole match in its own `stats.db`. Needs a relay (`relay/`, a Cloudflare Worker) and `[online] relay_url`; without it online play stays off
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
 - **Per-player stats** (Stats tab, X01 and Elimination chips): activity and records, and for X01 a score histogram, board heatmap (by field, or where every dart landed), bust rate, win/loss, average and checkout % per match, doubles and the Top 10 legs (by starting score) and checkouts
-- **Achievements and player profile**: players earn achievements for what they do in matches (91 so far, from Bullseye, Shanghai and 180! over checkouts, averages, streaks and a perfect nine-dart leg to the Elimination, Killer and Target Battle ones, some with tiers and 34 secret ones), and the profile, opened from the Players tab, shows them as badges with the progress to the next tier and how many players have each. An unlock banner on `/tv` announces every achievement when the match is over, one after the other, and plays a sound from `<audio dir>/achievements/` (`achievement_<id>.mp3`, else `achievement.mp3`; see `VOICE_PACKS.md`). Only matches played after the feature came count, and an achievement is taken back when an undo or correction reopens the match. Hidden players do not earn any achievements.
+- **Achievements and player profile**: players earn achievements for what they do in matches (91 so far, from Bullseye, Shanghai and 180! over checkouts, averages, streaks and a perfect nine-dart leg to the Elimination, Killer and Target Battle ones, some with tiers and 34 secret ones), and the profile, opened from the Players tab, shows them as badges with the progress to the next tier and how many players have each. An unlock banner on `/tv` announces every achievement when the match is over, one after the other, and plays a sound from `<audio dir>/achievements/` (`achievement_<id>.mp3`, else `achievement.mp3`; see `VOICE_PACKS.md`), or the files assigned to an achievement in Settings → Achievements, where a sound can also be uploaded, previewed, renamed and deleted. Only matches played after the feature came count, and an achievement is taken back when an undo or correction reopens the match. Hidden players do not earn any achievements.
 - **Modern Web UI**: Svelte 5 + Vite frontend (built to static assets, no client-side framework runtime overhead), dark-mode with swappable accent colors
 
 ---
@@ -190,6 +190,10 @@ events = false          # true: log each game event (dart-thrown etc.) at INFO l
 
 # [dev]
 # enabled = true   # exposes a Settings "Dev" tab to simulate a full X01/Elimination match — see "Dev mode" below
+
+# [achievements.sounds]   # the sound an achievement plays when earned, one or more files of the achievements
+#                        # folder (a random one is picked); set under Settings → Achievements (Dev tab)
+# ton_up = ["fanfare.mp3", "drumroll.mp3"]
 ```
 
 Terminal / `docker logs` output is colored by level (DEBUG blue, INFO green, WARNING
@@ -285,7 +289,7 @@ The live scoreboard itself (X01, Elimination, Target Battle and Killer) lives on
 | **Players** | Known players list — name (opens the player's profile), Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Profile** (`#profile/<name>`) | A color picker for the player (games use it for the player's darts, none set means a random one per game), and the player's achievements as badges, in sections by game mode, each split into earned and still to earn (with the progress to the next tier); secret ones that are not earned yet come last as a question mark |
 | **Stats** | Four chips at the top pick the game mode: **X01**, **Elimination**, **Target Battle** and **Killer**. **X01** shows totals and records, the players compared as bars (average, turns of 100 or more, checkout %), collapsible recent matches (expandable per-match detail) and a per-player section (activity and performance tiles, a histogram of the turn scores, a heatmap of the dartboard (how often each field was hit, misses per sector in a ring, or switched to where every dart landed, with a density overlay from 30 darts on), the bust rate by remaining score, win/loss as a donut, the average and the checkout % per match as lines, doubles, Top 10 Legs/Checkouts). **Elimination** shows overview tiles with the records (highest score, and the highest score that still lost a life; both from turns recorded with a score, also per player in the activity section), a placement bar per player compared with the wins expected by chance, the form of the last 15 games with win streaks, a head-to-head matrix of how often each player finished ahead of each other player, the game length by lives setting, collapsible recent matches and per-player activity with the positions of the player's darts on the board. **Target Battle** has a chip row for the scoring profile (standard, singles, doubles, triples; the numbers only count games of that profile) and shows overview tiles with the best game and the best turn, wins and placements against the expected wins, the form of the last 15 games, head to head, per player the points per round, the share of darts on the target, perfect turns and the best turn, how often each target number is hit, and recent matches with a table of every round. Wins, form and head to head come from games with at least two players, the throwing numbers also from games played alone. **Killer** shows overview tiles (games, players per game, playtime), records (most lives taken and most knockouts in a game, the fastest killer), a placement bar per player compared with the wins expected by chance, the form of the last 15 games, head to head, per player how often and how fast they became a killer, lives taken (also per game), knockouts, own goals and lives lost, and recent matches with a table of what each player did |
-| **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
+| **Settings** | Edit all `config.toml` settings from the browser, organized into General / MQTT / Autodarts Source / Voice & Caller tabs (plus a Dev tab and an Achievements tab for the sounds of the achievements if `[dev] enabled = true`); `log_level` applies immediately, everything else is saved to disk and needs a restart. Also has an Updates panel (Docker deployments with the `updater` sidecar set up, see **Self-update** below), and a **Voice Pack** tab (see below) with its own independent save flow, separate from the `config.toml` form |
 
 All connected clients update in real time via WebSocket.
 
@@ -840,6 +844,16 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/dev/demo/x01` | Simulate a full X01 leg at runtime (see "Dev mode" above) |
 | `POST` | `/api/dev/demo/elimination` | Simulate a full Elimination match at runtime |
 | `POST` | `/api/dev/unlock` | Runtime-only Dev-tab unlock (in-memory, resets on restart) — normally triggered by the version-tap gesture, not called directly |
+
+**Achievement sounds** (like the Dev tab, they need `[dev] enabled = true` or the version-tap unlock):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/achievement-sounds` | Every achievement with its assigned files and what plays now (`assigned`, the `achievement_<id>` file or the general `achievement` file), and the files of the achievements folder |
+| `PUT` | `/api/admin/achievement-sounds/{id}` | Assign files to one achievement (`files`, an empty list clears it); stored in `[achievements.sounds]` of `config.toml`, applies at once |
+| `POST` | `/api/admin/achievement-sounds/upload?name=x.mp3` | Upload an mp3 (the request body, up to 3 MB) into the achievements folder |
+| `PATCH` | `/api/admin/achievement-sounds/files/{name}` | Rename a file of the achievements folder (`name`), also in the assignments that use it |
+| `DELETE` | `/api/admin/achievement-sounds/files/{name}` | Delete a file of the achievements folder and take it out of the assignments |
 
 ---
 

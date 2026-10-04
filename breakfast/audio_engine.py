@@ -70,6 +70,22 @@ class AudioEngine:
             self._send(filename, channel, volume, break_last)
         return True
 
+    def play_file(self, filename, volume=1.0, channel="voice"):
+        """Send one sound by its file name instead of by key (a file that was assigned to something).
+        Returns False when there is no such file in the search path."""
+        if not self.resolve(filename):
+            return False
+        items = getattr(self._batch_local, "items", None)
+        if items is not None:
+            items.append({"file": filename, "channel": channel, "volume": volume, "break_last": False})
+        else:
+            self._send(filename, channel, volume, False)
+        return True
+
+    def variants(self, name):
+        """The file names of every variant of a key, empty when there is none."""
+        return list(self._variants(name))
+
     def play_sequence(self, *names):
         """Send multiple sounds to play in order (voice queue preserves order)."""
         for name in names:

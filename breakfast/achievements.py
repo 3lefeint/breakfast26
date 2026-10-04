@@ -14,6 +14,7 @@ Rules the engine applies:
 """
 
 import logging
+import random
 import re
 from dataclasses import dataclass
 from typing import Callable
@@ -1248,14 +1249,19 @@ class AchievementEngine:
                 "tiers": list(a.tiers) if a.tiers else None,
                 "tier": change["tier"] or 1}
 
-    def announce(self, push, audio=None):
-        """Send every newly earned achievement to the browsers with `push` and play its
-        sound: `achievement_<id>` if there is a file for that achievement, else the general
+    def announce(self, push, audio=None, sounds=None):
+        """Send every newly earned achievement to the browsers with `push` and play its sound.
+        `sounds(id)` gives the files assigned to the achievement; one of them is played. Without
+        one: `achievement_<id>` if there is a file for that achievement, else the general
         `achievement`. No file means no sound. Revoked ones are not announced."""
         def on_earned(change):
             push(self.notification(change))
-            if audio:
-                audio.play(f"achievement_{change['achievement']}") or audio.play("achievement")
+            if not audio:
+                return
+            assigned = sounds(change["achievement"]) if sounds else []
+            if assigned and audio.play_file(random.choice(assigned)):
+                return
+            audio.play(f"achievement_{change['achievement']}") or audio.play("achievement")
         self.on_earned = on_earned
         return self
 

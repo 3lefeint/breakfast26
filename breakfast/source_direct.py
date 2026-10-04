@@ -157,7 +157,7 @@ def run_direct(email, password, board_id, record_file=None,
                     "voice caller disabled")
 
     if achievements:
-        achievements.announce(web.push_achievement, audio)
+        achievements.announce(web.push_achievement, audio, sounds=web.assigned_achievement_sounds)
 
     if mqtt_enabled and mqtt_host:
         mqtt_pub = MqttPublisher(
