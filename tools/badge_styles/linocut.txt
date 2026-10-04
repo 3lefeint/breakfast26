@@ -1,0 +1,11 @@
+Create a linocut block print illustration, the motif of a game achievement badge.
+
+Style:
+- two inks only: a dark ink and the accent colour, on transparent paper, no other colours
+- bold solid shapes with thick, readable silhouettes, hard carved edges, a few thick carved white lines inside the shapes
+- no hatching, no fine lines, no halftone dots, no tiny details
+- at most three main parts, clear contrast between neighbouring parts
+- viewed straight from the front
+- no glow, no halo, no cast shadow, no ground plane, no frame
+- must read well on both light and dark backgrounds
+- no background disc, coin, ring or badge shape behind or under the motif

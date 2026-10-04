@@ -1,0 +1,13 @@
+Create a steampunk-style illustration, the motif of a game achievement badge.
+
+Style:
+- the object looks built from satin brass and copper with a few large bolts, with at most one or two big gears that are part of the object itself, not extra objects
+- the main body surface is painted enamel in the accent colour, brass and copper only as rims, trim and fittings
+- chunky parts, thick readable silhouettes, no filigree, no thin pipes or chains, no tiny rivets or screws
+- at most three main parts
+- restrained reflections, no mirror finish
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed from the front and slightly from above, soft key light from the upper left
+- shading on the object only, no ground plane and no cast shadow on the background
+- no steam, smoke, glow or halo
+- no background disc, coin, ring or badge shape behind or under the motif

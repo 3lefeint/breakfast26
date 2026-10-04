@@ -1,0 +1,169 @@
+# Plan for tools/generate_badges.py: the achievement badge motifs.
+#
+# [defaults] style is the style (tools/badge_styles/<style>.txt) of every mode
+# that has none of its own.
+#
+# [modes.*] is the accent colour a motif is drawn in, and optionally its own
+# `style`. The hex values are placeholders, adjust them to the UI palette.
+#
+# [[badge]]
+#   id          file name of the motif and key of the achievement
+#   mode        one of the [modes.*] keys
+#   difficulty  easy, medium, hard, very_hard, extreme, endurance or hidden
+#               (drawn by the frontend as the rim, not part of the motif)
+#   label       optional short text or number drawn on top by the frontend
+#   subject     one concrete object, described without any text
+#   colour      optional: "accent" (default, the motif is drawn in the mode
+#               colour) or "natural" (natural colours, the mode colour only as
+#               an accent on one small detail), for things like toast or plates
+
+[defaults]
+style = "soft3d"
+
+[modes.general]
+name = "turquoise"
+hex = "#1ABC9C"
+
+[modes.x01]
+name = "blue"
+hex = "#1D4ED8"
+
+[modes.elimination]
+name = "orange"
+hex = "#F97316"
+style = "felt"
+
+[modes.killer]
+name = "crimson"
+hex = "#E11D48"
+style = "tattoo"
+
+[modes.target_battle]
+name = "olive"
+hex = "#5D5631"
+style = "steampunk"
+
+[modes.easter_egg]
+name = "plum"
+hex = "#581845"
+style = "balloon"
+
+# Achievements (maximum_collector shares the motif of maximum)
+
+[[badge]]
+id = "bullseye"
+mode = "general"
+difficulty = "easy"
+subject = "A dartboard bullseye seen from the front: a small round centre with one concentric ring around it and a single dart tip sticking in the center."
+
+[[badge]]
+id = "ton_up"
+mode = "x01"
+difficulty = "endurance"
+label = "100"
+subject = "A heavy kettlebell-style weight with a thick handle and a wide flat base. Plain surface, no emblem, no star, no engraving."
+
+[[badge]]
+id = "beast_mode"
+mode = "easter_egg"
+difficulty = "hidden"
+label = "666"
+subject = "A single dart pointing down, with two small devil horns on its barrel."
+
+[[badge]]
+id = "first_bite"
+mode = "x01"
+difficulty = "easy"
+colour = "natural"
+subject = "A slice of golden-brown toast with a clearly visible bite taken out of one corner, a small crown resting on top."
+
+[[badge]]
+id = "last_at_the_table"
+mode = "elimination"
+difficulty = "easy"
+subject = "A single upright dart standing in a breakfast plate seen from the front, a small winner's crown floating above it."
+
+[[badge]]
+id = "first_breakfast"
+mode = "general"
+difficulty = "easy"
+subject = "A breakfast plate with a single dart standing in it and a small rising sun behind it."
+
+[[badge]]
+id = "shanghai"
+mode = "general"
+difficulty = "medium"
+label = "SDT"
+subject = "A small pagoda with exactly three tiers, a dart as its spire."
+
+[[badge]]
+id = "double_pack"
+mode = "general"
+difficulty = "hard"
+subject = "Three dart tips in three small double-ring segments of a dartboard, linked by a thin ring."
+
+[[badge]]
+id = "maximum"
+mode = "general"
+difficulty = "hard"
+label = "180"
+subject = "Three darts grouped tightly together, flights up, tips together."
+
+[[badge]]
+id = "triple_bull"
+mode = "general"
+difficulty = "very_hard"
+subject = "Three dart tips in the red centre of a dartboard, surrounded by a golden target ring."
+
+[[badge]]
+id = "a_hundred_served"
+mode = "general"
+difficulty = "endurance"
+label = "100"
+subject = "A tall stack of plates."
+
+[[badge]]
+id = "job_done"
+mode = "x01"
+difficulty = "easy"
+subject = "A dart stuck in a double segment of a dartboard with a green check mark next to it."
+
+[[badge]]
+id = "last_dart_finish"
+mode = "x01"
+difficulty = "easy"
+subject = "Three darts in a row. The first two are dull grey, the third is larger and in the accent colour."
+
+[[badge]]
+id = "double_trouble"
+mode = "x01"
+difficulty = "easy"
+label = "D1"
+subject = "A triangular road warning sign with rounded corners and one dart standing upright in its centre."
+
+[[badge]]
+id = "high_finish"
+mode = "x01"
+difficulty = "medium"
+label = "100+"
+subject = "A finish flag planted above a double segment of a dartboard."
+
+[[badge]]
+id = "straight_to_the_double"
+mode = "x01"
+difficulty = "easy"
+subject = "One dart pointing straight down, with three short straight parallel speed lines above it. Nothing else."
+
+[[badge]]
+id = "big_fish"
+mode = "x01"
+difficulty = "very_hard"
+label = "170"
+subject = "A fish shaped like a dart, with a red bull dot."
+
+[[badge]]
+id = "perfect_leg"
+mode = "x01"
+difficulty = "extreme"
+label = "501"
+subject = "One large flawless cut diamond with a small dart standing in its top."

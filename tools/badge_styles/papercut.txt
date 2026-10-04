@@ -1,0 +1,12 @@
+Create a layered papercut illustration, the motif of a game achievement badge.
+
+Style:
+- the object built from at most three layers of cut paper, stacked with a small gap for depth
+- bold simplified shapes with thick, readable silhouettes, no thin strips or fine cut-outs
+- matte paper in flat colours without texture, mostly the accent colour, with neutral layers in mid grey
+- soft shadows only between the layers, no ground plane and no cast shadow on the background
+- clear contrast between neighbouring layers, in lightness and in hue
+- viewed straight from the front
+- must read well on both light and dark backgrounds
+- no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif

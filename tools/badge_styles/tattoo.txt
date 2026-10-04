@@ -1,0 +1,12 @@
+Create an old-school traditional tattoo flash illustration, the motif of a game achievement badge.
+
+Style:
+- bold, even black outlines with thick, readable silhouettes, no thin fragile lines
+- a few flat colour fills: mostly the accent colour, plus cream and one mid-grey, no gradients
+- simple hard-edged shading with one or two flat darker tones per part, no soft airbrush
+- minimal details, at most three main parts, no hatching, no tiny ornaments, no banner or lettering
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed straight from the front
+- no glow, no halo, no cast shadow, no ground plane
+- must read well on both light and dark backgrounds
+- no background disc, coin, ring or badge shape behind or under the motif

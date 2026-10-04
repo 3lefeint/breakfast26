@@ -1,0 +1,12 @@
+Create a stained glass illustration, the motif of a game achievement badge.
+
+Style:
+- the object built from a few large pieces of coloured glass, held by thick, chunky dark lead lines
+- the lead lines are bold and even, no thin or fine lines, no more than about eight glass pieces
+- mostly the accent colour in two or three tones, with neutral pieces in light and mid grey
+- glass pieces with a gentle translucent glow inside the piece, no light rays, no halo around the object
+- clear contrast between neighbouring pieces, in lightness and in hue
+- viewed straight from the front
+- no cast shadow, no ground plane, no window frame, no arch
+- must read well on both light and dark backgrounds
+- no background disc, coin, ring or badge shape behind or under the motif

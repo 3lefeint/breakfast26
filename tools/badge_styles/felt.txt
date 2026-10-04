@@ -1,0 +1,13 @@
+Create a plush felt toy, the motif of a game achievement badge.
+
+Style:
+- the object made of a few chunky pieces of soft felt, sewn together with thick, visible contrast stitches
+- rounded, puffy forms with thick readable silhouettes, no thin fragile parts
+- matte felt with a very fine fabric look, mostly the accent colour, with neutral parts in mid grey
+- minimal details, at most three main parts, no tiny buttons, no loose threads, no face unless the subject asks for one
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed from the front
+- soft key light from the upper left, shading on the object only, no cast shadow, no ground plane
+- must read well on both light and dark backgrounds
+- no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif

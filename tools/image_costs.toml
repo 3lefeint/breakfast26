@@ -1,0 +1,47 @@
+# What generate_badges.py knows about prices, in US dollars.
+#
+# [tokens.*]: the price per million tokens of a model (OpenAI price list). After every image the
+# API reports the tokens it used, and the script works out what that image cost from these and
+# writes it to tools/badge_work/cost_log.jsonl. A run is priced from the average of what the log
+# holds for the same model, quality and size.
+#
+# [costs.*]: what one image of 1024 x 1024 px costs by quality, measured on the usage page of the
+# OpenAI account (image output plus the prompt, rounded to a tenth of a cent). It is the estimate
+# for a combination the log has no image of yet. A combination in neither place is reported as
+# unknown.
+
+[tokens."gpt-image-2.5-flare"]
+text_input = 5.0
+image_input = 8.0
+image_output = 30.0
+
+[tokens."gpt-image-2.5-sunburst"]
+text_input = 5.0
+image_input = 8.0
+image_output = 30.0
+
+[tokens."gpt-image-2"]
+text_input = 5.0
+image_input = 8.0
+image_output = 30.0
+
+[tokens."gpt-image-1.5"]
+text_input = 5.0
+image_input = 8.0
+image_output = 32.0
+
+[tokens."gpt-image-1"]
+text_input = 5.0
+image_input = 10.0
+image_output = 40.0
+
+[tokens."gpt-image-1-mini"]
+text_input = 2.0
+image_input = 2.5
+image_output = 8.0
+
+[costs."gpt-image-2.5-flare"]
+medium = 0.014      # 2026-10-04: image output 0.013 + prompt 0.001
+
+[costs."gpt-image-2.5-sunburst"]
+medium = 0.014      # 2026-10-04: image output 0.013 + prompt 0.001

@@ -1,0 +1,13 @@
+Create a voxel illustration built from chunky cubic blocks, the motif of a game achievement badge.
+
+Style:
+- the object made of large visible cubes, a coarse grid of about twelve to sixteen blocks across, so the silhouette is simple and thick
+- matte plastic-like blocks with clean edges, no studs, no text on the blocks
+- mostly the accent colour in two or three tones, with neutral blocks in mid grey, never near black
+- minimal details, at most three main parts
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed from the front, slightly rotated so that one side of the cubes shows
+- soft key light from the upper left, shading on the blocks only, no cast shadow, no ground plane
+- must read well on both light and dark backgrounds
+- no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif

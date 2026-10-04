@@ -1,0 +1,13 @@
+Create an inflated foil balloon illustration, the motif of a game achievement badge.
+
+Style:
+- the object as a puffy, inflated balloon with thick rounded forms and a simple, thick silhouette, no thin fragile parts
+- satin foil with a few broad, soft highlights and the typical pinched seam along the edge, no tiny wrinkles, no ribbon, no string
+- mostly the accent colour, with neutral parts in mid grey, never near black
+- minimal details, at most three main parts
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed from the front
+- soft key light from the upper left, shading on the object only, no cast shadow, no ground plane
+- must read well on both light and dark backgrounds
+- no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif

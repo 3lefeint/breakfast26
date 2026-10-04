@@ -1,0 +1,12 @@
+Create a bold sticker-style illustration, the motif of a game achievement badge.
+
+Style:
+- chunky shapes, thick readable silhouettes, no thin fragile parts, at most three main parts
+- a thick even white die-cut edge that follows the shape of the motif, it is part of the motif and not a frame or a disc
+- thinner dark slate outlines between the parts inside the motif
+- solid colour fills with at most one simple highlight shape per part
+- mostly the accent colour, with mid-grey neutral parts
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed straight from the front
+- no shadow on the ground, no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif

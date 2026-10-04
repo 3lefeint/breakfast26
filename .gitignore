@@ -25,6 +25,9 @@ sounds
 # Mockups
 mockups
 
+# Badge motif generator output (raw images, not committed)
+tools/badge_work/
+
 # Frontend — Vite/Svelte build artifacts, never commit
 frontend/node_modules/
 frontend/dist/

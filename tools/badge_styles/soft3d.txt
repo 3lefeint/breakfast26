@@ -1,0 +1,14 @@
+Create a premium soft 3D illustration, the motif of a game achievement badge.
+
+Style:
+- rounded geometry with thick, readable silhouettes, no thin fragile parts
+- matte materials
+- soft shading on the object itself, no ground plane and no cast shadow on the background
+- mostly the accent colour, with neutral parts in mid grey, never near black
+- minimal details, smooth surfaces, at most three main parts
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed from the front
+- soft key light from the upper left
+- must read well on both light and dark backgrounds
+- no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif

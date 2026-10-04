@@ -1,0 +1,12 @@
+Create a flat vector-style illustration, the motif of a game achievement badge.
+
+Style:
+- clean flat vector look with bold simplified shapes and rounded corners
+- thick, readable silhouettes, no thin fragile parts, at most three main parts
+- solid colour fills, no gradients and no textures
+- mostly the accent colour, with contrasting neutral grey parts
+- consistent medium-grey outlines, minimal inner lines
+- clear contrast between neighbouring parts, in lightness and in hue
+- viewed straight from the front
+- no lighting effects, no shadows, no glow, no halo
+- no background disc, coin, ring or badge shape behind or under the motif
