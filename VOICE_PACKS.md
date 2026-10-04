@@ -112,7 +112,11 @@ earned achievement.
 | `achievement` | Any achievement is earned and there is no file for its own `achievement_<id>` | Optional |
 
 Variants work as everywhere else (`achievement+1.mp3`, `achievement_ton_up+1.mp3`, ...).
-Without any file nothing plays, the banner still shows.
+The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
+`triple_bull`, `maximum_collector`, `a_hundred_served`, `ton_up`, `first_bite`,
+`job_done`, `last_dart_finish`, `double_trouble`, `high_finish`,
+`straight_to_the_double`, `big_fish`, `perfect_leg`, `last_at_the_table`,
+`beast_mode`. Without any file nothing plays, the banner still shows.
 
 ### X01-specific
 

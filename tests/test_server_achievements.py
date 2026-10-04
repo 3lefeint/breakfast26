@@ -4,21 +4,9 @@ import time
 
 from starlette.testclient import TestClient
 
-from breakfast.achievements import INNER_BULL, Achievement, AchievementEngine
+from breakfast.achievements import AchievementEngine
 from breakfast.stats import StatsDB, StatsTracker
 from breakfast.web import server
-
-
-# Stand-ins for two real achievements, so the endpoint is tested without the full list.
-DEFINITIONS = (
-    Achievement("bullseye", "general", "easy", {"en": "Bullseye", "de": "Bullseye"},
-                {"en": "Hit the inner bull.", "de": "Das innere Bull treffen."},
-                check=lambda ctx: any(d in INNER_BULL for t in ctx.turns for d in t.darts)),
-    Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
-                {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
-                hidden=True, label="666",
-                check=lambda ctx: any(t.darts == ("S6", "S6", "S6") for t in ctx.turns)),
-)
 
 
 def _get(name):
@@ -40,7 +28,7 @@ def test_without_an_engine_the_list_is_empty(tmp_path):
 
 def test_lists_the_achievements_of_a_player(tmp_path):
     db = StatsDB(str(tmp_path / "s.db"))
-    AchievementEngine(db, definitions=DEFINITIONS).attach()
+    AchievementEngine(db).attach()
     server.wire(None, None, stats_tracker=StatsTracker(db))
     try:
         db.open_match("m1", "X01", 501)

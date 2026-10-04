@@ -1,30 +1,16 @@
+import tomllib
+from pathlib import Path
+
 import pytest
 
-from breakfast.achievements import Achievement, AchievementEngine, ELIMINATION, INNER_BULL, X01
+from breakfast import achievements as ach
+from breakfast.achievements import AchievementEngine
 from breakfast.stats import StatsDB
 
 
-# Stand-ins for the first five achievements, so the engine is tested without the full list.
-PILOT = (
-    Achievement("bullseye", "general", "easy", {"en": "Bullseye", "de": "Bullseye"},
-                {"en": "Hit the inner bull.", "de": "Das innere Bull treffen."},
-                check=lambda ctx: any(d in INNER_BULL for t in ctx.turns for d in t.darts)),
-    Achievement("ton_up", "x01", "endurance", {"en": "Ton Up", "de": "Volle Hundert"},
-                {"en": "Score 100 or more in a turn.", "de": "Mindestens 100 Punkte in einer Aufnahme."},
-                game_modes=X01, label="100", tiers=(1, 10, 100, 1000),
-                count=lambda ctx: sum(1 for t in ctx.turns if not t.is_bust and (t.score or 0) >= 100)),
-    Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
-                {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
-                hidden=True, label="666",
-                check=lambda ctx: any(t.darts == ("S6", "S6", "S6") for t in ctx.turns)),
-    Achievement("first_bite", "x01", "easy", {"en": "First Bite", "de": "Erster Bissen"},
-                {"en": "Win a match against an opponent.", "de": "Ein Spiel gegen einen Gegner gewinnen."},
-                game_modes=X01, check=lambda ctx: ctx.won and len(ctx.participants) >= 2),
-    Achievement("last_at_the_table", "elimination", "easy",
-                {"en": "Last at the Table", "de": "Letzter am Tisch"},
-                {"en": "Win an Elimination match.", "de": "Ein Elimination-Spiel gewinnen."},
-                game_modes=ELIMINATION, check=lambda ctx: ctx.won),
-)
+# The first five achievements. The older tests below are about how the engine behaves, not
+# about the full list, so they run with just these; the rest has tests of its own.
+PILOT = tuple(ach.BY_ID[i] for i in ("bullseye", "ton_up", "beast_mode", "first_bite", "last_at_the_table"))
 
 
 @pytest.fixture
@@ -233,6 +219,29 @@ class TestScope:
     def test_without_an_engine_nothing_is_evaluated(self, db):
         _x01_match(db, "m1", {"ana": [["50", "S1", "S1"]]})
         assert db.earned_for_player("ana") == []
+
+
+class TestDefinitions:
+    def test_ids_are_unique_and_every_one_has_both_names(self):
+        ids = [a.id for a in ach.ACHIEVEMENTS]
+        assert len(ids) == len(set(ids))
+        for a in ach.ACHIEVEMENTS:
+            assert a.names.get("en") and a.names.get("de")
+            assert a.descriptions.get("en") and a.descriptions.get("de")
+            assert bool(a.check) != bool(a.count)
+            assert (a.tiers is not None) == bool(a.count)
+
+    def test_every_achievement_has_a_badge_motif_in_the_plan_and_vice_versa(self):
+        plan = tomllib.loads((Path(__file__).parent.parent / "tools" / "badges.toml").read_text())
+        motifs = {b["id"]: b for b in plan["badge"]}
+        assert set(motifs) == {a.motif or a.id for a in ach.ACHIEVEMENTS}
+        for a in ach.ACHIEVEMENTS:
+            if a.motif:      # shares the motif of another achievement
+                assert a.motif in motifs and a.motif != a.id
+                continue
+            assert motifs[a.id]["mode"] == a.mode
+            assert motifs[a.id]["difficulty"] == a.difficulty
+            assert motifs[a.id].get("label") == a.label
 
 
 class TestOverview:

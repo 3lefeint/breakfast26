@@ -14,6 +14,7 @@ Rules the engine applies:
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -90,7 +91,190 @@ class Achievement:
         return is_elimination == (self.game_modes == ELIMINATION)
 
 
-ACHIEVEMENTS = ()
+# ── Checks ───────────────────────────────────────────────────────────────────
+
+_FIELD = re.compile(r"^([SDT])(\d{1,2})$")
+
+
+def _is_double(field):
+    match = _FIELD.match(field)
+    return field in INNER_BULL or bool(match and match.group(1) == "D")
+
+
+def _is_maximum(turn):
+    return not turn.is_bust and turn.darts == ("T20", "T20", "T20")
+
+
+def _checkouts(ctx):
+    return [turn for turn in ctx.turns if turn.is_checkout and not turn.is_bust]
+
+
+def _bullseye(ctx):
+    return any(dart in INNER_BULL for turn in ctx.turns for dart in turn.darts)
+
+
+def _ton_up(ctx):
+    return sum(1 for turn in ctx.turns if not turn.is_bust and (turn.score or 0) >= 100)
+
+
+def _beast_mode(ctx):
+    return any(turn.darts == ("S6", "S6", "S6") for turn in ctx.turns)
+
+
+def _first_bite(ctx):
+    return ctx.won and len(ctx.participants) >= 2
+
+
+def _last_at_the_table(ctx):
+    return ctx.won
+
+
+def _first_breakfast(ctx):
+    return True
+
+
+def _shanghai(ctx):
+    for turn in ctx.turns:
+        parts = [_FIELD.match(dart) for dart in turn.darts]
+        if len(parts) == 3 and all(parts) and len({p.group(2) for p in parts}) == 1 \
+                and {p.group(1) for p in parts} == {"S", "D", "T"}:
+            return True
+    return False
+
+
+def _double_pack(ctx):
+    return any(len(turn.darts) == 3 and all(_is_double(d) for d in turn.darts) for turn in ctx.turns)
+
+
+def _maximum(ctx):
+    return any(_is_maximum(turn) for turn in ctx.turns)
+
+
+def _maximum_count(ctx):
+    return sum(1 for turn in ctx.turns if _is_maximum(turn))
+
+
+def _triple_bull(ctx):
+    return any(len(turn.darts) == 3 and all(d in INNER_BULL for d in turn.darts) for turn in ctx.turns)
+
+
+def _matches_played(ctx):
+    return 1
+
+
+def _job_done(ctx):
+    return bool(_checkouts(ctx))
+
+
+def _last_dart_finish(ctx):
+    return any(len(turn.darts) == 3 for turn in _checkouts(ctx))
+
+
+def _double_trouble(ctx):
+    return any(turn.darts and turn.darts[-1] == "D1" for turn in _checkouts(ctx))
+
+
+def _high_finish(ctx):
+    return any((turn.remaining_before or 0) >= 100 for turn in _checkouts(ctx))
+
+
+def _straight_to_the_double(ctx):
+    return any(len(turn.darts) == 1 for turn in _checkouts(ctx))
+
+
+def _big_fish(ctx):
+    return any(turn.remaining_before == 170 and len(turn.darts) == 3
+               and turn.darts[:2] == ("T20", "T20") and turn.darts[2] in INNER_BULL
+               for turn in _checkouts(ctx))
+
+
+def _perfect_leg(ctx):
+    """A 501 leg the player finished in exactly nine darts."""
+    if ctx.match.get("points_start") != 501:
+        return False
+    legs = {}
+    for turn in ctx.turns:
+        legs.setdefault(turn.leg, []).append(turn)
+    return any(turns[-1].is_checkout and not turns[-1].is_bust
+               and sum(len(t.darts) for t in turns) == 9 for turns in legs.values())
+
+
+ACHIEVEMENTS = (
+    Achievement("first_breakfast", "general", "easy",
+                {"en": "First Breakfast", "de": "Erstes Frühstück"},
+                {"en": "Finish your first match.", "de": "Das erste Spiel abschliessen."},
+                check=_first_breakfast),
+    Achievement("bullseye", "general", "easy", {"en": "Bullseye", "de": "Bullseye"},
+                {"en": "Hit the inner bull.", "de": "Das innere Bull treffen."},
+                check=_bullseye),
+    Achievement("shanghai", "general", "medium", {"en": "Shanghai", "de": "Shanghai"},
+                {"en": "Hit a single, a double and a triple of the same number in one turn, in any order.",
+                 "de": "Single, Double und Triple derselben Zahl in einer Aufnahme treffen, Reihenfolge beliebig."},
+                label="SDT", check=_shanghai),
+    Achievement("double_pack", "general", "hard", {"en": "Triple Double", "de": "Doppelpack"},
+                {"en": "Hit a double with all three darts of a turn, the bull counts.",
+                 "de": "Mit allen drei Darts einer Aufnahme ein Double treffen, das Bull zählt."},
+                check=_double_pack),
+    Achievement("maximum", "general", "hard", {"en": "180!", "de": "180!"},
+                {"en": "Hit three treble 20s in one turn.", "de": "Drei T20 in einer Aufnahme treffen."},
+                label="180", check=_maximum),
+    Achievement("triple_bull", "general", "very_hard", {"en": "Triple Bull", "de": "Bull-Trio"},
+                {"en": "Hit the inner bull with all three darts of a turn.",
+                 "de": "Mit allen drei Darts einer Aufnahme das innere Bull treffen."},
+                check=_triple_bull),
+    Achievement("maximum_collector", "general", "endurance",
+                {"en": "Maximum Collector", "de": "Maximum-Sammler"},
+                {"en": "Score 180 again and again: 10, 100 and 1,000 times.",
+                 "de": "Immer wieder 180 erzielen: zehnmal, hundertmal und tausendmal."},
+                label="180", tiers=(10, 100, 1000), count=_maximum_count, motif="maximum"),
+    Achievement("a_hundred_served", "general", "endurance",
+                {"en": "A Hundred Served", "de": "Hundert auf dem Teller"},
+                {"en": "Finish 100 matches.", "de": "100 Spiele abschliessen."},
+                label="100", tiers=(100,), count=_matches_played),
+    Achievement("ton_up", "x01", "endurance", {"en": "Ton Up", "de": "Volle Hundert"},
+                {"en": "Score 100 or more in a turn of an X01 match.",
+                 "de": "In einer Aufnahme eines X01-Spiels mindestens 100 Punkte erzielen."},
+                game_modes=X01, label="100", tiers=(1, 10, 100, 1000), count=_ton_up),
+    Achievement("first_bite", "x01", "easy", {"en": "First Bite", "de": "Erster Bissen"},
+                {"en": "Win your first X01 match against at least one opponent.",
+                 "de": "Das erste X01-Spiel gegen mindestens einen Gegner gewinnen."},
+                game_modes=X01, check=_first_bite),
+    Achievement("job_done", "x01", "easy", {"en": "Job Done", "de": "Feierabend"},
+                {"en": "Finish a leg with a checkout.", "de": "Ein Leg mit einem Checkout beenden."},
+                game_modes=X01, check=_job_done),
+    Achievement("last_dart_finish", "x01", "easy",
+                {"en": "Last-Dart Finish", "de": "Auf den letzten Drücker"},
+                {"en": "Check out with the third dart of a turn.",
+                 "de": "Mit dem dritten Dart einer Aufnahme auschecken."},
+                game_modes=X01, check=_last_dart_finish),
+    Achievement("double_trouble", "x01", "easy", {"en": "Double Trouble", "de": "Double Trouble"},
+                {"en": "Finish a leg on D1.", "de": "Ein Leg auf D1 beenden."},
+                game_modes=X01, label="D1", check=_double_trouble),
+    Achievement("high_finish", "x01", "medium", {"en": "High Finish", "de": "High Finish"},
+                {"en": "Check out from 100 or more in one turn.",
+                 "de": "Aus mindestens 100 Rest in einer Aufnahme auschecken."},
+                game_modes=X01, label="100+", check=_high_finish),
+    Achievement("straight_to_the_double", "x01", "easy",
+                {"en": "Straight to the Double", "de": "Ohne Umweg"},
+                {"en": "Check out with the first dart of a turn.",
+                 "de": "Mit dem ersten Dart einer Aufnahme auschecken."},
+                game_modes=X01, check=_straight_to_the_double),
+    Achievement("big_fish", "x01", "very_hard", {"en": "Big Fish", "de": "Big Fish"},
+                {"en": "Check out 170 with T20, T20 and the inner bull.",
+                 "de": "170 Rest mit T20, T20 und dem inneren Bull auschecken."},
+                game_modes=X01, label="170", check=_big_fish),
+    Achievement("perfect_leg", "x01", "extreme", {"en": "Perfect Leg", "de": "Perfektes Leg"},
+                {"en": "Win a 501 leg in exactly nine darts.",
+                 "de": "Ein 501-Leg in genau neun Darts beenden."},
+                game_modes=X01, label="501", check=_perfect_leg),
+    Achievement("last_at_the_table", "elimination", "easy",
+                {"en": "Last at the Table", "de": "Letzter am Tisch"},
+                {"en": "Win an Elimination match.", "de": "Ein Elimination-Spiel gewinnen."},
+                game_modes=ELIMINATION, check=_last_at_the_table),
+    Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
+                {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
+                hidden=True, label="666", check=_beast_mode),
+)
 
 BY_ID = {a.id: a for a in ACHIEVEMENTS}
 
