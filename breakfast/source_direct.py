@@ -120,6 +120,7 @@ def run_direct(email, password, board_id, record_file=None,
                board_ws_url=DEFAULT_BOARD_WS_URL, board_manager_url=None):
 
     from breakfast.web import server as web
+    from breakfast.achievements import AchievementEngine
     from breakfast.stats import StatsDB, StatsTracker
 
     state = GameState()
@@ -127,9 +128,11 @@ def run_direct(email, password, board_id, record_file=None,
     mqtt_pub = None
     stats_tracker = None
     stats_db_instance = None
+    achievements = None
 
     if stats_db and stats_db.lower() != "none":
         stats_db_instance = StatsDB(stats_db)
+        achievements = AchievementEngine(stats_db_instance).attach()
         stats_tracker = StatsTracker(stats_db_instance)
 
     audio = None

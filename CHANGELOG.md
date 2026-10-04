@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Achievements: the stats database records which player earned which achievement, with tiers, taken back when an undo or correction reopens the match (#23)
+
 ## [0.8.1] - 2026-10-03
 
 ### Changed

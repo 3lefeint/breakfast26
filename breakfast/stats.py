@@ -84,6 +84,19 @@ CREATE TABLE IF NOT EXISTS dart_positions (
     entry       TEXT,
     corrected   INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS achievements_earned (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    player         TEXT    NOT NULL,
+    achievement_id TEXT    NOT NULL,
+    tier           INTEGER NOT NULL DEFAULT 0,
+    earned_at      TEXT    NOT NULL,
+    match_id       TEXT,
+    UNIQUE(player, achievement_id, tier)
+);
+CREATE TABLE IF NOT EXISTS achievements_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_turns_player ON turns (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_player ON dart_positions (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_match  ON dart_positions (match_id);
@@ -153,8 +166,15 @@ class StatsDB:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
+        # Called with a match id after a change that can decide achievements (a match
+        # closed or reopened, a turn undone or corrected). See achievements.py.
+        self.on_match_changed = None
+        self.achievement_engine = None      # set by AchievementEngine.attach()
         with self._lock:
             self._conn.executescript(_SCHEMA)
+            self._conn.execute(
+                "INSERT OR IGNORE INTO achievements_meta (key, value) VALUES ('start', ?)",
+                (_now_iso(),))
             self._migrate_matches_winner()
             self._migrate_elimination_turn_details()
             self._migrate_backfill_x01_winner()
@@ -218,6 +238,16 @@ class StatsDB:
             log.info("Stats DB: DROP COLUMN in_roster failed despite sqlite %s, leaving it in place",
                       sqlite3.sqlite_version)
 
+    def _match_changed(self, match_id: str):
+        """Tell the listener a match changed. A failing listener must never reach the
+        game, so its errors are only logged."""
+        if self.on_match_changed is None:
+            return
+        try:
+            self.on_match_changed(match_id)
+        except Exception:
+            log.exception("Match listener failed for %s", match_id)
+
     def open_match(self, match_id: str, game_mode: str, points_start: int):
         log.debug("DB write: open_match match_id=%s game_mode=%s points_start=%s",
                   match_id, game_mode, points_start)
@@ -244,6 +274,7 @@ class StatsDB:
                 (_now_iso(), json.dumps(players), match_id),
             )
             self._conn.commit()
+        self._match_changed(match_id)
 
     def set_winner(self, match_id: str, winner: str | None):
         log.debug("DB write: set_winner match_id=%s winner=%s", match_id, winner)
@@ -366,6 +397,7 @@ class StatsDB:
                     "DELETE FROM elimination_turns WHERE id = ?", (row["id"],)
                 )
                 self._conn.commit()
+        self._match_changed(match_id)
 
     def reopen_match(self, match_id: str):
         """Clear `ended_at` — undoing a match finish walks the
@@ -377,6 +409,7 @@ class StatsDB:
                 "UPDATE matches SET ended_at = NULL WHERE match_id = ?", (match_id,)
             )
             self._conn.commit()
+        self._match_changed(match_id)
 
     def insert_elimination_turn(self, match_id: str, player: str, darts_count: int,
                                 score: int | None = None, target: int | None = None,
@@ -426,6 +459,7 @@ class StatsDB:
                 (match_id, player, match_id, player),
             )
             self._conn.commit()
+        self._match_changed(match_id)
 
     def _ensure_player(self, name):
         """Auto-link a name into the `players` identity table. Must be called
@@ -581,9 +615,134 @@ class StatsDB:
             self._conn.execute("DELETE FROM turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM elimination_turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM elimination_results WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
             self._conn.commit()
         log.info("Deleted all stats for player: %s", player)
+
+    # ── Achievements ──────────────────────────────────────────────────────────
+
+    def achievements_start(self) -> str:
+        """Only matches that started at or after this time count for achievements."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT value FROM achievements_meta WHERE key = 'start'").fetchone()[0]
+
+    def set_achievements_start(self, iso: str):
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO achievements_meta (key, value) VALUES ('start', ?)", (iso,))
+            self._conn.commit()
+
+    def match_row(self, match_id: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT match_id, game_mode, points_start, winner, started_at, ended_at FROM matches"
+                " WHERE match_id = ?", (match_id,)).fetchone()
+        return dict(row) if row else None
+
+    def match_participants(self, match_id: str) -> list:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player FROM turns WHERE match_id = ?"
+                " UNION SELECT player FROM elimination_turns WHERE match_id = ?"
+                " UNION SELECT player FROM elimination_results WHERE match_id = ?",
+                (match_id, match_id, match_id)).fetchall()
+        return sorted(r[0] for r in rows)
+
+    def player_final_matches(self, player: str, since: str) -> list:
+        """Closed matches the player took part in that started at or after `since`,
+        oldest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at FROM matches m"
+                " WHERE m.ended_at IS NOT NULL AND m.started_at >= ? AND ("
+                " EXISTS (SELECT 1 FROM turns t WHERE t.match_id = m.match_id AND t.player = ?)"
+                " OR EXISTS (SELECT 1 FROM elimination_turns e WHERE e.match_id = m.match_id AND e.player = ?)"
+                " OR EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id AND r.player = ?))"
+                " ORDER BY m.started_at, m.match_id", (since, player, player, player)).fetchall()
+        return [dict(r) for r in rows]
+
+    def turns_for_achievements(self, match_id: str, player: str, game_mode: str) -> list:
+        """The player's turns of a match as {number, score, is_bust, darts}. `darts` are the
+        field names that can be trusted: all stored X01 darts, and for Elimination the
+        darts with a recorded position that was not set by a correction."""
+        with self._lock:
+            if game_mode == "Elimination":
+                rows = self._conn.execute(
+                    "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"
+                    " AND game_mode = 'Elimination' AND corrected = 0 ORDER BY turn, dart_number",
+                    (match_id, player)).fetchall()
+                turns = {}
+                for r in rows:
+                    turns.setdefault(r["turn"], []).append((r["field"] or "").upper())
+                return [{"number": n, "score": None, "is_bust": False, "darts": tuple(d)}
+                        for n, d in sorted(turns.items())]
+            rows = self._conn.execute(
+                "SELECT turn, leg, score, is_bust, is_checkout, remaining_before, dart1, dart2, dart3"
+                " FROM turns WHERE match_id = ? AND player = ? ORDER BY id", (match_id, player)).fetchall()
+        return [{"number": r["turn"], "score": r["score"], "is_bust": bool(r["is_bust"]),
+                 "darts": tuple(d.upper() for d in (r["dart1"], r["dart2"], r["dart3"]) if d),
+                 "is_checkout": bool(r["is_checkout"]), "remaining_before": r["remaining_before"],
+                 "leg": r["leg"]}
+                for r in rows]
+
+    def achievement_distribution(self, since: str) -> tuple:
+        """(number of players, {(achievement_id, tier): number who earned it}). The players
+        are the visible ones with a closed match that started at or after `since`."""
+        with self._lock:
+            players = self._conn.execute(
+                "SELECT COUNT(DISTINCT p.player) FROM ("
+                " SELECT player, match_id FROM turns"
+                " UNION SELECT player, match_id FROM elimination_turns"
+                " UNION SELECT player, match_id FROM elimination_results) p"
+                " JOIN matches m ON m.match_id = p.match_id"
+                " WHERE m.ended_at IS NOT NULL AND m.started_at >= ?"
+                " AND p.player NOT IN (SELECT name FROM players WHERE hidden = 1)",
+                (since,)).fetchone()[0]
+            rows = self._conn.execute(
+                "SELECT achievement_id, tier, COUNT(*) FROM achievements_earned"
+                " WHERE player NOT IN (SELECT name FROM players WHERE hidden = 1)"
+                " GROUP BY achievement_id, tier").fetchall()
+        return players, {(r[0], r[1]): r[2] for r in rows}
+
+    def earned_rows(self, player: str, achievement_id: str) -> list:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, tier, earned_at, match_id FROM achievements_earned"
+                " WHERE player = ? AND achievement_id = ? ORDER BY tier",
+                (player, achievement_id)).fetchall()
+        return [dict(r) for r in rows]
+
+    def earned_for_player(self, player: str) -> list:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT achievement_id, tier, earned_at, match_id FROM achievements_earned"
+                " WHERE player = ? ORDER BY earned_at, id", (player,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_earned(self, player: str, achievement_id: str, tier: int, match_id: str | None):
+        log.debug("DB write: add_earned player=%s achievement=%s tier=%s match_id=%s",
+                  player, achievement_id, tier, match_id)
+        with self._lock:
+            self._ensure_player(player)
+            self._conn.execute(
+                "INSERT OR IGNORE INTO achievements_earned"
+                " (player, achievement_id, tier, earned_at, match_id) VALUES (?, ?, ?, ?, ?)",
+                (player, achievement_id, tier, _now_iso(), match_id))
+            self._conn.commit()
+
+    def set_earned_match(self, row_id: int, match_id: str):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE achievements_earned SET match_id = ? WHERE id = ?", (match_id, row_id))
+            self._conn.commit()
+
+    def delete_earned(self, row_id: int):
+        log.debug("DB write: delete_earned id=%s", row_id)
+        with self._lock:
+            self._conn.execute("DELETE FROM achievements_earned WHERE id = ?", (row_id,))
+            self._conn.commit()
 
     def recent_matches(self, limit: int = 20, mode: str | None = None) -> list:
         """Newest first. `mode` ("x01" or "elimination") restricts which game mode

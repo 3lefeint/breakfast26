@@ -555,6 +555,12 @@ async def stats_player(name: str):
     return _stats_db.player_stats(name) or {}
 
 
+@app.get("/api/achievements/{name}")
+async def achievements_player(name: str):
+    engine = _stats_db.achievement_engine if _stats_db else None
+    return {"player": name, "achievements": engine.overview(name) if engine else []}
+
+
 @app.get("/api/stats/matches")
 async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination)$")):
     if not _stats_db:

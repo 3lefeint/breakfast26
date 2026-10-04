@@ -737,6 +737,7 @@ The web server exposes a REST API alongside the WebSocket.
 |--------|------|-------------|
 | `GET` | `/api/stats/players` | Lifetime stats for all players |
 | `GET` | `/api/stats/player/{name}` | Lifetime stats for one player |
+| `GET` | `/api/achievements/{name}` | Every achievement with the player's state (`tier`, `progress`, `next`, `earned_at`, `percent` = share of players with the shown tier); the name, description and `percent` of a secret one stay `null` until it is earned |
 | `DELETE` | `/api/stats/player/{name}` | Delete all stats for a player (double-confirmed in the UI) |
 | `GET` | `/api/stats/matches?mode=x01` | Recent matches (up to 20); `mode` (`x01` or `elimination`) limits the list to one game mode, without it both are mixed |
 | `GET` | `/api/stats/x01/overview` | X01 overview: `summary` (matches, legs, darts, playtime) and `records` (highest turn, highest checkout, best leg for the most played starting score, best match average) |
