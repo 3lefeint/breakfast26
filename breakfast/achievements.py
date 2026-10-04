@@ -29,13 +29,14 @@ INNER_BULL = frozenset({"50", "BULL"})
 X01 = "x01"
 ELIMINATION = "elimination"
 TARGET_BATTLE = "target_battle"
+KILLER = "killer"
 ANY = "any"
 
 
 def game_kind(game_mode: str) -> str:
     """The kind of game a match of this mode in the database is: anything that is not
-    Elimination or Target Battle is an X01 variant."""
-    return {"Elimination": ELIMINATION, "Target Battle": TARGET_BATTLE}.get(game_mode, X01)
+    Elimination, Target Battle or Killer is an X01 variant."""
+    return {"Elimination": ELIMINATION, "Target Battle": TARGET_BATTLE, "Killer": KILLER}.get(game_mode, X01)
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,7 @@ class Achievement:
     difficulty: str            # easy ... extreme, endurance, hidden
     names: dict                # {"en": ..., "de": ...}
     descriptions: dict         # how to earn it, same languages
-    game_modes: str = ANY      # which matches can decide it: x01, elimination, target_battle or any
+    game_modes: str = ANY      # which matches can decide it: x01, elimination, target_battle, killer or any
     hidden: bool = False       # shown as a silhouette until earned
     label: str | None = None   # short text drawn on the badge
     tiers: tuple | None = None  # counter thresholds, None for an event

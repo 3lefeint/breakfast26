@@ -101,6 +101,40 @@ CREATE TABLE IF NOT EXISTS target_battle_games (
     tiebreak      INTEGER NOT NULL DEFAULT 0,
     fixed_targets INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS killer_games (
+    match_id TEXT PRIMARY KEY,
+    own_goal INTEGER NOT NULL DEFAULT 0,
+    singles  INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS killer_turns (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id    TEXT NOT NULL,
+    player      TEXT NOT NULL,
+    darts_count INTEGER NOT NULL,
+    created_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS killer_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    turn_id    INTEGER NOT NULL,
+    match_id   TEXT NOT NULL,
+    player     TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    victim     TEXT,
+    dart_no    INTEGER NOT NULL,
+    number     INTEGER,
+    lives_after INTEGER
+);
+CREATE TABLE IF NOT EXISTS killer_results (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id   TEXT NOT NULL,
+    player     TEXT NOT NULL,
+    placement  INTEGER NOT NULL,
+    lives_left INTEGER,
+    number     INTEGER NOT NULL,
+    UNIQUE(match_id, player)
+);
+CREATE INDEX IF NOT EXISTS idx_killer_turns_match  ON killer_turns  (match_id);
+CREATE INDEX IF NOT EXISTS idx_killer_events_match ON killer_events (match_id);
 CREATE TABLE IF NOT EXISTS dart_positions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id    TEXT    NOT NULL,
@@ -145,7 +179,7 @@ _TURN_TABLES = {"all": ("turns", "elimination_turns"), "x01": ("turns",), "elimi
 
 
 # The games that are not X01. Everything else in `matches` is an X01 variant.
-_OTHER_MODES_SQL = "('Elimination', 'Target Battle')"
+_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer')"
 
 # A match counts as "solo" (practice, no opponent) when exactly one distinct
 # player ever appears in its `turns` rows — Elimination is excluded here
@@ -338,8 +372,9 @@ class StatsDB:
                 r[0] for r in self._conn.execute(
                     "SELECT DISTINCT player FROM turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM elimination_turns WHERE match_id = ?"
-                    " UNION SELECT DISTINCT player FROM target_battle_turns WHERE match_id = ?",
-                    (match_id, match_id, match_id),
+                    " UNION SELECT DISTINCT player FROM target_battle_turns WHERE match_id = ?"
+                    " UNION SELECT DISTINCT player FROM killer_turns WHERE match_id = ?",
+                    (match_id, match_id, match_id, match_id),
                 ).fetchall()
             ]
             log.debug("DB write: close_match match_id=%s players=%s", match_id, players)
@@ -748,6 +783,77 @@ class StatsDB:
             "head_to_head": sorted(pairs.values(), key=lambda e: (-e["games"], e["a"], e["b"])),
         }
 
+    # ── Killer ────────────────────────────────────────────────────────────────
+
+    def record_killer_setup(self, match_id: str, own_goal: bool, singles: bool):
+        log.debug("DB write: record_killer_setup match_id=%s own_goal=%s singles=%s",
+                  match_id, own_goal, singles)
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO killer_games (match_id, own_goal, singles) VALUES (?, ?, ?)",
+                (match_id, int(own_goal), int(singles)))
+            self._conn.commit()
+
+    def insert_killer_turn(self, match_id, player, darts_count, events, positions=None):
+        """One finished turn with what its darts did. events: dicts with kind, dart, victim, number
+        and lives (the victim's lives afterwards). positions: one {"field", "x", "y"} (or None) per dart."""
+        log.debug("DB write: insert_killer_turn match_id=%s player=%s darts_count=%s events=%s",
+                  match_id, player, darts_count, events)
+        with self._lock:
+            self._ensure_player(player)
+            cur = self._conn.execute(
+                "INSERT INTO killer_turns (match_id, player, darts_count, created_at) VALUES (?, ?, ?, ?)",
+                (match_id, player, darts_count, _now_iso()))
+            turn_id = cur.lastrowid
+            for e in events:
+                self._conn.execute(
+                    "INSERT INTO killer_events (turn_id, match_id, player, kind, victim, dart_no, number,"
+                    " lives_after) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (turn_id, match_id, e["player"], e["kind"], e.get("victim"), e["dart"],
+                     e.get("number"), e.get("lives")))
+            turn = self._conn.execute(
+                "SELECT COUNT(*) FROM killer_turns WHERE match_id = ? AND player = ?",
+                (match_id, player)).fetchone()[0]
+            self._insert_positions(match_id, "Killer", player, 1, turn,
+                                   [((p or {}).get("field"), p) for p in positions or []])
+            self._conn.commit()
+
+    def delete_last_killer_turn(self, match_id: str, player: str):
+        """Undo insert_killer_turn() for the player's most recent turn."""
+        log.debug("DB write: delete_last_killer_turn match_id=%s player=%s", match_id, player)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id FROM killer_turns WHERE match_id = ? AND player = ? ORDER BY id DESC LIMIT 1",
+                (match_id, player)).fetchone()
+            if row:
+                turn = self._conn.execute(
+                    "SELECT COUNT(*) FROM killer_turns WHERE match_id = ? AND player = ?",
+                    (match_id, player)).fetchone()[0]
+                self._conn.execute(
+                    "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'Killer'"
+                    " AND player = ? AND turn = ?", (match_id, player, turn))
+                self._conn.execute("DELETE FROM killer_events WHERE turn_id = ?", (row["id"],))
+                self._conn.execute("DELETE FROM killer_turns WHERE id = ?", (row["id"],))
+                self._conn.commit()
+        self._match_changed(match_id)
+
+    def record_killer_results(self, match_id: str, results: list):
+        """results: (player, placement, lives_left, number) per player, lives_left only for the winner."""
+        log.debug("DB write: record_killer_results match_id=%s results=%s", match_id, results)
+        with self._lock:
+            for player, placement, lives_left, number in results:
+                self._ensure_player(player)
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO killer_results (match_id, player, placement, lives_left, number)"
+                    " VALUES (?, ?, ?, ?, ?)", (match_id, player, placement, lives_left, number))
+            self._conn.commit()
+
+    def delete_killer_results(self, match_id: str):
+        log.debug("DB write: delete_killer_results match_id=%s", match_id)
+        with self._lock:
+            self._conn.execute("DELETE FROM killer_results WHERE match_id = ?", (match_id,))
+            self._conn.commit()
+
     def reopen_match(self, match_id: str):
         """Clear `ended_at` — undoing a match finish walks the
         match back to `state == "playing"`, so it shouldn't still look
@@ -967,6 +1073,10 @@ class StatsDB:
             self._conn.execute("DELETE FROM target_battle_turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM target_battle_results WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Target Battle'", (player,))
+            self._conn.execute("DELETE FROM killer_events WHERE player = ? OR victim = ?", (player, player))
+            self._conn.execute("DELETE FROM killer_turns WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM killer_results WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Killer'", (player,))
             self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
             self._conn.commit()
@@ -1002,8 +1112,10 @@ class StatsDB:
                 " UNION SELECT player FROM elimination_turns WHERE match_id = ?"
                 " UNION SELECT player FROM elimination_results WHERE match_id = ?"
                 " UNION SELECT player FROM target_battle_turns WHERE match_id = ?"
-                " UNION SELECT player FROM target_battle_results WHERE match_id = ?",
-                (match_id, match_id, match_id, match_id, match_id)).fetchall()
+                " UNION SELECT player FROM target_battle_results WHERE match_id = ?"
+                " UNION SELECT player FROM killer_turns WHERE match_id = ?"
+                " UNION SELECT player FROM killer_results WHERE match_id = ?",
+                (match_id,) * 7).fetchall()
         return sorted(r[0] for r in rows)
 
     def player_final_matches(self, player: str, since: str) -> list:
@@ -1019,8 +1131,10 @@ class StatsDB:
                 " OR EXISTS (SELECT 1 FROM elimination_turns e WHERE e.match_id = m.match_id AND e.player = ?)"
                 " OR EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id AND r.player = ?)"
                 " OR EXISTS (SELECT 1 FROM target_battle_turns b WHERE b.match_id = m.match_id AND b.player = ?)"
-                " OR EXISTS (SELECT 1 FROM target_battle_results c WHERE c.match_id = m.match_id AND c.player = ?))"
-                " ORDER BY m.started_at, m.match_id", (since, player, player, player, player, player)).fetchall()
+                " OR EXISTS (SELECT 1 FROM target_battle_results c WHERE c.match_id = m.match_id AND c.player = ?)"
+                " OR EXISTS (SELECT 1 FROM killer_turns k WHERE k.match_id = m.match_id AND k.player = ?)"
+                " OR EXISTS (SELECT 1 FROM killer_results l WHERE l.match_id = m.match_id AND l.player = ?))"
+                " ORDER BY m.started_at, m.match_id", (since,) + (player,) * 7).fetchall()
         return [dict(r) for r in rows]
 
     def turns_for_achievements(self, match_id: str, player: str, game_mode: str) -> list:
@@ -1120,7 +1234,9 @@ class StatsDB:
                 " UNION SELECT player, match_id FROM elimination_turns"
                 " UNION SELECT player, match_id FROM elimination_results"
                 " UNION SELECT player, match_id FROM target_battle_turns"
-                " UNION SELECT player, match_id FROM target_battle_results) p"
+                " UNION SELECT player, match_id FROM target_battle_results"
+                " UNION SELECT player, match_id FROM killer_turns"
+                " UNION SELECT player, match_id FROM killer_results) p"
                 " JOIN matches m ON m.match_id = p.match_id"
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ?"
                 " AND p.player NOT IN (SELECT name FROM players WHERE hidden = 1)",
@@ -1176,6 +1292,7 @@ class StatsDB:
             "x01": f" AND COALESCE(game_mode, '') NOT IN {_OTHER_MODES_SQL}",
             "elimination": " AND game_mode = 'Elimination'",
             "target_battle": " AND game_mode = 'Target Battle'",
+            "killer": " AND game_mode = 'Killer'",
         }.get(mode, "")
         with self._lock:
             rows = self._conn.execute(
@@ -1183,7 +1300,8 @@ class StatsDB:
                 " FROM matches"
                 " WHERE (EXISTS (SELECT 1 FROM turns WHERE turns.match_id = matches.match_id)"
                 "    OR EXISTS (SELECT 1 FROM elimination_turns WHERE elimination_turns.match_id = matches.match_id)"
-                "    OR EXISTS (SELECT 1 FROM target_battle_turns WHERE target_battle_turns.match_id = matches.match_id))"
+                "    OR EXISTS (SELECT 1 FROM target_battle_turns WHERE target_battle_turns.match_id = matches.match_id)"
+                "    OR EXISTS (SELECT 1 FROM killer_turns WHERE killer_turns.match_id = matches.match_id))"
                 + mode_sql +
                 " ORDER BY started_at DESC LIMIT ?",
                 (limit,),

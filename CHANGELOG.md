@@ -13,6 +13,7 @@
 - Player profile: a color picker for the player's color, stored with the player (#29).
 - Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
 - Target Battle game with a setup page, a live view with a wheel for the target and a result page (#21).
+- Killer game, started through `/api/killer/*` or MQTT (#20).
 
 - 42 more achievements for X01, Elimination and across all games, 24 of them secret (#23).
 - 15 Target Battle achievements, five of them secret (#23).

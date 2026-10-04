@@ -43,6 +43,7 @@ _DIST_AUDIO_HTML_PATH = os.path.join(_DIST_DIR, "audio.html")
 _game_state = None
 _elim_ctrl = None
 _tb_ctrl = None
+_killer_ctrl = None
 _online = None
 _cloud_client = None
 _stats_tracker = None
@@ -66,13 +67,14 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
+    _killer_ctrl = killer_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
@@ -98,6 +100,12 @@ def _build_payload() -> dict:
         tb_snap = {"active": False}
     else:
         tb_snap = None
+    if _killer_ctrl and _killer_ctrl.game:
+        killer_snap = _killer_ctrl.game.snapshot()
+    elif _killer_ctrl:
+        killer_snap = {"active": False}
+    else:
+        killer_snap = None
     session_stats = _stats_tracker.computed_session_stats() if _stats_tracker else {}
     known_players = kp.load(_stats_db)
     return {
@@ -105,6 +113,7 @@ def _build_payload() -> dict:
         "board_darts": _game_state.board_darts.snapshot() if _game_state else None,
         "elimination": elim_snap,
         "target_battle": tb_snap,
+        "killer": killer_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
         "player_colors": _stats_db.player_colors() if _stats_db else {},
@@ -409,6 +418,8 @@ async def elim_start(body: StartBody):
         return {"error": "an online match is open, leave it first"}
     if _tb_ctrl and _tb_ctrl.active:
         return {"error": "a Target Battle is running, stop it first"}
+    if _killer_ctrl and _killer_ctrl.active:
+        return {"error": "a Killer game is running, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -477,6 +488,8 @@ async def tb_start(body: TargetBattleStartBody):
         return {"error": "an online match is open, leave it first"}
     if _elim_ctrl and _elim_ctrl.active:
         return {"error": "an Elimination game is running, stop it first"}
+    if _killer_ctrl and _killer_ctrl.active:
+        return {"error": "a Killer game is running, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _tb_ctrl.start(players, rounds=body.rounds, targets=body.targets,
@@ -520,6 +533,77 @@ async def tb_correct_dart(body: CorrectDartBody):
     if _tb_ctrl and _tb_ctrl.game:
         _tb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
     _move_board_dart(body.dart - 1, body.field)
+    return {"ok": True}
+
+
+# ── REST: killer ──────────────────────────────────────────────────────────────
+
+class KillerStartBody(BaseModel):
+    players: list[str]
+    own_goal: bool = False     # a valid hit on the own number costs an active killer a life
+    singles: bool = False      # singles take lives too, not only doubles
+
+
+@app.post("/api/killer/start")
+async def killer_start(body: KillerStartBody):
+    log.debug("Killer start requested: players=%s own_goal=%s singles=%s",
+              body.players, body.own_goal, body.singles)
+    if not _killer_ctrl:
+        return {"error": "no killer controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    if _elim_ctrl and _elim_ctrl.active:
+        return {"error": "an Elimination game is running, stop it first"}
+    if _tb_ctrl and _tb_ctrl.active:
+        return {"error": "a Target Battle is running, stop it first"}
+    players = [p.strip() for p in body.players if p.strip()]
+    try:
+        _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/killer/stop")
+async def killer_stop():
+    log.debug("Killer stop requested")
+    if _killer_ctrl:
+        _killer_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/killer/undo")
+async def killer_undo():
+    log.debug("Killer undo requested")
+    if not (_killer_ctrl and _killer_ctrl.game):
+        return {"error": "no active or finished game"}
+    if not _killer_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/killer/correct-dart")
+async def killer_correct_dart(body: CorrectDartBody):
+    """Correct a dart of the turn in progress."""
+    log.debug("Killer correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _killer_ctrl and _killer_ctrl.game:
+        _killer_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field)
+    return {"ok": True}
+
+
+@app.post("/api/killer/correct-last-dart")
+async def killer_correct_last_dart(body: CorrectDartBody):
+    """Correct a dart of the last finished turn, also after it ended the game."""
+    log.debug("Killer correct-last-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if not (_killer_ctrl and _killer_ctrl.game):
+        return {"error": "no active or finished game"}
+    if not _killer_ctrl.game.correct_last_dart(body.dart - 1, body.field):
+        return {"error": "no turn to correct"}
     return {"ok": True}
 
 
