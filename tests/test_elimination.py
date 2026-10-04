@@ -1,7 +1,8 @@
 import contextlib
 
 from breakfast import elimination
-from breakfast.elimination import EliminationController, EliminationGame, _dart_value, _parse_field
+from breakfast.elimination import EliminationController, EliminationGame
+from breakfast.turn_game import dart_value, parse_field
 from breakfast.mqtt_output import NullMqttPublisher
 from breakfast.stats import StatsDB
 
@@ -187,7 +188,7 @@ def test_current_darts_reset_once_darts_are_pulled():
         "current_darts must clear once darts are pulled, not linger until the next player's first dart"
     # the just-finished turn's darts must still be available for the
     # "last turn" / correction flow
-    assert [_dart_value(t) for t in game._last_throws] == [60]
+    assert [dart_value(t) for t in game._last_throws] == [60]
 
 
 def test_snapshot_turn_order_rotates_current_first_and_hides_eliminated():
@@ -206,13 +207,13 @@ def test_snapshot_turn_order_rotates_current_first_and_hides_eliminated():
     assert any(p["name"] == "bob" for p in snap["players"])
 
 
-def test_parse_field():
-    assert _parse_field("T20") == _throw(20, 3)
-    assert _parse_field("D16") == _throw(16, 2)
-    assert _parse_field("S5") == _throw(5, 1)
-    assert _parse_field("25") == _throw(25, 1)
-    assert _parse_field("50") == _throw(25, 2)
-    assert _parse_field("0") == _throw(0, 0)
+def testparse_field():
+    assert parse_field("T20") == _throw(20, 3)
+    assert parse_field("D16") == _throw(16, 2)
+    assert parse_field("S5") == _throw(5, 1)
+    assert parse_field("25") == _throw(25, 1)
+    assert parse_field("50") == _throw(25, 2)
+    assert parse_field("0") == _throw(0, 0)
 
 
 def test_correct_current_dart_affects_final_score():

@@ -22,7 +22,7 @@ import threading
 import time
 from datetime import datetime
 
-from breakfast.elimination import _parse_field
+from breakfast.turn_game import parse_field
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ _ELIM_DEMO_LIVES = 3
 _ELIM_DEMO_DART_DELAY_S = 2.4
 _ELIM_DEMO_TURN_DELAY_S = 1.5
 # Hand-scripted turns (field strings, parsed like a real board's throws via
-# elimination._parse_field) — engineered to run both players through a
+# turn_game.parse_field) — engineered to run both players through a
 # couple of life losses before a decisive finish, without depending on any
 # specific outcome (the engine just plays out whatever these totals mean).
 _ELIM_DEMO_TURNS = [
@@ -157,7 +157,7 @@ class DemoRunner:
                     break
                 throws = []
                 for field in turn:
-                    throws.append(_parse_field(field))
+                    throws.append(parse_field(field))
                     self._elim_ctrl.on_board_state(len(throws), list(throws))
                     time.sleep(_ELIM_DEMO_DART_DELAY_S)
                 self._elim_ctrl.on_board_state(0, [])  # darts pulled, ends the turn
