@@ -20,6 +20,7 @@
 - Stats: a Killer chip with the records, placements, form, head to head and what each player did (#20).
 
 - 42 more achievements for X01, Elimination and across all games, 24 of them secret (#23).
+- 15 Killer achievements, four of them secret, and the Four-Course Meal (#23).
 - 15 Target Battle achievements, five of them secret (#23).
 - Target Battle voice calls, and a `wheel` sound if you supply one (#21).
 

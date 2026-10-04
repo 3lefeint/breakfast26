@@ -266,7 +266,8 @@ class KillerGame(TurnGame):
             self.killers.add(player)
             events.append(self._event("killer", 1, player, number=number))
             if self.stats_db:
-                self.stats_db.insert_killer_turn(self.match_id, player, 1, [events[-1]],
+                # Stored as dart 0: it was thrown before the game, not in a turn of it.
+                self.stats_db.insert_killer_turn(self.match_id, player, 1, [dict(events[-1], dart=0)],
                                                  positions=dart_positions([throw]))
                 recorded = True
         if len(self.numbers) == len(self.order):

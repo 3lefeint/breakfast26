@@ -545,3 +545,96 @@ mode = "elimination"
 difficulty = "hidden"
 label = "-1"
 subject = "A heart with a single small piece missing at its edge."
+
+[[badge]]
+id = "four_course_meal"
+mode = "general"
+difficulty = "easy"
+subject = "A folded restaurant menu card."
+
+[[badge]]
+id = "licence_to_breakfast"
+mode = "killer"
+difficulty = "easy"
+subject = "A rounded rectangular ID card with a clip at the top."
+
+[[badge]]
+id = "armed_immediately"
+mode = "killer"
+difficulty = "medium"
+subject = "A single lightning bolt."
+
+[[badge]]
+id = "first_blood"
+mode = "killer"
+difficulty = "easy"
+subject = "One large heart with a single dart stuck in it, a small chip broken off the heart's edge."
+
+[[badge]]
+id = "three_in_one"
+mode = "killer"
+difficulty = "medium"
+label = "3"
+subject = "A wooden mallet hammer."
+
+[[badge]]
+id = "all_round_attack"
+mode = "killer"
+difficulty = "hard"
+label = "3"
+subject = "A spiky explosion burst."
+
+[[badge]]
+id = "finisher"
+mode = "killer"
+difficulty = "easy"
+subject = "A simple skull."
+
+[[badge]]
+id = "double_knockout"
+mode = "killer"
+difficulty = "hard"
+label = "2"
+subject = "Two crossed daggers forming an X."
+
+[[badge]]
+id = "unscathed"
+mode = "killer"
+difficulty = "hard"
+subject = "A five-pointed sheriff star badge."
+
+[[badge]]
+id = "last_breath"
+mode = "killer"
+difficulty = "medium"
+subject = "An hourglass with almost all the sand run out."
+
+[[badge]]
+id = "double_agent"
+mode = "killer"
+difficulty = "hard"
+subject = "A pair of sunglasses."
+
+[[badge]]
+id = "self_service"
+mode = "killer"
+difficulty = "hidden"
+subject = "A boomerang."
+
+[[badge]]
+id = "glass_cannon"
+mode = "killer"
+difficulty = "hidden"
+subject = "A champagne glass with a crack through it."
+
+[[badge]]
+id = "friendly_to_the_end"
+mode = "killer"
+difficulty = "hidden"
+subject = "A white flag on a short pole."
+
+[[badge]]
+id = "own_worst_enemy"
+mode = "killer"
+difficulty = "hidden"
+subject = "A snake biting its own tail, forming a circle."

@@ -854,6 +854,30 @@ class StatsDB:
             self._conn.execute("DELETE FROM killer_results WHERE match_id = ?", (match_id,))
             self._conn.commit()
 
+    def killer_event_rows(self, match_id: str) -> list:
+        """Every event of a Killer game in the order it happened: turn_id (turns are told apart by it),
+        player (who did it), kind, victim, dart_no (0 for a number thrown before the game), number and
+        the victim's lives afterwards."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT turn_id, player, kind, victim, dart_no, number, lives_after FROM killer_events"
+                " WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def killer_rules(self, match_id: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT own_goal, singles FROM killer_games WHERE match_id = ?", (match_id,)).fetchone()
+        return {"own_goal": bool(row["own_goal"]), "singles": bool(row["singles"])} if row else None
+
+    def killer_results(self, match_id: str) -> list:
+        """The result of a Killer game: player, placement and, for the winner, the lives left."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, placement, lives_left FROM killer_results WHERE match_id = ?"
+                " ORDER BY placement, player", (match_id,)).fetchall()
+        return [dict(r) for r in rows]
+
     def match_killer_stats(self, match_id: str) -> dict:
         """One Killer game: its rules and the players by placement with what each did: the number,
         the lives left, lives taken from others, knockouts, own goals, lives lost and the own turn on

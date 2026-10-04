@@ -68,6 +68,9 @@ class MatchContext:
         self._elim_turns = None
         self._elim_results = None
         self._x01_turns = None
+        self._killer_events = None
+        self._killer_rules = False
+        self._killer_results = None
 
     @property
     def turns(self) -> list:
@@ -96,6 +99,27 @@ class MatchContext:
         if self._tb_turns is None:
             self._tb_turns = self.db.target_battle_turn_rows(self.match["match_id"])
         return self._tb_turns
+
+    @property
+    def killer_events(self) -> list:
+        """Killer: every event of the game, see StatsDB.killer_event_rows()."""
+        if self._killer_events is None:
+            self._killer_events = self.db.killer_event_rows(self.match["match_id"])
+        return self._killer_events
+
+    @property
+    def killer_rules(self) -> dict | None:
+        """Killer: whether own goals and singles were on."""
+        if self._killer_rules is False:
+            self._killer_rules = self.db.killer_rules(self.match["match_id"])
+        return self._killer_rules
+
+    @property
+    def killer_lives_left(self) -> int | None:
+        """Killer: the lives the winner had left."""
+        if self._killer_results is None:
+            self._killer_results = self.db.killer_results(self.match["match_id"])
+        return next((r["lives_left"] for r in self._killer_results if r["placement"] == 1), None)
 
     @property
     def x01_turns(self) -> list:
@@ -501,6 +525,105 @@ def _chips_for_breakfast(ctx):
 def _close_still_costs(ctx):
     return any(not t["freipass"] and not t["passed"] and t["to_beat"] > 0 and t["score"] == t["to_beat"] - 1
                for t in ctx.own_elim_turns)
+
+
+# Killer. An event of the game has the player who did it, its kind (killer, hit, own_goal, out), the
+# victim, the turn it happened in (`turn_id`) and the dart of that turn (0: thrown before the game).
+
+def _own_killer(ctx, kind):
+    return [e for e in ctx.killer_events if e["player"] == ctx.player and e["kind"] == kind]
+
+
+def _killer_by_turn(ctx, kind):
+    """The player's events of one kind, grouped by the turn they happened in."""
+    turns = {}
+    for e in _own_killer(ctx, kind):
+        turns.setdefault(e["turn_id"], []).append(e)
+    return list(turns.values())
+
+
+def _knockouts(ctx):
+    return [e for e in _own_killer(ctx, "out") if e["victim"] != ctx.player]
+
+
+def _licence_to_breakfast(ctx):
+    return bool(_own_killer(ctx, "killer"))
+
+
+def _armed_immediately(ctx):
+    """Became a killer with the first dart of the game: the first dart of the first own turn."""
+    turn = next((e["turn_id"] for e in ctx.killer_events if e["player"] == ctx.player and e["dart_no"] > 0), None)
+    return any(e["dart_no"] == 1 and e["turn_id"] == turn for e in _own_killer(ctx, "killer"))
+
+
+def _first_blood(ctx):
+    return bool(_own_killer(ctx, "hit"))
+
+
+def _three_in_one(ctx):
+    return any(len(hits) >= 3 for hits in _killer_by_turn(ctx, "hit"))
+
+
+def _all_round_attack(ctx):
+    return len(ctx.participants) >= 4 and any(len({h["victim"] for h in hits}) >= 3
+                                              for hits in _killer_by_turn(ctx, "hit"))
+
+
+def _finisher(ctx):
+    return bool(_knockouts(ctx))
+
+
+def _double_knockout(ctx):
+    turns = {}
+    for e in _knockouts(ctx):
+        turns.setdefault(e["turn_id"], set()).add(e["victim"])
+    return any(len(victims) >= 2 for victims in turns.values())
+
+
+def _unscathed(ctx):
+    return ctx.won and len(ctx.participants) >= 3 and ctx.killer_lives_left == ctx.match["points_start"]
+
+
+def _last_breath(ctx):
+    return ctx.won and ctx.killer_lives_left == 1
+
+
+def _double_agent(ctx):
+    rules = ctx.killer_rules
+    return bool(rules) and not rules["singles"] and ctx.won and len(ctx.participants) >= 3 \
+        and len(_own_killer(ctx, "hit")) >= 3
+
+
+def _self_service(ctx):
+    return any(e["victim"] == ctx.player for e in _own_killer(ctx, "out"))
+
+
+def _glass_cannon(ctx):
+    """A turn with two hits on others and then an own goal that puts the player out."""
+    for turn in {e["turn_id"] for e in ctx.killer_events if e["player"] == ctx.player}:
+        mine = [e for e in ctx.killer_events if e["player"] == ctx.player and e["turn_id"] == turn]
+        hits = sorted(e["dart_no"] for e in mine if e["kind"] == "hit")
+        out = any(e["kind"] == "out" and e["victim"] == ctx.player for e in mine)
+        if len(hits) >= 2 and out and any(e["kind"] == "own_goal" and e["dart_no"] > hits[1] for e in mine):
+            return True
+    return False
+
+
+def _friendly_to_the_end(ctx):
+    return len(ctx.participants) >= 3 and not ctx.won and not _own_killer(ctx, "hit")
+
+
+def _own_worst_enemy(ctx):
+    """All lives lost to own goals and none to an opponent."""
+    lost_to_others = any(e["kind"] == "hit" and e["victim"] == ctx.player for e in ctx.killer_events)
+    return (not lost_to_others and len(_own_killer(ctx, "own_goal")) >= 3
+            and any(e["victim"] == ctx.player for e in _own_killer(ctx, "out")))
+
+
+def _four_course_meal(ctx):
+    """One closed game of each kind: X01, Elimination, Killer and Target Battle."""
+    kinds = {game_kind(m["game_mode"]) for m in _history_through(ctx)}
+    return {X01, ELIMINATION, KILLER, TARGET_BATTLE} <= kinds
 
 
 def _first_breakfast(ctx):
@@ -1029,6 +1152,67 @@ ACHIEVEMENTS = (
                 {"en": "Stay exactly one point below the score to beat without a free pass and lose a life.",
                  "de": "Ohne Freipass genau einen Punkt unter der Vorgabe bleiben und ein Leben verlieren."},
                 game_modes=ELIMINATION, hidden=True, label="-1", check=_close_still_costs),
+    Achievement("four_course_meal", "general", "easy",
+                {"en": "Four-Course Meal", "de": "Vier-Gänge-Menü"},
+                {"en": "Finish a match of X01, Elimination, Killer and Target Battle each.",
+                 "de": "Je ein Spiel X01, Elimination, Killer und Target Battle abschliessen."},
+                check=_four_course_meal),
+    Achievement("licence_to_breakfast", "killer", "easy",
+                {"en": "Licence to Breakfast", "de": "Lizenz zum Frühstücken"},
+                {"en": "Become a killer for the first time.", "de": "Erstmals den Killer-Status aktivieren."},
+                game_modes=KILLER, check=_licence_to_breakfast),
+    Achievement("armed_immediately", "killer", "medium",
+                {"en": "Armed Immediately", "de": "Sofort scharf"},
+                {"en": "Become a killer with your first dart of the game.",
+                 "de": "Mit dem ersten eigenen Dart des Spiels den Killer-Status aktivieren."},
+                game_modes=KILLER, check=_armed_immediately),
+    Achievement("first_blood", "killer", "easy", {"en": "First Blood", "de": "Erster Treffer"},
+                {"en": "Take a life from an opponent for the first time.",
+                 "de": "Erstmals einem Gegner ein Leben abziehen."},
+                game_modes=KILLER, check=_first_blood),
+    Achievement("three_in_one", "killer", "medium", {"en": "Three in One", "de": "Drei auf einen Streich"},
+                {"en": "Take three lives from opponents in one turn.",
+                 "de": "In einer Aufnahme insgesamt drei gegnerische Leben abziehen."},
+                game_modes=KILLER, label="3", check=_three_in_one),
+    Achievement("all_round_attack", "killer", "hard", {"en": "All-Round Attack", "de": "Rundumschlag"},
+                {"en": "Take a life from three different opponents in one turn, in a game of at least four players.",
+                 "de": "In einer Aufnahme drei unterschiedlichen Gegnern je ein Leben abziehen, bei mindestens vier Teilnehmern."},
+                game_modes=KILLER, label="3", check=_all_round_attack),
+    Achievement("finisher", "killer", "easy", {"en": "Finisher", "de": "Vollstrecker"},
+                {"en": "Put an opponent out with one of your hits.",
+                 "de": "Mit einem eigenen Treffer einen Gegner auf null Leben bringen."},
+                game_modes=KILLER, check=_finisher),
+    Achievement("double_knockout", "killer", "hard", {"en": "Double Knockout", "de": "Doppeltes Aus"},
+                {"en": "Put two different opponents out in one turn.",
+                 "de": "In einer Aufnahme zwei unterschiedliche Gegner durch eigene Treffer ausschalten."},
+                game_modes=KILLER, label="2", check=_double_knockout),
+    Achievement("unscathed", "killer", "hard", {"en": "Unscathed", "de": "Unversehrt"},
+                {"en": "Win a game of at least three players without losing a life.",
+                 "de": "Mit mindestens drei Teilnehmern gewinnen, ohne ein Leben zu verlieren."},
+                game_modes=KILLER, check=_unscathed),
+    Achievement("last_breath", "killer", "medium", {"en": "Last Breath", "de": "Letzter Atemzug"},
+                {"en": "Win with exactly one life left.", "de": "Mit genau einem verbleibenden Leben gewinnen."},
+                game_modes=KILLER, check=_last_breath),
+    Achievement("double_agent", "killer", "hard", {"en": "Double Agent", "de": "Double-Agent"},
+                {"en": "With only doubles taking lives, win a game of at least three players and take at least three lives yourself.",
+                 "de": "Bei deaktivierten Single-Angriffen ein Spiel mit mindestens drei Teilnehmern gewinnen und selbst mindestens drei gegnerische Leben abziehen."},
+                game_modes=KILLER, check=_double_agent),
+    Achievement("self_service", "killer", "hidden", {"en": "Self-Service", "de": "Selbstbedienung"},
+                {"en": "Lose your last life to your own hit and be out, with own goals on.",
+                 "de": "Bei aktivierten Eigentoren durch einen eigenen Treffer das letzte Leben verlieren und ausscheiden."},
+                game_modes=KILLER, hidden=True, check=_self_service),
+    Achievement("glass_cannon", "killer", "hidden", {"en": "Glass Cannon", "de": "Glaskanone"},
+                {"en": "As a killer with one life left, take two lives from opponents in a turn and then put yourself out with an own goal.",
+                 "de": "Als aktiver Killer mit einem verbleibenden Leben in einer Aufnahme zuerst zwei gegnerische Leben abziehen und anschliessend durch ein Eigentor ausscheiden."},
+                game_modes=KILLER, hidden=True, check=_glass_cannon),
+    Achievement("friendly_to_the_end", "killer", "hidden", {"en": "Friendly to the End", "de": "Freundlich bis zuletzt"},
+                {"en": "Be out in a game of at least three players without having taken a life from anyone.",
+                 "de": "In einem Spiel mit mindestens drei Teilnehmern ausscheiden, ohne einem Gegner ein Leben abgezogen zu haben."},
+                game_modes=KILLER, hidden=True, check=_friendly_to_the_end),
+    Achievement("own_worst_enemy", "killer", "hidden", {"en": "Own Worst Enemy", "de": "Eigene Baustelle"},
+                {"en": "Lose all three lives to own goals alone, with own goals on.",
+                 "de": "Bei aktivierten Eigentoren alle drei eigenen Leben ausschliesslich durch Eigentore verlieren."},
+                game_modes=KILLER, hidden=True, check=_own_worst_enemy),
     Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
                 {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
                 hidden=True, label="666", check=_beast_mode),

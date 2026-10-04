@@ -128,7 +128,11 @@ The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
 `night_owl`, `answer_to_everything`, `burnt_toast`, `breakfast_switch`, `not_found`,
 `service_unavailable`, `full_english`, `copying_costs`, `a_new_low`,
 `free_pass_failed`, `one_crumb_is_enough`, `tied_to_the_grave`, `after_me_the_deluge`,
-`chips_for_breakfast`, `close_still_costs`, `beast_mode`. Without any file nothing plays, the banner still shows.
+`chips_for_breakfast`, `close_still_costs`, `four_course_meal`,
+`licence_to_breakfast`, `armed_immediately`, `first_blood`, `three_in_one`,
+`all_round_attack`, `finisher`, `double_knockout`, `unscathed`, `last_breath`,
+`double_agent`, `self_service`, `glass_cannon`, `friendly_to_the_end`,
+`own_worst_enemy`, `beast_mode`. Without any file nothing plays, the banner still shows.
 
 ### X01-specific
 
