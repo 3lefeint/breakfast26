@@ -8,6 +8,7 @@
   import Home from './views/Home.svelte';
   import Elimination from './views/Elimination.svelte';
   import TargetBattle from './views/TargetBattle.svelte';
+  import Killer from './views/Killer.svelte';
   import Players from './views/Players.svelte';
   import Profile from './views/Profile.svelte';
   import Stats from './views/Stats.svelte';
@@ -65,6 +66,8 @@
       <Elimination />
     {:else if $route === 'target-battle'}
       <TargetBattle />
+    {:else if $route === 'killer'}
+      <Killer />
     {:else if $route === 'players'}
       <Players />
     {:else if $route.startsWith('profile/')}

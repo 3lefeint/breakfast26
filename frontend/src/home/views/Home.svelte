@@ -20,7 +20,7 @@
   let cards = $derived([
     { href: '#elimination', icon: '🎯', label: 'Elimination', sub: 'Beat the last score' },
     { href: '#target-battle', icon: '🎡', label: 'Target Battle', sub: 'All throw at one number' },
-    { icon: '🗡️', label: 'Killer', sub: 'Coming soon', disabled: true },
+    { href: '#killer', icon: '🗡️', label: 'Killer', sub: 'Last one standing' },
     { href: '/tv', icon: '📺', label: 'TV', sub: 'Live display & controls' },
     { href: '#players', icon: '👤', label: 'Players', wide: true },
     { href: '#stats', icon: '📊', label: 'Stats', wide: true },

@@ -10,7 +10,13 @@
   // number), `highlight` marks the
   // field of one number and dims the rest, `pointer` ({ angle, ms }) draws a needle from the
   // center that turns to `angle` degrees clockwise from the top in `ms` milliseconds.
-  let { onSelect, disabled = false, readonly = false, darts = [], highlight = null, pointer = null } = $props();
+  //
+  // `zones` colors parts of the board: [{ n, color, parts, level }], `parts` any of 'double',
+  // 'outerSingle', 'innerSingle', 'triple' (or 'all'), `level` 'strong' (what is open, pulses),
+  // 'owned' (the field of a number that belongs to a player), 'danger' (a hit costs you, red
+  // dashed) or 'dead' (darkened).
+  let { onSelect, disabled = false, readonly = false, darts = [], highlight = null, pointer = null,
+        zones = [] } = $props();
 
   const HALF = 200;           // viewBox is -200..200 on both axes
   const BOARD_R = 165;        // rendered radius of the double ring's outer edge
@@ -61,6 +67,17 @@
     return 0.299 * r + 0.587 * g + 0.114 * b > 140 ? '#0c0c0f' : '#ffffff';
   }
 
+  const PARTS = ['double', 'outerSingle', 'triple', 'innerSingle'];
+
+  // The zones as paths to draw: one per part of every zone.
+  let zonePaths = $derived(zones.flatMap((z) => {
+    const seg = segments[SEGMENT_ORDER.indexOf(z.n)];
+    if (!seg) return [];
+    const parts = z.parts === 'all' || !z.parts ? PARTS : z.parts;
+    const map = { double: seg.outer, outerSingle: seg.outerSingle, triple: seg.triple, innerSingle: seg.innerSingle };
+    return parts.map((part) => ({ key: `${z.n}-${z.level || "strong"}-${part}`, d: map[part], color: z.color, level: z.level || 'strong' }));
+  }));
+
   function fieldFromEvent(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * (2 * HALF) - HALF;
@@ -99,6 +116,9 @@
         <circle r={r * K} />
       {/each}
     </g>
+    {#each zonePaths as z (z.key)}
+      <path class="zone {z.level}" d={z.d} style="--zone: {z.color || 'var(--accent)'}" />
+    {/each}
     {#if highlightPath}
       <path class="dim" d="{disc} {highlightPath}" fill-rule="evenodd" />
       <path class="highlight" d={highlightPath} />
@@ -135,6 +155,12 @@
   .dart-ring { fill: none; stroke-width: 3; }
   .dim { fill: rgba(8, 8, 12, 0.45); pointer-events: none; }
   .highlight { fill: rgba(255, 255, 255, 0.16); stroke: var(--accent); stroke-width: 3; pointer-events: none; }
+  .zone { pointer-events: none; stroke: var(--zone); stroke-width: 3; fill: color-mix(in srgb, var(--zone) 80%, transparent); filter: drop-shadow(0 0 5px var(--zone)); }
+  .zone.owned { fill: color-mix(in srgb, var(--zone) 50%, transparent); stroke-width: 0; filter: none; }
+  .zone.dead { fill: rgba(8, 8, 12, 0.6); stroke: none; }
+  .zone.danger { fill: rgba(239, 68, 68, 0.2); stroke: #ef4444; stroke-dasharray: 5 3; }
+  .zone.strong { animation: zone-pulse 1.6s ease-in-out infinite; }
+  @keyframes zone-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
   .pointer { pointer-events: none; }
   .pointer line { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
   .pointer path { fill: var(--accent); stroke: #0c0c0f; stroke-width: 1.5; stroke-linejoin: round; }

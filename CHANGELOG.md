@@ -14,6 +14,7 @@
 - Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
 - Target Battle game with a setup page, a live view with a wheel for the target and a result page (#21).
 - Killer game, started through `/api/killer/*` or MQTT (#20).
+- Killer: a setup page, a live view on `/tv` and a result page with a rematch and a correction of the last turn (#20).
 
 - 42 more achievements for X01, Elimination and across all games, 24 of them secret (#23).
 - 15 Target Battle achievements, five of them secret (#23).
@@ -23,7 +24,7 @@
 
 ### Changed
 - Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).
-- Home: the cards are grouped as Elimination, Target Battle, Killer (coming soon) and TV, then Players and Stats, then Board and Settings.
+- Home: the cards are grouped as Elimination, Target Battle, Killer and TV, then Players and Stats, then Board and Settings.
 
 ## [0.8.1] - 2026-10-03
 
