@@ -415,6 +415,22 @@ variants = ["du hesch es lebe verlore", "minus eis"]
 pitch = "-5Hz"
 
 # ─────────────────────────────────────────────────────────────────────────
+# Target Battle-specific phrases (the wheel sound is a file you supply, not
+# generated here: put wheel.mp3 into the sound directory)
+# ─────────────────────────────────────────────────────────────────────────
+[[group]]
+name = "Target Battle"
+rate = "+15%"
+pitch = "+0Hz"
+volume = "+0%"
+
+[group.keys.target_is]
+# Played once the wheel has landed, right before the target number
+# ("S Ziel isch 17").
+variants = ["s ziel isch", "es ziel isch"]
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Player names — one entry per PERSON, key = the exact lowercase name they
 # are registered under in the app's player list (that's what the caller
 # looks up at announce time, e.g. registered as "Peter" -> looks for

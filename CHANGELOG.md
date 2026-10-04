@@ -14,6 +14,8 @@
 - Setting `[stats] timezone` (also under Settings → Statistics, which suggests the zone of the browser while none is set), an IANA name such as `Europe/Zurich`, default `UTC` (#27).
 - Target Battle game with a setup page, a live view with a wheel for the target and a result page (#21).
 
+- Target Battle voice calls, and a `wheel` sound if you supply one (#21).
+
 ### Changed
 - Elimination: a dart corrected by tapping is stored with its field and counts for achievements, like a corrected dart in X01 (#27).
 

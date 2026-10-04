@@ -635,3 +635,194 @@ class TestHistory:
         game.undo()
         history = game.snapshot()["history"]
         assert [r["round"] for r in history] == [1] and history[0]["scores"] == {} and history[0]["current"]
+
+
+class FakeAudio:
+    def __init__(self, missing=()):
+        self.played = []
+        self.kwargs = []
+        self.missing = set(missing)
+
+    def play(self, name, **kwargs):
+        self.played.append(name)
+        self.kwargs.append((name, kwargs))
+        return name not in self.missing
+
+    def batch(self):
+        import contextlib
+        return contextlib.nullcontext()
+
+
+class FakeTimer:
+    created = []
+
+    def __init__(self, interval, function, args=None, kwargs=None):
+        self.interval, self.function = interval, function
+        FakeTimer.created.append(self)
+
+    def start(self):
+        pass
+
+    def fire(self):
+        self.function()
+
+
+@pytest.fixture
+def timers(monkeypatch):
+    FakeTimer.created = []
+    monkeypatch.setattr("breakfast.target_battle.threading.Timer", FakeTimer)
+    return FakeTimer.created
+
+
+def with_audio(audio=None, **kw):
+    audio = audio or FakeAudio()
+    game = new_game(audio=audio, **kw)
+    return game, audio
+
+
+def heard(audio):
+    played, audio.played = audio.played, []
+    return played
+
+
+class TestCalls:
+    def test_the_match_starts_with_the_wheel_the_target_and_the_first_player(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=None, rng=random.Random(1))
+        assert audio.played == [] and timers[0].interval == 0.5
+        timers[0].fire()
+        assert heard(audio) == ["matchon", "wheel"]
+        assert timers[1].interval == 4.5          # the target is called once the wheel has landed
+        timers[1].fire()
+        assert heard(audio) == ["target_is", str(game.target), "ana", "filler_after_name"]
+
+    def test_a_fixed_order_calls_the_target_right_away(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[17, 4])
+        timers[0].fire()
+        assert heard(audio) == ["matchon", "target_is", "17", "ana", "filler_after_name"]
+        assert len(timers) == 1
+
+    def test_a_game_without_audio_makes_no_timer(self, timers):
+        new_game()
+        assert timers == []
+
+    def test_the_points_of_a_turn_are_called_after_the_third_dart_only_once(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(20, 1)])
+        game.on_board_state(2, [hit(20, 1), MISS])
+        assert heard(audio) == []
+        game.on_board_state(3, [hit(20, 1), MISS, hit(20, 3)])
+        assert heard(audio) == ["4"]
+        game.on_board_state(0, [])
+        assert "4" not in heard(audio)
+
+    def test_a_turn_with_fewer_than_three_darts_is_called_when_the_darts_are_pulled(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        game.on_board_state(1, [hit(20, 3)])
+        game.on_board_state(0, [])
+        assert heard(audio) == ["3", "bo", "filler_after_name"]
+
+    def test_three_scoring_darts_get_a_cheer_sometimes(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        game.on_board_state(3, [hit(20, 1), hit(20, 2), hit(20, 3)])
+        assert audio.played == ["6", "nice"]
+        assert audio.kwargs[-1] == ("nice", {"prob": 0.4})
+        audio.played.clear()
+        game.on_board_state(0, [])
+        game.on_board_state(3, [hit(20, 1), MISS, hit(20, 1)])
+        assert "nice" not in audio.played
+
+    def test_zero_points_are_called_like_any_other_total(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        game.on_board_state(3, [MISS, MISS, MISS])
+        assert heard(audio) == ["0"]
+
+    def test_the_next_player_is_named(self, timers):
+        game, audio = with_audio(players=("ana", "bo", "cy"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 1))
+        assert heard(audio) == ["1", "bo", "filler_after_name"]
+
+    def test_a_player_without_a_recording_is_called_unknown(self, timers):
+        game, audio = with_audio(audio=FakeAudio(missing={"bo"}), players=("ana", "bo"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 1))
+        assert heard(audio) == ["1", "bo", "unknown_player", "filler_after_name"]
+
+    def test_a_new_round_with_a_fixed_target_is_called_at_once(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[20, 5])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 1))
+        heard(audio)
+        play(game, hit(20, 1))
+        assert heard(audio) == ["1", "target_is", "5", "ana", "filler_after_name"]
+
+    def test_a_new_round_with_a_random_target_plays_the_wheel_and_calls_the_target_later(self, timers):
+        game, audio = with_audio(players=("ana",), rounds=2, targets=None, rng=random.Random(2))
+        timers[0].fire(); heard(audio); timers[1].fire(); heard(audio)
+        play(game, hit(game.target, 1))
+        assert heard(audio) == ["1", "wheel"]
+        assert timers[-1].interval == 4.5
+        timers[-1].fire()
+        assert heard(audio) == ["target_is", str(game.target), "ana", "filler_after_name"]
+
+    def test_a_missing_wheel_sound_is_no_problem(self, timers):
+        game, audio = with_audio(audio=FakeAudio(missing={"wheel"}), players=("ana",), targets=None)
+        timers[0].fire(); timers[1].fire()
+        assert "target_is" in audio.played
+
+    def test_a_call_that_is_due_later_is_dropped_when_the_game_moved_on(self, timers):
+        game, audio = with_audio(players=("ana",), rounds=2, targets=None, rng=random.Random(2))
+        timers[0].fire(); heard(audio)
+        game.undo()                     # nothing to undo, the game goes on
+        play(game, hit(game.target, 1))   # round 2 begins, its own call is due
+        heard(audio)
+        timers[1].fire()                # the first round's target call is stale
+        assert heard(audio) == []
+        timers[-1].fire()
+        assert "target_is" in heard(audio)
+
+    def test_a_call_that_is_due_later_is_dropped_after_an_undo(self, timers):
+        game, audio = with_audio(players=("ana",), rounds=2, targets=None, rng=random.Random(2))
+        timers[0].fire(); timers[1].fire(); heard(audio)
+        play(game, hit(game.target, 1))
+        heard(audio)
+        game.undo()
+        timers[-1].fire()
+        assert heard(audio) == []
+
+    def test_the_winner_is_named_and_the_match_is_shot(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), rounds=1, targets=[20])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 1))
+        heard(audio)
+        play(game, hit(20, 3))
+        assert heard(audio) == ["3", "bo", "matchshot"]
+
+    def test_players_on_the_same_total_are_all_named(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), rounds=1, targets=[20])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 1))
+        heard(audio)
+        play(game, hit(20, 1))
+        assert heard(audio) == ["1", "ana", "bo", "matchshot"]
+
+    def test_playing_alone_the_score_is_called_at_the_end(self, timers):
+        game, audio = with_audio(players=("ana",), rounds=1, targets=[20])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 3), hit(20, 2))
+        assert heard(audio) == ["5", "5"]
+
+    def test_corrections_and_undo_are_silent(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), rounds=1, targets=[20])
+        timers[0].fire(); heard(audio)
+        play(game, hit(20, 1))
+        play(game, hit(20, 2))
+        heard(audio)
+        game.correct_turn(3)
+        assert heard(audio) == []
+        game.undo()
+        assert heard(audio) == []

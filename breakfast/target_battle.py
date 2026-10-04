@@ -14,6 +14,7 @@ import copy
 import json
 import logging
 import random
+import threading
 import time
 
 from .player_colors import assign_colors
@@ -24,6 +25,12 @@ log = logging.getLogger(__name__)
 
 MAX_ROUNDS = 99
 TARGETS = range(1, 21)
+
+# The opening calls follow the match start by this long, like in Elimination, so the screen has time
+# to come up and its audio page to connect.
+START_CALLS_DELAY_S = 0.5
+# The wheel on the TV turns this long. The target is called once it has landed.
+SPIN_S = 4.5
 
 
 class TargetBattleGame(TurnGame):
@@ -71,6 +78,8 @@ class TargetBattleGame(TurnGame):
         self.winners = []
         self.placements = {}
         self._round_started = time.monotonic()
+        self._calls_token = 0           # a call that was due later is dropped if the game moved on
+        self._score_called = False      # the points of the turn in progress were already said
         if self.stats_db:
             self.stats_db.open_match(self.match_id, self.MODE, rounds)
         log.info("Game started: %s, %d rounds, %s", players, rounds, scoring)
@@ -110,6 +119,58 @@ class TargetBattleGame(TurnGame):
         self._publish_turn(reset=True)
         self._publish_last_turn([])
         self._publish_event("round_start", round=self.round, target=self.target, tiebreak=False)
+        if self.audio:
+            threading.Timer(START_CALLS_DELAY_S, self._play_start_calls).start()
+
+    # ── the calls ────────────────────────────────────────────────────────────
+
+    def _play_start_calls(self):
+        """The match starts, then the first round: the wheel, the target, the first player."""
+        with self._audio_batch():
+            self.audio.play("matchon")
+            self._play_round_calls()
+
+    def _play_round_calls(self):
+        """A round starts. With the wheel its sound plays at once and the target is called once
+        the wheel has landed; with a fixed order the target is called right away. Then the player
+        who is up is named."""
+        self._calls_token += 1
+        token = self._calls_token
+        wheel = self.fixed_targets is None or self.in_tiebreak
+        if wheel:
+            self.audio.play("wheel")      # a sound the player supplies, no recording is made for it
+
+        def calls():
+            if token != self._calls_token or self.state != "playing":
+                return
+            with self._audio_batch():
+                self.audio.play("target_is")
+                self.audio.play(str(self.target))
+                self._announce(self.current_player)
+                self.audio.play("filler_after_name")
+
+        if wheel:
+            threading.Timer(SPIN_S, calls).start()
+        else:
+            calls()
+
+    def _play_player_calls(self):
+        """The next player of the round is up."""
+        with self._audio_batch():
+            self._announce(self.current_player)
+            self.audio.play("filler_after_name")
+
+    def _call_turn_score(self):
+        """The points of the turn, with a cheer when all three darts scored."""
+        self._score_called = True
+        with self._audio_batch():
+            self.audio.play(str(sum(self._current_darts)))
+            if len(self._current_darts) == 3 and all(v > 0 for v in self._current_darts):
+                self.audio.play("nice", prob=0.4)
+
+    def _dart_seen(self, count, is_new_dart, is_correction):
+        if count == 3 and is_new_dart and self.audio and not self._score_called:
+            self._call_turn_score()
 
     def _end_turn(self):
         player = self.current_player
@@ -118,6 +179,9 @@ class TargetBattleGame(TurnGame):
         self._turn_snapshot = self._snapshot_state(player)
         self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
         self._publish_last_turn(self._current_darts)
+        if self.audio and not self._score_called:
+            self.audio.play(str(points))
+        self._score_called = False
         if self.stats_db:
             self.stats_db.insert_target_battle_turn(
                 self.match_id, player, self.round, self.target, self.in_tiebreak, points,
@@ -127,8 +191,9 @@ class TargetBattleGame(TurnGame):
         self._dart_overrides = {}
         self._apply_turn(player, points, [self.board_dart(t) for t in throws])
 
-    def _apply_turn(self, player, points, darts):
-        """*darts*: the board view of the turn's darts, empty when they are not known."""
+    def _apply_turn(self, player, points, darts, silent=False):
+        """*darts*: the board view of the turn's darts, empty when they are not known. *silent*:
+        a correction, which makes no calls."""
         self.round_scores[player] = points
         self.round_darts[player] = darts
         if not self.in_tiebreak:
@@ -137,29 +202,31 @@ class TargetBattleGame(TurnGame):
                             total=self.scores[player], tiebreak=self.in_tiebreak)
         self.turn_idx += 1
         if self.turn_idx >= len(self.contenders):
-            self._end_round()
+            self._end_round(silent)
         else:
             self._publish_state()
             self._publish_turn(reset=True)
+            if self.audio and not silent:
+                self._play_player_calls()
 
-    def _end_round(self):
+    def _end_round(self, silent=False):
         self.history.append({"round": self.round, "tiebreak": self.in_tiebreak, "target": self.target,
                              "scores": dict(self.round_scores)})
         if self.in_tiebreak:
             best = max(self.round_scores.values())
             leaders = [p for p in self.contenders if self.round_scores[p] == best]
             if len(leaders) == 1:
-                return self._finish(leaders[0])
-            return self._start_round(self.round + 1, tiebreak=True, contenders=leaders)
+                return self._finish(leaders[0], silent)
+            return self._start_round(self.round + 1, True, leaders, silent)
         if self.round < self.rounds:
-            return self._start_round(self.round + 1, tiebreak=False, contenders=self.order)
+            return self._start_round(self.round + 1, False, self.order, silent)
         best = max(self.scores.values())
         leaders = [p for p in self.order if self.scores[p] == best]
         if len(leaders) > 1 and self.tiebreak_enabled:
-            return self._start_round(1, tiebreak=True, contenders=leaders)
-        self._finish(None)
+            return self._start_round(1, True, leaders, silent)
+        self._finish(None, silent)
 
-    def _start_round(self, round_no, tiebreak, contenders):
+    def _start_round(self, round_no, tiebreak, contenders, silent=False):
         self.round = round_no
         self.in_tiebreak = tiebreak
         self.contenders = list(contenders)
@@ -171,8 +238,10 @@ class TargetBattleGame(TurnGame):
         self._publish_event("round_start", round=round_no, target=self.target, tiebreak=tiebreak)
         self._publish_state()
         self._publish_turn(reset=True)
+        if self.audio and not silent:
+            self._play_round_calls()
 
-    def _finish(self, tiebreak_winner):
+    def _finish(self, tiebreak_winner, silent=False):
         """The game is over. A tiebreak winner ranks first, everybody else by total, players on
         the same total share a placement."""
         key = lambda p: (p != tiebreak_winner, -self.scores[p])
@@ -190,6 +259,15 @@ class TargetBattleGame(TurnGame):
         self._publish_event("game_won", winners=self.winners, scores=self.scores)
         self._publish_state()
         self._publish_turn(reset=True)
+        if self.audio and not silent:
+            self._calls_token += 1
+            with self._audio_batch():
+                if self.winners:
+                    for name in self.winners:
+                        self._announce(name)
+                    self.audio.play("matchshot")
+                else:                      # played alone: the score
+                    self.audio.play(str(sum(self.scores.values())))
         log.info("Finished: %s won, scores %s", self.winners or "nobody", self.scores)
 
     # ── undo and corrections ─────────────────────────────────────────────────
@@ -218,6 +296,8 @@ class TargetBattleGame(TurnGame):
         self.winners = snap["winners"]
         self.placements = snap["placements"]
         self._round_started = time.monotonic() - 3600     # an old round again: no wheel
+        self._calls_token += 1
+        self._score_called = False
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
@@ -243,7 +323,7 @@ class TargetBattleGame(TurnGame):
                 self.stats_db.set_winner(self.match_id, None)
                 self.stats_db.reopen_match(self.match_id)
             self.stats_db.correct_last_target_battle_turn(self.match_id, snap["player"], new_total)
-        self._apply_turn(snap["player"], new_total, [])
+        self._apply_turn(snap["player"], new_total, [], silent=True)
         log.info("Turn corrected: total=%d", new_total)
 
     # ── what the screens and MQTT get ────────────────────────────────────────
