@@ -23,6 +23,7 @@
     { href: '#killer', icon: '🗡️', label: 'Killer', sub: 'Last one standing' },
     { href: '/tv', icon: '📺', label: 'TV', sub: 'Live display & controls' },
     { href: '#field-training', icon: '🏋️', label: 'Field Training', sub: 'Darts at one field' },
+    { href: '#black-belt', icon: '🥋', label: 'Black Belt', sub: 'The doubles ladder' },
     { href: '#players', icon: '👤', label: 'Players', wide: true, newRow: true },
     { href: '#stats', icon: '📊', label: 'Stats', wide: true },
     { href: boardAddress, icon: '🎮', label: 'Board', sub: boardAddress ? 'Board manager' : 'Not configured', external: true, disabled: !boardAddress, wide: true },
