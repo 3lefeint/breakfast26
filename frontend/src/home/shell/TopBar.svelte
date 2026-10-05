@@ -2,13 +2,14 @@
   // The bar above the pages of the Home app: whether the board is connected, a button that opens the
   // TV view and a shortcut to Settings. It spans the whole width, the brand sits at its left.
   import Icon from '../../lib/components/Icon.svelte';
+  import logo from '../../lib/assets/logo.png';
 
   let { boardConnected = false } = $props();
 </script>
 
 <header class="topbar">
   <a class="brand" href="#home" title="Breakfast">
-    <span class="mark"><Icon name="logo" size={34} stroke={1.6} /></span>
+    <img class="mark" src={logo} alt="" width="56" height="56">
     <span class="word">Breakfast</span>
   </a>
   <div class="right">
@@ -27,7 +28,7 @@
     border-bottom: 1px solid var(--glass-border); box-shadow: var(--glass-bar-shadow);
   }
   .brand { display: flex; align-items: center; gap: 0.7rem; margin-right: auto; color: var(--text); text-decoration: none; }
-  .mark { color: var(--accent); display: flex; }
+  .mark { display: block; width: 56px; height: 56px; margin: -6px -4px -6px -8px; }
   .word { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.02em; }
   .right { display: flex; align-items: center; gap: 0.8rem; }
   .status { display: flex; align-items: center; gap: 0.55rem; font-size: 0.9rem; color: var(--text); margin-right: 0.4rem; }

@@ -23,8 +23,6 @@
     back: '<path d="M15 18l-6-6 6-6"/>',
     arrow: '<path d="M5 12h14M12 5l7 7-7 7"/>',
     info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5M12 7.5v.01"/>',
-    // The brand mark: a dart through a crosshair.
-    logo: '<path d="M19 12a7 7 0 1 1-4.6-6.6"/><path d="M12 7.5v1.8M12 14.7v1.8M7.5 12h1.8M14.7 12h1.8"/><path d="M5 20 20 5M20 5l-.2 4.2M20 5l-4.2.2M5 20l-.4-3.6M5 20l3.6.4"/>',
   };
 </script>
 
