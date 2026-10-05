@@ -154,37 +154,37 @@
 </div>
 
 <style>
-  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
   .section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }
   .option-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 5rem; }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
-  .btn-counter { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
   .seg { display: flex; gap: 0.4rem; }
-  .seg-btn { background: var(--bg); border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 0.3rem 0.9rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .seg-btn { background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 20px; padding: 0.3rem 0.9rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   .seg-btn:hover { border-color: var(--accent); color: var(--text); }
   .seg-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
   .targets { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: -0.25rem 0 1rem 5.75rem; }
   .target-cell { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; font-size: 0.7rem; color: var(--muted); }
-  .target-cell input { width: 3.2rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.25rem; text-align: center; font-family: inherit; }
-  select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.35rem 0.5rem; font-family: inherit; }
+  .target-cell input { width: 3.2rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 12px; color: var(--text); padding: 0.25rem; text-align: center; font-family: inherit; }
+  select { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 12px; color: var(--text); padding: 0.35rem 0.5rem; font-family: inherit; }
   .check-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; cursor: pointer; font-size: 0.9rem; color: var(--muted); }
   .check-row input { accent-color: var(--accent); }
   .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin: 1.5rem 0 1rem; align-items: start; }
   .column .section-title { margin-bottom: 0.75rem; }
   @media (max-width: 640px) { .columns { grid-template-columns: 1fr; gap: 1.5rem; } .targets { margin-left: 0; } }
   .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: flex-start; height: 220px; overflow-y: auto; }
-  .chip { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  .chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .game-players { list-style: none; margin-bottom: 1rem; padding: 0; height: 220px; overflow-y: auto; }
-  .game-players li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+  .game-players li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border); }
   .game-players li:last-child { border: none; }
   .player-name-text { flex: 1; font-size: 0.95rem; }
-  .btn-icon { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
+  .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
   .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }

@@ -62,17 +62,17 @@
   .unit { font-size: 1rem; color: var(--muted); font-weight: 600; margin-left: 0.5rem; }
   .meta { color: var(--muted); font-size: 0.9rem; }
   .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .badge { border-radius: 999px; padding: 0.15rem 0.8rem; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border); color: var(--muted); }
+  .badge { border-radius: 999px; padding: 0.15rem 0.8rem; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--glass-border); color: var(--muted); }
   .badge.rating { color: var(--accent); border-color: var(--accent); }
   .badge.best { color: var(--green); border-color: var(--green); }
   .content { display: grid; grid-template-columns: 1fr minmax(0, 18rem); gap: 1.2rem; align-items: start; }
   .stats { grid-column: 1; display: flex; flex-wrap: wrap; gap: 0.6rem; }
-  .stat { display: flex; flex-direction: column; min-width: 5.5rem; padding: 0.6rem 0.9rem; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+  .stat { display: flex; flex-direction: column; min-width: 5.5rem; padding: 0.6rem 0.9rem; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 10px; }
   .value { font-size: 1.4rem; font-weight: 800; white-space: nowrap; }
   .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
   .turns-box { grid-column: 1; }
   .caption { margin-top: 0.3rem; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  .turns { display: flex; align-items: flex-end; gap: 2px; height: 5rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .turns { display: flex; align-items: flex-end; gap: 2px; height: 5rem; padding: 0.4rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; }
   .bar { flex: 1; min-width: 2px; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.85; }
   .board { grid-column: 2; grid-row: 1 / span 2; }
   .large .points { font-size: clamp(3rem, 8vw, 7rem); }

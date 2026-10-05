@@ -67,16 +67,16 @@
 </div>
 
 <style>
-  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
   .section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .section-title.sub { margin: 1.25rem 0 0.6rem; }
   .hint { color: var(--muted); font-size: 0.8rem; margin: 0.6rem 0 1rem; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; max-height: 220px; overflow-y: auto; }
-  .chip { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  .chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .fields { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.4rem; }
-  .field { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.5rem 0; font-family: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+  .field { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); color: var(--text); border-radius: 8px; padding: 0.5rem 0; font-family: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
   .field:hover { border-color: var(--accent); }
   .field.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 800; }
   .field.bull { grid-column: span 2; }
@@ -84,7 +84,7 @@
   .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 5rem; }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 3rem; text-align: center; }
-  .btn-counter { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; min-width: 2rem; height: 2rem; padding: 0 0.4rem; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; min-width: 2rem; height: 2rem; padding: 0 0.4rem; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }

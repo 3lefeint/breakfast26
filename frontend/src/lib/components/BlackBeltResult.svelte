@@ -47,7 +47,7 @@
   .meta { color: var(--muted); font-size: 0.9rem; }
   .content { display: grid; grid-template-columns: 1fr minmax(0, 18rem); gap: 1.2rem; align-items: start; }
   .left { display: flex; flex-direction: column; gap: 1rem; }
-  .attempts { display: flex; align-items: flex-end; gap: 3px; height: 5rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .attempts { display: flex; align-items: flex-end; gap: 3px; height: 5rem; padding: 0.4rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; }
   .bar { flex: 1; min-width: 3px; max-width: 2.5rem; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.85; }
   .bar.full { background: var(--green); }
   .caption { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: -0.6rem; }
