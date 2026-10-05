@@ -52,6 +52,7 @@
       return `Target Battle · ${m.points_start} ${m.points_start === 1 ? 'round' : 'rounds'} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
     }
     if (m.game_mode === 'Killer') return 'Killer';
+    if (m.game_mode === 'Black Belt') return `Black Belt · ${m.backwards ? 'D20 down to D1' : 'D1 up to D20'}`;
     if (m.game_mode === 'Field Training') {
       return `Field Training · ${m.field != null ? fieldLabel(m.field) : '?'} · ${m.points_start} darts`;
     }
@@ -116,6 +117,24 @@
                       {#each matchDetails[m.match_id].players as p}<td class="num-cell">{r.scores[p.player] ?? '—'}</td>{/each}
                     </tr>
                   {/each}
+                </tbody>
+              </table>
+            {:else if mode === 'black_belt'}
+              <table class="players-table stats-table detail">
+                <thead>
+                  <tr>
+                    <th>Player</th><th class="num-cell">Fields</th><th class="num-cell">Restarts</th>
+                    <th class="num-cell">Darts</th><th class="num-cell"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{cap(matchDetails[m.match_id].player)}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].furthest}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].restarts}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].darts}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].belt ? 'Belt' : ''}</td>
+                  </tr>
                 </tbody>
               </table>
             {:else if mode === 'field_training'}
