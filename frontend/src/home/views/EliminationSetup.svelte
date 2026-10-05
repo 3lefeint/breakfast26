@@ -92,8 +92,8 @@
 
 <style>
   .elim-section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem;
   }
   .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }
@@ -101,7 +101,7 @@
   .lives-row .label { font-size: 0.9rem; color: var(--muted); }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
-  .btn-counter { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
   /* Known-players chips and the game-players list each get their own
      fixed column instead of stacking in one flow — otherwise every chip
@@ -124,7 +124,7 @@
   }
   .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: flex-start; height: 260px; overflow-y: auto; }
   .chip {
-    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
     border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit;
     font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s;
   }
@@ -133,11 +133,11 @@
   .game-players { list-style: none; margin-bottom: 1rem; padding: 0; height: 260px; overflow-y: auto; }
   .game-players li {
     display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.4rem 0; border-bottom: 1px solid var(--border);
+    padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border);
   }
   .game-players li:last-child { border: none; }
   .player-name-text { flex: 1; font-size: 0.95rem; }
-  .btn-icon { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
+  .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
   .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }
   .random-order-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; cursor: pointer; font-size: 0.9rem; color: var(--muted); }

@@ -44,7 +44,7 @@
 
 <style>
   .mode-chips { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
-  .mode-chip { background: var(--bg); border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 0.35rem 1rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .mode-chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 20px; padding: 0.35rem 1rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   .mode-chip:hover { border-color: var(--accent); color: var(--text); }
   .mode-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 </style>

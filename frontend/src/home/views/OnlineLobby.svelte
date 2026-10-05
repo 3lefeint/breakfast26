@@ -177,7 +177,7 @@
 </div>
 
 <style>
-  .elim-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .elim-section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
   .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin: 1rem 0 0.75rem; }
   .elim-section-title:first-child { margin-top: 0; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; font-weight: 400; }
@@ -185,42 +185,42 @@
   .error { color: var(--red); font-size: 0.85rem; margin-top: 0.75rem; }
   .form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
   .form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; color: var(--muted); }
-  input[type='text'] { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.5rem 0.7rem; font-size: 0.9rem; font-family: inherit; }
+  input[type='text'] { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text); border-radius: 12px; padding: 0.5rem 0.7rem; font-size: 0.9rem; font-family: inherit; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-  .box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+  .box { background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
   .box-title { font-size: 0.85rem; font-weight: 600; }
   .code-input { text-transform: uppercase; letter-spacing: 0.25em; font-family: monospace; width: 10rem; }
   .code-row { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .code-row .label { color: var(--muted); font-size: 0.85rem; }
   .code { font-family: monospace; font-size: 2rem; font-weight: 800; letter-spacing: 0.3em; color: var(--accent); }
   .sites { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }
-  .site { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; }
+  .site { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 8px; font-size: 0.9rem; }
   .site.me { border-color: var(--accent); }
   .site-players { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
-  .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 0.3rem; }
+  .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0 0.3rem; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
   .dot.ok { background: var(--green); }
   .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .chip { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   .chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .chip:disabled { opacity: 0.4; cursor: not-allowed; }
   .order { list-style: none; padding: 0; margin-bottom: 0.75rem; }
-  .order li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+  .order li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border); }
   .order .num { width: 1.4rem; color: var(--muted); font-size: 0.8rem; }
   .player-name-text { flex: 1; font-size: 0.95rem; }
-  .btn-icon { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
+  .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:disabled { opacity: 0.3; cursor: default; }
   .lives-row { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0 1rem; flex-wrap: wrap; }
   .lives-row .label { font-size: 0.9rem; color: var(--muted); }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
-  .btn-counter { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; font-family: inherit; }
   .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: default; }
   .btn-start { background: #166534; color: #fff; }
-  .btn-add { background: var(--bg); border: 1px solid var(--border); color: var(--text); }
+  .btn-add { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); }
   .btn-link { background: none; border: none; color: var(--muted); cursor: pointer; margin-left: 0.5rem; font: inherit; text-decoration: underline; }
   .result { padding-left: 1.5rem; margin-bottom: 1rem; }
   @media (max-width: 640px) { .form, .two { grid-template-columns: 1fr; } }

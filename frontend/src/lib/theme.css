@@ -10,6 +10,8 @@
    must target #app instead of body, since #app is the real box in
    between. See each app's own App.svelte for that per-app layout. */
 html, body { height: 100%; }
+/* Checkboxes and radio buttons use the accent color. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 body {
   background: var(--bg);
   color: var(--text);
