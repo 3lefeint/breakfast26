@@ -5,6 +5,8 @@
   import { localized, isEarned, groupAchievements, progressText, rarityText } from '../../lib/achievements.js';
   import Badge from '../../lib/components/Badge.svelte';
   import PageHeader from '../../lib/components/PageHeader.svelte';
+  import Panel from '../../lib/components/Panel.svelte';
+  import Avatar from '../../lib/components/Avatar.svelte';
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
 
@@ -48,20 +50,24 @@
   }
 </script>
 
-<PageHeader title={cap(name)} back="#players" />
+<PageHeader title={cap(name)} back="#players">
+  {#snippet lead()}<Avatar {name} {color} size={64} />{/snippet}
+</PageHeader>
 
-<div class="color-row">
-  <label for="playerColor">Color</label>
-  <input type="color" id="playerColor" value={color || '#7c6aff'}
-         onchange={(e) => saveColor(e.currentTarget.value)}>
-  <span class="color-hint">
-    {#if color}{color}{:else}No color set, a random one is picked when a game needs it.{/if}
-  </span>
-  {#if color}
-    <button type="button" class="clear" onclick={() => saveColor(null)}>Clear</button>
-  {/if}
-  {#if colorError}<span class="color-error">{colorError}</span>{/if}
-</div>
+<Panel>
+  <div class="color-row">
+    <label for="playerColor">Color</label>
+    <input type="color" id="playerColor" value={color || '#7c6aff'}
+           onchange={(e) => saveColor(e.currentTarget.value)}>
+    <span class="color-hint">
+      {#if color}{color}{:else}No color set, a random one is picked when a game needs it.{/if}
+    </span>
+    {#if color}
+      <button type="button" class="clear" onclick={() => saveColor(null)}>Clear</button>
+    {/if}
+    {#if colorError}<span class="color-error">{colorError}</span>{/if}
+  </div>
+</Panel>
 
 {#if status === 'loading'}
   <p class="note">Loading…</p>
@@ -70,9 +76,12 @@
 {:else if !total}
   <p class="note">Achievements are not available without the stats database.</p>
 {:else}
-  <div class="summary">Achievements · {earnedTotal} of {total}</div>
+  <div class="summary">
+    <span>Achievements · {earnedTotal} of {total}</span>
+    <span class="bar"><span class="fill" style="width: {(100 * earnedTotal / total).toFixed(1)}%"></span></span>
+  </div>
   {#each sections as section (section.key)}
-    <div class="section">
+    <Panel>
       <div class="title">
         <span>{section.label}</span>
         {#if section.key !== 'secret'}<span class="count">{section.earned.length} of {section.total}</span>{/if}
@@ -102,55 +111,63 @@
           </ul>
         {/if}
       {/each}
-    </div>
+    </Panel>
   {/each}
 {/if}
 
 <style>
-  .note { color: var(--muted); font-size: 0.9rem; }
-  .color-row {
-    display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 0.9rem 1.25rem; margin-bottom: 1rem;
+  .note { color: var(--muted); font-size: 0.95rem; }
+  .color-row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+  .color-row label { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .color-row input[type='color'] {
+    width: 2.6rem; height: 2.6rem; padding: 0; border: 1px solid var(--glass-border); border-radius: 50%;
+    background: none; cursor: pointer; overflow: hidden;
   }
-  .color-row label { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-  .color-row input[type='color'] { width: 2.5rem; height: 2rem; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; }
-  .color-hint { font-size: 0.85rem; color: var(--muted); }
-  .clear { font-size: 0.8rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.2rem 0.6rem; cursor: pointer; }
+  .color-row input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
+  .color-row input[type='color']::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .color-hint { font-size: 0.95rem; color: color-mix(in srgb, var(--text) 72%, transparent); }
+  .clear {
+    font-size: 0.85rem; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 999px;
+    color: var(--muted); padding: 0.3rem 0.9rem; cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s;
+  }
   .clear:hover { border-color: var(--accent); color: var(--accent); }
-  .color-error { font-size: 0.8rem; color: var(--red); }
+  .color-error { font-size: 0.85rem; color: var(--red); }
   .summary {
-    font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em;
-    text-transform: uppercase; margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 1rem; margin: 0.5rem 0 1rem;
+    font-size: 0.8rem; color: var(--muted); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
   }
-  .section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;
-  }
+  .bar { flex: 1; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; max-width: 22rem; }
+  .fill { display: block; height: 100%; border-radius: 999px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
   .title {
     display: flex; justify-content: space-between; align-items: baseline;
-    font-size: 1rem; font-weight: 800; margin-bottom: 0.9rem;
+    font-size: 1.25rem; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 1rem;
   }
-  .count { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+  .count { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
   .sub {
-    font-size: 0.7rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em;
-    text-transform: uppercase; margin: 0.25rem 0 0.5rem;
+    font-size: 0.72rem; color: var(--muted); font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; margin: 0.25rem 0 0.6rem;
   }
   .grid {
     list-style: none; padding: 0;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem;
-    margin-bottom: 1rem;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.85rem;
+    margin-bottom: 1.1rem;
   }
-  .section > .grid:last-child { margin-bottom: 0; }
+  .grid:last-child { margin-bottom: 0; }
   .card {
-    display: flex; align-items: center; gap: 0.9rem; padding: 0.75rem;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    display: flex; align-items: center; gap: 1rem; padding: 0.85rem;
+    background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 14px;
+    transition: border-color 0.2s, background 0.2s;
   }
-  .card.earned { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .card.earned {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    background: color-mix(in srgb, var(--accent) 9%, rgba(0, 0, 0, 0.2));
+    box-shadow: 0 0 22px -10px var(--accent);
+  }
   .text { min-width: 0; }
-  .name { font-weight: 700; font-size: 0.95rem; }
-  .card:not(.earned) .name { color: var(--muted); }
-  .desc { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
-  .meta { font-size: 0.75rem; color: var(--accent); margin-top: 0.25rem; }
-  .rarity { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+  .name { font-weight: 700; font-size: 1rem; }
+  .card:not(.earned) .name { color: color-mix(in srgb, var(--text) 70%, transparent); }
+  .desc { font-size: 0.85rem; color: color-mix(in srgb, var(--text) 62%, transparent); margin-top: 0.2rem; }
+  .meta { font-size: 0.8rem; color: var(--accent); margin-top: 0.3rem; }
+  .rarity { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
 </style>

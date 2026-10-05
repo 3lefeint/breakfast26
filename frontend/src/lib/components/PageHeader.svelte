@@ -4,11 +4,12 @@
   // Play page).
   import Icon from './Icon.svelte';
 
-  let { title, subtitle = '', back = '#home' } = $props();
+  let { title, subtitle = '', back = '#home', lead = null } = $props();
 </script>
 
 <div class="page-header">
   <a class="back" href={back} aria-label={back === '#home' ? 'Back to Play' : 'Back'}><Icon name="back" size={20} stroke={2.2} /></a>
+  {@render lead?.()}
   <div class="text">
     <h1>{title}</h1>
     {#if subtitle}<p>{subtitle}</p>{/if}
