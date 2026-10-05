@@ -10,7 +10,7 @@
 - Settings → Achievements (shown with the Dev tab): every achievement with the sound it plays now, one or more files of the achievements folder to assign to it, a preview, an upload of new sounds, and renaming and deleting the files; the assignment is stored in `[achievements.sounds]` and applies at once (#25).
 
 ### Changed
-- Interface: a sidebar with the main places, a top bar with the board connection, a button for the TV and Settings, glass panels over a slowly moving aurora background in the color of the accent preset, and a new Play page with the games and the training drills as cards; Players shows an avatar for every player, a small dartboard drawn from the name in the hue of the player's color; the profile is in the same style; the other pages follow one by one (#34).
+- Interface: a sidebar with the main places, a top bar with the board connection, a button for the TV and Settings, glass panels over a slowly moving aurora background in the color of the accent preset, and a new Play page with the games and the training drills as cards; Players shows an avatar for every player, a small dartboard drawn from the name in the hue of the player's color; the profile and the Stats are in the same style; the other pages follow one by one (#34).
 - Settings: Restart and Updates show only under the General tab.
 
 

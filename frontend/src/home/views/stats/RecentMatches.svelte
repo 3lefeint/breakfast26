@@ -235,17 +235,17 @@
   .players-table { width: 100%; border-collapse: collapse; }
   .players-table th {
     font-size: 0.75rem; color: var(--muted); font-weight: 500;
-    text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border);
+    text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--glass-border);
   }
-  .players-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); }
+  .players-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--glass-border); }
   .stats-table th, .stats-table td { font-size: 0.8rem; }
   .num-cell { text-align: right; }
   .players-table th.num-cell { text-align: right; }
   .stats-empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .stats-matches { display: flex; flex-direction: column; gap: 0.5rem; }
   .stats-match-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 0.6rem 0.9rem;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: 14px; padding: 0.6rem 0.9rem;
     font-size: 0.85rem; cursor: pointer;
   }
   .stats-match-card:hover { border-color: var(--accent); }

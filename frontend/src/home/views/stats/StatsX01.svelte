@@ -94,7 +94,7 @@
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
   .stat-tile, .record {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
     padding: 0.75rem 0.9rem; text-align: center;
   }
   .stat-tile-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }

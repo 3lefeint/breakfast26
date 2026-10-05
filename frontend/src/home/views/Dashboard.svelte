@@ -95,12 +95,12 @@
   .dash-controls { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
   .dash-controls label { font-size: 0.8rem; color: var(--muted); }
   .dash-controls select {
-    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text);
     border-radius: 8px; padding: 0.45rem 0.7rem; font-size: 0.9rem;
   }
   .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
   .stat-tile {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--glass); border: 1px solid var(--glass-border); border-radius: 12px; box-shadow: var(--glass-shadow);
     padding: 0.75rem 0.9rem; text-align: center;
   }
   .stat-tile-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }
@@ -109,7 +109,7 @@
   .stat-tiles.records { margin-top: 0.75rem; grid-template-columns: 1fr 1fr; }
   .dash-charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
   .dash-chart-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
     padding: 0.75rem 0.9rem;
   }
   .dash-chart-card.top { margin-top: 0.75rem; }

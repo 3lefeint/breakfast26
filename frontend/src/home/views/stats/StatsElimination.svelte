@@ -6,6 +6,7 @@
   import { cap } from '../../../lib/util.js';
   import Dashboard from '../Dashboard.svelte';
   import RecentMatches from './RecentMatches.svelte';
+  import Panel from '../../../lib/components/Panel.svelte';
   import PlacementRows from './PlacementRows.svelte';
   import FormStrip from './FormStrip.svelte';
   import HeadToHead from './HeadToHead.svelte';
@@ -69,16 +70,16 @@
   {/if}
 
   <div class="section-title top">Wins and placements</div>
-  <PlacementRows {players} />
+  <Panel><PlacementRows {players} /></Panel>
 
   <div class="section-title top">Form · last 15 games</div>
-  <FormStrip {players} />
+  <Panel><FormStrip {players} /></Panel>
 
   <div class="section-title top">Head to head</div>
-  <HeadToHead pairs={headToHead} order={players.map((p) => p.player)} />
+  <Panel><HeadToHead pairs={headToHead} order={players.map((p) => p.player)} /></Panel>
 
   <div class="section-title top">Game length · by lives</div>
-  <GameLengths games={gameLengths} />
+  <Panel><GameLengths games={gameLengths} /></Panel>
 {/if}
 
 <RecentMatches mode="elimination" />
@@ -93,12 +94,12 @@
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
   .stat-tile {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
     padding: 0.75rem 0.9rem; text-align: center;
   }
   .records { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
   .record {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
     padding: 0.75rem 0.9rem; text-align: center;
   }
   .record-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }

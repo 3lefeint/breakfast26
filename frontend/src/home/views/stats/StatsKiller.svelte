@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { cap } from '../../../lib/util.js';
   import RecentMatches from './RecentMatches.svelte';
+  import Panel from '../../../lib/components/Panel.svelte';
   import PlacementRows from './PlacementRows.svelte';
   import FormStrip from './FormStrip.svelte';
   import HeadToHead from './HeadToHead.svelte';
@@ -61,16 +62,16 @@
   </div>
 
   <div class="section-title top">Wins and placements</div>
-  <PlacementRows players={competitors} emptyText="No Killer games yet." />
+  <Panel><PlacementRows players={competitors} emptyText="No Killer games yet." /></Panel>
 
   <div class="section-title top">Form · last 15 games</div>
-  <FormStrip players={competitors} />
+  <Panel><FormStrip players={competitors} /></Panel>
 
   <div class="section-title top">Head to head</div>
-  <HeadToHead pairs={data.head_to_head} order={competitors.map((p) => p.player)} />
+  <Panel><HeadToHead pairs={data.head_to_head} order={competitors.map((p) => p.player)} /></Panel>
 
   <div class="section-title top">Players</div>
-  <KillerPlayers players={data.players} />
+  <Panel><KillerPlayers players={data.players} /></Panel>
 {/if}
 
 <RecentMatches mode="killer" />
@@ -80,9 +81,9 @@
   .section-title.top { margin-top: 1.75rem; }
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
-  .stat-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; text-align: center; }
+  .stat-tile { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 12px; box-shadow: var(--glass-shadow); padding: 0.75rem 0.9rem; text-align: center; }
   .records { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 0.75rem; }
-  .record { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; text-align: center; }
+  .record { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 12px; box-shadow: var(--glass-shadow); padding: 0.75rem 0.9rem; text-align: center; }
   .record-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; min-height: 1.1em; }
   @media (max-width: 600px) { .records { grid-template-columns: 1fr; } }
   .stat-tile-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }

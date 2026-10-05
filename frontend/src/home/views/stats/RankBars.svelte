@@ -24,7 +24,7 @@
 </div>
 
 <style>
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; display: flex; flex-direction: column; }
+  .card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); padding: 0.75rem 0.9rem; display: flex; flex-direction: column; }
   .rows { flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; }
   .title { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.6rem; }
   .empty { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 0.8rem 0; }

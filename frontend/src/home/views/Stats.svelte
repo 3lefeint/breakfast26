@@ -60,7 +60,7 @@
 <style>
   .chips { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
   .chip {
-    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 20px; padding: 0.35rem 1rem; font-family: inherit;
     font-size: 0.85rem; cursor: pointer;
   }

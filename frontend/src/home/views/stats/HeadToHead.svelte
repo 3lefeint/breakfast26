@@ -28,7 +28,7 @@
     const hue = share > 0.5 ? 'var(--accent)' : 'var(--red)';
     return {
       percent: Math.round(share * 100),
-      background: strength ? `color-mix(in srgb, ${hue} ${strength}%, var(--surface))` : 'var(--surface)',
+      background: strength ? `color-mix(in srgb, ${hue} ${strength}%, rgba(0, 0, 0, 0.28))` : 'rgba(0, 0, 0, 0.28)',
     };
   }
 </script>
@@ -37,9 +37,9 @@
   <div class="empty">No games with two or more players yet.</div>
 {:else}
   <div class="legend">
-    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--accent) 45%, var(--surface))"></span>row player ahead more often</span>
-    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--red) 45%, var(--surface))"></span>behind more often</span>
-    <span class="legend-item"><span class="swatch" style:background="var(--surface)"></span>even</span>
+    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--accent) 45%, rgba(0, 0, 0, 0.28))"></span>row player ahead more often</span>
+    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--red) 45%, rgba(0, 0, 0, 0.28))"></span>behind more often</span>
+    <span class="legend-item"><span class="swatch" style:background="rgba(0, 0, 0, 0.28)"></span>even</span>
   </div>
   <div class="note">Share of shared games in which the row player finished ahead of the column player.</div>
 
@@ -76,7 +76,7 @@
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.3rem; }
   .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
-  .swatch { width: 0.8rem; height: 0.8rem; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
+  .swatch { width: 0.8rem; height: 0.8rem; border-radius: 3px; display: inline-block; border: 1px solid var(--glass-border); }
   .note { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.6rem; }
   .matrix {
     display: grid; grid-template-columns: 5.5rem repeat(var(--n), minmax(0, 1fr)); gap: 2px;
@@ -87,7 +87,7 @@
   .col-head { text-align: center; padding-bottom: 0.2rem; align-self: end; }
   .row-head { align-self: center; padding-right: 0.4rem; text-align: right; }
   .cell {
-    border: 1px solid var(--border); border-radius: 4px; min-height: 2.4rem;
+    border: 1px solid var(--glass-border); border-radius: 4px; min-height: 2.4rem;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     font-variant-numeric: tabular-nums; line-height: 1.15;
   }

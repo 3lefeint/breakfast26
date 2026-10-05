@@ -209,11 +209,11 @@
 <style>
   .controls { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
   .controls label { font-size: 0.8rem; color: var(--muted); }
-  .controls select { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.45rem 0.7rem; font-size: 0.9rem; }
+  .controls select { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; padding: 0.45rem 0.7rem; font-size: 0.9rem; }
   .subtitle { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin: 1.5rem 0 0.6rem; }
   .empty { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 1rem 0; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
-  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; text-align: center; }
+  .tile { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 12px; box-shadow: var(--glass-shadow); padding: 0.75rem 0.9rem; text-align: center; }
   .tile .label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }
   .tile .value { font-size: 1.4rem; font-weight: 600; }
   .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem; margin-top: 0.75rem; }
@@ -222,7 +222,7 @@
   .side { display: flex; flex-direction: column; gap: 0.75rem; }
   .side > :global(.card) { flex: 1; }
   .two-tiles { grid-template-columns: 1fr 1fr; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; }
+  .card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); padding: 0.75rem 0.9rem; }
   .card.top { margin-top: 0.75rem; }
   .card.uni { display: flex; flex-direction: column; height: 30rem; box-sizing: border-box; }
   .middle { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
@@ -235,7 +235,7 @@
   .heat-switch .mode-tab { padding: 0.15rem 0.6rem; font-size: 0.75rem; }
   .card-note { font-size: 0.7rem; color: var(--muted); margin-top: 0.4rem; }
   .mode-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
-  .mode-tab { background: var(--bg); border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 0.3rem 0.8rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .mode-tab { background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 20px; padding: 0.3rem 0.8rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   .mode-tab:hover { border-color: var(--accent); color: var(--text); }
   .mode-tab.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
   @media (max-width: 700px) { .two, .board-row { grid-template-columns: 1fr; } }

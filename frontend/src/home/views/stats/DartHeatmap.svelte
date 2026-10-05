@@ -16,9 +16,9 @@
   let maxMiss = $derived(Math.max(0, ...Object.values(misses)));
 
   function shade(count, max, hue) {
-    if (!count || !max) return 'var(--surface)';
+    if (!count || !max) return 'rgba(0, 0, 0, 0.28)';
     const strength = Math.round(12 + Math.sqrt(count / max) * 88);
-    return `color-mix(in srgb, ${hue} ${strength}%, var(--surface))`;
+    return `color-mix(in srgb, ${hue} ${strength}%, rgba(0, 0, 0, 0.28))`;
   }
   const hits = (field) => fields[field] ?? 0;
   const pct = (n) => (darts ? ((n / darts) * 100).toFixed(1) : '0');

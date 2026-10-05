@@ -79,7 +79,7 @@
 <style>
   .picker { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .pick {
-    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 20px; padding: 0.3rem 0.9rem; font-family: inherit; font-size: 0.8rem; cursor: pointer;
   }
   .pick:hover { border-color: var(--accent); color: var(--text); }
@@ -88,14 +88,14 @@
   .section-title.top { margin-top: 1.75rem; }
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
-  .stat-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; text-align: center; }
+  .stat-tile { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 12px; box-shadow: var(--glass-shadow); padding: 0.75rem 0.9rem; text-align: center; }
   .stat-tile-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.3rem; }
   .stat-tile-value { font-size: 1.4rem; font-weight: 600; }
   .sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
+  .card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); padding: 0.75rem; }
   .runs { width: 100%; border-collapse: collapse; }
-  .runs th { font-size: 0.75rem; color: var(--muted); font-weight: 500; text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
-  .runs td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+  .runs th { font-size: 0.75rem; color: var(--muted); font-weight: 500; text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--glass-border); }
+  .runs td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--glass-border); font-size: 0.8rem; }
   .num { text-align: right; }
   .runs th.num { text-align: right; }
 </style>

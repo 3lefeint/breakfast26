@@ -43,8 +43,8 @@
 <style>
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .players-table { width: 100%; border-collapse: collapse; }
-  .players-table th { font-size: 0.75rem; color: var(--muted); font-weight: 500; text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
-  .players-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  .players-table th { font-size: 0.75rem; color: var(--muted); font-weight: 500; text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--glass-border); }
+  .players-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--glass-border); font-size: 0.85rem; }
   .num { text-align: right; }
   .players-table th.num { text-align: right; }
   .note { font-size: 0.7rem; color: var(--muted); margin-top: 0.4rem; }
