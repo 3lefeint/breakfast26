@@ -27,8 +27,35 @@ body {
   --green:       #4ade80;
   --red:         #f87171;
   --yellow:      #fbbf24;
+
+  /* Glass: a milky, translucent panel over the aurora with a lit rim that rounds off into depth. The
+     fill is lighter at the upper left, the rim catches light at the top and falls dark at the bottom,
+     and the shadow lifts the panel off the background. */
+  --glass:        linear-gradient(150deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.07) 55%, rgba(255, 255, 255, 0.05) 100%);
+  --glass-strong: linear-gradient(150deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 60%, rgba(255, 255, 255, 0.08) 100%);
+  --glass-border: rgba(255, 255, 255, 0.26);
+  --glass-blur:   blur(28px) saturate(1.5);
+  --glass-shadow:
+    /* the rim of a soap bubble: a thin bright line all around, light caught at the upper left and
+       lower right, and a faint cool and warm tint just inside it */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.30),
+    inset 2px 3px 4px -1px rgba(255, 255, 255, 0.55), inset -2px -3px 4px -1px rgba(255, 255, 255, 0.22),
+    inset 6px 6px 16px -4px rgba(130, 225, 255, 0.20), inset -6px -6px 16px -4px rgba(255, 160, 225, 0.14),
+    inset 0 0 26px rgba(255, 255, 255, 0.07),
+    0 22px 44px -18px rgba(0, 0, 0, 0.7), 0 3px 8px rgba(0, 0, 0, 0.25);
+  /* The same for the bars at the edges of the window, with a softer lift. */
+  --glass-bar-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 26px -12px rgba(0, 0, 0, 0.6);
+
+  /* The aurora: the base color and three large soft color areas. */
+  --aurora-base: #040b1a;
+  --aurora-1:    #06424f;
+  --aurora-2:    #103083;
+  --aurora-3:    #09433e;
 }
 
-:root[data-theme="ocean"]  { --accent: #22d3ee; --accent-soft: #0e3138; }
-:root[data-theme="sunset"] { --accent: #fb923c; --accent-soft: #3a2313; }
-:root[data-theme="forest"] { --accent: #34d399; --accent-soft: #103324; }
+:root[data-theme="ocean"]  { --accent: #22d3ee; --accent-soft: #0e3138;
+  --aurora-base: #020f16; --aurora-1: #065163; --aurora-2: #013f60; --aurora-3: #093633; }
+:root[data-theme="sunset"] { --accent: #fb923c; --accent-soft: #3a2313;
+  --aurora-base: #0f070d; --aurora-1: #6f2507; --aurora-2: #5c0c2c; --aurora-3: #3d166f; }
+:root[data-theme="forest"] { --accent: #34d399; --accent-soft: #103324;
+  --aurora-base: #020f09; --aurora-1: #024431; --aurora-2: #09433e; --aurora-3: #253809; }

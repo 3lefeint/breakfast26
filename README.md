@@ -278,15 +278,16 @@ the app (`npm run dev` above) against real or replayed data.
 
 ## Web UI
 
-Open `http://<host>:8080` in a browser — a card-based hub landing page
-(**Elimination**, **Target Battle**, **Killer**, **TV**, **Field Training**, **Black Belt**, **Players**, **Stats**, **Board**, **Settings**), each a
-deep-linkable view (`/#elimination`, `/#target-battle`, `/#killer`, `/#field-training`, `/#black-belt`, `/#players`, `/#stats`, `/#settings`).
+Open `http://<host>:8080` in a browser. A sidebar (**Play**, **Players**, **Stats**, **Board**, **Settings**) and a top bar
+(board connection, **Open TV**, Settings) frame every page, over an animated aurora background in the color of the accent preset.
+The Play page has the games (**Elimination**, **Target Battle**, **Killer**) and the training drills (**Field Training**,
+**Black Belt**) as glass cards, each a deep-linkable view (`/#elimination`, `/#target-battle`, `/#killer`, `/#field-training`, `/#black-belt`, `/#players`, `/#stats`, `/#settings`).
 The live scoreboard itself (X01, Elimination, Target Battle, Killer, Field Training and Black Belt) lives on the separate
 `/tv` page, not on the hub — see below.
 
 | View | What it shows |
 |------|--------------|
-| **Home** (`/`) | Hub landing page: Elimination (setup/rematch), Target Battle (setup, result and rematch), Killer (setup, result and rematch), TV, Field Training and Black Belt (setup, result and another run), then Players, Stats, Board (jump-off link to the local Autodarts board manager, if configured) and Settings |
+| **Home** (`/`) | The Play page with Elimination (setup/rematch), Target Battle (setup, result and rematch), Killer (setup, result and rematch), Field Training and Black Belt (setup, result and another run); the sidebar leads to Players, Stats, Board (jump-off link to the local Autodarts board manager, if configured) and Settings |
 | **TV** (`/tv`) | Full live view: X01 scoreboard with dart boxes/checkout suggestion/board+match controls, the live Elimination game (lives, turn order, tap-to-correct darts, clickable dartboard) or the live Target Battle (a large board with the wheel and the darts of the round, the players with their darts, a table of every round, tap-to-correct darts) or the live Killer game (the player who is up, a card per player with number, lives and status, tap-to-correct darts) or the live Field Training run (the board with the darts of the turn and the field lit up, the darts of the turn with tap-to-correct, the progress of the run, points, hit rate and hits, the last turns, Undo, Finish and Stop, and a result screen with the points, rating, personal best, points per turn and a board with every dart) or the live Black Belt run (the board with the double that is up lit and the darts of the turn, the ladder, the bonus darts in hand and the darts the field has left, the counters of the run, tap-to-correct darts, Undo, Finish and Stop, and a result screen with the belt or how far the run got, the restarts and a bar per attempt) — whichever is active; idle screen otherwise. Both show a read-only dartboard with the darts of the current turn; with no match running and the board connected, the idle screen shows the dart boxes and the dartboard instead of "Waiting for match…" |
 | **Players** | Known players list — name (opens the player's profile), Elimination win count, X01 win count, missing-audio indicator, hide/unhide |
 | **Profile** (`#profile/<name>`) | A color picker for the player (games use it for the player's darts, none set means a random one per game), and the player's achievements as badges, in sections by game mode, each split into earned and still to earn (with the progress to the next tier); secret ones that are not earned yet come last as a question mark |

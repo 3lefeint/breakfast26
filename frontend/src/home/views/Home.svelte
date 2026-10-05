@@ -1,96 +1,71 @@
 <script>
-  // Card/hub landing page (decided 2026-07-06). Explicitly not a hamburger
-  // menu or bottom tab bar. Rows: the games and the TV (four cards), the
-  // training, then Players and Stats, then Board and Settings (two cards each, half the
-  // width). Cards stagger in on mount (fly + fade).
-  import { onMount } from 'svelte';
+  // The Play page: the games and the training drills as glass cards, in two sections. The
+  // navigation to Players, Stats, Board and Settings and the link to the TV live in the shell.
   import { fly } from 'svelte/transition';
+  import Icon from '../../lib/components/Icon.svelte';
 
-  let boardAddress = $state(null);
-
-  onMount(async () => {
-    try {
-      const r = await fetch('/api/board-address').then((res) => res.json());
-      if (r.address) boardAddress = r.address;
-    } catch (_) {
-      // no board manager configured — Board card just won't link out
-    }
-  });
-
-  let cards = $derived([
-    { href: '#elimination', icon: '🎯', label: 'Elimination', sub: 'Beat the last score' },
-    { href: '#target-battle', icon: '🎡', label: 'Target Battle', sub: 'All throw at one number' },
-    { href: '#killer', icon: '🗡️', label: 'Killer', sub: 'Last one standing' },
-    { href: '/tv', icon: '📺', label: 'TV', sub: 'Live display & controls' },
-    { href: '#field-training', icon: '🏋️', label: 'Field Training', sub: 'Darts at one field' },
-    { href: '#black-belt', icon: '🥋', label: 'Black Belt', sub: 'The doubles ladder' },
-    { href: '#players', icon: '👤', label: 'Players', wide: true, newRow: true },
-    { href: '#stats', icon: '📊', label: 'Stats', wide: true },
-    { href: boardAddress, icon: '🎮', label: 'Board', sub: boardAddress ? 'Board manager' : 'Not configured', external: true, disabled: !boardAddress, wide: true },
-    { href: '#settings', icon: '⚙️', label: 'Settings', wide: true },
-  ]);
+  const SECTIONS = [
+    { title: 'Multiplayer', columns: 3, cards: [
+      { href: '#elimination', icon: 'elimination', label: 'Elimination', sub: 'Beat the last score' },
+      { href: '#target-battle', icon: 'target-battle', label: 'Target Battle', sub: 'All throw at one number' },
+      { href: '#killer', icon: 'killer', label: 'Killer', sub: 'Last one standing' },
+    ] },
+    { title: 'Singleplayer', columns: 2, cards: [
+      { href: '#field-training', icon: 'field-training', label: 'Field Training', sub: 'Darts at one field' },
+      { href: '#black-belt', icon: 'black-belt', label: 'Black Belt', sub: 'The doubles ladder' },
+    ] },
+  ];
 </script>
 
-<div class="hub">
-  {#each cards as card, i (card.label)}
-    <a
-      class="card"
-      class:wide={card.wide}
-      class:new-row={card.newRow}
-      class:disabled={card.disabled}
-      href={card.disabled ? undefined : card.href}
-      target={card.external ? '_blank' : undefined}
-      rel={card.external ? 'noopener' : undefined}
-      in:fly={{ y: 14, duration: 320, delay: i * 55 }}
-    >
-      <div class="icon-badge"><span class="icon">{card.icon}</span></div>
-      <div class="label">{card.label}</div>
-      {#if card.sub}<div class="sub">{card.sub}</div>{/if}
-    </a>
-  {/each}
-</div>
+{#each SECTIONS as section, s (section.title)}
+  <h2>{section.title}</h2>
+  <div class="grid" style="--columns: {section.columns}">
+    {#each section.cards as card, i (card.label)}
+      <a class="card" href={card.href} in:fly={{ y: 14, duration: 320, delay: (s * 3 + i) * 55 }}>
+        <span class="icon-tile"><Icon name={card.icon} size={52} stroke={1.5} /></span>
+        <span class="label">{card.label}</span>
+        <span class="sub">{card.sub}</span>
+        <span class="arrow"><Icon name="arrow" size={22} /></span>
+      </a>
+    {/each}
+  </div>
+{/each}
 
 <style>
-  .hub {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-  }
+  h2 { font-size: 2.1rem; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 1rem; }
+  h2:not(:first-of-type) { margin-top: 2rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(var(--columns), 1fr); gap: 1.25rem; }
+  .grid[style*="--columns: 2"] .card { min-height: 12.5rem; }
   .card {
-    position: relative;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 0.5rem; text-align: center;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; padding: 1.75rem 1rem;
-    color: var(--text); text-decoration: none;
-    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    position: relative; display: flex; flex-direction: column; min-height: 14rem;
+    padding: 1.25rem 1.4rem; border-radius: 16px; text-decoration: none; color: var(--text);
+    background: var(--glass); border: 1px solid var(--glass-border);
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+    transition: border-color 0.2s, background 0.2s, transform 0.2s, box-shadow 0.2s;
   }
-  .card:hover {
-    border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
-    transform: translateY(-3px);
-    box-shadow: 0 10px 28px -12px color-mix(in srgb, var(--accent) 45%, transparent);
+  .card:hover, .card:focus-visible {
+    border-color: var(--accent); background: var(--glass-strong); transform: translateY(-3px); outline: none;
+    box-shadow: var(--glass-shadow), 0 0 0 1px var(--accent), 0 18px 40px -14px color-mix(in srgb, var(--accent) 55%, transparent);
   }
-  .card:hover .icon-badge { transform: scale(1.08); }
-  .card.disabled { opacity: 0.4; pointer-events: none; }
-  .card.wide { grid-column: span 2; }
-  .icon-badge {
-    display: flex; align-items: center; justify-content: center;
-    width: 3rem; height: 3rem; border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-    transition: transform 0.2s;
+  .icon-tile {
+    display: flex; align-items: center; justify-content: center; width: 6.4rem; height: 6.4rem; margin-bottom: 1.1rem;
+    border-radius: 12px; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   }
-  .icon { font-size: 1.4rem; line-height: 1; }
-  .label { font-weight: 700; }
-  .sub { font-size: 0.75rem; color: var(--muted); }
+  .label { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { margin-top: 0.3rem; font-size: 1.2rem; color: color-mix(in srgb, var(--text) 72%, transparent); }
+  .arrow { position: absolute; right: 1.3rem; bottom: 1.15rem; color: var(--text); transition: transform 0.2s; }
+  .card:hover .arrow { transform: translateX(4px); color: var(--accent); }
 
-  /* The training cards have a row of their own; what follows starts a new one. */
-  @media (min-width: 641px) {
-    .card.new-row { grid-column: 1 / span 2; }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
   }
-
-  /* Narrow screens: two cards per row, in the same order. */
-  @media (max-width: 640px) {
-    .hub { grid-template-columns: repeat(2, 1fr); }
-    .card.wide { grid-column: span 1; }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .card, .grid[style*="--columns: 2"] .card { min-height: 9rem; }
+    .icon-tile { width: 4.5rem; height: 4.5rem; }
   }
 </style>
