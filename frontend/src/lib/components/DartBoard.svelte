@@ -7,7 +7,7 @@
 
   // Optional extras for games that play on the board: a dart can carry its own `color` (and a
   // `ring` of { color, dash } to tell players of similar colors apart, and a `label` instead of the
-  // number), `highlight` marks the
+  // number, or `dot` for a small dot, `scored` makes it the accent color), `highlight` marks the
   // field of one number and dims the rest, `pointer` ({ angle, ms }) draws a needle from the
   // center that turns to `angle` degrees clockwise from the top in `ms` milliseconds.
   //
@@ -135,8 +135,12 @@
         {#if d.ring}
           <circle class="dart-ring" r="16.5" style="stroke: {d.ring.color}" stroke-dasharray={d.ring.dash ? '5 3' : null} />
         {/if}
-        <circle r="12" style={d.color ? `fill: ${d.color}` : null} />
-        <text class="dart-n" style={d.color ? `fill: ${labelColor(d.color)}` : null}>{d.label ?? d.n}</text>
+        {#if d.dot}
+          <circle class="dart-dot" class:scored={d.scored > 0} r="5" />
+        {:else}
+          <circle r="12" style={d.color ? `fill: ${d.color}` : null} />
+          <text class="dart-n" style={d.color ? `fill: ${labelColor(d.color)}` : null}>{d.label ?? d.n}</text>
+        {/if}
       </g>
     {/each}
   </svg>
@@ -153,6 +157,8 @@
   .dart { transition: transform 0.25s ease-out; pointer-events: none; }
   .dart circle { fill: var(--accent); stroke: #0c0c0f; stroke-width: 1.5; }
   .dart-ring { fill: none; stroke-width: 3; }
+  .dart .dart-dot { fill: rgba(255, 255, 255, 0.7); stroke-width: 1; opacity: 0.8; }
+  .dart .dart-dot.scored { fill: var(--accent); }
   .dim { fill: rgba(8, 8, 12, 0.45); pointer-events: none; }
   .highlight { fill: rgba(255, 255, 255, 0.16); stroke: var(--accent); stroke-width: 3; pointer-events: none; }
   .zone { pointer-events: none; stroke: var(--zone); stroke-width: 3; fill: color-mix(in srgb, var(--zone) 80%, transparent); filter: drop-shadow(0 0 5px var(--zone)); }

@@ -1,7 +1,7 @@
 <script>
   // Card/hub landing page (decided 2026-07-06). Explicitly not a hamburger
-  // menu or bottom tab bar. Rows: the games and the TV (four cards), then
-  // Players and Stats, then Board and Settings (two cards each, half the
+  // menu or bottom tab bar. Rows: the games and the TV (four cards), the
+  // training, then Players and Stats, then Board and Settings (two cards each, half the
   // width). Cards stagger in on mount (fly + fade).
   import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
@@ -22,7 +22,8 @@
     { href: '#target-battle', icon: '🎡', label: 'Target Battle', sub: 'All throw at one number' },
     { href: '#killer', icon: '🗡️', label: 'Killer', sub: 'Last one standing' },
     { href: '/tv', icon: '📺', label: 'TV', sub: 'Live display & controls' },
-    { href: '#players', icon: '👤', label: 'Players', wide: true },
+    { href: '#field-training', icon: '🏋️', label: 'Field Training', sub: 'Darts at one field' },
+    { href: '#players', icon: '👤', label: 'Players', wide: true, newRow: true },
     { href: '#stats', icon: '📊', label: 'Stats', wide: true },
     { href: boardAddress, icon: '🎮', label: 'Board', sub: boardAddress ? 'Board manager' : 'Not configured', external: true, disabled: !boardAddress, wide: true },
     { href: '#settings', icon: '⚙️', label: 'Settings', wide: true },
@@ -34,6 +35,7 @@
     <a
       class="card"
       class:wide={card.wide}
+      class:new-row={card.newRow}
       class:disabled={card.disabled}
       href={card.disabled ? undefined : card.href}
       target={card.external ? '_blank' : undefined}
@@ -79,6 +81,11 @@
   .icon { font-size: 1.4rem; line-height: 1; }
   .label { font-weight: 700; }
   .sub { font-size: 0.75rem; color: var(--muted); }
+
+  /* The training cards have a row of their own; what follows starts a new one. */
+  @media (min-width: 641px) {
+    .card.new-row { grid-column: 1 / span 2; }
+  }
 
   /* Narrow screens: two cards per row, in the same order. */
   @media (max-width: 640px) {

@@ -5,6 +5,7 @@
   import { elimination } from '../lib/stores/elimination.js';
   import { targetBattle } from '../lib/stores/targetBattle.js';
   import { killer } from '../lib/stores/killer.js';
+  import { fieldTraining } from '../lib/stores/fieldTraining.js';
   import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
   import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
@@ -19,6 +20,8 @@
   import TargetBattleFinishedTv from './views/TargetBattleFinishedTv.svelte';
   import KillerTv from './views/KillerTv.svelte';
   import KillerFinishedTv from './views/KillerFinishedTv.svelte';
+  import FieldTrainingTv from './views/FieldTrainingTv.svelte';
+  import FieldTrainingFinishedTv from './views/FieldTrainingFinishedTv.svelte';
 
   onMount(() => {
     connect();
@@ -41,6 +44,7 @@
     if ($elimination && ($elimination.state === 'finished' || $elimination.active)) return 'Elimination';
     if ($targetBattle && ($targetBattle.state === 'finished' || $targetBattle.active)) return 'Target Battle';
     if ($killer && ($killer.state === 'finished' || $killer.active)) return 'Killer';
+    if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return 'Field Training';
     if (!game.match_started) return game.board_status ? `Board: ${game.board_status}` : '—';
     const legLabel = game.current_leg > 1 ? ` · Leg ${game.current_leg}` : '';
     return [game.game_mode, game.points_start ? `${game.points_start} pts` : null].filter(Boolean).join(' · ') + legLabel;
@@ -53,6 +57,8 @@
     if ($targetBattle && $targetBattle.active) return 'tb-live';
     if ($killer && $killer.state === 'finished') return 'killer-finished';
     if ($killer && $killer.active) return 'killer-live';
+    if ($fieldTraining && $fieldTraining.state === 'finished') return 'ft-finished';
+    if ($fieldTraining && $fieldTraining.active) return 'ft-live';
     if (game.match_started) return 'x01';
     return 'idle';
   });
@@ -128,6 +134,12 @@
   </div>
 {:else if view === 'killer-finished'}
   <KillerFinishedTv killer={$killer} />
+{:else if view === 'ft-live'}
+  <div id="activeElim">
+    <FieldTrainingTv ft={$fieldTraining} />
+  </div>
+{:else if view === 'ft-finished'}
+  <FieldTrainingFinishedTv ft={$fieldTraining} />
 {/if}
 
 <footer>
