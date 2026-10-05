@@ -167,8 +167,8 @@ def test_practice_runs_stay_out_of_the_other_statistics(db):
     play(game, hit(20, 3), hit(20, 3), hit(20, 3))
     assert db.recent_matches(10, "x01") == []
     assert [m["game_mode"] for m in db.recent_matches(10)] == ["Field Training"]
-    assert db.match_participants(game.match_id) == []          # not a full run: no achievements
-    assert db.player_final_matches("ana", "2000-01-01") == []
+    (match,) = db.player_final_matches("ana", "2000-01-01")
+    assert match["ft_counts"] == 0 and match["ft_field"] == 20     # practice: only some achievements
 
 
 def test_a_full_run_is_a_match_of_the_player(db):

@@ -27,6 +27,7 @@ const GROUPS = [
   ['elimination', 'Elimination'],
   ['killer', 'Killer'],
   ['target_battle', 'Target Battle'],
+  ['field_training', 'Field Training'],
   ['easter_egg', 'Easter eggs'],
 ];
 

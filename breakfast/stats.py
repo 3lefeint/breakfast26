@@ -1456,8 +1456,9 @@ class StatsDB:
         with self._lock:
             row = self._conn.execute(
                 "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at,"
-                " COALESCE(g.scoring, 'standard') AS scoring FROM matches m"
-                " LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
+                " COALESCE(g.scoring, 'standard') AS scoring, f.counts AS ft_counts, f.field AS ft_field"
+                " FROM matches m LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
+                " LEFT JOIN field_training_games f ON f.match_id = m.match_id"
                 " WHERE m.match_id = ?", (match_id,)).fetchone()
         return dict(row) if row else None
 
@@ -1471,7 +1472,7 @@ class StatsDB:
                 " UNION SELECT player FROM target_battle_results WHERE match_id = ?"
                 " UNION SELECT player FROM killer_turns WHERE match_id = ?"
                 " UNION SELECT player FROM killer_results WHERE match_id = ?"
-                " UNION SELECT player FROM field_training_games WHERE match_id = ? AND counts = 1",
+                " UNION SELECT player FROM field_training_games WHERE match_id = ?",
                 (match_id,) * 8).fetchall()
         return sorted(r[0] for r in rows)
 
@@ -1481,8 +1482,9 @@ class StatsDB:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at,"
-                " COALESCE(g.scoring, 'standard') AS scoring FROM matches m"
-                " LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
+                " COALESCE(g.scoring, 'standard') AS scoring, f.counts AS ft_counts, f.field AS ft_field"
+                " FROM matches m LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
+                " LEFT JOIN field_training_games f ON f.match_id = m.match_id"
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ? AND ("
                 " EXISTS (SELECT 1 FROM turns t WHERE t.match_id = m.match_id AND t.player = ?)"
                 " OR EXISTS (SELECT 1 FROM elimination_turns e WHERE e.match_id = m.match_id AND e.player = ?)"
@@ -1491,8 +1493,7 @@ class StatsDB:
                 " OR EXISTS (SELECT 1 FROM target_battle_results c WHERE c.match_id = m.match_id AND c.player = ?)"
                 " OR EXISTS (SELECT 1 FROM killer_turns k WHERE k.match_id = m.match_id AND k.player = ?)"
                 " OR EXISTS (SELECT 1 FROM killer_results l WHERE l.match_id = m.match_id AND l.player = ?)"
-                " OR EXISTS (SELECT 1 FROM field_training_games f WHERE f.match_id = m.match_id"
-                "            AND f.player = ? AND f.counts = 1))"
+                " OR f.player = ?)"
                 " ORDER BY m.started_at, m.match_id", (since,) + (player,) * 8).fetchall()
         return [dict(r) for r in rows]
 
@@ -1517,6 +1518,20 @@ class StatsDB:
                 return [{"number": n, "score": r["score"], "is_bust": False, "darts": tuple(fields.get(n, ())),
                          "target": r["target"], "round_no": r["round_no"], "tiebreak": bool(r["tiebreak"])}
                         for n, r in enumerate(turn_rows, start=1)]
+            if game_mode == "Field Training":
+                turn_rows = self._conn.execute(
+                    "SELECT t.score, g.field FROM field_training_turns t"
+                    " JOIN field_training_games g ON g.match_id = t.match_id"
+                    " WHERE t.match_id = ? AND t.player = ? ORDER BY t.id", (match_id, player)).fetchall()
+                dart_rows = self._conn.execute(
+                    "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"
+                    " AND game_mode = 'Field Training' AND misread = 0 ORDER BY turn, dart_number",
+                    (match_id, player)).fetchall()
+                fields = {}
+                for r in dart_rows:
+                    fields.setdefault(r["turn"], []).append((r["field"] or "").upper())
+                return [{"number": n, "score": r["score"], "is_bust": False, "darts": tuple(fields.get(n, ())),
+                         "target": r["field"]} for n, r in enumerate(turn_rows, start=1)]
             if game_mode == "Elimination":
                 rows = self._conn.execute(
                     "SELECT turn, field FROM dart_positions WHERE match_id = ? AND player = ?"

@@ -43,6 +43,11 @@ name = "olive"
 hex = "#5D5631"
 style = "steampunk"
 
+[modes.field_training]
+name = "gold"
+hex = "#CA8A04"
+style = "voxel"
+
 [modes.easter_egg]
 name = "plum"
 hex = "#581845"
@@ -638,3 +643,33 @@ id = "own_worst_enemy"
 mode = "killer"
 difficulty = "hidden"
 subject = "A snake biting its own tail, forming a circle."
+
+# Field Training
+
+[[badge]]
+id = "bull_drill"
+mode = "field_training"
+difficulty = "endurance"
+label = "50"
+subject = "A single big round practice target block with a red bullseye in the middle and one dart sticking in the bullseye."
+
+[[badge]]
+id = "hundred_darts"
+mode = "field_training"
+difficulty = "endurance"
+label = "100"
+subject = "A tall neat stack of many darts standing upright in a pencil cup, point up."
+
+[[badge]]
+id = "triple_threat"
+mode = "field_training"
+difficulty = "hidden"
+label = "3T"
+subject = "Three darts standing close together in one thin ring, their tips pointing at the viewer."
+
+[[badge]]
+id = "grand_tour"
+mode = "field_training"
+difficulty = "hidden"
+label = "21"
+subject = "A small suitcase with a dart stuck in its side."

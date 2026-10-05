@@ -11,6 +11,8 @@ Rules the engine applies:
   first got the table) count, existing history is not evaluated.
 - Only a closed match counts. A reopened match no longer counts.
 - Hidden players do not earn achievements, every other player does.
+- A Field Training run that is only practice (shorter than the standard length, or ended early)
+  counts only for the achievements marked `practice`.
 """
 
 import logging
@@ -51,7 +53,7 @@ class Turn:
     is_checkout: bool = False  # X01: this turn finished the leg
     remaining_before: int | None = None   # X01: what was left before the turn
     leg: int = 1
-    target: int | None = None  # Target Battle: the target number of the round
+    target: int | None = None  # Target Battle: the target number of the round; Field Training: the field
     round_no: int | None = None   # Target Battle: the round, or the tiebreak round
     tiebreak: bool = False     # Target Battle: a tiebreak round
     at: str | None = None      # X01: when the turn was stored (UTC, ISO)
@@ -74,6 +76,14 @@ class MatchContext:
         self._killer_events = None
         self._killer_rules = False
         self._killer_results = None
+        self._ft_run = None
+
+    @property
+    def ft_run(self) -> dict:
+        """Field Training: the run, see StatsDB.match_field_training_stats()."""
+        if self._ft_run is None:
+            self._ft_run = self.db.match_field_training_stats(self.match["match_id"])
+        return self._ft_run
 
     @property
     def turns(self) -> list:
@@ -170,11 +180,17 @@ class Achievement:
     count: Callable | None = None   # counter: what this match adds to the total
     peak: bool = False         # counter: the total is the highest value of any match, not the sum
     motif: str | None = None   # id of the badge motif to share, default: its own
+    practice: bool = False     # also decided by a Field Training run that is only practice
 
     def applies_to(self, game_mode: str) -> bool:
         if self.game_modes == ANY:
             return True
         return game_kind(game_mode) == self.game_modes
+
+    def counts_match(self, match: dict) -> bool:
+        """Whether the match can decide this achievement: a Field Training run that is only
+        practice does so for the achievements marked `practice` alone."""
+        return match.get("ft_counts") != 0 or self.practice
 
 
 # ── Checks ───────────────────────────────────────────────────────────────────
@@ -249,7 +265,8 @@ def _remaining_before_each_dart(turn):
 
 def _history_through(ctx):
     """The player's closed matches since the achievements start, up to and including this one."""
-    matches = ctx.db.player_final_matches(ctx.player, ctx.db.achievements_start())
+    matches = [m for m in ctx.db.player_final_matches(ctx.player, ctx.db.achievements_start())
+               if m.get("ft_counts") != 0]
     ids = [m["match_id"] for m in matches]
     if ctx.match["match_id"] not in ids:
         return []
@@ -629,6 +646,34 @@ def _four_course_meal(ctx):
     return {X01, ELIMINATION, KILLER, TARGET_BATTLE} <= kinds
 
 
+# Field Training. A run counts when every dart was thrown and there were at least the standard
+# number of darts (100 at a number, 50 at the bull); the database only marks those with `ft_counts`.
+
+def _bull_drill(ctx):
+    """The points of a full run at the bull, on the scale of 50 darts."""
+    if ctx.match.get("ft_field") != 25:
+        return 0
+    return int(ctx.ft_run.get("scaled_points") or 0)
+
+
+def _hundred_darts(ctx):
+    return 1 if ctx.match.get("ft_field") not in (None, 25) else 0
+
+
+def _triple_threat(ctx):
+    """Three triples of the field in one turn, also in a run that is only practice."""
+    field = ctx.match.get("ft_field")
+    if field in (None, 25):
+        return False
+    return any(len(t.darts) == 3 and all(d == f"T{field}" for d in t.darts) for t in ctx.turns)
+
+
+def _grand_tour(ctx):
+    """A full run at every number from 1 to 20 and at the bull, in the matches up to this one."""
+    fields = {m["ft_field"] for m in _history_through(ctx) if game_kind(m["game_mode"]) == FIELD_TRAINING}
+    return fields >= {*range(1, 21), 25}
+
+
 def _first_breakfast(ctx):
     return True
 
@@ -995,6 +1040,26 @@ ACHIEVEMENTS = (
                 {"en": "Win a Target Battle after at least three tiebreak rounds.",
                  "de": "Ein Target-Battle-Spiel gewinnen, nachdem mindestens drei Stechrunden gespielt wurden."},
                 game_modes=TARGET_BATTLE, hidden=True, check=_extended_breakfast),
+    Achievement("bull_drill", "field_training", "endurance",
+                {"en": "Bull Drill", "de": "Bull-Drill"},
+                {"en": "Score 20, 40 and 50 points in a run of 50 darts at the bull; a longer run counts scaled to 50 darts.",
+                 "de": "In einem Lauf mit 50 Darts auf das Bull 20, 40 und 50 Punkte erzielen; ein längerer Lauf zählt auf 50 Darts umgerechnet."},
+                game_modes=FIELD_TRAINING, label="50", tiers=(20, 40, 50), peak=True, count=_bull_drill),
+    Achievement("hundred_darts", "field_training", "endurance",
+                {"en": "Hundred Darts", "de": "Hundert Darts"},
+                {"en": "Complete a run of 100 darts at a number once, 5 times and 20 times.",
+                 "de": "Einen Lauf mit 100 Darts auf eine Zahl 1, 5 und 20 Mal abschliessen."},
+                game_modes=FIELD_TRAINING, label="100", tiers=(1, 5, 20), count=_hundred_darts),
+    Achievement("triple_threat", "field_training", "hidden",
+                {"en": "Triple Threat", "de": "Dreifache Bedrohung"},
+                {"en": "Hit the triple of your field with all three darts of one turn in Field Training.",
+                 "de": "Im Field Training mit allen drei Darts einer Aufnahme das Triple des Zielfelds treffen."},
+                game_modes=FIELD_TRAINING, hidden=True, label="3T", practice=True, check=_triple_threat),
+    Achievement("grand_tour", "field_training", "hidden",
+                {"en": "Grand Tour", "de": "Grand Tour"},
+                {"en": "Complete a full run at every number from 1 to 20 and at the bull.",
+                 "de": "Einen vollständigen Lauf auf jede Zahl von 1 bis 20 und auf das Bull abschliessen."},
+                game_modes=FIELD_TRAINING, hidden=True, label="21", check=_grand_tour),
     Achievement("regular_guest", "general", "endurance",
                 {"en": "Regular Guest", "de": "Stammgast"},
                 {"en": "Finish at least one match on 30 different calendar days.",
@@ -1289,7 +1354,7 @@ class AchievementEngine:
             if a.count:
                 item["tier"] = max(earned) if earned else 0
                 item["progress"] = _total(a, [a.count(self._context(m, player)) for m in matches
-                                              if a.applies_to(m["game_mode"])])
+                                              if a.applies_to(m["game_mode"]) and a.counts_match(m)])
                 item["next"] = a.tiers[item["tier"]] if item["tier"] < len(a.tiers) else None
             else:
                 item["tier"] = 1 if earned else 0
@@ -1333,7 +1398,7 @@ class AchievementEngine:
 
     def _reconcile_event(self, a, player, match, start, result):
         final = match["ended_at"] is not None
-        qualifies = final and bool(a.check(self._context(match, player)))
+        qualifies = final and a.counts_match(match) and bool(a.check(self._context(match, player)))
         rows = self.db.earned_rows(player, a.id)
         if not rows:
             if qualifies:
@@ -1345,7 +1410,8 @@ class AchievementEngine:
             return
         # The match that earned it no longer does: another match may still earn it.
         for other in self.db.player_final_matches(player, start):
-            if other["match_id"] != match["match_id"] and a.check(self._context(other, player)):
+            if (other["match_id"] != match["match_id"] and a.counts_match(other)
+                    and a.check(self._context(other, player))):
                 self.db.set_earned_match(row["id"], other["match_id"])
                 return
         self.db.delete_earned(row["id"])
@@ -1354,7 +1420,7 @@ class AchievementEngine:
     def _reconcile_counter(self, a, player, match, start, result):
         total = _total(a, [a.count(self._context(m, player))
                            for m in self.db.player_final_matches(player, start)
-                           if a.applies_to(m["game_mode"])])
+                           if a.applies_to(m["game_mode"]) and a.counts_match(m)])
         reached = sum(1 for threshold in a.tiers if total >= threshold)
         rows = {r["tier"]: r for r in self.db.earned_rows(player, a.id)}
         for tier in range(1, reached + 1):

@@ -4,6 +4,7 @@
 
 ### Added
 - Field Training: one player throws a number of darts at one field, a number or the bull (100 darts at a number and 50 at the bull by default), with a setup page, a live view on `/tv`, a result with points, hit rate, singles, doubles and triples, the points per turn and a board of every dart, a rating and a personal best for a full run, a card on Home and a Training chip in the Stats with the best, the average, the trend and the hit rate per player and field; a shorter run or one ended early is saved as practice. Started through `/api/field-training/*` or MQTT (#30).
+- Field Training achievements: Bull Drill, Hundred Darts, Triple Threat and Grand Tour; a run that is only practice counts for Triple Threat alone (#30).
 - Settings → Achievements (shown with the Dev tab): every achievement with the sound it plays now, one or more files of the achievements folder to assign to it, a preview, an upload of new sounds, and renaming and deleting the files; the assignment is stored in `[achievements.sounds]` and applies at once (#25).
 
 ### Changed
