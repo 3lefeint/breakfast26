@@ -1,11 +1,14 @@
 <script>
-  // Mirrors index.html's #view-players: known list (name/wins/audio-icon/
-  // Hide), add-player input, and the hidden-players section with Unhide.
+  // The known players (name, wins, audio, Hide), the form that adds one, and the hidden players with
+  // Unhide.
   import { players } from '../../lib/stores/players.js';
+  import { gameState } from '../../lib/stores/gameState.js';
   import { api } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
   import PlayerCard from '../../lib/components/PlayerCard.svelte';
   import PageHeader from '../../lib/components/PageHeader.svelte';
+  import Panel from '../../lib/components/Panel.svelte';
+  import Icon from '../../lib/components/Icon.svelte';
 
   let newPlayerName = $state('');
 
@@ -23,14 +26,14 @@
   }
 </script>
 
-<PageHeader title="Players" />
+<PageHeader title="Players" back="#home" />
 
-<div class="elim-section">
-  <div class="elim-section-title">Known players</div>
+<Panel>
   <div class="player-row-header">
+    <span></span>
     <span>Name</span>
-    <span>Elimination Wins</span>
-    <span>X01 Wins</span>
+    <span>Elimination</span>
+    <span>X01</span>
     <span class="right">Audio</span>
     <span></span>
   </div>
@@ -42,6 +45,7 @@
         wins={$players.winsFor(name)}
         x01Wins={$players.x01WinsFor(name)}
         missingAudio={$players.missingAudio(name)}
+        color={$gameState.player_colors?.[name] || null}
         onHide={hidePlayer}
       />
     {/each}
@@ -49,13 +53,12 @@
   <div class="add-row">
     <input type="text" placeholder="Name" bind:value={newPlayerName}
            onkeydown={(e) => e.key === 'Enter' && addPlayer()}>
-    <button class="btn btn-add" onclick={addPlayer}>+ Add</button>
+    <button class="btn-add" onclick={addPlayer}><Icon name="plus" size={18} stroke={2.2} /> Add</button>
   </div>
-</div>
+</Panel>
 
 {#if $players.hidden.length}
-  <div class="elim-section hidden-section">
-    <div class="elim-section-title muted">Hidden players</div>
+  <Panel title="Hidden players">
     <ul class="hidden-players-list">
       {#each $players.hidden as name (name)}
         <li>
@@ -64,42 +67,42 @@
         </li>
       {/each}
     </ul>
-  </div>
+  </Panel>
 {/if}
 
 <style>
-  .elim-section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;
-  }
-  .hidden-section { margin-top: 1rem; }
-  .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
-  .elim-section-title.muted { font-size: 0.85rem; }
   .player-row-header {
-    display: grid; grid-template-columns: 1fr 8rem 6rem 3rem 4rem; gap: 0.5rem;
-    font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;
-    padding: 0 0 0.4rem; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 2.6rem 1fr 6rem 6rem 3rem 4.5rem; gap: 0.75rem;
+    padding: 0 0.75rem 0.6rem; margin-bottom: 0.4rem;
+    font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--glass-border);
   }
   .player-row-header .right { text-align: right; }
   .known-list, .hidden-players-list { list-style: none; padding: 0; }
-  .hidden-players-list li {
-    display: flex; align-items: center;
-    padding: 0.5rem; border-bottom: 1px solid var(--border);
-  }
-  .hidden-players-list li:last-child { border: none; }
-  .pname { flex: 1; font-size: 0.85rem; }
+  .hidden-players-list li { display: flex; align-items: center; padding: 0.6rem 0.75rem; border-radius: 12px; }
+  .hidden-players-list li:hover { background: var(--glass); }
+  .pname { flex: 1; font-size: 1rem; color: color-mix(in srgb, var(--text) 80%, transparent); }
   .btn-hide {
-    background: transparent; border: 1px solid var(--border); color: var(--muted);
-    font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 4px; cursor: pointer;
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted);
+    font-size: 0.8rem; padding: 0.3rem 0.8rem; border-radius: 999px; cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s;
   }
   .btn-hide:hover { border-color: var(--accent); color: var(--accent); }
-  .add-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  .add-row { display: flex; gap: 0.75rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--glass-border); }
   .add-row input {
-    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 6px; padding: 0.45rem 0.75rem; font-size: 0.9rem;
+    flex: 1; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text);
+    border-radius: 12px; padding: 0.65rem 1rem; font-size: 1rem; font-family: inherit;
   }
-  .add-row input:focus { outline: none; border-color: var(--accent); }
-  .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
-  .btn:hover { opacity: 0.85; }
-  .btn-add { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; }
+  .add-row input::placeholder { color: var(--muted); }
+  .add-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .btn-add {
+    display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.65rem 1.3rem; border-radius: 12px; cursor: pointer;
+    font-size: 1rem; font-weight: 600; font-family: inherit; color: #0c0c0f;
+    background: var(--accent); border: 1px solid var(--accent); transition: opacity 0.15s;
+  }
+  .btn-add:hover { opacity: 0.85; }
+
+  @media (max-width: 640px) {
+    .player-row-header { display: none; }
+  }
 </style>
