@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // Live Target Battle. The board is the stage: it fills most of the height, with every dart of
   // the round in the color of its player and the target's field lit up. A new round with a random
   // target starts with the wheel: a needle turns around the board and lands on the field of the
@@ -122,7 +123,7 @@
         {#each rows as p (p.name)}
           <li class:current-row={p.current} animate:flip={{ duration: 300 }}>
             <span class="row-name">
-              <span class="swatch" style="background: {p.color || 'var(--muted)'}; {ringStyle(p)}"></span>
+              <span class="swatch" style="{ringStyle(p)}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
               <span class="name">{cap(p.name)}</span>
               {#if tb.tiebreak && !tb.contenders.includes(p.name)}<span class="out">out</span>{/if}
             </span>
@@ -220,7 +221,7 @@
   .current-row .name { color: var(--green); font-weight: 700; }
   .row-name { display: flex; align-items: center; gap: 0.7em; min-width: 0; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .swatch { width: 0.9em; height: 0.9em; border-radius: 50%; flex-shrink: 0; }
+  .swatch { width: 1.5em; height: 1.5em; border-radius: 50%; flex-shrink: 0;  overflow: visible; }
   .out { font-size: 0.6em; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0 0.6em; }
   .chips { display: flex; gap: 0.4vw; }
   .chip {
@@ -250,4 +251,5 @@
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .btn-end-game:hover { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.08); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

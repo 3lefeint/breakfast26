@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on the TV: the placements with their scores, the winners
   // marked with the crown, and the table of every round. Players who tied share a placement and all win.
   import { cap } from '../../lib/util.js';
@@ -36,7 +37,7 @@
       <li class:winner={tb.winners.includes(p.name)}>
         <span class="place">{p.placement}</span>
         <span class="who">
-          <span class="swatch" style="background: {p.color || 'var(--muted)'}; {p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"></span>
+          <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
           <span class="name-crown">{#if tb.winners.includes(p.name)}<Crown />{/if}{cap(p.name)}</span>
         </span>
         <span class="score">{p.score}</span>
@@ -82,7 +83,7 @@
   .place { color: var(--muted); font-weight: 700; }
   .who { display: flex; align-items: center; gap: 0.7em; }
   .name-crown { position: relative; display: inline-block; }
-  .swatch { width: 0.9em; height: 0.9em; border-radius: 50%; flex-shrink: 0; }
+  .swatch { width: 1.5em; height: 1.5em; border-radius: 50%; flex-shrink: 0;  overflow: visible; }
   .score { font-weight: 800; }
   .history { width: min(36rem, 90vw); max-height: 30vh; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(0, 0, 0, 0.22); }
   table { width: 100%; border-collapse: collapse; font-size: clamp(0.85rem, 1.4vw, 1.4rem); }
@@ -95,4 +96,5 @@
   .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.7rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
   .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); }
   .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

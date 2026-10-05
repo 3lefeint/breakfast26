@@ -4,10 +4,12 @@
   // With `readonly` it only displays `darts` ({ n, x, y }, unit = outer edge
   // of the double ring, y up) as numbered markers.
   import { SEGMENT_ORDER, RINGS_MM, fieldAtMm } from '../dartboard.js';
+  import AvatarArt from './AvatarArt.svelte';
 
   // Optional extras for games that play on the board: a dart can carry its own `color` (and a
   // `ring` of { color, dash } to tell players of similar colors apart, and a `label` instead of the
-  // number, or `dot` for a small dot, `scored` makes it the accent color), `highlight` marks the
+  // number, or `dot` for a small dot, `scored` makes it the accent color, or `avatar` ({ name, color })
+  // to show the avatar of the player with the `label` in its center), `highlight` marks the
   // field of one number and dims the rest, `pointer` ({ angle, ms }) draws a needle from the
   // center that turns to `angle` degrees clockwise from the top in `ms` milliseconds.
   //
@@ -135,7 +137,16 @@
         {#if d.ring}
           <circle class="dart-ring" r="16.5" style="stroke: {d.ring.color}" stroke-dasharray={d.ring.dash ? '5 3' : null} />
         {/if}
-        {#if d.dot}
+        {#if d.avatar}
+          {#if d.ring}
+            <circle class="dart-ring" r="15.5" style="stroke: {d.ring.color}" stroke-dasharray={d.ring.dash ? '5 3' : null} />
+          {/if}
+          <circle class="avatar-back" r="13" />
+          <svg x="-12" y="-12" width="24" height="24" viewBox="-50 -50 100 100"><AvatarArt name={d.avatar.name} color={d.avatar.color} /></svg>
+          {#if d.label != null && d.label !== ''}
+            <text class="avatar-n">{d.label}</text>
+          {/if}
+        {:else if d.dot}
           <circle class="dart-dot" class:scored={d.scored > 0} r="5" />
         {:else}
           <circle r="12" style={d.color ? `fill: ${d.color}` : null} />
@@ -157,6 +168,8 @@
   .dart { transition: transform 0.25s ease-out; pointer-events: none; }
   .dart circle { fill: var(--accent); stroke: #0c0c0f; stroke-width: 1.5; }
   .dart-ring { fill: none; stroke-width: 3; }
+  .dart .avatar-back { fill: #0c0c0f; stroke: rgba(255, 255, 255, 0.85); stroke-width: 2; }
+  .avatar-n { fill: #fff; stroke: #0c0c0f; stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; font-size: 13px; font-weight: 900; text-anchor: middle; dominant-baseline: central; }
   .dart .dart-dot { fill: rgba(255, 255, 255, 0.7); stroke-width: 1; opacity: 0.8; }
   .dart .dart-dot.scored { fill: var(--accent); }
   .dim { fill: rgba(8, 8, 12, 0.45); pointer-events: none; }

@@ -43,7 +43,7 @@ export function boardDarts(tb) {
   const darts = [];
   for (const p of tb.players || []) {
     (tb.round_darts?.[p.name] || []).forEach((d, i) => {
-      darts.push({ n: `${p.name}-${i}`, label: d.points, x: d.x, y: d.y, color: p.color, ring: p.ring });
+      darts.push({ n: `${p.name}-${i}`, label: d.points, x: d.x, y: d.y, color: p.color, ring: p.ring, avatar: { name: p.name, color: p.color } });
     });
   }
   return darts;

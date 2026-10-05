@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // Live Black Belt. The board shows the darts of the turn with the double that is up lit; beside
   // it the darts of the turn (a hit is marked, tap one to correct it), the ladder, the darts the
   // field has left and the bonus darts in hand, and the counters of the run.
@@ -11,7 +12,7 @@
 
   let darts = $derived(bb.current_darts || []);
   let markers = $derived((bb.round_darts?.[bb.player] || []).map((d, i) => (
-    { n: `${i}`, label: d.hit ? '✓' : '', x: d.x, y: d.y, color: bb.color })));
+    { n: `${i}`, label: d.hit ? '✓' : '', x: d.x, y: d.y, color: bb.color, avatar: { name: bb.player, color: bb.color } })));
   let zones = $derived(bb.target === 25 ? [] : [{ n: bb.target, parts: ['double'], level: 'strong' }]);
   let attempt = $derived((bb.attempts?.length || 0) + 1);
 
@@ -43,7 +44,7 @@
 <div class="stage">
   <div class="bar">
     <div class="who">
-      <span class="swatch" style="background: {bb.color || 'var(--muted)'}"></span>
+      <span class="swatch" style=""><Avatar name={bb.player || ''} color={bb.color} size={100} /></span>
       <span class="name">{bb.player}</span>
       <span class="turn">Attempt {attempt}{bb.backwards ? ' · backwards' : ''}</span>
     </div>
@@ -106,7 +107,7 @@
   }
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 1vw 0.8vw; }
   .who { display: flex; align-items: center; gap: 1vw; min-width: 0; }
-  .swatch { width: clamp(10px, 1.2vw, 20px); height: clamp(10px, 1.2vw, 20px); border-radius: 50%; flex-shrink: 0; }
+  .swatch { width: clamp(30px, 3vw, 54px); height: clamp(30px, 3vw, 54px); border-radius: 50%; flex-shrink: 0;  overflow: visible; }
   .name { font-size: clamp(1.1rem, 2.4vw, 2.4rem); font-weight: 800; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .turn { font-size: clamp(0.8rem, 1.4vw, 1.4rem); color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
   .target { display: flex; align-items: baseline; gap: 0.8vw; }
@@ -144,4 +145,5 @@
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .btn-end-game:hover { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.08); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

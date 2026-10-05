@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on Home: placements and scores, a rematch with the same
   // players and options, a new setup, or undoing the turn that ended the game.
   import { targetBattle } from '../../lib/stores/targetBattle.js';
@@ -35,7 +36,7 @@
         <li class:winner={tb.winners.includes(p.name)}>
           <span class="place">{p.placement}</span>
           <span class="who">
-            <span class="swatch" style="background: {p.color || 'var(--muted)'}; {p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"></span>
+            <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
             {cap(p.name)}
           </span>
           <span class="score">{p.score}</span>
@@ -59,11 +60,12 @@
   .results li.winner { border-color: color-mix(in srgb, var(--green) 55%, transparent); }
   .place { color: var(--muted); font-weight: 700; }
   .who { display: flex; align-items: center; gap: 0.6rem; }
-  .swatch { width: 0.85rem; height: 0.85rem; border-radius: 50%; flex-shrink: 0; }
+  .swatch { width: 1.7rem; height: 1.7rem; border-radius: 50%; flex-shrink: 0;  overflow: visible; }
   .score { font-weight: 800; }
   .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.4rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
   .btn-start { background: #166534; color: #fff; }
   .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); }
   .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

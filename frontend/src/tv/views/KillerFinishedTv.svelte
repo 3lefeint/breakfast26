@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Killer game on the TV: the placements with their numbers, the winner
   // marked with the crown, and the darts of the last turn. A dart tapped here is corrected and the
   // game resumes when that turn did not decide it after all.
@@ -36,7 +37,7 @@
       <li class:winner={p.name === killer.winner}>
         <span class="place">{p.placement}</span>
         <span class="who">
-          <span class="swatch" style="background: {p.color || 'var(--muted)'}; {p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"></span>
+          <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
           <span class="name-crown">{#if p.name === killer.winner}<Crown />{/if}{cap(p.name)}</span>
           <span class="number">#{p.number}</span>
         </span>
@@ -78,7 +79,7 @@
   .place { color: var(--muted); font-weight: 700; }
   .who { display: flex; align-items: baseline; gap: 0.7em; }
   .name-crown { position: relative; display: inline-block; }
-  .swatch { width: 0.9em; height: 0.9em; border-radius: 50%; flex-shrink: 0; align-self: center; }
+  .swatch { width: 1.5em; height: 1.5em; border-radius: 50%; flex-shrink: 0; align-self: center;  overflow: visible; }
   .number { color: var(--muted); font-size: 0.7em; }
   .last { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
   .last-label { color: var(--muted); font-size: clamp(0.85rem, 1.4vw, 1.3rem); }
@@ -88,4 +89,5 @@
   .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.7rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
   .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); }
   .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

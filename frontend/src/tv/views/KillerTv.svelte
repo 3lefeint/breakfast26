@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // Live Killer. The board is the stage: the field of every player's number is colored in the player's
   // color for the whole game, and the board shows what is open for whoever is up: the double of the
   // own number while they are no killer yet, then the fields that take a life from each opponent,
@@ -21,8 +22,8 @@
   let lastThrow = $derived(killer.last_turn?.darts?.[0] || null);
   let thrower = $derived((killer.players || []).find((p) => p.name === killer.last_turn?.player) || null);
   let markers = $derived(preGame
-    ? (lastThrow ? [{ n: 1, x: lastThrow.x, y: lastThrow.y, color: thrower?.color, ring: thrower?.ring }] : [])
-    : darts.map((d, i) => ({ n: i + 1, x: d.x, y: d.y, color: me?.color, ring: me?.ring })));
+    ? (lastThrow ? [{ n: 1, x: lastThrow.x, y: lastThrow.y, color: thrower?.color, ring: thrower?.ring, avatar: thrower ? { name: thrower.name, color: thrower.color } : null }] : [])
+    : darts.map((d, i) => ({ n: i + 1, x: d.x, y: d.y, color: me?.color, ring: me?.ring, avatar: me ? { name: me.name, color: me.color } : null })));
   let events = $derived(killer.turn_events || []);
   let livesMax = $derived(killer.lives_max || 3);
   let correctingIndex = $state(null);
@@ -52,7 +53,7 @@
 <div class="stage">
   <div class="bar">
     <div class="turn">
-      <span class="swatch" style="background: {me?.color || 'var(--muted)'}; {me ? ringStyle(me) : ''}"></span>
+      <span class="swatch" style="{me ? ringStyle(me) : ''}"><Avatar name={me?.name || ''} color={me?.color} size={100} /></span>
       <span class="turn-name">{cap(killer.current_player || '—')}</span>
       {#if phaseLabel(killer)}<span class="turn-hint">{phaseLabel(killer)}</span>{/if}
     </div>
@@ -71,7 +72,7 @@
         {#each killer.players as p (p.name)}
           <li class:current-row={p.current} class:out={p.out} animate:flip={{ duration: 300 }}>
             <span class="row-name">
-              <span class="swatch" style="background: {p.color || 'var(--muted)'}; {ringStyle(p)}"></span>
+              <span class="swatch" style="{ringStyle(p)}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
               <span class="name">{cap(p.name)}</span>
             </span>
             <span class="slot">
@@ -139,7 +140,7 @@
   }
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 1vw 0.8vw; flex-wrap: wrap; }
   .turn { display: flex; align-items: baseline; gap: 1vw; flex-wrap: wrap; min-width: 0; }
-  .turn .swatch { align-self: center; width: 1.2em; height: 1.2em; font-size: clamp(1.4rem, 3vw, 3rem); }
+  .turn .swatch { align-self: center; width: 1.5em; height: 1.5em; font-size: clamp(1.4rem, 3vw, 3rem);  overflow: visible; }
   .turn-name { font-size: clamp(1.6rem, 3.6vw, 3.6rem); font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
   .turn-hint { font-size: clamp(0.9rem, 1.6vw, 1.6rem); color: var(--muted); font-weight: 600; }
   .rules { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -168,7 +169,7 @@
   .k-list li.out .name { text-decoration: line-through; }
   .row-name { display: flex; align-items: center; gap: 0.7em; min-width: 0; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .swatch { width: 0.9em; height: 0.9em; border-radius: 50%; flex-shrink: 0; }
+  .swatch { width: 1.5em; height: 1.5em; border-radius: 50%; flex-shrink: 0;  overflow: visible; }
   .slot { display: flex; justify-content: center; }
   .num { font-weight: 900; color: var(--muted); }
   .lives { display: flex; justify-content: flex-end; min-width: 3.2em; }
@@ -202,4 +203,5 @@
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .btn-end-game:hover { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.08); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

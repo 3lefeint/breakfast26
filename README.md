@@ -350,8 +350,8 @@ currently active:
   even from the finished/winner screen to reopen a match), and the
   Stop/rematch/finished-match flow
 - **Target Battle**: a large board with the wheel that picks a random target
-  and every dart of the round in the color of its player (a ring around the
-  marker tells apart players with the same or a very similar color), the
+  and every dart of the round as the avatar of its player with the points in it (a ring around the
+  avatar tells apart players with the same or a very similar color), the
   round and its target, the players with their darts of the round and their
   total, a table of every round with its target and each player's points,
   tap-to-correct darts, Undo and Stop, and a result screen with the placements, the table of every round and a rematch

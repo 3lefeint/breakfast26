@@ -1,4 +1,5 @@
 <script>
+  import Avatar from '../../lib/components/Avatar.svelte';
   // Live Field Training. The board fills most of the height with the darts of the turn in progress,
   // the field lit up (a number; the bull is named in the bar). Beside it: the darts of the turn
   // (tap one to correct it), the progress of the run, the points and the hit rate, and the last
@@ -13,7 +14,7 @@
   let isBull = $derived(ft.field === 25);
   let darts = $derived(ft.current_darts || []);
   let markers = $derived((ft.round_darts?.[ft.player] || []).map((d, i) => (
-    { n: `${i}`, label: d.points, x: d.x, y: d.y, color: ft.color })));
+    { n: `${i}`, label: d.points, x: d.x, y: d.y, color: ft.color, avatar: { name: ft.player, color: ft.color } })));
   let progress = $derived(Math.min(100, (ft.thrown / ft.darts) * 100));
   let lastTurns = $derived([...(ft.turn_points || [])].slice(-8).reverse());
   // The turn counts only the darts that are left, the last one may have fewer than three.
@@ -47,7 +48,7 @@
 <div class="stage">
   <div class="bar">
     <div class="who">
-      <span class="swatch" style="background: {ft.color || 'var(--muted)'}"></span>
+      <span class="swatch" style=""><Avatar name={ft.player || ''} color={ft.color} size={100} /></span>
       <span class="name">{ft.player}</span>
       <span class="turn">Turn {ft.turn}</span>
     </div>
@@ -112,7 +113,7 @@
   }
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 1vw 0.8vw; }
   .who { display: flex; align-items: center; gap: 1vw; min-width: 0; }
-  .swatch { width: clamp(10px, 1.2vw, 20px); height: clamp(10px, 1.2vw, 20px); border-radius: 50%; flex-shrink: 0; }
+  .swatch { width: clamp(30px, 3vw, 54px); height: clamp(30px, 3vw, 54px); border-radius: 50%; flex-shrink: 0;  overflow: visible; }
   .name { font-size: clamp(1.1rem, 2.4vw, 2.4rem); font-weight: 800; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .turn { font-size: clamp(0.8rem, 1.4vw, 1.4rem); color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
   .target { display: flex; align-items: baseline; gap: 0.8vw; }
@@ -156,4 +157,5 @@
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .btn-end-game:hover { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.08); }
+  .swatch :global(svg) { width: 100%; height: 100%; }
 </style>
