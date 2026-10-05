@@ -543,6 +543,18 @@ All topics are relative to `base_topic` (default: `autodarts`).
 | `autodarts/field_training/events/{event_type}` | Non-retained event (`start`, `turn_end`, `finished`) |
 | `autodarts/field_training/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `player`, `field`, `darts`; `stop`, `undo`, `add_player`, `remove_player`) |
 
+### Black Belt
+
+| Topic | Value |
+|-------|-------|
+| `autodarts/black_belt/active` | `true` / `false` |
+| `autodarts/black_belt/state` | Full run state as JSON (retained): player, direction, the field that is up, fields done in this attempt, furthest, restarts, darts, belt |
+| `autodarts/black_belt/target`, `.../fields_done`, `.../restarts` | The field that is up (25 is the bull's eye), the fields done in this attempt and the restarts |
+| `autodarts/black_belt/current/dart{1,2,3}`, `.../current/total` | The turn in progress, face values |
+| `autodarts/black_belt/last_turn/dart{1,2,3}`, `.../last_turn/total` | The most recently finished turn |
+| `autodarts/black_belt/events/{event_type}` | Non-retained event (`start`, `turn_end`, `finished`) |
+| `autodarts/black_belt/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `player`, `backwards`; `stop`, `undo`, `add_player`, `remove_player`) |
+
 ### Killer
 
 | Topic | Value |
@@ -794,6 +806,11 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/field-training/finish` | End the run early and keep the darts thrown so far as practice (a run without a dart is dropped) |
 | `POST` | `/api/field-training/correct-dart` | Correct one dart of the current turn |
 | `POST` | `/api/field-training/undo` | Undo the most recently completed turn — repeatable; reopens the run if the undone turn had finished it |
+| `POST` | `/api/black-belt/start` | Start a Black Belt run (`player`; `backwards` plays D20 down to D1, the bull's eye is last either way); one player |
+| `POST` | `/api/black-belt/stop` | Stop the current run without keeping it |
+| `POST` | `/api/black-belt/finish` | End the run and keep what was thrown (a run without a dart is dropped) |
+| `POST` | `/api/black-belt/correct-dart` | Correct one dart of the current turn |
+| `POST` | `/api/black-belt/undo` | Undo the most recently completed turn — repeatable; reopens the run if the undone turn had finished it |
 | `POST` | `/api/killer/start` | Start a Killer game (`players`, two or more up to 20; `own_goal`, `singles`, both default off; `bull_off` and `throw_numbers`, both default on, else the first player starts and the numbers are drawn at random); every player gets a different number |
 | `POST` | `/api/killer/stop` | Stop the current game |
 | `POST` | `/api/killer/correct-dart` | Correct one dart of the current turn |
@@ -924,6 +941,7 @@ breakfast26/
     ├── target_battle.py           # Target Battle game and controller
     ├── killer.py                  # Killer game and controller
     ├── field_training.py          # Field Training run and controller
+    ├── black_belt.py              # Black Belt run and controller
     ├── online.py                  # Online Elimination: this site's side of the relay protocol, drives the local game
     ├── dartboard.py               # Dartboard geometry and the center of every field
     ├── changelog.py               # CHANGELOG.md parser for the About page

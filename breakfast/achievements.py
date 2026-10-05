@@ -34,14 +34,15 @@ ELIMINATION = "elimination"
 TARGET_BATTLE = "target_battle"
 KILLER = "killer"
 FIELD_TRAINING = "field_training"
+BLACK_BELT = "black_belt"
 ANY = "any"
 
 
 def game_kind(game_mode: str) -> str:
     """The kind of game a match of this mode in the database is: anything that is not
-    Elimination, Target Battle, Killer or Field Training is an X01 variant."""
+    Elimination, Target Battle, Killer, Field Training or Black Belt is an X01 variant."""
     return {"Elimination": ELIMINATION, "Target Battle": TARGET_BATTLE, "Killer": KILLER,
-            "Field Training": FIELD_TRAINING}.get(game_mode, X01)
+            "Field Training": FIELD_TRAINING, "Black Belt": BLACK_BELT}.get(game_mode, X01)
 
 
 @dataclass(frozen=True)

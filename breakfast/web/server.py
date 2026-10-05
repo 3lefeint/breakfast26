@@ -47,6 +47,7 @@ _elim_ctrl = None
 _tb_ctrl = None
 _killer_ctrl = None
 _ft_ctrl = None
+_bb_ctrl = None
 _online = None
 _cloud_client = None
 _stats_tracker = None
@@ -70,8 +71,8 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online
     _game_state = game_state
@@ -79,6 +80,7 @@ def wire(game_state, elim_ctrl,
     _tb_ctrl = tb_ctrl
     _killer_ctrl = killer_ctrl
     _ft_ctrl = ft_ctrl
+    _bb_ctrl = bb_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
@@ -116,6 +118,12 @@ def _build_payload() -> dict:
         ft_snap = {"active": False}
     else:
         ft_snap = None
+    if _bb_ctrl and _bb_ctrl.game:
+        bb_snap = _bb_ctrl.game.snapshot()
+    elif _bb_ctrl:
+        bb_snap = {"active": False}
+    else:
+        bb_snap = None
     session_stats = _stats_tracker.computed_session_stats() if _stats_tracker else {}
     known_players = kp.load(_stats_db)
     return {
@@ -125,6 +133,7 @@ def _build_payload() -> dict:
         "target_battle": tb_snap,
         "killer": killer_snap,
         "field_training": ft_snap,
+        "black_belt": bb_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
         "player_colors": _stats_db.player_colors() if _stats_db else {},
@@ -433,6 +442,8 @@ async def elim_start(body: StartBody):
         return {"error": "a Killer game is running, stop it first"}
     if _ft_ctrl and _ft_ctrl.active:
         return {"error": "a Field Training run is open, stop it first"}
+    if _bb_ctrl and _bb_ctrl.active:
+        return {"error": "a Black Belt run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -505,6 +516,8 @@ async def tb_start(body: TargetBattleStartBody):
         return {"error": "a Killer game is running, stop it first"}
     if _ft_ctrl and _ft_ctrl.active:
         return {"error": "a Field Training run is open, stop it first"}
+    if _bb_ctrl and _bb_ctrl.active:
+        return {"error": "a Black Belt run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _tb_ctrl.start(players, rounds=body.rounds, targets=body.targets,
@@ -575,6 +588,8 @@ async def killer_start(body: KillerStartBody):
         return {"error": "a Target Battle is running, stop it first"}
     if _ft_ctrl and _ft_ctrl.active:
         return {"error": "a Field Training run is open, stop it first"}
+    if _bb_ctrl and _bb_ctrl.active:
+        return {"error": "a Black Belt run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles,
@@ -649,6 +664,8 @@ async def ft_start(body: FieldTrainingStartBody):
         return {"error": "a Target Battle is running, stop it first"}
     if _killer_ctrl and _killer_ctrl.active:
         return {"error": "a Killer game is running, stop it first"}
+    if _bb_ctrl and _bb_ctrl.active:
+        return {"error": "a Black Belt run is open, stop it first"}
     try:
         _ft_ctrl.start(body.player, body.field, darts=body.darts)
     except ValueError as e:
@@ -692,6 +709,75 @@ async def ft_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _ft_ctrl and _ft_ctrl.game:
         _ft_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field)
+    return {"ok": True}
+
+
+# ── REST: black belt ──────────────────────────────────────────────────────────
+
+class BlackBeltStartBody(BaseModel):
+    player: str
+    backwards: bool = False    # D20 down to D1, the bull's eye still last
+
+
+@app.post("/api/black-belt/start")
+async def bb_start(body: BlackBeltStartBody):
+    log.debug("Black Belt start requested: player=%s backwards=%s", body.player, body.backwards)
+    if not _bb_ctrl:
+        return {"error": "no black belt controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    if _elim_ctrl and _elim_ctrl.active:
+        return {"error": "an Elimination game is running, stop it first"}
+    if _tb_ctrl and _tb_ctrl.active:
+        return {"error": "a Target Battle is running, stop it first"}
+    if _killer_ctrl and _killer_ctrl.active:
+        return {"error": "a Killer game is running, stop it first"}
+    if _ft_ctrl and _ft_ctrl.active:
+        return {"error": "a Field Training run is open, stop it first"}
+    try:
+        _bb_ctrl.start(body.player, backwards=body.backwards)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/black-belt/stop")
+async def bb_stop():
+    log.debug("Black Belt stop requested")
+    if _bb_ctrl:
+        _bb_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/black-belt/finish")
+async def bb_finish():
+    """End the run and keep what was thrown; a run without a dart is dropped."""
+    log.debug("Black Belt finish requested")
+    if not _bb_ctrl:
+        return {"error": "no black belt controller"}
+    if not _bb_ctrl.finish_early():
+        _bb_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/black-belt/undo")
+async def bb_undo():
+    log.debug("Black Belt undo requested")
+    if not (_bb_ctrl and _bb_ctrl.game):
+        return {"error": "no active or finished run"}
+    if not _bb_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/black-belt/correct-dart")
+async def bb_correct_dart(body: CorrectDartBody):
+    log.debug("Black Belt correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _bb_ctrl and _bb_ctrl.game:
+        _bb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
     _move_board_dart(body.dart - 1, body.field)
     return {"ok": True}
 
@@ -820,7 +906,7 @@ async def achievements_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training)$")):
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training|black_belt)$")):
     if not _stats_db:
         return []
     return _stats_db.recent_matches(mode=mode)
@@ -871,6 +957,13 @@ async def stats_field_training_overview():
     if not _stats_db:
         return {"players": []}
     return _stats_db.field_training_overview()
+
+
+@app.get("/api/stats/black-belt/overview")
+async def stats_black_belt_overview():
+    if not _stats_db:
+        return {"players": []}
+    return _stats_db.black_belt_overview()
 
 
 @app.get("/api/stats/match/{match_id}")

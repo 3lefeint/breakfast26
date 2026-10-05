@@ -120,6 +120,25 @@ CREATE TABLE IF NOT EXISTS field_training_turns (
     triples     INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT
 );
+CREATE TABLE IF NOT EXISTS black_belt_games (
+    match_id  TEXT PRIMARY KEY,
+    player    TEXT NOT NULL,
+    backwards INTEGER NOT NULL DEFAULT 0,
+    belt      INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS black_belt_darts (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL,
+    player   TEXT NOT NULL,
+    turn_no  INTEGER NOT NULL,
+    dart_no  INTEGER NOT NULL,
+    step     INTEGER NOT NULL,
+    field    INTEGER NOT NULL,
+    hit      INTEGER NOT NULL,
+    bonus    INTEGER NOT NULL DEFAULT 0,
+    restart  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS killer_games (
     match_id TEXT PRIMARY KEY,
     own_goal INTEGER NOT NULL DEFAULT 0,
@@ -154,6 +173,7 @@ CREATE TABLE IF NOT EXISTS killer_results (
 );
 CREATE INDEX IF NOT EXISTS idx_killer_turns_match  ON killer_turns  (match_id);
 CREATE INDEX IF NOT EXISTS idx_field_training_turns_match ON field_training_turns (match_id);
+CREATE INDEX IF NOT EXISTS idx_black_belt_darts_match ON black_belt_darts (match_id);
 CREATE INDEX IF NOT EXISTS idx_killer_events_match ON killer_events (match_id);
 CREATE TABLE IF NOT EXISTS dart_positions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +219,7 @@ _TURN_TABLES = {"all": ("turns", "elimination_turns"), "x01": ("turns",), "elimi
 
 
 # The games that are not X01. Everything else in `matches` is an X01 variant.
-_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer', 'Field Training')"
+_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer', 'Field Training', 'Black Belt')"
 
 # A match counts as "solo" (practice, no opponent) when exactly one distinct
 # player ever appears in its `turns` rows — Elimination is excluded here
@@ -394,8 +414,9 @@ class StatsDB:
                     " UNION SELECT DISTINCT player FROM elimination_turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM target_battle_turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM killer_turns WHERE match_id = ?"
-                    " UNION SELECT DISTINCT player FROM field_training_turns WHERE match_id = ?",
-                    (match_id, match_id, match_id, match_id, match_id),
+                    " UNION SELECT DISTINCT player FROM field_training_turns WHERE match_id = ?"
+                    " UNION SELECT DISTINCT player FROM black_belt_darts WHERE match_id = ?",
+                    (match_id, match_id, match_id, match_id, match_id, match_id),
                 ).fetchall()
             ]
             log.debug("DB write: close_match match_id=%s players=%s", match_id, players)
@@ -547,6 +568,108 @@ class StatsDB:
                 )
                 self._conn.commit()
         self._match_changed(match_id)
+
+    # ── Black Belt ────────────────────────────────────────────────────────────
+
+    def record_black_belt_setup(self, match_id: str, player: str, backwards: bool):
+        with self._lock:
+            self._ensure_player(player)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO black_belt_games (match_id, player, backwards, belt) VALUES (?, ?, ?, 0)",
+                (match_id, player, int(backwards)))
+            self._conn.commit()
+
+    def set_black_belt_belt(self, match_id: str, belt: bool):
+        log.debug("DB write: set_black_belt_belt match_id=%s belt=%s", match_id, belt)
+        with self._lock:
+            self._conn.execute("UPDATE black_belt_games SET belt = ? WHERE match_id = ?", (int(belt), match_id))
+            self._conn.commit()
+
+    def insert_black_belt_turn(self, match_id, player, records, positions=None):
+        """One finished turn. records: per dart {"step", "field", "hit", "bonus", "restart"}.
+        positions: one {"field", "x", "y"} (or None) per dart."""
+        log.debug("DB write: insert_black_belt_turn match_id=%s player=%s darts=%d", match_id, player, len(records))
+        with self._lock:
+            self._ensure_player(player)
+            turn = (self._conn.execute(
+                "SELECT COALESCE(MAX(turn_no), 0) FROM black_belt_darts WHERE match_id = ?",
+                (match_id,)).fetchone()[0]) + 1
+            for number, r in enumerate(records, start=1):
+                self._conn.execute(
+                    "INSERT INTO black_belt_darts (match_id, player, turn_no, dart_no, step, field, hit, bonus,"
+                    " restart, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (match_id, player, turn, number, r["step"], r["field"], int(r["hit"]), int(r["bonus"]),
+                     int(r["restart"]), _now_iso()))
+            self._insert_positions(match_id, "Black Belt", player, 1, turn,
+                                   [((p or {}).get("field"), p) for p in positions or []])
+            self._conn.commit()
+
+    def delete_last_black_belt_turn(self, match_id: str, player: str):
+        """Undo insert_black_belt_turn() for the most recent turn."""
+        log.debug("DB write: delete_last_black_belt_turn match_id=%s player=%s", match_id, player)
+        with self._lock:
+            turn = self._conn.execute(
+                "SELECT MAX(turn_no) FROM black_belt_darts WHERE match_id = ?", (match_id,)).fetchone()[0]
+            if turn:
+                self._conn.execute("DELETE FROM black_belt_darts WHERE match_id = ? AND turn_no = ?",
+                                   (match_id, turn))
+                self._conn.execute(
+                    "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'Black Belt'"
+                    " AND player = ? AND turn = ?", (match_id, player, turn))
+                self._conn.commit()
+        self._match_changed(match_id)
+
+    def black_belt_dart_rows(self, match_id: str) -> list:
+        """Every dart of a run in the order thrown: step, field, hit, bonus and restart."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT turn_no, dart_no, step, field, hit, bonus, restart FROM black_belt_darts"
+                " WHERE match_id = ? ORDER BY id", (match_id,)).fetchall()
+        return [{"turn": r["turn_no"], "dart": r["dart_no"], "step": r["step"], "field": r["field"],
+                 "hit": bool(r["hit"]), "bonus": bool(r["bonus"]), "restart": bool(r["restart"])}
+                for r in rows]
+
+    def _black_belt_runs(self, where="", params=()):
+        """Every finished run with its totals, oldest first. `where` narrows the games (alias g)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT g.match_id, g.player, g.backwards, g.belt, m.started_at, COUNT(d.id) AS darts,"
+                " COALESCE(SUM(d.restart), 0) AS restarts,"
+                " COALESCE(MAX(CASE WHEN d.hit = 1 THEN d.step + 1 END), 0) AS furthest,"
+                " COALESCE(SUM(d.hit), 0) AS hits"
+                " FROM black_belt_games g JOIN matches m ON m.match_id = g.match_id"
+                " JOIN black_belt_darts d ON d.match_id = g.match_id"
+                " WHERE m.ended_at IS NOT NULL" + where +
+                " GROUP BY g.match_id ORDER BY m.started_at, g.match_id", params).fetchall()
+        return [{"match_id": r["match_id"], "player": r["player"], "backwards": bool(r["backwards"]),
+                 "belt": bool(r["belt"]), "date": r["started_at"], "darts": r["darts"],
+                 "restarts": r["restarts"], "furthest": r["furthest"], "hits": r["hits"]} for r in rows]
+
+    def match_black_belt_stats(self, match_id: str) -> dict:
+        """One Black Belt run: who, which direction, how far, how many restarts and darts."""
+        runs = self._black_belt_runs(" AND g.match_id = ?", (match_id,))
+        return runs[0] if runs else {}
+
+    def black_belt_overview(self) -> dict:
+        """Per player: every run (oldest first), the belts earned, the furthest the player got, the
+        fewest darts for a belt and the average darts per run. Hidden players are left out."""
+        hidden = set(self.hidden_players())
+        by_player = {}
+        for r in self._black_belt_runs():
+            if r["player"] not in hidden:
+                by_player.setdefault(r["player"], []).append(r)
+        players = []
+        for name, runs in by_player.items():
+            belts = [r for r in runs if r["belt"]]
+            players.append({
+                "player": name, "runs": runs, "belts": len(belts),
+                "furthest": max(r["furthest"] for r in runs),
+                "fewest_darts": min((r["darts"] for r in belts), default=None),
+                "average_darts": round(sum(r["darts"] for r in runs) / len(runs), 1),
+                "restarts": sum(r["restarts"] for r in runs),
+            })
+        players.sort(key=lambda p: (-len(p["runs"]), p["player"]))
+        return {"players": players}
 
     # ── Field Training ────────────────────────────────────────────────────────
 
@@ -1433,6 +1556,9 @@ class StatsDB:
             self._conn.execute("DELETE FROM field_training_games WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM field_training_turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Field Training'", (player,))
+            self._conn.execute("DELETE FROM black_belt_games WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM black_belt_darts WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Black Belt'", (player,))
             self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
             self._conn.commit()
@@ -1472,8 +1598,9 @@ class StatsDB:
                 " UNION SELECT player FROM target_battle_results WHERE match_id = ?"
                 " UNION SELECT player FROM killer_turns WHERE match_id = ?"
                 " UNION SELECT player FROM killer_results WHERE match_id = ?"
-                " UNION SELECT player FROM field_training_games WHERE match_id = ?",
-                (match_id,) * 8).fetchall()
+                " UNION SELECT player FROM field_training_games WHERE match_id = ?"
+                " UNION SELECT player FROM black_belt_games WHERE match_id = ?",
+                (match_id,) * 9).fetchall()
         return sorted(r[0] for r in rows)
 
     def player_final_matches(self, player: str, since: str) -> list:
@@ -1493,8 +1620,9 @@ class StatsDB:
                 " OR EXISTS (SELECT 1 FROM target_battle_results c WHERE c.match_id = m.match_id AND c.player = ?)"
                 " OR EXISTS (SELECT 1 FROM killer_turns k WHERE k.match_id = m.match_id AND k.player = ?)"
                 " OR EXISTS (SELECT 1 FROM killer_results l WHERE l.match_id = m.match_id AND l.player = ?)"
-                " OR f.player = ?)"
-                " ORDER BY m.started_at, m.match_id", (since,) + (player,) * 8).fetchall()
+                " OR f.player = ?"
+                " OR EXISTS (SELECT 1 FROM black_belt_games z WHERE z.match_id = m.match_id AND z.player = ?))"
+                " ORDER BY m.started_at, m.match_id", (since,) + (player,) * 9).fetchall()
         return [dict(r) for r in rows]
 
     def turns_for_achievements(self, match_id: str, player: str, game_mode: str) -> list:
@@ -1611,7 +1739,8 @@ class StatsDB:
                 " UNION SELECT player, match_id FROM target_battle_results"
                 " UNION SELECT player, match_id FROM killer_turns"
                 " UNION SELECT player, match_id FROM killer_results"
-                " UNION SELECT player, match_id FROM field_training_games WHERE counts = 1) p"
+                " UNION SELECT player, match_id FROM field_training_games WHERE counts = 1"
+                " UNION SELECT player, match_id FROM black_belt_games) p"
                 " JOIN matches m ON m.match_id = p.match_id"
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ?"
                 " AND p.player NOT IN (SELECT name FROM players WHERE hidden = 1)",
@@ -1669,6 +1798,7 @@ class StatsDB:
             "target_battle": " AND game_mode = 'Target Battle'",
             "killer": " AND game_mode = 'Killer'",
             "field_training": " AND game_mode = 'Field Training'",
+            "black_belt": " AND game_mode = 'Black Belt'",
         }.get(mode, "")
         with self._lock:
             rows = self._conn.execute(
@@ -1679,7 +1809,8 @@ class StatsDB:
                 "    OR EXISTS (SELECT 1 FROM target_battle_turns WHERE target_battle_turns.match_id = matches.match_id)"
                 "    OR EXISTS (SELECT 1 FROM killer_turns WHERE killer_turns.match_id = matches.match_id)"
                 "    OR EXISTS (SELECT 1 FROM field_training_turns"
-                "               WHERE field_training_turns.match_id = matches.match_id))"
+                "               WHERE field_training_turns.match_id = matches.match_id)"
+                "    OR EXISTS (SELECT 1 FROM black_belt_darts WHERE black_belt_darts.match_id = matches.match_id))"
                 + mode_sql +
                 " ORDER BY started_at DESC LIMIT ?",
                 (limit,),
@@ -1698,11 +1829,17 @@ class StatsDB:
                 ).fetchone()
             scoring = None
             field = None
+            backwards = None
             if r["game_mode"] == "Field Training":
                 with self._lock:
                     setup = self._conn.execute(
                         "SELECT field FROM field_training_games WHERE match_id = ?", (mid,)).fetchone()
                 field = setup["field"] if setup else None
+            if r["game_mode"] == "Black Belt":
+                with self._lock:
+                    setup = self._conn.execute(
+                        "SELECT backwards FROM black_belt_games WHERE match_id = ?", (mid,)).fetchone()
+                backwards = bool(setup["backwards"]) if setup else False
             if r["game_mode"] == "Target Battle":
                 with self._lock:
                     setup = self._conn.execute(
@@ -1712,6 +1849,7 @@ class StatsDB:
                 "match_id":    mid,
                 "scoring":     scoring,
                 "field":       field,
+                "backwards":   backwards,
                 "started_at":  r["started_at"],
                 "ended_at":    r["ended_at"],
                 "game_mode":   r["game_mode"],
@@ -1768,6 +1906,8 @@ class StatsDB:
             return self.match_killer_stats(match_id)
         if mode_row and mode_row["game_mode"] == "Field Training":
             return self.match_field_training_stats(match_id)
+        if mode_row and mode_row["game_mode"] == "Black Belt":
+            return self.match_black_belt_stats(match_id)
         with self._lock:
             rows = self._conn.execute(f"""
                 SELECT player,
