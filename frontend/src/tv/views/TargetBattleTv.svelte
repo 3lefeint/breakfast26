@@ -179,16 +179,16 @@
 <style>
   .stage {
     flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
-    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%);
+    
   }
   .bar {
     display: flex; align-items: center; justify-content: space-between; gap: 2vw;
-    padding: 1vw 3vw 0.4vw;
+    padding: 0 1vw 0.8vw;
   }
   .round { display: flex; align-items: center; gap: 1.2vw; flex-wrap: wrap; }
   .round-label { font-size: clamp(0.9rem, 1.6vw, 1.6rem); color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
   .dots { display: flex; gap: 0.35vw; }
-  .dot { width: clamp(8px, 0.9vw, 16px); height: clamp(8px, 0.9vw, 16px); border-radius: 50%; background: var(--border); }
+  .dot { width: clamp(8px, 0.9vw, 16px); height: clamp(8px, 0.9vw, 16px); border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
   .dot.done { background: var(--accent); }
   .dot.now { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
   .target { display: flex; align-items: baseline; gap: 0.8vw; }
@@ -199,12 +199,12 @@
   }
   .target-value.spinning { opacity: 0.6; }
 
-  .body { flex: 1; min-height: 0; display: flex; gap: 2vw; padding: 0 2vw 1vw 2vw; }
+  .body { flex: 1; min-height: 0; display: flex; gap: 2vw; padding: 0; }
   .board-col {
     flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
-    --board-max: min(calc(100vh - 215px), 60vw);
+    padding: 1vw; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); --board-max: min(calc(100vh - 250px), 56vw);
   }
-  .side { flex: 0 0 clamp(340px, 36vw, 640px); min-height: 0; display: flex; flex-direction: column; gap: 1.2vw; }
+  .side { flex: 0 0 clamp(340px, 36vw, 640px); min-height: 0; display: flex; flex-direction: column; gap: 1.2vw;  padding: 1.4vw; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
 
   .tb-list { list-style: none; padding: 0; margin: 0; }
   .tb-list li {
@@ -221,11 +221,11 @@
   .row-name { display: flex; align-items: center; gap: 0.7em; min-width: 0; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .swatch { width: 0.9em; height: 0.9em; border-radius: 50%; flex-shrink: 0; }
-  .out { font-size: 0.6em; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.6em; }
+  .out { font-size: 0.6em; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0 0.6em; }
   .chips { display: flex; gap: 0.4vw; }
   .chip {
     min-width: 2.1em; padding: 0.1em 0.3em; text-align: center; font-family: inherit; font-weight: 700; font-size: 0.8em;
-    color: var(--muted); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 8px;
   }
   .chip.live { color: var(--text); font-size: 1em; cursor: pointer; }
   .chip.live:not(:disabled):hover { border-color: var(--accent); }
@@ -233,18 +233,18 @@
   .chip:disabled { cursor: default; }
   .total { font-weight: 900; min-width: 1.6em; text-align: right; font-size: 1.3em; }
 
-  .history { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface) 60%, var(--bg)); }
+  .history { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(0, 0, 0, 0.22); }
   table { width: 100%; border-collapse: collapse; font-size: clamp(0.8rem, 1.3vw, 1.5rem); }
-  th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75em; padding: 0.5em 0.6em; text-align: center; }
+  th { position: sticky; top: 0; background: color-mix(in srgb, var(--aurora-base) 85%, transparent); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75em; padding: 0.5em 0.6em; text-align: center; }
   th.who { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  td { padding: 0.35em 0.6em; text-align: center; border-top: 1px solid var(--border); }
+  td { padding: 0.35em 0.6em; text-align: center; border-top: 1px solid var(--glass-border); }
   td.t { color: var(--accent); font-weight: 800; }
   td.zero { color: var(--muted); }
   tr.now td { background: color-mix(in srgb, var(--green) 10%, transparent); }
 
   .endgame-row { display: flex; gap: 0.6rem; }
   .btn-end-game {
-    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); color: color-mix(in srgb, var(--text) 80%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 999px; padding: 0.55rem 1.25rem;
     font-size: clamp(0.8rem, 1.3vw, 1rem); font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;

@@ -108,9 +108,9 @@
 <style>
   .stage {
     flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
-    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%);
+    
   }
-  .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 1vw 3vw 0.4vw; }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 1vw 0.8vw; }
   .who { display: flex; align-items: center; gap: 1vw; min-width: 0; }
   .swatch { width: clamp(10px, 1.2vw, 20px); height: clamp(10px, 1.2vw, 20px); border-radius: 50%; flex-shrink: 0; }
   .name { font-size: clamp(1.1rem, 2.4vw, 2.4rem); font-weight: 800; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -119,38 +119,38 @@
   .target-label { font-size: clamp(0.8rem, 1.4vw, 1.4rem); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
   .target-value { font-size: clamp(2.4rem, 6vw, 5.5rem); font-weight: 900; color: var(--accent); line-height: 1; text-shadow: 0 0 32px color-mix(in srgb, var(--accent) 45%, transparent); }
 
-  .body { flex: 1; min-height: 0; display: flex; gap: 2vw; padding: 0 2vw 1vw 2vw; }
-  .board-col { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; --board-max: min(calc(100vh - 215px), 60vw); }
-  .side { flex: 0 0 clamp(340px, 36vw, 640px); min-height: 0; display: flex; flex-direction: column; gap: 1.6vw; justify-content: center; }
+  .body { flex: 1; min-height: 0; display: flex; gap: 2vw; padding: 0; }
+  .board-col { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 1vw; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); --board-max: min(calc(100vh - 250px), 56vw); }
+  .side { flex: 0 0 clamp(340px, 36vw, 640px); min-height: 0; display: flex; flex-direction: column; gap: 1.6vw; justify-content: center;  padding: 1.4vw; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
 
   .darts { display: flex; gap: 1vw; }
   .dart-chip {
     flex: 1; padding: 0.4em 0; text-align: center; font-family: inherit; font-weight: 800; font-size: clamp(1.6rem, 4vw, 4rem);
-    color: var(--text); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
+    color: var(--text); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 12px; cursor: pointer;
   }
   .dart-chip:not(:disabled):hover { border-color: var(--accent); }
   .dart-chip.miss { color: var(--red); }
   .dart-chip.empty { color: var(--muted); cursor: default; }
 
-  .progress-line { height: clamp(8px, 1vw, 16px); background: var(--border); border-radius: 999px; overflow: hidden; }
+  .progress-line { height: clamp(8px, 1vw, 16px); background: rgba(255, 255, 255, 0.14); border-radius: 999px; overflow: hidden; }
   .progress-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.3s; }
   .progress-text { margin-top: 0.4rem; color: var(--muted); font-size: clamp(0.9rem, 1.6vw, 1.6rem); }
   .progress-text strong { color: var(--text); }
 
   .stats { display: flex; flex-wrap: wrap; gap: 0.8vw; }
-  .stat { flex: 1; min-width: 5em; display: flex; flex-direction: column; padding: 0.6vw 1vw; background: color-mix(in srgb, var(--surface) 70%, var(--bg)); border: 1px solid var(--border); border-radius: 10px; }
-  .value { font-size: clamp(1.3rem, 3vw, 3rem); font-weight: 900; white-space: nowrap; }
+  .stat { flex: 1; min-width: 4.2em; display: flex; flex-direction: column; padding: 0.6vw 1vw; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 10px; }
+  .value { font-size: clamp(1.2rem, 2.2vw, 2.6rem); font-weight: 900; white-space: nowrap; }
   .label { font-size: clamp(0.65rem, 1vw, 1rem); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 
   .last { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5vw; font-size: clamp(0.9rem, 1.5vw, 1.5rem); }
   .last-label { color: var(--muted); margin-right: 0.6vw; }
-  .last-chip { min-width: 1.8em; text-align: center; padding: 0.1em 0.4em; border: 1px solid var(--border); border-radius: 8px; font-weight: 700; }
+  .last-chip { min-width: 1.8em; text-align: center; padding: 0.1em 0.4em; border: 1px solid var(--glass-border); border-radius: 8px; font-weight: 700; }
   .last-chip.zero { color: var(--muted); }
   .none { color: var(--muted); }
 
   .endgame-row { display: flex; gap: 0.6rem; }
   .btn-end-game {
-    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); color: color-mix(in srgb, var(--text) 80%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 999px; padding: 0.55rem 1.25rem;
     font-size: clamp(0.8rem, 1.3vw, 1rem); font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;

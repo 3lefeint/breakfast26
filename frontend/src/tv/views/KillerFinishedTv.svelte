@@ -71,10 +71,10 @@
   .results { list-style: none; padding: 0; width: min(36rem, 90vw); max-height: 42vh; overflow-y: auto; }
   .results li {
     display: grid; grid-template-columns: 2.5rem 1fr auto; align-items: center; gap: 1rem;
-    padding: 0.6rem 1.2rem; margin-top: 0.6rem; border-radius: 12px;
-    background: var(--surface); border: 1px solid var(--border); font-size: clamp(1.1rem, 2.2vw, 1.9rem);
+    padding: 0.6rem 1.2rem; margin-top: 0.6rem; border-radius: 16px;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); font-size: clamp(1.1rem, 2.2vw, 1.9rem);
   }
-  .results li.winner { border-color: color-mix(in srgb, var(--green) 45%, var(--border)); }
+  .results li.winner { border-color: color-mix(in srgb, var(--green) 55%, transparent); }
   .place { color: var(--muted); font-weight: 700; }
   .who { display: flex; align-items: baseline; gap: 0.7em; }
   .name-crown { position: relative; display: inline-block; }
@@ -82,10 +82,10 @@
   .number { color: var(--muted); font-size: 0.7em; }
   .last { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
   .last-label { color: var(--muted); font-size: clamp(0.85rem, 1.4vw, 1.3rem); }
-  .dart-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.4rem 1rem; font-family: inherit; font-size: clamp(1rem, 1.8vw, 1.6rem); font-weight: 700; color: var(--text); cursor: pointer; }
+  .dart-chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.4rem 1rem; font-family: inherit; font-size: clamp(1rem, 1.8vw, 1.6rem); font-weight: 700; color: var(--text); cursor: pointer; }
   .dart-chip:hover { border-color: var(--accent); }
   .actions { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
   .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.7rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
-  .btn.ghost { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+  .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); }
   .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
 </style>

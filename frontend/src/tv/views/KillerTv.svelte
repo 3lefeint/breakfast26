@@ -135,22 +135,22 @@
 <style>
   .stage {
     flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
-    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%);
+    
   }
-  .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 1vw 3vw 0.4vw; flex-wrap: wrap; }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 1vw 0.8vw; flex-wrap: wrap; }
   .turn { display: flex; align-items: baseline; gap: 1vw; flex-wrap: wrap; min-width: 0; }
   .turn .swatch { align-self: center; width: 1.2em; height: 1.2em; font-size: clamp(1.4rem, 3vw, 3rem); }
   .turn-name { font-size: clamp(1.6rem, 3.6vw, 3.6rem); font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
   .turn-hint { font-size: clamp(0.9rem, 1.6vw, 1.6rem); color: var(--muted); font-weight: 600; }
   .rules { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .rule-chip { font-size: clamp(0.65rem, 1vw, 1rem); color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.1em 0.7em; }
+  .rule-chip { font-size: clamp(0.65rem, 1vw, 1rem); color: var(--muted); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.1em 0.7em; }
 
-  .body { flex: 1; min-height: 0; display: flex; gap: 2vw; padding: 0 2vw 1vw 2vw; }
+  .body { flex: 1; min-height: 0; display: flex; gap: 2vw; padding: 0; }
   .board-col {
     flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
-    --board-max: min(calc(100vh - 215px), 60vw);
+    padding: 1vw; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); --board-max: min(calc(100vh - 250px), 56vw);
   }
-  .side { flex: 0 0 clamp(340px, 36vw, 640px); min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1.2vw; }
+  .side { flex: 0 0 clamp(340px, 36vw, 640px); min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1.2vw;  padding: 1.4vw; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
 
   .k-list { list-style: none; padding: 0; margin: 0; }
   .k-list li {
@@ -172,14 +172,14 @@
   .slot { display: flex; justify-content: center; }
   .num { font-weight: 900; color: var(--muted); }
   .lives { display: flex; justify-content: flex-end; min-width: 3.2em; }
-  .tag { font-size: 0.6em; font-weight: 800; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.6em; white-space: nowrap; }
-  .tag.killer { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, transparent); background: color-mix(in srgb, var(--red) 14%, var(--surface)); }
+  .tag { font-size: 0.6em; font-weight: 800; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0 0.6em; white-space: nowrap; }
+  .tag.killer { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, transparent); background: color-mix(in srgb, var(--red) 18%, rgba(0, 0, 0, 0.3)); }
 
   .darts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8vw; }
   .darts-row.single { grid-template-columns: 1fr; }
   .dart-box {
     display: flex; flex-direction: column; align-items: center;
-    background: color-mix(in srgb, var(--surface) 70%, var(--bg)); border: 1px solid var(--border); border-radius: 12px;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 12px;
     padding: 0.5vw 0.8vw; font-family: inherit; color: inherit; cursor: pointer;
     transition: border-color 0.15s, transform 0.15s;
   }
@@ -196,7 +196,7 @@
 
   .endgame-row { display: flex; gap: 0.6rem; margin-top: auto; }
   .btn-end-game {
-    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); color: color-mix(in srgb, var(--text) 80%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 999px; padding: 0.55rem 1.25rem;
     font-size: clamp(0.8rem, 1.3vw, 1rem); font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
