@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from breakfast.dartboard import field_centers
+from breakfast.field_training import rating as field_training_rating, scaled_points, standard_darts
 from breakfast.target_battle_scoring import SCORING
 
 log = logging.getLogger(__name__)
@@ -677,6 +678,81 @@ class StatsDB:
                 self._conn.execute("DELETE FROM target_battle_turns WHERE id = ?", (row["id"],))
                 self._conn.commit()
         self._match_changed(match_id)
+
+    def _field_training_runs(self, where="", params=()):
+        """Every finished run with its totals, oldest first. `where` narrows the games (alias g)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT g.match_id, g.player, g.field, g.darts AS planned, g.counts, m.started_at,"
+                " SUM(t.darts_count) AS darts, SUM(t.score) AS points,"
+                " SUM(t.singles) AS singles, SUM(t.doubles) AS doubles, SUM(t.triples) AS triples"
+                " FROM field_training_games g JOIN matches m ON m.match_id = g.match_id"
+                " JOIN field_training_turns t ON t.match_id = g.match_id"
+                " WHERE m.ended_at IS NOT NULL" + where +
+                " GROUP BY g.match_id ORDER BY m.started_at, g.match_id", params).fetchall()
+        runs = []
+        for r in rows:
+            hits = r["singles"] + r["doubles"] + r["triples"]
+            runs.append({
+                "match_id": r["match_id"], "player": r["player"], "field": r["field"], "date": r["started_at"],
+                "darts": r["darts"], "planned": r["planned"], "points": r["points"],
+                "scaled_points": scaled_points(r["field"], r["points"], r["darts"]),
+                "hit_rate": round(hits / r["darts"], 3) if r["darts"] else 0.0,
+                "singles": r["singles"], "doubles": r["doubles"], "triples": r["triples"],
+                "counts": bool(r["counts"]),
+                "rating": field_training_rating(r["field"], r["points"], r["darts"]) if r["counts"] else None,
+            })
+        return runs
+
+    def match_field_training_stats(self, match_id: str) -> dict:
+        """One Field Training run: who threw at which field and how it went."""
+        runs = self._field_training_runs(" AND g.match_id = ?", (match_id,))
+        return runs[0] if runs else {}
+
+    def field_training_overview(self) -> dict:
+        """The Field Training statistics per player and field: every run (oldest first), the best
+        and the average of the runs that count in points on the scale of the standard length, the
+        hit rate over all darts and where the darts landed. Players flagged `hidden` are left out.
+        Darts set by a correction are not part of the positions."""
+        hidden = set(self.hidden_players())
+        runs = [r for r in self._field_training_runs() if r["player"] not in hidden]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT g.player, g.field, d.x, d.y, d.corrected FROM dart_positions d"
+                " JOIN field_training_games g ON g.match_id = d.match_id"
+                " WHERE d.game_mode = 'Field Training' AND d.misread = 0 ORDER BY d.id DESC").fetchall()
+        by_player = {}
+        for r in runs:
+            by_player.setdefault(r["player"], {}).setdefault(r["field"], []).append(r)
+        positions = {}
+        for r in rows:
+            entry = positions.setdefault((r["player"], r["field"]), {"darts": [], "corrected": 0})
+            if r["corrected"]:
+                entry["corrected"] += 1
+            elif len(entry["darts"]) < 1500:
+                entry["darts"].append({"x": round(r["x"], 4), "y": round(r["y"], 4)})
+        players = []
+        for name, fields in by_player.items():
+            out = []
+            for field in sorted(fields, key=lambda f: (f == 25, f)):
+                field_runs = fields[field]
+                counted = [r["scaled_points"] for r in field_runs if r["counts"]]
+                darts = sum(r["darts"] for r in field_runs)
+                hits = sum(r["singles"] + r["doubles"] + r["triples"] for r in field_runs)
+                out.append({
+                    "field": field,
+                    "standard_darts": standard_darts(field),
+                    "runs": field_runs,
+                    "counted": len(counted),
+                    "practice": len(field_runs) - len(counted),
+                    "best": max(counted) if counted else None,
+                    "average": round(sum(counted) / len(counted), 1) if counted else None,
+                    "hit_rate": round(hits / darts, 3) if darts else 0.0,
+                    "positions": positions.get((name, field), {"darts": [], "corrected": 0}),
+                })
+            players.append({"player": name, "runs": sum(len(f["runs"]) for f in out), "fields": out})
+        players.sort(key=lambda p: (-p["runs"], p["player"]))
+        return {"players": players}
 
     def record_target_battle_results(self, match_id: str, results: list):
         """results: (player, placement, score) per player. Players who tie share a placement."""
@@ -1606,6 +1682,12 @@ class StatsDB:
                     "SELECT COUNT(*) as n FROM legs WHERE match_id=?", (mid,)
                 ).fetchone()
             scoring = None
+            field = None
+            if r["game_mode"] == "Field Training":
+                with self._lock:
+                    setup = self._conn.execute(
+                        "SELECT field FROM field_training_games WHERE match_id = ?", (mid,)).fetchone()
+                field = setup["field"] if setup else None
             if r["game_mode"] == "Target Battle":
                 with self._lock:
                     setup = self._conn.execute(
@@ -1614,6 +1696,7 @@ class StatsDB:
             result.append({
                 "match_id":    mid,
                 "scoring":     scoring,
+                "field":       field,
                 "started_at":  r["started_at"],
                 "ended_at":    r["ended_at"],
                 "game_mode":   r["game_mode"],
@@ -1668,6 +1751,8 @@ class StatsDB:
             return self.match_target_battle_stats(match_id)
         if mode_row and mode_row["game_mode"] == "Killer":
             return self.match_killer_stats(match_id)
+        if mode_row and mode_row["game_mode"] == "Field Training":
+            return self.match_field_training_stats(match_id)
         with self._lock:
             rows = self._conn.execute(f"""
                 SELECT player,

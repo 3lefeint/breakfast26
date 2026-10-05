@@ -5,12 +5,14 @@
   import StatsElimination from './stats/StatsElimination.svelte';
   import StatsTargetBattle from './stats/StatsTargetBattle.svelte';
   import StatsKiller from './stats/StatsKiller.svelte';
+  import StatsFieldTraining from './stats/StatsFieldTraining.svelte';
 
   const MODES = [
     { id: 'x01', label: 'X01' },
     { id: 'elimination', label: 'Elimination' },
     { id: 'target_battle', label: 'Target Battle' },
     { id: 'killer', label: 'Killer' },
+    { id: 'field_training', label: 'Training' },
   ];
 
   function remembered() {
@@ -45,6 +47,8 @@
   <StatsTargetBattle />
 {:else if mode === 'killer'}
   <StatsKiller />
+{:else if mode === 'field_training'}
+  <StatsFieldTraining />
 {:else}
   <StatsElimination />
 {/if}

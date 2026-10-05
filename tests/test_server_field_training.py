@@ -88,3 +88,15 @@ def test_a_dart_can_be_corrected_by_tapping(client):
     assert c.post("/api/field-training/correct-dart", json={"dart": 1, "field": "T20"}).json() == {"ok": True}
     assert ft.game.snapshot()["current_darts"] == [3]
     assert "error" in c.post("/api/field-training/correct-dart", json={"dart": 4, "field": "T20"}).json()
+
+
+def test_the_statistics_endpoints(client):
+    c, ft, *_ = client
+    assert c.get("/api/stats/field-training/overview").json() == {"players": []}
+    c.post("/api/field-training/start", json={"player": "ana", "field": 20, "darts": 3})
+    play(ft.game, hit(20, 3), hit(20, 1), hit(20, 1))
+    overview = c.get("/api/stats/field-training/overview").json()
+    assert overview["players"][0]["fields"][0]["runs"][0]["points"] == 5
+    (match,) = c.get("/api/stats/matches?mode=field_training").json()
+    assert match["field"] == 20
+    assert c.get(f"/api/stats/match/{match['match_id']}").json()["points"] == 5

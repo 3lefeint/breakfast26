@@ -820,7 +820,7 @@ async def achievements_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer)$")):
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training)$")):
     if not _stats_db:
         return []
     return _stats_db.recent_matches(mode=mode)
@@ -864,6 +864,13 @@ async def stats_killer_overview():
     if not _stats_db:
         return {}
     return _stats_db.killer_overview()
+
+
+@app.get("/api/stats/field-training/overview")
+async def stats_field_training_overview():
+    if not _stats_db:
+        return {"players": []}
+    return _stats_db.field_training_overview()
 
 
 @app.get("/api/stats/match/{match_id}")

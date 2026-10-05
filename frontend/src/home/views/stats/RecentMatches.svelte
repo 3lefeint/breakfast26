@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { cap } from '../../../lib/util.js';
   import { SCORING_SHORT } from '../../../lib/targetBattle.js';
+  import { fieldLabel, RATING_LABELS, percent } from '../../../lib/fieldTraining.js';
 
   let { mode } = $props();
 
@@ -51,6 +52,9 @@
       return `Target Battle · ${m.points_start} ${m.points_start === 1 ? 'round' : 'rounds'} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
     }
     if (m.game_mode === 'Killer') return 'Killer';
+    if (m.game_mode === 'Field Training') {
+      return `Field Training · ${m.field != null ? fieldLabel(m.field) : '?'} · ${m.points_start} darts`;
+    }
     return [m.game_mode, m.points_start ? m.points_start + ' pts' : ''].filter(Boolean).join(' ');
   }
   function matchPlayers(m) { return (m.players || []).map(cap).join(' · '); }
@@ -112,6 +116,28 @@
                       {#each matchDetails[m.match_id].players as p}<td class="num-cell">{r.scores[p.player] ?? '—'}</td>{/each}
                     </tr>
                   {/each}
+                </tbody>
+              </table>
+            {:else if mode === 'field_training'}
+              <table class="players-table stats-table detail">
+                <thead>
+                  <tr>
+                    <th>Player</th><th class="num-cell">Darts</th><th class="num-cell">Points</th>
+                    <th class="num-cell">Hit rate</th><th class="num-cell">Singles</th>
+                    <th class="num-cell">Doubles</th><th class="num-cell">Triples</th><th class="num-cell"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{cap(matchDetails[m.match_id].player)}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].darts}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].points}</td>
+                    <td class="num-cell">{percent(matchDetails[m.match_id].hit_rate)}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].singles}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].doubles}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].triples}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].counts ? RATING_LABELS[matchDetails[m.match_id].rating] : 'Practice'}</td>
+                  </tr>
                 </tbody>
               </table>
             {:else if mode === 'killer'}
