@@ -192,45 +192,45 @@
 <style>
   .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; }
   .intro { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.45; }
-  code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 0.3rem; }
+  code { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0 0.3rem; }
   .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
   input[type="search"], select {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text);
     padding: 0.4rem 0.6rem; font-family: inherit; font-size: 0.85rem;
   }
   input[type="search"] { flex: 1; min-width: 10rem; }
   .upload {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.8rem;
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; padding: 0.4rem 0.8rem;
     font-size: 0.85rem; cursor: pointer; color: var(--text);
   }
   .upload:hover { border-color: var(--accent); }
   .upload.busy { opacity: 0.6; cursor: default; }
   .upload input { display: none; }
-  .files { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.8rem; margin-bottom: 1rem; }
+  .files { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.65rem 0.8rem; margin-bottom: 1rem; }
   .files-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
   .files-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .file-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
-  .file-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .file-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--glass-border); flex-wrap: wrap; }
   .file-list li:first-child { border-top: none; }
   .fname { font-size: 0.85rem; flex: 1; min-width: 8rem; word-break: break-all; }
   .fmeta { font-size: 0.75rem; color: var(--muted); }
-  .rename { flex: 1; min-width: 8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.25rem 0.5rem; font-family: inherit; font-size: 0.85rem; }
-  .act { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); padding: 0.15rem 0.6rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; }
+  .rename { flex: 1; min-width: 8rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text); padding: 0.25rem 0.5rem; font-family: inherit; font-size: 0.85rem; }
+  .act { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); padding: 0.15rem 0.6rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; }
   .act:hover { border-color: var(--accent); color: var(--text); }
   .act.danger:hover { border-color: var(--red); color: var(--red); }
   .empty.small { padding: 0.5rem 0; font-size: 0.85rem; }
   .message { font-size: 0.85rem; color: var(--yellow); margin-bottom: 0.75rem; }
   .list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-  .list li { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.8rem; }
+  .list li { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.65rem 0.8rem; }
   .head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .name { font-weight: 700; margin-right: 0.3rem; }
-  .chip { font-size: 0.7rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.5rem; }
+  .chip { font-size: 0.7rem; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0 0.5rem; }
   .now { font-size: 0.78rem; color: var(--muted); margin: 0.3rem 0 0.4rem; }
   .now.none { color: var(--yellow); }
   .assigned { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .file {
     display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0.1rem 0.3rem 0.1rem 0.2rem;
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.1rem 0.3rem 0.1rem 0.2rem;
   }
   .file.missing { border-color: var(--red); color: var(--red); }
   .play, .remove { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.8rem; padding: 0 0.25rem; }

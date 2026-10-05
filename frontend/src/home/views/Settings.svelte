@@ -681,13 +681,13 @@
 
 <style>
   .settings-section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 1rem; margin-bottom: 1rem;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: 16px; padding: 1.25rem 1.4rem; margin-bottom: 1.25rem;
   }
   .settings-section.maintenance { margin-top: 1.5rem; }
   .settings-section-title {
-    font-size: 0.75rem; color: var(--muted); font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.75rem;
+    font-size: 0.78rem; color: var(--muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 1rem;
     display: flex; align-items: center; gap: 0.5rem;
   }
   .badge {
@@ -698,29 +698,30 @@
   .badge.restart { background: rgba(251,191,36,0.12); color: var(--yellow); }
   .tab-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
   .tab-chip {
-    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-    border-radius: 999px; padding: 0.45rem 1rem; font-size: 0.85rem; font-weight: 600;
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    border-radius: 999px; padding: 0.45rem 1.1rem; font-size: 0.85rem; font-weight: 600;
     font-family: inherit; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .tab-chip:hover { border-color: var(--accent); color: var(--text); }
-  .tab-chip.active { border-color: var(--accent); color: var(--bg); background: var(--accent); }
+  .tab-chip.active { border-color: var(--accent); color: #0c0c0f; background: var(--accent); box-shadow: 0 0 16px -4px var(--accent); }
   .settings-row {
     display: grid; grid-template-columns: 8rem 1fr; align-items: center;
-    gap: 0.5rem; margin-bottom: 0.5rem;
+    gap: 0.5rem; margin-bottom: 0.65rem;
   }
   .settings-row:last-child { margin-bottom: 0; }
-  .settings-row label { font-size: 0.85rem; color: var(--muted); }
+  .settings-row label { font-size: 0.9rem; color: color-mix(in srgb, var(--text) 72%, transparent); }
   .settings-row input[type="text"],
   .settings-row input[type="number"],
   .settings-row input[type="password"] {
-    width: 100%; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text); padding: 0.35rem 0.6rem; font-size: 0.85rem;
+    width: 100%; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border);
+    border-radius: 10px; color: var(--text); padding: 0.45rem 0.75rem; font-size: 0.9rem; font-family: inherit;
   }
-  .settings-row input:focus { outline: none; border-color: var(--accent); }
+  .settings-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
   .settings-row input[readonly] { opacity: 0.45; cursor: not-allowed; }
+  .settings-row input[type="checkbox"] { justify-self: start; width: 1.2rem; height: 1.2rem; accent-color: var(--accent); cursor: pointer; }
   .settings-row select {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text); padding: 0.35rem 0.6rem; font-size: 0.85rem;
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border);
+    border-radius: 10px; color: var(--text); padding: 0.45rem 0.75rem; font-size: 0.9rem; font-family: inherit;
   }
   .note { font-size: 0.75rem; color: var(--muted); margin: 0 0 0.5rem; }
   .note.update-error { color: var(--red); }
@@ -731,27 +732,27 @@
   .settings-banner.ok { background: rgba(74,222,128,0.1); border-color: var(--green); color: var(--green); }
   .settings-banner.warn { background: rgba(251,191,36,0.1); border-color: var(--yellow); color: var(--yellow); }
   .settings-banner.error { background: rgba(248,113,113,0.1); border-color: var(--red); color: var(--red); }
-  .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+  .btn { border: none; border-radius: 12px; padding: 0.7rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: default; }
-  .btn-save { background: var(--accent); color: #fff; width: 100%; margin-top: 0.5rem; }
-  .btn-add { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; }
+  .btn-save { background: var(--accent); color: #0c0c0f; width: 100%; margin-top: 0.5rem; }
+  .btn-add { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); padding: 0.5rem 1rem; }
   .btn-stop { background: #7f1d1d; color: #fff; padding: 0.5rem 1rem; }
   .voicepack-progress { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
-  .vp-entry { border-bottom: 1px solid var(--border); padding: 0.6rem 0; }
+  .vp-entry { border-bottom: 1px solid var(--glass-border); padding: 0.6rem 0; }
   .vp-entry:last-child { border-bottom: none; }
   .vp-entry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
   .vp-entry-key { font-weight: 600; font-size: 0.9rem; }
   .vp-variant-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
   .vp-variant-row input[type="text"] {
-    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.85rem;
+    flex: 1; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text);
+    border-radius: 10px; padding: 0.45rem 0.75rem; font-size: 0.9rem; font-family: inherit;
   }
   .vp-variant-row input:focus { outline: none; border-color: var(--accent); }
   .vp-variant-text { flex: 1; font-size: 0.85rem; }
   .btn-icon {
-    background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.8rem; cursor: pointer;
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
+    border-radius: 10px; padding: 0.3rem 0.7rem; font-size: 0.8rem; cursor: pointer; font-family: inherit;
     flex-shrink: 0;
   }
   .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
