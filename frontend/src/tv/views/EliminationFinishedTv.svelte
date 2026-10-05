@@ -96,7 +96,7 @@
 <ConfettiBurst />
 
 <div class="elim-finished">
-  <div>
+  <div class="winner-card">
     <div class="trophy">🏆</div>
     <div class="winner-name">{cap(elimination.winner || '')}</div>
     <div class="winner-label">Winner</div>
@@ -165,6 +165,7 @@
 
 <style>
   .elim-finished { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; }
+  .winner-card { padding: 3vw 5vw; border-radius: 28px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
   .trophy { font-size: clamp(3rem, 6vw, 6rem); margin-bottom: 0.5rem; }
   .winner-name { font-size: clamp(1.5rem, 4vw, 3rem); font-weight: 700; color: var(--green); }
   .winner-label { color: var(--muted); margin: 0.5rem 0 1.5rem; }
@@ -183,29 +184,29 @@
   .lives-row .label { font-size: 0.9rem; color: var(--muted); }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
-  .btn-counter { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
   .game-players { list-style: none; margin-bottom: 1rem; padding: 0; }
-  .game-players li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+  .game-players li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border); }
   .game-players li:last-child { border: none; }
   .player-name-text { flex: 1; font-size: 0.95rem; }
-  .btn-icon { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
+  .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
   .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }
   .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
-  .chip { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .add-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
-  .add-row input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.55rem 0.75rem; font-size: 0.95rem; }
+  .add-row input { flex: 1; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text); border-radius: 12px; padding: 0.55rem 0.75rem; font-size: 0.95rem; }
   .add-row input:focus { outline: none; border-color: var(--accent); }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: default; }
   .btn-start { background: #166534; color: #fff; }
-  .btn-add { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; }
+  .btn-add { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); padding: 0.5rem 1rem; }
   .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1.5rem 1rem; }
-  .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(0,0,0,0.6); border: none; padding: 0; cursor: default; }
-  .modal-box { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 480px; width: 100%; }
+  .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(3, 8, 20, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: none; padding: 0; cursor: default; }
+  .modal-box { position: relative; z-index: 1; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; max-width: 480px; width: 100%; }
   .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
 </style>

@@ -10,6 +10,8 @@
   import WinBadge from '../../lib/components/WinBadge.svelte';
   import LivesDisplay from '../../lib/components/LivesDisplay.svelte';
   import Crown from '../../lib/components/Crown.svelte';
+  import Avatar from '../../lib/components/Avatar.svelte';
+  import { gameState } from '../../lib/stores/gameState.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
   import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
@@ -83,13 +85,12 @@
   <ul class="tv-elim-list">
     {#each turnOrder as p (p.name)}
       <li class:elim-current-row={p.current} animate:flip={{ duration: 300 }}>
-        <span class="elim-row-name">
-          <span class="name-crown-wrap">
-            {#if isTopWinner(p.name)}<Crown />{/if}
-            {cap(p.name || '—')}
-          </span>
-          <WinBadge wins={winsFor(p.name)} />
+        <span class="row-avatar"><Avatar name={p.name || ''} color={$gameState.player_colors?.[p.name] || null} size={100} /></span>
+        <span class="name-crown-wrap">
+          {#if isTopWinner(p.name)}<Crown />{/if}
+          {cap(p.name || '—')}
         </span>
+        <span class="row-wins"><WinBadge wins={winsFor(p.name)} /></span>
         <LivesDisplay lives={p.lives || 0} {livesMax} />
       </li>
     {/each}
@@ -102,9 +103,8 @@
 
 <style>
   .player-card {
-    flex: 0 0 34%; border-bottom: none; border-right: 1px solid var(--border);
-    padding: 2.5vw 3vw 1.5vw;
-    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%);
+    flex: 0 0 34%; border-radius: 24px; padding: 2vw 2.2vw 1.5vw; overflow-y: auto;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
   }
   .player-name { font-size: clamp(1.5rem, 3.5vw, 4rem); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.2em; }
   .player-score {
@@ -113,8 +113,7 @@
   }
   .darts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1vw; align-items: center; }
   .dart-box {
-    background: color-mix(in srgb, var(--surface) 70%, var(--bg));
-    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); border-radius: 16px;
     padding: 0.6vw 0.8vw; text-align: center; font-family: inherit; color: inherit; cursor: pointer;
     transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   }
@@ -136,32 +135,39 @@
   .freipass-badge-row { margin-top: 1rem; min-height: 1.6em; }
   .freipass-badge {
     font-size: clamp(0.7rem, 1.2vw, 1.3rem); font-weight: 700;
-    background: color-mix(in srgb, var(--yellow) 18%, var(--surface));
+    background: color-mix(in srgb, var(--yellow) 18%, rgba(0, 0, 0, 0.3));
     color: var(--yellow); border: 1px solid color-mix(in srgb, var(--yellow) 35%, transparent);
     border-radius: 999px; padding: 0.15em 0.7em;
   }
   .elim-endgame-row { margin-top: 1.5rem; display: flex; gap: 0.6rem; }
   .btn-end-game {
-    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); color: color-mix(in srgb, var(--text) 80%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 999px; padding: 0.55rem 1.25rem;
     font-size: clamp(0.8rem, 1.3vw, 1rem); font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .btn-end-game:hover { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.08); }
-  .players-section { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 1.8em 2vw 1.5vw; min-height: 0; }
-  .tv-elim-list { list-style: none; }
+  .players-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 1.8vw 2vw; min-height: 0; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+  /* The rows share the height of the card, up to a limit, and sit in the middle of it: a few players
+     get big rows, many players fill it. */
+  .tv-elim-list { list-style: none; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.4vh; }
   .tv-elim-list li {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.7vw 1vw; margin-top: 1em; border-radius: 10px;
-    font-size: clamp(0.85rem, 1.6vw, 2rem);
+    flex: 1 1 0; max-height: 12vh; min-height: 0;
+    /* avatar | name | wins | lives: the wins of every row stand in one column */
+    display: grid; grid-template-columns: auto minmax(0, 1fr) 3.2em auto; align-items: center; column-gap: 1.2vw;
+    padding: 0 1.6vw; border-radius: 18px;
+    font-size: clamp(1.1rem, 2.4vw, 3rem);
     transition: background 0.2s;
   }
-  .tv-elim-list li:first-child { margin-top: 0; }
+  .row-avatar { display: block; width: 1.5em; height: 1.5em; flex-shrink: 0; }
+  .row-wins { text-align: right; }
+  .row-wins :global(.win-count) { margin-left: 0; font-size: 0.7em; vertical-align: baseline; }
+  .row-avatar :global(svg) { width: 100%; height: 100%; }
   .elim-current-row {
     color: var(--text);
     background: linear-gradient(90deg, color-mix(in srgb, var(--green) 14%, transparent), transparent);
     border: 1px solid color-mix(in srgb, var(--green) 25%, transparent);
   }
-  .elim-current-row .elim-row-name { color: var(--green); font-weight: 700; }
+  .elim-current-row .name-crown-wrap { color: var(--green); font-weight: 700; }
   .name-crown-wrap { position: relative; display: inline-block; }
 </style>

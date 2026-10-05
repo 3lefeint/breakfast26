@@ -188,7 +188,7 @@
   }
   #active, #activeElim { flex: 1; display: flex; min-height: 0; }
   #active { flex-direction: column; }
-  #activeElim { flex-direction: row; }
+  #activeElim { flex-direction: row; gap: 1.5vw; padding: 1.3vw 2vw; }
   footer {
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 1.5rem; height: 2.1rem; background: var(--glass); border-top: 1px solid var(--glass-border);
