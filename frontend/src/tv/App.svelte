@@ -12,6 +12,7 @@
   import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
   import AppHeader from '../lib/components/AppHeader.svelte';
+  import Aurora from '../lib/components/Aurora.svelte';
   import AchievementBanner from './views/AchievementBanner.svelte';
   import X01View from './views/X01View.svelte';
   import IdleView from './views/IdleView.svelte';
@@ -102,6 +103,8 @@
   let headerGlow = $derived(boardStatusColor === 'grey' ? null : boardStatusColor);
 </script>
 
+<Aurora />
+
 <AchievementBanner />
 
 <AppHeader title={matchMeta} glowColor={headerGlow}>
@@ -188,12 +191,13 @@
   #activeElim { flex-direction: row; }
   footer {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0.6rem 1.25rem; background: var(--surface); border-top: 1px solid var(--border);
+    padding: 0 1.5rem; height: 2.1rem; background: var(--glass); border-top: 1px solid var(--glass-border);
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); box-shadow: var(--glass-bar-shadow);
     font-size: 0.8rem; color: var(--muted); flex-shrink: 0;
   }
-  .dot-group { display: flex; align-items: center; gap: 1rem; }
-  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 5px; transition: background 0.3s; }
-  .conn-dot.ok { background: var(--green); }
-  .conn-label { font-size: 0.8rem; color: var(--muted); }
+  .dot-group { display: flex; align-items: center; gap: 1.25rem; }
+  .conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 7px; transition: background 0.3s; }
+  .conn-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .conn-label { font-size: 0.8rem; color: var(--text); }
   .version-info { color: var(--muted); }
 </style>

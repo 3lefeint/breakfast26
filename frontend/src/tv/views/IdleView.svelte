@@ -33,8 +33,8 @@
   }
   .darts-row { width: min(100%, 900px); display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1vw; align-items: center; }
   .dart-box {
-    background: color-mix(in srgb, var(--surface) 70%, var(--bg));
-    border: 1px solid var(--border); border-radius: 12px; padding: 0.6vw 0.8vw; text-align: center;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow);
+    border-radius: 16px; padding: 0.6vw 0.8vw; text-align: center;
   }
   .dart-box .dlabel { font-size: clamp(0.6rem, 0.9vw, 1rem); color: var(--muted); margin-bottom: 2px; }
   .dart-box .dval { font-size: clamp(1.2rem, 2.5vw, 3rem); font-weight: 800; }

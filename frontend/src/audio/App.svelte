@@ -7,6 +7,7 @@
   // TV, where the role is a user toggle).
   import { onMount } from 'svelte';
   import AppHeader from '../lib/components/AppHeader.svelte';
+  import Aurora from '../lib/components/Aurora.svelte';
   import { createPlayer } from '../lib/audioPlayer.js';
 
   let unlocked = $state(false);
@@ -71,6 +72,8 @@
   });
 </script>
 
+<Aurora />
+
 <AppHeader>
   {#snippet left()}
     <span class="conn-dot" class:ok={connOk}></span>
@@ -114,15 +117,17 @@
   }
   #unlockBtn {
     font-size: 1.4rem; font-weight: 700; padding: 1.2rem 2.5rem;
-    border: none; border-radius: 12px; background: var(--accent); color: #fff; cursor: pointer;
+    border: none; border-radius: 14px; background: var(--accent); color: #0c0c0f; cursor: pointer;
+    box-shadow: 0 0 28px -6px var(--accent);
   }
   #unlockBtn:active { transform: scale(0.98); }
   .status { font-size: 1.05rem; color: var(--muted); text-align: center; }
   .status .on { color: var(--green); font-weight: 600; }
   .log {
     width: 100%; max-height: 40vh; overflow-y: auto;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.6rem 0.8rem; font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    padding: 0.7rem 0.9rem; font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--muted);
   }
   .log div { padding: 1px 0; }
   .log .voice { color: var(--text); }
