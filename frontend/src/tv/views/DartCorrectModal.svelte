@@ -53,32 +53,32 @@
 <style>
   .section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1.5rem 1rem; }
-  .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(0,0,0,0.6); border: none; padding: 0; cursor: default; }
-  .modal-box { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 480px; width: 100%; }
+  .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(3, 8, 20, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: none; padding: 0; cursor: default; }
+  .modal-box { position: relative; z-index: 1; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; max-width: 480px; width: 100%; }
   .pad-label { font-size: 0.75rem; color: var(--muted); text-align: center; margin: 0.9rem 0 0.6rem; }
   .mult-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
   .btn-mult {
-    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 0.6rem; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    flex: 1; background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
+    border-radius: 10px; padding: 0.6rem; font-size: 0.95rem; font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
   .btn-mult:hover { border-color: var(--accent); }
   .btn-mult.sel { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .number-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
   .btn-num {
-    background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 0.6rem 0; font-size: 1rem; font-weight: 700; cursor: pointer;
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
+    border-radius: 10px; padding: 0.6rem 0; font-size: 1rem; font-weight: 700; cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
   }
   .btn-num:hover { border-color: var(--accent); color: var(--accent); }
   .special-row { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; }
   .special-row button {
-    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 0.6rem 0.4rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    flex: 1; background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
+    border-radius: 10px; padding: 0.6rem 0.4rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
   }
   .special-row button:hover { border-color: var(--accent); color: var(--accent); }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
-  .btn-add { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; }
+  .btn-add { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); padding: 0.5rem 1rem; }
 </style>
