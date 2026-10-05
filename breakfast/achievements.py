@@ -78,6 +78,8 @@ class MatchContext:
         self._killer_rules = False
         self._killer_results = None
         self._ft_run = None
+        self._bb_run = None
+        self._bb_darts = None
 
     @property
     def ft_run(self) -> dict:
@@ -85,6 +87,20 @@ class MatchContext:
         if self._ft_run is None:
             self._ft_run = self.db.match_field_training_stats(self.match["match_id"])
         return self._ft_run
+
+    @property
+    def bb_run(self) -> dict:
+        """Black Belt: the run, see StatsDB.match_black_belt_stats()."""
+        if self._bb_run is None:
+            self._bb_run = self.db.match_black_belt_stats(self.match["match_id"])
+        return self._bb_run
+
+    @property
+    def bb_darts(self) -> list:
+        """Black Belt: every dart of the run in the order thrown, see StatsDB.black_belt_dart_rows()."""
+        if self._bb_darts is None:
+            self._bb_darts = self.db.black_belt_dart_rows(self.match["match_id"])
+        return self._bb_darts
 
     @property
     def turns(self) -> list:
@@ -675,6 +691,30 @@ def _grand_tour(ctx):
     return fields >= {*range(1, 21), 25}
 
 
+# Black Belt. Every finished run counts, with or without the belt.
+
+def _black_belt(ctx):
+    return bool(ctx.bb_run.get("belt"))
+
+
+def _belt_progress(ctx):
+    """How many fields the run got through in one go."""
+    return ctx.bb_run.get("furthest") or 0
+
+
+def _dead_eye(ctx):
+    """Five fields in a row, each hit with the first dart thrown at it. The first dart at a field is
+    the one after a hit, after a restart, or the first of the run."""
+    best = streak = 0
+    first = True
+    for dart in ctx.bb_darts:
+        if first:
+            streak = streak + 1 if dart["hit"] else 0
+            best = max(best, streak)
+        first = dart["hit"] or dart["restart"]
+    return best >= 5
+
+
 def _first_breakfast(ctx):
     return True
 
@@ -1061,6 +1101,21 @@ ACHIEVEMENTS = (
                 {"en": "Complete a full run at every number from 1 to 20 and at the bull.",
                  "de": "Einen vollständigen Lauf auf jede Zahl von 1 bis 20 und auf das Bull abschliessen."},
                 game_modes=FIELD_TRAINING, hidden=True, label="21", check=_grand_tour),
+    Achievement("black_belt", "black_belt", "extreme",
+                {"en": "Black Belt", "de": "Schwarzer Gürtel"},
+                {"en": "Get through the whole ladder of the Black Belt drill, D1 to D20 and the bull's eye, without a restart.",
+                 "de": "Die ganze Leiter des Black-Belt-Drills, D1 bis D20 und das Bull's Eye, ohne Neustart schaffen."},
+                game_modes=BLACK_BELT, check=_black_belt),
+    Achievement("belt_progress", "black_belt", "endurance",
+                {"en": "Coloured Belts", "de": "Farbige Gürtel"},
+                {"en": "Get through 5, 10 and 15 fields of the Black Belt ladder in one go.",
+                 "de": "Im Black Belt 5, 10 und 15 Felder der Leiter in einem Durchgang schaffen."},
+                game_modes=BLACK_BELT, label="15", tiers=(5, 10, 15), peak=True, count=_belt_progress),
+    Achievement("dead_eye", "black_belt", "hidden",
+                {"en": "Dead Eye", "de": "Falkenauge"},
+                {"en": "Hit five fields in a row of the Black Belt ladder, each with the first dart thrown at it.",
+                 "de": "Im Black Belt fünf Felder der Leiter hintereinander treffen, jedes mit dem ersten Dart darauf."},
+                game_modes=BLACK_BELT, hidden=True, label="5", check=_dead_eye),
     Achievement("regular_guest", "general", "endurance",
                 {"en": "Regular Guest", "de": "Stammgast"},
                 {"en": "Finish at least one match on 30 different calendar days.",

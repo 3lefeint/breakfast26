@@ -9,7 +9,7 @@
 
   const URL = '/api/admin/achievement-sounds';
   const MODES = { general: 'General', x01: 'X01', elimination: 'Elimination', killer: 'Killer',
-                  target_battle: 'Target Battle', field_training: 'Field Training', easter_egg: 'Easter eggs' };
+                  target_battle: 'Target Battle', field_training: 'Field Training', black_belt: 'Black Belt', easter_egg: 'Easter eggs' };
   const SOURCE_LABEL = { assigned: 'assigned', id: 'file name', generic: 'general sound', none: 'no sound' };
 
   let data = $state(null);

@@ -28,6 +28,7 @@ const GROUPS = [
   ['killer', 'Killer'],
   ['target_battle', 'Target Battle'],
   ['field_training', 'Field Training'],
+  ['black_belt', 'Black Belt'],
   ['easter_egg', 'Easter eggs'],
 ];
 

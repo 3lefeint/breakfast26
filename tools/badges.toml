@@ -48,6 +48,11 @@ name = "gold"
 hex = "#CA8A04"
 style = "voxel"
 
+[modes.black_belt]
+name = "slate"
+hex = "#475569"
+style = "voxel"
+
 [modes.easter_egg]
 name = "plum"
 hex = "#581845"
@@ -673,3 +678,25 @@ mode = "field_training"
 difficulty = "hidden"
 label = "21"
 subject = "A small suitcase with a dart stuck in its side."
+
+# Black Belt
+
+[[badge]]
+id = "black_belt"
+mode = "black_belt"
+difficulty = "extreme"
+subject = "A knotted martial arts belt lying in a loose loop with the two ends hanging down."
+
+[[badge]]
+id = "belt_progress"
+mode = "black_belt"
+difficulty = "endurance"
+label = "15"
+subject = "Three martial arts belts rolled up and stacked in a small pyramid."
+
+[[badge]]
+id = "dead_eye"
+mode = "black_belt"
+difficulty = "hidden"
+label = "5"
+subject = "A single wide open eye with a small dart tip reflected in the pupil."
