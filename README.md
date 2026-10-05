@@ -530,6 +530,18 @@ All topics are relative to `base_topic` (default: `autodarts`).
 | `autodarts/target_battle/events/{event_type}` | Non-retained event (`turn_end`, `round_start`, `game_won`) |
 | `autodarts/target_battle/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `players`, `rounds`, `targets`, `scoring`, `tiebreak`; `stop`, `correct_turn`, `undo`, `add_player`, `remove_player`) |
 
+### Field Training
+
+| Topic | Value |
+|-------|-------|
+| `autodarts/field_training/active` | `true` / `false` |
+| `autodarts/field_training/state` | Full run state as JSON (retained): player, field, darts, darts thrown, points and the hits by multiplier |
+| `autodarts/field_training/field`, `.../thrown`, `.../points` | The field (25 is the bull), the darts thrown and the points so far |
+| `autodarts/field_training/current/dart{1,2,3}`, `.../current/total` | The turn in progress, in points |
+| `autodarts/field_training/last_turn/dart{1,2,3}`, `.../last_turn/total` | The most recently finished turn |
+| `autodarts/field_training/events/{event_type}` | Non-retained event (`start`, `turn_end`, `finished`) |
+| `autodarts/field_training/command` | **Subscribed**, not published — JSON `{"action": ...}` (`start` with `player`, `field`, `darts`; `stop`, `undo`, `add_player`, `remove_player`) |
+
 ### Killer
 
 | Topic | Value |
@@ -776,6 +788,11 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/target-battle/correct` | Correct the last turn's points (`total`) |
 | `POST` | `/api/target-battle/correct-dart` | Correct one dart of the current turn |
 | `POST` | `/api/target-battle/undo` | Undo the most recently completed turn — repeatable; reopens the game if the undone turn had finished it |
+| `POST` | `/api/field-training/start` | Start a Field Training run (`player`, `field` 1 to 20 or 25 for the bull, `darts` default 100 at a number and 50 at the bull); one player |
+| `POST` | `/api/field-training/stop` | Stop the current run without keeping it |
+| `POST` | `/api/field-training/finish` | End the run early and keep the darts thrown so far as practice (a run without a dart is dropped) |
+| `POST` | `/api/field-training/correct-dart` | Correct one dart of the current turn |
+| `POST` | `/api/field-training/undo` | Undo the most recently completed turn — repeatable; reopens the run if the undone turn had finished it |
 | `POST` | `/api/killer/start` | Start a Killer game (`players`, two or more up to 20; `own_goal`, `singles`, both default off; `bull_off` and `throw_numbers`, both default on, else the first player starts and the numbers are drawn at random); every player gets a different number |
 | `POST` | `/api/killer/stop` | Stop the current game |
 | `POST` | `/api/killer/correct-dart` | Correct one dart of the current turn |
@@ -904,6 +921,7 @@ breakfast26/
     ├── turn_game.py               # What board games share: darts of a turn, corrections, undo, MQTT output
     ├── target_battle.py           # Target Battle game and controller
     ├── killer.py                  # Killer game and controller
+    ├── field_training.py          # Field Training run and controller
     ├── online.py                  # Online Elimination: this site's side of the relay protocol, drives the local game
     ├── dartboard.py               # Dartboard geometry and the center of every field
     ├── changelog.py               # CHANGELOG.md parser for the About page

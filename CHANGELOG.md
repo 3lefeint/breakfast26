@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Field Training engine: one player throws a number of darts at one field, a number or the bull, started through `/api/field-training/*` or MQTT; a run of all darts at the standard length (100 at a number, 50 at the bull) counts, anything shorter or stopped early is practice (#30).
 - Settings → Achievements (shown with the Dev tab): every achievement with the sound it plays now, one or more files of the achievements folder to assign to it, a preview, an upload of new sounds, and renaming and deleting the files; the assignment is stored in `[achievements.sounds]` and applies at once (#25).
 
 ### Changed

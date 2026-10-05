@@ -46,6 +46,7 @@ _game_state = None
 _elim_ctrl = None
 _tb_ctrl = None
 _killer_ctrl = None
+_ft_ctrl = None
 _online = None
 _cloud_client = None
 _stats_tracker = None
@@ -69,14 +70,15 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None, killer_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
     _killer_ctrl = killer_ctrl
+    _ft_ctrl = ft_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
@@ -108,6 +110,12 @@ def _build_payload() -> dict:
         killer_snap = {"active": False}
     else:
         killer_snap = None
+    if _ft_ctrl and _ft_ctrl.game:
+        ft_snap = _ft_ctrl.game.snapshot()
+    elif _ft_ctrl:
+        ft_snap = {"active": False}
+    else:
+        ft_snap = None
     session_stats = _stats_tracker.computed_session_stats() if _stats_tracker else {}
     known_players = kp.load(_stats_db)
     return {
@@ -116,6 +124,7 @@ def _build_payload() -> dict:
         "elimination": elim_snap,
         "target_battle": tb_snap,
         "killer": killer_snap,
+        "field_training": ft_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
         "player_colors": _stats_db.player_colors() if _stats_db else {},
@@ -422,6 +431,8 @@ async def elim_start(body: StartBody):
         return {"error": "a Target Battle is running, stop it first"}
     if _killer_ctrl and _killer_ctrl.active:
         return {"error": "a Killer game is running, stop it first"}
+    if _ft_ctrl and _ft_ctrl.active:
+        return {"error": "a Field Training run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -492,6 +503,8 @@ async def tb_start(body: TargetBattleStartBody):
         return {"error": "an Elimination game is running, stop it first"}
     if _killer_ctrl and _killer_ctrl.active:
         return {"error": "a Killer game is running, stop it first"}
+    if _ft_ctrl and _ft_ctrl.active:
+        return {"error": "a Field Training run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _tb_ctrl.start(players, rounds=body.rounds, targets=body.targets,
@@ -560,6 +573,8 @@ async def killer_start(body: KillerStartBody):
         return {"error": "an Elimination game is running, stop it first"}
     if _tb_ctrl and _tb_ctrl.active:
         return {"error": "a Target Battle is running, stop it first"}
+    if _ft_ctrl and _ft_ctrl.active:
+        return {"error": "a Field Training run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles,
@@ -609,6 +624,75 @@ async def killer_correct_last_dart(body: CorrectDartBody):
         return {"error": "no active or finished game"}
     if not _killer_ctrl.game.correct_last_dart(body.dart - 1, body.field):
         return {"error": "no turn to correct"}
+    return {"ok": True}
+
+
+# ── REST: field training ──────────────────────────────────────────────────────
+
+class FieldTrainingStartBody(BaseModel):
+    player: str
+    field: int                 # 1 to 20, or 25 for the bull
+    darts: int | None = None   # None for the standard number: 100 at a number, 50 at the bull
+
+
+@app.post("/api/field-training/start")
+async def ft_start(body: FieldTrainingStartBody):
+    log.debug("Field Training start requested: player=%s field=%s darts=%s",
+              body.player, body.field, body.darts)
+    if not _ft_ctrl:
+        return {"error": "no field training controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    if _elim_ctrl and _elim_ctrl.active:
+        return {"error": "an Elimination game is running, stop it first"}
+    if _tb_ctrl and _tb_ctrl.active:
+        return {"error": "a Target Battle is running, stop it first"}
+    if _killer_ctrl and _killer_ctrl.active:
+        return {"error": "a Killer game is running, stop it first"}
+    try:
+        _ft_ctrl.start(body.player, body.field, darts=body.darts)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/field-training/stop")
+async def ft_stop():
+    log.debug("Field Training stop requested")
+    if _ft_ctrl:
+        _ft_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/field-training/finish")
+async def ft_finish():
+    """End the run early and keep what was thrown as practice; a run without a dart is dropped."""
+    log.debug("Field Training finish requested")
+    if not _ft_ctrl:
+        return {"error": "no field training controller"}
+    if not _ft_ctrl.finish_early():
+        _ft_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/field-training/undo")
+async def ft_undo():
+    log.debug("Field Training undo requested")
+    if not (_ft_ctrl and _ft_ctrl.game):
+        return {"error": "no active or finished run"}
+    if not _ft_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/field-training/correct-dart")
+async def ft_correct_dart(body: CorrectDartBody):
+    log.debug("Field Training correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _ft_ctrl and _ft_ctrl.game:
+        _ft_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field)
     return {"ok": True}
 
 
