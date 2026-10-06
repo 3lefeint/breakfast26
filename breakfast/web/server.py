@@ -25,6 +25,7 @@ from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
 from breakfast import known_players as kp
 from breakfast import online as online_mod
+from breakfast import frozen, self_update
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
 
@@ -1600,6 +1601,8 @@ def _updater_post(path: str) -> dict:
 @app.get("/api/updates/check")
 async def updates_check():
     log.debug("Update check requested")
+    if frozen.is_frozen():
+        return await asyncio.to_thread(self_update.check, __version__)
     try:
         return await asyncio.to_thread(_updater_get, "/check")
     except Exception as e:
@@ -1610,6 +1613,8 @@ async def updates_check():
 @app.post("/api/updates/apply")
 async def updates_apply():
     log.info("Update apply requested via UI")
+    if frozen.is_frozen():
+        return self_update.apply(__version__)
     try:
         return await asyncio.to_thread(_updater_post, "/apply")
     except Exception as e:
@@ -1620,6 +1625,8 @@ async def updates_apply():
 @app.get("/api/updates/status")
 async def updates_status():
     log.debug("Update status requested")
+    if frozen.is_frozen():
+        return self_update.status()
     try:
         return await asyncio.to_thread(_updater_get, "/status")
     except Exception as e:

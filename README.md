@@ -68,10 +68,12 @@ Connects straight to the Autodarts cloud — no darts-caller required.
   the turn total announced (with `[audio]` configured), plus live MQTT/LED output
 - MQTT output for ESPHome / LED strips (works without Home Assistant); fully
   optional — Elimination, the scoreboard, and the voice caller all work with it off
-- **Self-update** (Docker deployments): check for a newer release and install it
-  with one confirmation click from Settings — pulls, rebuilds, and restarts
-  automatically, with an automatic rollback if the new build doesn't come up
-  healthy
+- **Self-update** (Docker deployments and the Windows build): check for a newer
+  release and install it with one confirmation click from Settings — installs
+  and restarts automatically, with an automatic rollback if the new version
+  doesn't come up healthy
+- **Windows build**: a standalone program for Windows that needs neither Python
+  nor Docker (see **Windows (standalone)** below)
 - Session recording and replay — develop without throwing darts
 - Config file — no long CLI commands needed in production
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
@@ -639,6 +641,32 @@ current run only (`POST /api/dev/unlock`, in-memory, never written to
 `config.toml`). Gone again on the next restart.
 
 ---
+
+## Windows (standalone)
+
+For a Windows PC that also runs Autodarts, the release page offers
+`breakfast-windows-vX.Y.Z.zip`: one folder with `breakfast.exe`, no Python and no Docker needed.
+
+1. Unzip it, for example to `C:\Breakfast`, and start `breakfast.exe`. Your browser opens the
+   Settings page: enter your Autodarts account under **Autodarts Source**, save, and press
+   **Restart**. Autodarts on the same PC is found at the default `ws://localhost:3180`.
+2. Windows asks once whether Breakfast may use the network; allow it for private networks so a
+   TV or phone can reach `http://<pc>:8080`.
+3. Optional: right-click `install-autostart.ps1` and run it with PowerShell to start Breakfast
+   when you log in (`remove-autostart.ps1` undoes it).
+
+Everything you create (`config.toml`, `stats.db`, `sounds/`) lives in the `data/` folder next to
+`breakfast.exe`; back it up to keep your statistics. Settings → **Updates** checks the GitHub
+release, downloads the new version, verifies its SHA-256 checksum and installs it. The old
+version is kept until the new one answers `/api/health`, and comes back if it does not (the
+update log is `update/update.log`). `ffmpeg` is included for generating voice packs.
+
+The program is not signed yet, so Windows may say "Windows protected your PC": choose **More
+info**, then **Run anyway**. The zip comes with a `.sha256` file to check the download.
+
+Maintainers: `.github/workflows/windows.yml` builds the zip with PyInstaller
+(`windows/breakfast.spec`) for every version tag, tests the program, an update and a rollback
+on a Windows runner, and attaches the zip to the release.
 
 ## Production setup (Docker)
 

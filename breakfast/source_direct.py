@@ -226,12 +226,16 @@ def run_direct(email, password, board_id, record_file=None,
                 log.error("MQTT publish error: %s", e)
         web.push()
 
-    client = AutodartsCloudClient(
-        email=email,
-        password=password,
-        board_id=board_id,
-        on_event=on_event,
-    )
+    # Without an account (a first start of the standalone build) there is no cloud client: only
+    # the web UI runs until the account is entered in Settings and the app is restarted.
+    client = None
+    if email and password and board_id:
+        client = AutodartsCloudClient(
+            email=email,
+            password=password,
+            board_id=board_id,
+            on_event=on_event,
+        )
 
     # Wired unconditionally (harmless if never triggered) — server.py's
     # /api/dev/demo/* endpoints check the [dev] enabled config flag before
@@ -246,8 +250,11 @@ def run_direct(email, password, board_id, record_file=None,
     if web_port:
         web.start(web_port)
 
-    log.info("Connecting to Autodarts cloud (board=%s)", board_id)
-    client.start()
+    if client:
+        log.info("Connecting to Autodarts cloud (board=%s)", board_id)
+        client.start()
+    else:
+        log.warning("No Autodarts account configured, not connecting to the cloud")
 
     try:
         while True:

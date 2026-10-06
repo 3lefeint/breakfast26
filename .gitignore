@@ -32,3 +32,7 @@ tools/badge_work/
 frontend/node_modules/
 frontend/dist/
 breakfast/web/dist/
+
+# Windows build — the downloaded ffmpeg and the PyInstaller output
+windows/ffmpeg/
+

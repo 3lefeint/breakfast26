@@ -5,6 +5,7 @@ import sys
 
 from breakfast import __release_date__, __version__
 from breakfast import config as cfg_mod
+from breakfast import frozen
 from breakfast.source_replay import run_replay
 from breakfast.source_direct import run_direct
 
@@ -116,6 +117,13 @@ def _add_mqtt_args(parser):
 
 
 def main():
+    # The standalone Windows build: run from its data folder, and let the first process only
+    # watch the real one (see breakfast/frozen.py).
+    if frozen.is_frozen():
+        first_run = frozen.prepare()
+        if not frozen.is_child():
+            sys.exit(frozen.supervise(first_run))
+
     # ── Step 1: find --config before the subcommand ──────────────────────────
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--config", default=None, metavar="FILE")
@@ -220,10 +228,11 @@ def main():
 
     # ── Step 6: dispatch ─────────────────────────────────────────────────────
     if args.mode == "direct":
-        for flag, val in (("--email", args.email), ("--password", args.password),
-                          ("--board-id", args.board_id)):
-            if not val:
-                direct.error(f"{flag} is required (or set [direct] in config.toml)")
+        missing = [flag for flag, val in (("--email", args.email), ("--password", args.password),
+                                          ("--board-id", args.board_id)) if not val]
+        if missing:
+            log.warning("Autodarts account incomplete (%s missing): only the web UI starts. "
+                        "Enter it under Settings → Autodarts Source and restart.", ", ".join(missing))
         run_direct(
             email=args.email,
             password=args.password,

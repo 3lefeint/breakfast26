@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- A standalone Windows version: `breakfast-windows-vX.Y.Z.zip` with `breakfast.exe`, no Python or Docker needed, with its own data folder, a first-start setup in the web UI, an autostart script, `ffmpeg` included, and updates from Settings → Updates with a checksum check and an automatic rollback (#38).
+
+### Changed
+- Without an Autodarts account in the configuration, `direct` mode starts the web UI only instead of stopping with an error.
+
 ## [1.0.0] - 2026-10-06
 
 ### Added
