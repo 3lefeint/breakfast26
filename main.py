@@ -126,7 +126,7 @@ def main():
 
     # ── Step 2: inject mode from config if not given on CLI ──────────────────
     cfg_mode = cfg.get("mode", "")
-    known_modes = ("direct", "replay", "voicepack")
+    known_modes = ("direct", "replay")
     if cfg_mode in ("direct", "replay") \
             and not any(a in sys.argv[1:] for a in known_modes):
         sys.argv.insert(1, cfg_mode)
@@ -198,21 +198,6 @@ def main():
                         help="Wait for a browser on /audio before starting the replay")
     _add_mqtt_args(replay)
 
-    # voicepack
-    vp = sub.add_parser(
-        "voicepack",
-        help="List or install downloadable voice packs (third-party CDN — "
-             "nothing is downloaded without --install)",
-    )
-    vp.add_argument("--list",      action="store_true", help="List downloadable packs")
-    vp.add_argument("--installed", action="store_true", help="List installed packs")
-    vp.add_argument("--install",   default=None, metavar="NAME",
-                    help="Download and install a pack into <audio-dir>/profiles/NAME/")
-    vp.add_argument("--url",       default=None, metavar="URL_OR_FILE",
-                    help="Override the pack source (URL or local zip)")
-    vp.add_argument("--force",     action="store_true", help="Reinstall over an existing pack")
-    vp.add_argument("--audio-dir", default=None, metavar="DIR")
-
     args = parser.parse_args()
 
     # ── Step 4: fill missing args from config, apply hardcoded defaults ──────
@@ -261,25 +246,6 @@ def main():
             board_ws_url=args.board_ws_url,
             board_manager_url=args.board_manager_url,
         )
-    elif args.mode == "voicepack":
-        from breakfast import voicepack
-        if args.list:
-            for name in sorted(voicepack.AVAILABLE_PROFILES):
-                print(name)
-            return
-        if not args.audio_dir:
-            vp.error("--audio-dir is required (or set [audio] dir in config.toml)")
-        if args.installed:
-            for name in voicepack.list_profiles(args.audio_dir):
-                print(name)
-        elif args.install:
-            path = voicepack.install_profile(args.audio_dir, args.install,
-                                             url=args.url, force=args.force)
-            print(f"Installed: {path}")
-            print(f"Activate with: [audio] profile = \"{args.install}\" "
-                  f"(or --audio-profile)")
-        else:
-            vp.error("one of --list, --installed, --install NAME is required")
     elif args.mode == "replay":
         if not args.file:
             replay.error("--file is required (or set [record] file in config.toml)")

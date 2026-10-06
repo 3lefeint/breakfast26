@@ -10,6 +10,9 @@
 ### Changed
 - The updater fetches releases over HTTPS without a deploy key, an SSH address of `origin` works too.
 
+### Removed
+- The `voicepack` command (`--list`, `--installed`, `--install`) and the catalog of downloadable voice packs; generate a pack with `tools/generate_voicepack.py`, see VOICE_PACKS.md.
+
 ## [0.10.0] - 2026-10-06
 
 ### Added

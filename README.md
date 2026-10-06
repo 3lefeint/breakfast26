@@ -185,7 +185,7 @@ events = false          # true: log each game event (dart-thrown etc.) at INFO l
 
 # [audio]
 # dir = "/path/to/sounds"   # enables the voice caller + elimination audio
-# profile = "en-US-Joey-Male"  # optional voice pack under <dir>/profiles/
+# profile = "ryan"  # optional voice pack under <dir>/profiles/
 
 # [caller]                # all optional, defaults shown in config.toml.example
 # enabled = true
@@ -321,12 +321,13 @@ See **[VOICE_PACKS.md](VOICE_PACKS.md)** for the full call-key reference
 (which sound plays for which trigger) and a walkthrough for recording your
 own voice pack.
 
-Optional downloadable voice profiles (third-party CDN, explicit opt-in):
+Generate a ready-made voice pack from one of the bundled plans, German
+(`tools/voicepack_leni.toml`) or English (`tools/voicepack_ryan.toml`); this
+needs `pip install edge-tts` and `ffmpeg` (both only for generating):
 
 ```bash
-python main.py voicepack --list                     # catalog
-python main.py voicepack --install en-US-Joey-Male  # into <audio dir>/profiles/
-# then: [audio] profile = "en-US-Joey-Male" — own files stay as fallback
+python tools/generate_voicepack.py tools/voicepack_ryan.toml --out <audio dir>/profiles/ryan
+# then: [audio] profile = "ryan" — own files stay as fallback
 ```
 
 Adding/tuning one key (a name, a phrase, or a number) doesn't need any of
@@ -975,7 +976,6 @@ breakfast26/
 ## Acknowledgements
 
 - The calling behavior, the call keys and the voice-pack format are modeled on the darts-caller project, so its voice packs work unchanged.
-- The packs offered by `main.py voicepack --install` come from that project's sound catalog, hosted by a third party with no published license. Nothing is bundled, and nothing is downloaded unless you ask for it.
 - Breakfast is an independent project and not affiliated with or endorsed by Autodarts. It talks to the Autodarts cloud with your own account; check Autodarts' terms of use for your setup.
 
 ## License

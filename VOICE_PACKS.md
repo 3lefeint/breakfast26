@@ -26,8 +26,8 @@ sound is missing.
   achievements/               # jingles for earned achievements, see below
     achievement.mp3
     achievement_ton_up.mp3
-  profiles/                   # installed/downloaded voice packs
-    en-US-Joey-Male/
+  profiles/                   # voice packs, one folder each
+    ryan/
       matchon.mp3
       ...
 ```
@@ -35,8 +35,8 @@ sound is missing.
 Your own `<audio dir>` is always the base set. If `[audio] profile` is set
 to one of the `profiles/<name>/` directories, that pack is searched
 **first**, and your own set fills in any key the pack doesn't have (e.g.
-Elimination-specific keys like `freipass` or `eliminated`, which downloaded
-packs never include). This fallback happens **per key**, not per file: a
+Elimination-specific keys like `freipass` or `eliminated`, which packs from
+other sources often lack). This fallback happens **per key**, not per file: a
 key found in the profile only ever uses that profile's own variants — a
 profile's `t20.mp3` is never mixed with your own set's `t20+1.mp3`.
 
@@ -65,7 +65,7 @@ If a `require_{n}` recording is missing, the checkout call still plays
 score"). Recording your own `require_2.mp3` .. `require_170.mp3` (minus the
 [bogey numbers](#bogey-numbers), which get their own optional
 `ambient_bogey_number_{n}` instead) is the single biggest gap in most voice
-packs downloaded via `python main.py voicepack --install`.
+packs from other sources.
 
 ### Fallback chains
 
@@ -213,7 +213,7 @@ skipped, so build up gradually:
 1. **Pick where it goes.** Your own recordings can live directly in
    `<audio dir>` (always active, no config needed), or under
    `<audio dir>/profiles/<some-name>/` if you want to keep them as a
-   selectable pack alongside downloaded ones (`[audio] profile =
+   selectable pack alongside the generated ones (`[audio] profile =
    "<some-name>"` in `config.toml`, or the Voice-pack field in the
    Settings tab).
 2. **Start with the lifecycle set** (`matchon`, `gameshot`, `busted`,
@@ -236,17 +236,19 @@ skipped, so build up gradually:
    simply stay silent, so play a few turns and listen for gaps rather than
    expecting an error.
 
-## Downloadable packs
+## Generated packs
+
+Two packs can be generated from the plans in `tools/`, a German one
+(`voicepack_leni.toml`, de-CH-LeniNeural) and an English one
+(`voicepack_ryan.toml`, en-GB-RyanNeural), with the free Edge text-to-speech
+voices:
 
 ```bash
-python main.py voicepack --list                     # catalog
-python main.py voicepack --install en-US-Joey-Male  # into <audio dir>/profiles/
+pip install edge-tts        # plus ffmpeg on the PATH
+python tools/generate_voicepack.py tools/voicepack_ryan.toml --out <audio dir>/profiles/ryan
 ```
 
-These are third-party recordings (Amazon Polly / Google / OpenAI TTS
-voices) from the darts-caller project's catalog — no license is published
-for them, so installing one is an explicit opt-in, never automatic. They
-cover the lifecycle/field/score vocabulary well but are missing
-Elimination-only keys (`freipass`, `eliminated`, ...) and the entire
-`require_{n}` namespace — your own `<audio dir>` set fills both gaps
-automatically as the fallback.
+Then set `[audio] profile = "ryan"`. The Settings → Voice Pack tab edits,
+listens to and regenerates single entries of either plan. A pack from another
+source (for example one of the darts-caller project) works too, if you put its
+files under `<audio dir>/profiles/<name>/` named as the call keys.

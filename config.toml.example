@@ -72,7 +72,7 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # dir = "/home/user/autodarts-sounds"
 # Optional voice-pack profile: sounds are looked up in <dir>/profiles/<profile>/
 # first, your own files in <dir> cover any key the profile doesn't have.
-# profile = "en-US-Joey-Male"
+# profile = "ryan"
 
 # ── Voice caller (requires [audio] dir; playback via the /audio browser page) ─
 # [caller]
