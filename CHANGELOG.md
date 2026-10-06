@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-06
+
 ### Added
 - Black Belt: the doubles drill for one player, D1 to D20 and the bull's eye (or backwards) without a restart, with three darts of its own per field and the darts left after a hit as bonus darts; a setup page, a live view on `/tv` with the ladder, a result with the furthest field, restarts, darts and how far each attempt got, a card on Home and a Black Belt chip in the Stats with the belts, the furthest, the darts and the runs per player. A run ends with the belt or when it is finished. Started through `/api/black-belt/*` or MQTT (#31).
 - Field Training: one player throws a number of darts at one field, a number or the bull (100 darts at a number and 50 at the bull by default), with a setup page, a live view on `/tv`, a result with points, hit rate, singles, doubles and triples, the points per turn and a board of every dart, a rating and a personal best for a full run, a card on Home and a Training chip in the Stats with the best, the average, the trend and the hit rate per player and field; a shorter run or one ended early is saved as practice. Started through `/api/field-training/*` or MQTT (#30).
