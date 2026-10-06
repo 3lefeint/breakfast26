@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-06
+
 ### Added
 - A Security section in the README and a `SECURITY.md`: Breakfast has no login and belongs on a trusted network.
 - Voice Pack tab: a pack selector, so every plan file `tools/voicepack_<name>.toml` can be edited, listened to and regenerated, not only Leni; it starts on the active profile if that has a plan (#37).
