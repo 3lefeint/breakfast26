@@ -505,9 +505,10 @@ volume = "+0%"
 [group.keys.unknown_player]
 # Fallback when a registered player's name has no recording —
 # replaces the old silent player{N} fallback entirely.
-variants = ["nächste person", "wer au immer det staht", "mister!", "dude"]
+variants = ["mister x", "mister!", "dude", "mister wiis"]
 
 # --- Peter (example — replace with your own friends below) ---
+
 [group.keys.peter]
 variants = ["Peter", "Piiit", "Pete", "P"]
 

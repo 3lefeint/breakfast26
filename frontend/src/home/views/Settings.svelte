@@ -59,8 +59,10 @@
 
   // Voice Pack tab — add/edit/browse/delete individual voice-pack entries,
   // separate from the whole-pack "Regenerate" flow above and from the
-  // shared config Save (this tab writes tools/voicepack_leni.toml + sound
+  // shared config Save (this tab writes the plan of the selected pack in tools/ + sound
   // files directly, not config.toml).
+  let vpPacks = $state([]);
+  let vpPack = $state('');
   let vpGroups = $state([]);
   let vpSelectedGroup = $state('');
   let vpEntries = $state([]);
@@ -73,12 +75,34 @@
     await loadConfig();
     await applyTheme();
     await loadVoicePackProfiles();
+    await loadVoicepackPacks();
     await loadVoicepackGroups();
   });
 
+  // The packs that have a plan file, and the one to start on (the active profile if it has a plan).
+  async function loadVoicepackPacks() {
+    try {
+      const res = await fetch('/api/voicepack/packs').then((r) => r.json());
+      vpPacks = res.packs || [];
+      vpPack = res.default || '';
+    } catch (e) {
+      console.error('loadVoicepackPacks failed:', e);
+    }
+  }
+
+  const packQuery = () => (vpPack ? '&pack=' + encodeURIComponent(vpPack) : '');
+  let vpPlan = $derived(vpPacks.find((p) => p.name === vpPack)?.plan || '');
+
+  async function onVpPackChange() {
+    vpSelectedGroup = '';
+    vpEntries = [];
+    resetVpForm();
+    await loadVoicepackGroups();
+  }
+
   async function loadVoicepackGroups() {
     try {
-      const res = await fetch('/api/voicepack/groups').then((r) => r.json());
+      const res = await fetch('/api/voicepack/groups?' + packQuery().slice(1)).then((r) => r.json());
       vpGroups = res.groups || [];
       if (!vpSelectedGroup && vpGroups.length) vpSelectedGroup = vpGroups[0].name;
       if (vpSelectedGroup) await loadVoicepackEntries();
@@ -90,7 +114,7 @@
   async function loadVoicepackEntries() {
     vpEntriesLoading = true;
     try {
-      const res = await fetch('/api/voicepack/entries?group=' + encodeURIComponent(vpSelectedGroup))
+      const res = await fetch('/api/voicepack/entries?group=' + encodeURIComponent(vpSelectedGroup) + packQuery())
         .then((r) => r.json());
       vpEntries = res.entries || [];
     } catch (e) {
@@ -141,7 +165,7 @@
       const res = await fetch('/api/voicepack/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ group: vpSelectedGroup, text }),
+        body: JSON.stringify({ group: vpSelectedGroup, text, pack: vpPack || null }),
       });
       await playAudioBlobResponse(res);
     } catch (e) {
@@ -151,7 +175,7 @@
 
   async function playVpFile(filename) {
     try {
-      await playAudioBlobResponse(await fetch('/api/voicepack/file/' + encodeURIComponent(filename)));
+      await playAudioBlobResponse(await fetch('/api/voicepack/file/' + encodeURIComponent(filename) + '?' + packQuery().slice(1)));
     } catch (e) {
       alert(t('Playback failed: {error}', { error: e.message }));
     }
@@ -169,7 +193,7 @@
       const res = await fetch('/api/voicepack/entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ group: vpSelectedGroup, key, variants }),
+        body: JSON.stringify({ group: vpSelectedGroup, key, variants, pack: vpPack || null }),
       }).then((r) => r.json());
       if (res.error) { alert(t('Save failed: {error}', { error: t(res.error) })); return; }
       resetVpForm();
@@ -187,7 +211,7 @@
       const res = await fetch('/api/voicepack/entries', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ group: vpSelectedGroup, key, variant_index: index }),
+        body: JSON.stringify({ group: vpSelectedGroup, key, variant_index: index, pack: vpPack || null }),
       }).then((r) => r.json());
       if (res.error) { alert(t('Delete failed: {error}', { error: t(res.error) })); return; }
       await loadVoicepackEntries();
@@ -330,7 +354,7 @@
 
   async function regenerateVoicepack() {
     if (voicepackForce && !confirm(t('Regenerate the ENTIRE voice pack? This can take several minutes.'))) return;
-    const res = await api('POST', '/api/voicepack/generate', { force: voicepackForce })
+    const res = await api('POST', '/api/voicepack/generate', { force: voicepackForce, pack: vpPack || null })
       .then(() => ({}))
       .catch((err) => ({ error: String(err) }));
     if (res && res.error) alert(t('Could not start: {error}', { error: t(res.error) }));
@@ -579,12 +603,39 @@
 
     <div class="settings-section">
       <div class="settings-section-title">{t('Voice pack')}</div>
-      <p class="note">{t('Generates any missing sound files for the current voice-pack plan (tools/voicepack_leni.toml) via edge-tts. Check "force" to also re-generate files that already exist — needed after editing existing phrases, takes several minutes for the whole pack.')}</p>
+      {#if vpPacks.length}
+        <div class="settings-row">
+          <label for="sVpPackGen">{t('Pack')}</label>
+          <select id="sVpPackGen" bind:value={vpPack} onchange={onVpPackChange}>
+            {#each vpPacks as pk (pk.name)}
+              <option value={pk.name}>{pk.name} ({pk.voice})</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+      <p class="note">{t('Generates any missing sound files for the voice-pack plan {plan} via edge-tts. Check "force" to also re-generate files that already exist — needed after editing existing phrases, takes several minutes for the whole pack.', { plan: 'tools/' + vpPlan })}</p>
       <div class="settings-row"><label for="sVoicepackForce">{t('Force full regeneration')}</label><input type="checkbox" id="sVoicepackForce" bind:checked={voicepackForce}></div>
-      <button type="button" class="btn btn-add" style="width:100%" onclick={regenerateVoicepack} disabled={vp?.running}>{t('Regenerate voice pack')}</button>
+      <button type="button" class="btn btn-add" style="width:100%" onclick={regenerateVoicepack} disabled={vp?.running || !vpPack}>{t('Regenerate voice pack')}</button>
       <div class="voicepack-progress">{vpText}</div>
     </div>
   {:else if activeTab === 'voicepack'}
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Pack')}</div>
+      {#if vpPacks.length}
+        <div class="settings-row">
+          <label for="sVpPack">{t('Pack')}</label>
+          <select id="sVpPack" bind:value={vpPack} onchange={onVpPackChange}>
+            {#each vpPacks as pk (pk.name)}
+              <option value={pk.name}>{pk.name} ({pk.voice})</option>
+            {/each}
+          </select>
+        </div>
+        <p class="note">{t('Edits the plan {plan}. A downloaded pack without a plan file is not listed.', { plan: 'tools/' + vpPlan })}</p>
+      {:else}
+        <p class="note">{t('No voice-pack plan found.')}</p>
+      {/if}
+    </div>
+
     <div class="settings-section">
       <div class="settings-section-title">{t('Group')}</div>
       <div class="settings-row">

@@ -1,0 +1,342 @@
+# Voice-pack generation plan for "ryan" (en-GB-RyanNeural via edge-tts).
+#
+# English counterpart of voicepack_leni.toml: the same keys and groups, English
+# texts. Run:
+#   python tools/generate_voicepack.py tools/voicepack_ryan.toml
+#   python tools/generate_voicepack.py tools/voicepack_ryan.toml --out data/sounds/profiles/ryan
+#
+# The format is explained at the top of voicepack_leni.toml (rate/volume are
+# relative percentages, pitch is relative Hz, `variants` makes <key>.mp3,
+# <key>+1.mp3, ...).
+#
+# The edge-tts endpoint has no speaking styles (no "cheerful"), so the cheerful
+# tone comes from the prosody: slightly faster and higher than the voice default
+# in the calls that celebrate, calmer and lower in the checkout calls and busts.
+# Keep pitch within -5Hz..+5Hz so the groups still sound like one voice.
+
+voice = "en-GB-RyanNeural"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Lifecycle — neutral (match/leg start, cancel, checkout intro)
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Lifecycle - neutral"
+rate = "+10%"
+pitch = "+3Hz"
+volume = "+0%"
+
+[group.keys.matchon]
+variants = ["Game on", "Let's play darts", "Here we go"]
+[group.keys.gameon]
+variants = ["Next leg", "Leg on"]
+[group.keys.matchcancel]
+variants = ["Match cancelled", "No winner this time"]
+[group.keys.you_require]
+variants = ["you require", "you need"]
+
+# leg_1 .. leg_10 — digit reading as the base, the number word as the variant
+[group.keys.leg_1]
+variants = ["Leg 1", "Leg one"]
+[group.keys.leg_2]
+variants = ["Leg 2", "Leg two"]
+[group.keys.leg_3]
+variants = ["Leg 3", "Leg three"]
+[group.keys.leg_4]
+variants = ["Leg 4", "Leg four"]
+[group.keys.leg_5]
+variants = ["Leg 5", "Leg five"]
+[group.keys.leg_6]
+variants = ["Leg 6", "Leg six"]
+[group.keys.leg_7]
+variants = ["Leg 7", "Leg seven"]
+[group.keys.leg_8]
+variants = ["Leg 8", "Leg eight"]
+[group.keys.leg_9]
+variants = ["Leg 9", "Leg nine"]
+[group.keys.leg_10]
+variants = ["Leg 10", "Leg ten"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Lifecycle — excited (leg/match won)
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Lifecycle - excited (won)"
+rate = "+15%"
+pitch = "+5Hz"
+volume = "+5%"
+
+[group.keys.matchshot]
+variants = ["Game shot, and the match!", "You win the match!", "What a match!"]
+[group.keys.gameshot]
+variants = ["Game shot!", "The leg is yours!", "Leg to you!"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Lifecycle — subdued (bust)
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Lifecycle - subdued (bust)"
+rate = "+5%"
+pitch = "-3Hz"
+volume = "+0%"
+
+[group.keys.busted]
+variants = ["Bust!", "Oh no, bust", "No score", "Too many"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Field names (per-dart calls) — d1-d20, t1-t20, bull/bullseye/outside/
+# double/triple. Called immediately after each dart, energetic.
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Field names"
+rate = "+15%"
+pitch = "+5Hz"
+volume = "+5%"
+
+[group.keys.bull]
+variants = ["Outer bull", "Twenty five"]
+[group.keys.bullseye]
+variants = ["Bullseye", "Double bull"]
+[group.keys.outside]
+variants = ["Outside", "Miss", "Wide"]
+[group.keys.double]
+variants = ["Double"]
+[group.keys.triple]
+variants = ["Treble", "Triple"]
+
+[group.keys.d1]
+variants = ["Double 1"]
+[group.keys.d2]
+variants = ["Double 2"]
+[group.keys.d3]
+variants = ["Double 3"]
+[group.keys.d4]
+variants = ["Double 4"]
+[group.keys.d5]
+variants = ["Double 5"]
+[group.keys.d6]
+variants = ["Double 6"]
+[group.keys.d7]
+variants = ["Double 7"]
+[group.keys.d8]
+variants = ["Double 8"]
+[group.keys.d9]
+variants = ["Double 9"]
+[group.keys.d10]
+variants = ["Double 10"]
+[group.keys.d11]
+variants = ["Double 11"]
+[group.keys.d12]
+variants = ["Double 12"]
+[group.keys.d13]
+variants = ["Double 13"]
+[group.keys.d14]
+variants = ["Double 14"]
+[group.keys.d15]
+variants = ["Double 15"]
+[group.keys.d16]
+variants = ["Double 16"]
+[group.keys.d17]
+variants = ["Double 17"]
+[group.keys.d18]
+variants = ["Double 18"]
+[group.keys.d19]
+variants = ["Double 19"]
+[group.keys.d20]
+variants = ["Double 20"]
+
+[group.keys.t1]
+variants = ["Treble 1", "Triple 1"]
+[group.keys.t2]
+variants = ["Treble 2", "Triple 2"]
+[group.keys.t3]
+variants = ["Treble 3", "Triple 3"]
+[group.keys.t4]
+variants = ["Treble 4", "Triple 4"]
+[group.keys.t5]
+variants = ["Treble 5", "Triple 5"]
+[group.keys.t6]
+variants = ["Treble 6", "Triple 6"]
+[group.keys.t7]
+variants = ["Treble 7", "Triple 7"]
+[group.keys.t8]
+variants = ["Treble 8", "Triple 8"]
+[group.keys.t9]
+variants = ["Treble 9", "Triple 9"]
+[group.keys.t10]
+variants = ["Treble 10", "Triple 10"]
+[group.keys.t11]
+variants = ["Treble 11", "Triple 11"]
+[group.keys.t12]
+variants = ["Treble 12", "Triple 12"]
+[group.keys.t13]
+variants = ["Treble 13", "Triple 13"]
+[group.keys.t14]
+variants = ["Treble 14", "Triple 14"]
+[group.keys.t15]
+variants = ["Treble 15", "Triple 15"]
+[group.keys.t16]
+variants = ["Treble 16", "Triple 16"]
+[group.keys.t17]
+variants = ["Treble 17", "Triple 17"]
+[group.keys.t18]
+variants = ["Treble 18", "Triple 18"]
+[group.keys.t19]
+variants = ["Treble 19", "Triple 19"]
+[group.keys.t20]
+variants = ["Treble 20", "Triple 20"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Score numbers — achieved (turn totals, per-dart score fallback, Elimination
+# running total). Plain digits, 0-180. Excited tone.
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Score - achieved (0-180)"
+rate = "+15%"
+pitch = "+5Hz"
+volume = "+5%"
+
+[group.range]
+start = 0
+end = 180
+
+[group.range.overrides.180]
+variants = ["One hundred and eighty!", "Maximum!"]
+rate = "+10%"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Score numbers — required / checkout. Calm, instructional tone. The bogey
+# numbers (no 3-dart checkout) are left out.
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Score - required / checkout (2-170)"
+rate = "+5%"
+pitch = "-3Hz"
+volume = "+0%"
+
+[group.range]
+start = 2
+end = 170
+exclude = [159, 162, 163, 165, 166, 168, 169]
+key_prefix = "require_"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Elimination-specific phrases
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Elimination"
+rate = "+10%"
+pitch = "+3Hz"
+volume = "+0%"
+
+[group.keys.freipass]
+# Played right after a player-name call ("Peter, you have a free pass").
+variants = ["you have a free pass", "free pass for you"]
+[group.keys.filler_after_name]
+# Played right after the first player's name at match start ("Game on, Peter, you're up").
+variants = ["you're up", "your throw", "go for it!"]
+[group.keys.filler_target]
+# Played right after the incoming player's name and right before the target number ("Peter, you need 42").
+variants = ["you need", "you have to beat"]
+[group.keys.miss]
+variants = ["Miss", "Outside", "Nothing", "Zero"]
+[group.keys.eliminated]
+# Played right after a player-name call ("Peter, you're out").
+variants = ["you're out", "you lost"]
+[group.keys.close]
+variants = ["so close", "just missed"]
+rate = "+15%"
+pitch = "+5Hz"
+[group.keys.too_low]
+variants = ["that was a bit low", "not enough", "oh dear"]
+rate = "+5%"
+pitch = "-3Hz"
+[group.keys.nice]
+variants = ["Nice!", "Great!", "Brilliant!"]
+rate = "+15%"
+pitch = "+5Hz"
+[group.keys.life_lost]
+# Played right after a player-name call ("Peter, you lost a life").
+variants = ["you lost a life", "minus one"]
+pitch = "-3Hz"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Target Battle-specific phrases (the wheel sound is a file you supply, not
+# generated here: put wheel.mp3 into the sound directory)
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Target Battle"
+rate = "+10%"
+pitch = "+3Hz"
+volume = "+0%"
+
+[group.keys.target_is]
+# Played once the wheel has landed, right before the target number ("The target is 17").
+variants = ["the target is", "your target is"]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Killer-specific phrases (the names and numbers come from the other groups;
+# life_lost, eliminated, filler_after_name and matchshot are played too)
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Killer"
+rate = "+10%"
+pitch = "+3Hz"
+volume = "+0%"
+
+[group.keys.your_number]
+# After a player-name call when the player is up for the first time ("Peter, your number is 17").
+variants = ["your number is", "you have the number"]
+[group.keys.bull_off]
+# When the player throws at the bull to decide who starts ("Peter, to the bull").
+variants = ["to the bull", "throw at the bull"]
+[group.keys.bull_off_tie]
+# When players are tied for the closest dart at the bull and throw again.
+variants = ["it's a tie, once more at the bull", "undecided, again"]
+[group.keys.starts_game]
+# When the bull-off is won and the numbers are thrown next ("Peter, you start").
+variants = ["you start", "you may begin"]
+[group.keys.throw_number]
+# When the player throws for their number with the other hand.
+variants = ["throw with your other hand, your number", "other hand for your number"]
+[group.keys.throw_again]
+# When the throw gave no number: taken, bull or miss ("Peter, again").
+variants = ["again", "that didn't count, again"]
+[group.keys.is_killer]
+# When a double on the own number makes a killer ("Peter, you're a killer").
+variants = ["you're a killer", "you're armed now"]
+pitch = "-3Hz"
+[group.keys.own_goal]
+# When a killer hits their own number ("Peter, own goal").
+variants = ["own goal", "that's an own goal"]
+pitch = "-3Hz"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Player names — one entry per PERSON, key = the exact lowercase name they are
+# registered under in the app's player list. `variants` are different
+# spellings/pronunciations of that same person. An English voice reads some
+# of the names oddly: respell a name phonetically here if it does.
+# ─────────────────────────────────────────────────────────────────────────
+
+[[group]]
+name = "Player names"
+rate = "+10%"
+pitch = "+3Hz"
+volume = "+0%"
+
+[group.keys]
+
+[group.keys.unknown_player]
+# Fallback when a registered player's name has no recording.
+variants = ["mister x", "dude", "mr white"]
+
+[group.keys.peter]
+variants = ["Peter", "Pete"]

@@ -46,7 +46,7 @@ def fake_tts(monkeypatch):
 def wired(tmp_path, monkeypatch):
     plan_path = tmp_path / "plan.toml"
     plan_path.write_text(_PLAN, encoding="utf-8")
-    monkeypatch.setattr(server, "_voicepack_plan_path", lambda: plan_path)
+    monkeypatch.setattr(server, "_voicepack_plan_path", lambda pack=None: plan_path)
 
     audio_dir = tmp_path / "sounds"
     config_path = tmp_path / "config.toml"
@@ -190,3 +190,81 @@ def test_preview_returns_a_file_response_without_touching_the_plan(wired):
     assert res.media_type == "audio/mpeg"
     assert res.headers["cache-control"] == "no-store"
     assert wired["plan_path"].read_text(encoding="utf-8") == original_plan
+
+
+# ── several packs ────────────────────────────────────────────────────────────
+
+_PLAN_RYAN = """\
+voice = "en-GB-RyanNeural"
+
+[[group]]
+name = "Lifecycle"
+
+[group.keys.matchon]
+variants = ["Game on"]
+"""
+
+
+@pytest.fixture
+def two_packs(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "voicepack_leni.toml").write_text(_PLAN, encoding="utf-8")
+    (tools / "voicepack_ryan.toml").write_text(_PLAN_RYAN, encoding="utf-8")
+    (tools / "voicepack_broken.toml").write_text("not a plan", encoding="utf-8")
+    monkeypatch.setattr(server, "_TOOLS_DIR", tools)
+    audio_dir = tmp_path / "sounds"
+    config_path = tmp_path / "config.toml"
+
+    def configure(profile=None):
+        audio = {"dir": str(audio_dir)}
+        if profile:
+            audio["profile"] = profile
+        cfg_mod.write(str(config_path), {"audio": audio})
+        server.wire(None, None, config_path=str(config_path))
+
+    configure()
+    try:
+        yield {"configure": configure, "audio_dir": audio_dir}
+    finally:
+        server.wire(None, None)
+
+
+def test_packs_lists_every_plan_and_skips_a_broken_one(two_packs):
+    res = asyncio.run(server.voicepack_packs())
+    assert [p["name"] for p in res["packs"]] == ["leni", "ryan"]
+    assert res["packs"][1] == {"name": "ryan", "voice": "en-GB-RyanNeural", "plan": "voicepack_ryan.toml"}
+
+
+def test_packs_starts_on_the_active_profile(two_packs):
+    two_packs["configure"]("ryan")
+    assert asyncio.run(server.voicepack_packs())["default"] == "ryan"
+
+
+def test_packs_starts_on_the_first_plan_when_the_active_profile_has_none(two_packs):
+    two_packs["configure"]("en-US-coral-FEMALE")
+    assert asyncio.run(server.voicepack_packs())["default"] == "leni"
+
+
+def test_groups_follow_the_chosen_pack(two_packs):
+    assert asyncio.run(server.voicepack_groups(pack="ryan")) == {"groups": [{"name": "Lifecycle", "is_range": False}]}
+    assert [g["name"] for g in asyncio.run(server.voicepack_groups(pack="leni"))["groups"]] == ["Phrases", "Numbers"]
+
+
+def test_groups_without_a_pack_use_the_active_one(two_packs):
+    two_packs["configure"]("ryan")
+    assert [g["name"] for g in asyncio.run(server.voicepack_groups())["groups"]] == ["Lifecycle"]
+
+
+def test_an_unknown_pack_is_refused(two_packs):
+    assert asyncio.run(server.voicepack_groups(pack="nope")) == {"error": "unknown voice pack"}
+    assert asyncio.run(server.voicepack_entries(group="Lifecycle", pack="nope")) == {"error": "unknown voice pack"}
+
+
+def test_saving_an_entry_writes_into_the_chosen_pack(two_packs):
+    res = asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Lifecycle", key="gameon", variants=["Next leg"], pack="ryan")))
+    assert res == {"ok": True}
+    assert (two_packs["audio_dir"] / "profiles" / "ryan" / "gameon.mp3").is_file()
+    assert "gameon" in (server._TOOLS_DIR / "voicepack_ryan.toml").read_text(encoding="utf-8")
+    assert "gameon" not in (server._TOOLS_DIR / "voicepack_leni.toml").read_text(encoding="utf-8")

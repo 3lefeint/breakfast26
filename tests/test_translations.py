@@ -35,9 +35,9 @@ def test_every_used_text_is_translated():
 
 
 def _backend_texts():
-    """Messages the backend sends and the frontend translates with t(res.error)."""
+    """Texts in the backend; the ones it sends as an error the frontend translates with t(res.error)."""
     source = (SRC.parents[1] / "breakfast" / "web" / "server.py").read_text(encoding="utf-8")
-    return set(re.findall(r'"error": "([^"]+)"', source))
+    return set(re.findall(r'"([^"\n]+)"', source))
 
 
 def test_no_unused_german_entries():

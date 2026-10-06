@@ -187,7 +187,6 @@ export default {
   'Call player names': 'Spielernamen ansagen',
   'Ambient volume (0 = off)': 'Umgebungslautstärke (0 = aus)',
   'Voice pack': 'Voice-Pack',
-  'Generates any missing sound files for the current voice-pack plan (tools/voicepack_leni.toml) via edge-tts. Check "force" to also re-generate files that already exist — needed after editing existing phrases, takes several minutes for the whole pack.': 'Erzeugt alle fehlenden Sounddateien für den aktuellen Voice-Pack-Plan (tools/voicepack_leni.toml) über edge-tts. Mit „force“ werden auch bestehende Dateien neu erzeugt – nötig nach dem Ändern bestehender Texte, dauert für das ganze Pack mehrere Minuten.',
   'Force full regeneration': 'Vollständige Neuerzeugung erzwingen',
   'Regenerate voice pack': 'Voice-Pack neu erzeugen',
   'Group': 'Gruppe',
@@ -691,4 +690,10 @@ export default {
   '2nd': '2.',
   '3rd': '3.',
   'queue: {n}': 'Warteschlange: {n}',
+  'Pack': 'Pack',
+  'Generates any missing sound files for the voice-pack plan {plan} via edge-tts. Check "force" to also re-generate files that already exist — needed after editing existing phrases, takes several minutes for the whole pack.': 'Erzeugt alle fehlenden Sounddateien für den Voice-Pack-Plan {plan} über edge-tts. Mit „force“ werden auch bestehende Dateien neu erzeugt – nötig nach dem Ändern bestehender Texte, dauert für das ganze Pack mehrere Minuten.',
+  'Edits the plan {plan}. A downloaded pack without a plan file is not listed.': 'Bearbeitet den Plan {plan}. Ein heruntergeladenes Pack ohne Plan-Datei wird nicht angezeigt.',
+  'No voice-pack plan found.': 'Kein Voice-Pack-Plan gefunden.',
+  'unknown voice pack': 'Unbekanntes Voice-Pack',
+  'no voice-pack plan': 'Kein Voice-Pack-Plan',
 };

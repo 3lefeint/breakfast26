@@ -330,10 +330,12 @@ python main.py voicepack --install en-US-Joey-Male  # into <audio dir>/profiles/
 ```
 
 Adding/tuning one key (a name, a phrase, or a number) doesn't need any of
-this — Settings → **Voice Pack** tab: pick a group, type the key and one
-or more variant texts, preview how each sounds (synthesized on the fly,
-not saved), then save — writes the .mp3 file(s) and updates
-`tools/voicepack_leni.toml` (comment-preserving), immediately usable
+this — Settings → **Voice Pack** tab: pick a pack (every plan file
+`tools/voicepack_<name>.toml` is one, such as `leni` and `ryan`; it starts on
+the active `[audio] profile` if that has a plan), pick a group, type the key
+and one or more variant texts, preview how each sounds (synthesized on the
+fly, not saved), then save — writes the .mp3 file(s) and updates the pack's
+plan (comment-preserving), immediately usable
 without a restart. The same tab also browses/plays/deletes what's already
 generated; deleting a variant renumbers the remaining ones so none of
 them go silently unreachable.
@@ -858,13 +860,14 @@ The web server exposes a REST API alongside the WebSocket.
 | `GET` | `/api/config` | Current config (credentials masked) |
 | `PATCH` | `/api/config` | Update config.toml; runtime fields (e.g. log level) apply immediately, the rest need a restart |
 | `GET` | `/api/voice-packs` | Voice-pack profiles installed under `[audio] dir` (feeds the profile dropdown in Settings → Voice & Caller) |
-| `POST` | `/api/voicepack/generate` | Regenerate the voice pack (`force`: true re-generates every key, false only fills in missing ones) |
+| `GET` | `/api/voicepack/packs` | The packs that have a plan file (`name`, `voice`, `plan`) and the one to start on (`default`) |
+| `POST` | `/api/voicepack/generate` | Regenerate a voice pack (`force`: true re-generates every key, false only fills in missing ones; `pack` picks the plan, default: the active profile's) |
 
 **Voice Pack editor** (Settings → Voice Pack tab):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/voicepack/groups` | List the plan's `[[group]]` names (`name`, `is_range`) |
+| `GET` | `/api/voicepack/groups` | List the plan's `[[group]]` names (`name`, `is_range`); this and the voice-pack calls below take `pack` (query parameter or body field) and default to the active profile's plan |
 | `GET` | `/api/voicepack/entries?group=<name>` | Every key currently defined in that group, with each variant's text and whether its `.mp3` has actually been generated |
 | `POST` | `/api/voicepack/preview` | Synthesize `text` on the fly with `group`'s voice/rate/pitch/volume — returns audio bytes directly, nothing is saved |
 | `POST` | `/api/voicepack/entries` | Add/replace a key's variants (`group`, `key`, `variants`) — synthesizes every file and updates the plan |
@@ -923,7 +926,8 @@ breakfast26/
 │   └── mqtt/                      # MQTT entity definitions
 ├── tools/
 │   ├── generate_voicepack.py      # TTS voice-pack generator (CLI + Settings-tab regenerate)
-│   └── voicepack_leni.toml        # Voice-pack plan: keys, phrases, number overrides, variants
+│   ├── voicepack_leni.toml        # Voice-pack plan (German, de-CH-LeniNeural): keys, phrases, number overrides, variants
+│   └── voicepack_ryan.toml        # Voice-pack plan (English, en-GB-RyanNeural), same keys
 ├── tests/                         # pytest suite — one file per breakfast/ module, roughly
 ├── frontend/                      # Svelte 5 + Vite source for the Web UI (see Setup step 2)
 │   ├── index.html                 # Home app entry point
