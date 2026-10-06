@@ -45,6 +45,15 @@ base_topic = "autodarts"
 port = 8080
 # theme = "default"         # "default", "ocean", "sunset", or "forest"
 # accent_color = "#7c6aff"  # custom hex color, overrides the theme's accent
+# aurora_animation = true  # false: the background of the interface stands still (saves power, less heat)
+# aurora_palette = "northern"  # ready-made aurora colors: northern, ember, lavender, graphite, sakura (default: the theme's)
+# aurora_streaks = true     # false: no tilted streaks, only the three color areas
+# aurora_speed = 100        # % of the normal drift speed, 25..300
+# aurora_intensity = 100    # % of the normal strength of the colors, 30..115
+# aurora_blur = 100         # % of the normal softness, 30..200
+# aurora_pause_idle = 0     # minutes without input until the aurora stops (it also stops while the page is hidden), 0 = never
+# glass_strength = 100      # % of the normal milkiness of the glass panels, 50..200
+# bar_opacity = 92          # % the top bar covers the page that scrolls under it, 50..100
 # language = "en"          # language of the interface: "en" or "de"
 # joke_of_the_day = true    # About page: joke from icanhazdadjoke.com; false = no outbound call
 

@@ -9,6 +9,8 @@
   // lives outside the tabs entirely since it's a whole-app action, not a
   // setting category.
   import { onMount } from 'svelte';
+  import { applyAuroraColors, applyLook, auroraAnimated, loadAppearance } from '../../lib/stores/appearance.js';
+  import ColorField from '../../lib/components/ColorField.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
   import { api } from '../../lib/api.js';
   import PageHeader from '../../lib/components/PageHeader.svelte';
@@ -20,7 +22,10 @@
     logging: { level: 'INFO', events: false, file: '' },
     mqtt: { enabled: true, host: '', port: '', username: '', password: '', base_topic: '' },
     stats: { db: '', timezone: '' },
-    web: { port: '', theme: 'default', accent_color: '', language: 'en' },
+    web: { port: '', theme: 'default', accent_color: '', language: 'en', aurora_animation: true,
+           aurora_base: '', aurora_1: '', aurora_2: '', aurora_3: '',
+           aurora_palette: '', aurora_streaks: true, aurora_speed: 100, aurora_intensity: 100, aurora_blur: 100,
+           aurora_pause_idle: 0, glass_strength: 100, bar_opacity: 92 },
     direct: { email: '', password: '', board_id: '', board_ws_url: '', board_manager_url: '' },
     audio: { dir: '', profile: '' },
     caller: {
@@ -73,7 +78,7 @@
 
   onMount(async () => {
     await loadConfig();
-    await applyTheme();
+    await loadAppearance();
     await loadVoicePackProfiles();
     await loadVoicepackPacks();
     await loadVoicepackGroups();
@@ -249,16 +254,43 @@
     }
   }
 
-  async function applyTheme() {
-    try {
-      const loaded = await fetch('/api/config').then((r) => r.json());
-      if (loaded.web?.theme) document.documentElement.dataset.theme = loaded.web.theme;
-      if (loaded.web?.accent_color) {
-        document.documentElement.style.setProperty('--accent', loaded.web.accent_color);
-      }
-    } catch (_) {
-      // no config yet — keep default theme
-    }
+  // The look (aurora and glass): a change made here shows at once (a preview) and is stored with Save.
+  const AURORA_COLORS = [
+    { key: 'aurora_base', label: t('Base') }, { key: 'aurora_1', label: t('Color 1') },
+    { key: 'aurora_2', label: t('Color 2') }, { key: 'aurora_3', label: t('Color 3') },
+  ];
+  const PALETTES = [
+    ['northern', t('Northern lights')], ['ember', t('Ember')], ['lavender', t('Lavender')],
+    ['graphite', t('Graphite')], ['sakura', t('Sakura')],
+  ];
+  // [key, label, lowest, highest, step, default]
+  const LOOK_SLIDERS = [
+    ['aurora_speed', t('Speed'), 25, 300, 5, 100], ['aurora_intensity', t('Intensity'), 30, 115, 5, 100],
+    ['aurora_blur', t('Softness'), 30, 200, 5, 100], ['glass_strength', t('Glass strength'), 50, 200, 5, 100],
+    ['bar_opacity', t('Top bar opacity'), 50, 100, 1, 92],
+  ];
+  const LOOK_DEFAULTS = { aurora_animation: true, aurora_streaks: true, aurora_palette: '', aurora_pause_idle: 0,
+    ...Object.fromEntries(LOOK_SLIDERS.map(([key, , , , , def]) => [key, def])) };
+  let lookTick = $state(0);   // moves on every preview, so the swatches show the color the palette gives
+  const presetColor = (key) => getComputedStyle(document.documentElement).getPropertyValue('--' + key.replace('_', '-')).trim() || '#000000';
+  function previewLook() {
+    const w = cfg.web;
+    applyLook({ palette: w.aurora_palette, speed: Number(w.aurora_speed), intensity: Number(w.aurora_intensity),
+                blur: Number(w.aurora_blur), glass: Number(w.glass_strength), bar: Number(w.bar_opacity),
+                streaks: w.aurora_streaks, pause_idle: Number(w.aurora_pause_idle) });
+    applyAuroraColors({ base: w.aurora_base, 1: w.aurora_1, 2: w.aurora_2, 3: w.aurora_3 });
+    auroraAnimated.set(w.aurora_animation);
+    lookTick += 1;
+  }
+  // A palette replaces the colors picked before, otherwise a picked color would hide it.
+  function choosePalette() {
+    for (const { key } of AURORA_COLORS) cfg.web[key] = '';
+    previewLook();
+  }
+  function resetLook() {
+    for (const { key } of AURORA_COLORS) cfg.web[key] = '';
+    Object.assign(cfg.web, LOOK_DEFAULTS);
+    previewLook();
   }
 
   async function save(e) {
@@ -301,6 +333,11 @@
     addIfChanged('audio', 'dir', cfg.audio.dir);
     addIfChanged('audio', 'profile', cfg.audio.profile);
     addIfChanged('web', 'accent_color', cfg.web.accent_color);
+    for (const { key } of AURORA_COLORS) addIfChanged('web', key, cfg.web[key]);
+    for (const key of ['aurora_palette', 'aurora_streaks', 'aurora_pause_idle', ...LOOK_SLIDERS.map((x) => x[0])]) {
+      const value = typeof LOOK_DEFAULTS[key] === 'number' ? Number(cfg.web[key]) : cfg.web[key];
+      (updates.web ??= {})[key] = value === LOOK_DEFAULTS[key] ? null : value;   // a default is not written to the file
+    }
     addIfChanged('record', 'file', cfg.record.file);
     addIfChanged('online', 'relay_url', cfg.online.relay_url);
     addIfChanged('online', 'site_name', cfg.online.site_name);
@@ -318,6 +355,7 @@
     (updates.logging ??= {}).events = cfg.logging.events;
     (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
     (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
+    (updates.web ??= {}).aurora_animation = cfg.web.aurora_animation;
     for (const key of ['enabled', 'per_dart', 'turn_total', 'announce_change', 'call_player', 'call_misses']) {
       (updates.caller ??= {})[key] = cfg.caller[key];
     }
@@ -333,9 +371,7 @@
         return;
       }
       showBanner(res);
-      delete document.documentElement.dataset.theme;
-      document.documentElement.style.removeProperty('--accent');
-      await applyTheme();
+      await loadAppearance();
     } catch (err) {
       alert(t('Save failed: {error}', { error: err }));
     }
@@ -343,7 +379,7 @@
 
   function showBanner(res) {
     if (!res.saved) {
-      banner = { kind: 'error', text: t('Save failed.') };
+      banner = { kind: 'error', text: res.error ? t('Save failed: {error}', { error: t(res.error) }) : t('Save failed.') };
     } else if (res.restart_required?.length) {
       banner = { kind: 'warn', text: t('Saved. Restart required to apply: {keys}', { keys: res.restart_required.join(', ') }) };
     } else {
@@ -539,6 +575,55 @@
         <input type="checkbox" id="sWebJoke" bind:checked={cfg.web.joke_of_the_day}>
       </div>
       <p class="note">{t('The About page fetches the joke from icanhazdadjoke.com. Switch it off to make no outbound request.')}</p>
+    </div>
+
+    <div class="settings-section look">
+      <div class="settings-section-title">{t('Aurora and glass')} <span class="badge runtime">{t('applies instantly')}</span></div>
+      <div class="settings-row">
+        <label for="sWebAurora">{t('Animate the background')}</label>
+        <input type="checkbox" id="sWebAurora" bind:checked={cfg.web.aurora_animation} onchange={previewLook}>
+      </div>
+      <p class="note">{t('The slowly moving color areas in the background. Switch it off to save power and heat, the background then stands still.')}</p>
+      <div class="settings-row">
+        <label for="sLookStreaks">{t('Streaks')}</label>
+        <input type="checkbox" id="sLookStreaks" bind:checked={cfg.web.aurora_streaks} onchange={previewLook}>
+      </div>
+      {#each LOOK_SLIDERS as [key, label, low, high, step]}
+        <div class="settings-row">
+          <label for={'s_' + key}>{label}</label>
+          <span class="range-pair">
+            <input type="range" id={'s_' + key} min={low} max={high} {step} bind:value={cfg.web[key]} oninput={previewLook}>
+            <output>{cfg.web[key]} %</output>
+          </span>
+        </div>
+      {/each}
+      <div class="settings-row">
+        <label for="sLookIdle">{t('Pause after (minutes)')}</label>
+        <input type="number" id="sLookIdle" min="0" max="240" bind:value={cfg.web.aurora_pause_idle} oninput={previewLook}>
+      </div>
+      <p class="note">{t('Saves power: the aurora also stops while the page is hidden. With a number of minutes it stops after that long without a key or mouse movement and moves again on the next one; 0 never stops it.')}</p>
+
+      <div class="settings-section-title">{t('Aurora colors')}</div>
+      <div class="settings-row">
+        <label for="sLookPalette">{t('Palette')}</label>
+        <select id="sLookPalette" bind:value={cfg.web.aurora_palette} onchange={choosePalette}>
+          <option value="">{t('From the theme')}</option>
+          {#each PALETTES as [id, name] (id)}
+            <option value={id}>{name}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="aurora-colors">
+        {#each AURORA_COLORS as c (c.key)}
+          <div class="settings-row">
+            <label for={'s_' + c.key}>{c.label}</label>
+            <ColorField id={'s_' + c.key} label={c.label} value={cfg.web[c.key]} fallback={presetColor(c.key, lookTick)}
+                        onchange={(v) => { cfg.web[c.key] = v; previewLook(); }} />
+          </div>
+        {/each}
+      </div>
+      <p class="note">{t('Choosing a palette clears the colors you picked. Dark colors work best, the text on top is light. A color you do not set stays the one of the palette or theme.')}</p>
+      <button type="button" class="btn btn-add" onclick={resetLook}>{t('Reset the look to the defaults')}</button>
     </div>
 
     <div class="settings-section">
@@ -803,6 +888,12 @@
   .btn-save { background: var(--accent); color: #0c0c0f; width: 100%; margin-top: 0.5rem; }
   .btn-add { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); padding: 0.5rem 1rem; }
   .btn-stop { background: #7f1d1d; color: #fff; padding: 0.5rem 1rem; }
+  .aurora-colors { margin: 0.4rem 0 0.2rem; }
+  .range-pair { display: flex; align-items: center; gap: 0.8rem; flex: 1; }
+  .range-pair input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+  .range-pair output { width: 3.6rem; text-align: right; font-size: 0.85rem; color: var(--muted); }
+  .aurora-colors .settings-row { align-items: start; }
+  .aurora-colors .settings-row label { padding-top: 0.5rem; }
   .voicepack-progress { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
   .vp-entry { border-bottom: 1px solid var(--glass-border); padding: 0.6rem 0; }
   .vp-entry:last-child { border-bottom: none; }

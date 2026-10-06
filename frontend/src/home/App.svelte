@@ -3,9 +3,8 @@
   import { onMount } from 'svelte';
   import { connect, wsStatus, gameState } from '../lib/stores/gameState.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
-  import { route, navigate } from '../lib/router.js';
+  import { route } from '../lib/router.js';
   import Aurora from '../lib/components/Aurora.svelte';
-  import Icon from '../lib/components/Icon.svelte';
   import Sidebar from './shell/Sidebar.svelte';
   import TopBar from './shell/TopBar.svelte';
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
@@ -78,8 +77,8 @@
 {/if}
 
 <div class="shell">
-  <TopBar {boardConnected} />
-  <Sidebar route={$route} {boardAddress} />
+  <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel} />
+  <Sidebar route={$route} {boardAddress} version={$health.version} {onVersionTap} />
 
   <main>
       <div class="page">
@@ -108,56 +107,24 @@
         {/if}
       </div>
   </main>
-
-  <footer>
-      <span class="dot-group">
-        {#if $wsStatus !== 'connected'}
-          <span><span class="conn-dot"></span><span class="conn-label">{connLabel}</span></span>
-        {/if}
-        <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">{t('MQTT')}</span></span>
-        <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">{t('Autodarts')}</span></span>
-      </span>
-      <span class="version-group">
-        <button type="button" class="version-info" onclick={onVersionTap}>{$health.version ? `v${$health.version}` : ''}</button>
-        <button type="button" class="about-btn" aria-label={t('About')} title={t('About')} onclick={() => navigate('about')}><Icon name="info" size={16} /></button>
-      </span>
-  </footer>
 </div>
 
 <style>
-  /* html/body's height/background/reset come from lib/theme.css (shared with TV/Audio). The sidebar
-     stays in view on the left, the top bar and the footer stick to the edges of the column, and the
-     document scrolls, so the page has its real height (full-page screenshots and print capture all of
-     it, the wheel works anywhere in the window). */
+  /* html/body's height/background/reset come from lib/theme.css (shared with TV/Audio). The top bar
+     sticks to the top edge, the navigation stays in view on the left, and the document scrolls, so
+     the page has its real height (full-page screenshots and print capture all of it, the wheel works
+     anywhere in the window). */
   :global(#app) { min-height: 100vh; }
   .shell {
-    --header-h: 4.1rem; --footer-h: 2.6rem;
-    display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: var(--header-h) 1fr var(--footer-h);
+    --header-h: 4.1rem;
+    display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: var(--header-h) 1fr;
     min-height: 100vh;
   }
   main { grid-row: 2; grid-column: 2; min-width: 0; font-family: system-ui, sans-serif; }
   .page { max-width: 1600px; margin: 0 auto; padding: 2rem 2rem 2.5rem; }
-  footer {
-    position: sticky; bottom: 0; z-index: 40; flex-shrink: 0; grid-column: 1 / -1; grid-row: 3; height: var(--footer-h);
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 1.5rem; font-size: 0.8rem; color: var(--muted);
-    background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
-    border-top: 1px solid var(--glass-border); box-shadow: var(--glass-bar-shadow);
-  }
-  .dot-group { display: flex; align-items: center; gap: 1.25rem; }
-  .conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 7px; transition: background 0.3s; }
-  .conn-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .conn-label { font-size: 0.8rem; color: var(--text); }
-  .version-group { display: flex; align-items: center; gap: 0.6rem; }
-  .version-info { color: var(--muted); cursor: pointer; user-select: none; background: none; border: none; padding: 0; font: inherit; }
-  .about-btn { background: none; border: none; padding: 0; color: var(--muted); cursor: pointer; line-height: 0; }
-  .about-btn:hover { color: var(--text); }
-
   @media (max-width: 800px) {
-    .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-h) 1fr auto; --nav-h: 4.2rem; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom)); }
+    .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-h) 1fr; --nav-h: 4.2rem; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom)); }
     main { grid-column: 1; }
     .page { padding: 1.25rem 1rem 1.5rem; }
-    /* The navigation is a bar along the bottom edge: keep the footer clear of it. */
-    footer { position: static; grid-column: 1; height: auto; padding: 0.6rem 1rem; }
   }
 </style>

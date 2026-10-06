@@ -79,7 +79,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
 - **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories (the voice-pack profile is picked from a dropdown of the installed profiles)
 - **Language**: the interface is English or German, one setting per installation (`[web] language` or Settings → General → Language), applied to Home, `/tv` and `/audio` after a reload; player names, voice-pack entries and the changelog are not translated
-- **About page**: the ℹ️ button in the footer opens the running version, its release time (UTC), a joke of the day (icanhazdadjoke.com, cached per day, a built-in joke if the request fails; `[web] joke_of_the_day = false` turns it off and makes no outbound call) and the changelog
+- **About page**: the ℹ️ button in the sidebar (next to the version) opens the running version, its release time (UTC), a joke of the day (icanhazdadjoke.com, cached per day, a built-in joke if the request fails; `[web] joke_of_the_day = false` turns it off and makes no outbound call) and the changelog
 - **Online Elimination**: play one Elimination match with Breakfast installations elsewhere. One site hosts and gets a join code, the others join with the code and a shared match password, each adds its own players, the host sets lives and order, and after a match the host can start a rematch without a new lobby (the first eliminated starts, the winner is last; players can change). The darts of every player appear live on every TV, the calls play locally, and every site stores the whole match in its own `stats.db`. Needs a relay (`relay/`, a Cloudflare Worker) and `[online] relay_url`; without it online play stays off
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
 - **Per-player stats** (Stats tab, X01 and Elimination chips): activity and records, and for X01 a score histogram, board heatmap (by field, or where every dart landed), bust rate, win/loss, average and checkout % per match, doubles and the Top 10 legs (by starting score) and checkouts
@@ -174,6 +174,17 @@ password = "mqtt"
 [web]
 port = 8080
 # language = "en"         # language of the interface, "en" or "de"; one setting for the whole installation, the TV included
+# aurora_animation = true  # false: the background of the interface stands still (saves power, less heat)
+# aurora_base = "#040b1a"   # colors of the background (also in Settings → General, with a picker); unset = the theme's own
+# aurora_1 = "#06424f"      # aurora_1 .. aurora_3 are the three large color areas
+# aurora_palette = "northern"  # ready-made aurora colors: northern, ember, lavender, graphite, sakura (default: the theme's)
+# aurora_streaks = true     # false: no tilted streaks, only the three color areas
+# aurora_speed = 100        # % of the normal drift speed, 25..300
+# aurora_intensity = 100    # % of the normal strength of the colors, 30..115
+# aurora_blur = 100         # % of the normal softness, 30..200
+# aurora_pause_idle = 0     # minutes without input until the aurora stops (it also stops while the page is hidden), 0 = never
+# glass_strength = 100      # % of the normal milkiness of the glass panels, 50..200
+# bar_opacity = 92          # % the top bar covers the page that scrolls under it, 50..100
 # joke_of_the_day = true   # About page fetches a joke from icanhazdadjoke.com; false = no outbound call
 
 # [online]
@@ -472,7 +483,7 @@ curl http://localhost:8080/api/health
 }
 ```
 
-The Web UI footer shows two coloured dots (MQTT and Autodarts) that poll `/api/health` every 30 seconds — green = connected, red = disconnected — alongside the app version and an ℹ️ button that opens the About page.
+The top bar of the Web UI shows coloured dots for the board, MQTT and Autodarts (the last two poll `/api/health` every 30 seconds) — green = connected, red = disconnected. The app version and an ℹ️ button that opens the About page sit at the bottom of the sidebar.
 
 Useful for a systemd `ExecStartPost` health check:
 
@@ -635,7 +646,7 @@ default — `[dev]` is not meant to be enabled on a shared/production
 instance.
 
 Don't want to edit `config.toml`/restart just to try it once? Tap the
-version number in the Home footer 5 times in a row — same Android-style
+version number in the Home sidebar 5 times in a row — same Android-style
 gesture as unlocking Developer options — to reveal the Dev tab for the
 current run only (`POST /api/dev/unlock`, in-memory, never written to
 `config.toml`). Gone again on the next restart.
@@ -808,6 +819,7 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/online/rematch` | Host only, after a finished match: back to the lobby with the same sites and players |
 | `POST` | `/api/online/leave` | Leave the online match |
 | `GET` | `/api/changelog` | `CHANGELOG.md` as versions with their sections, for the About page; `[Unreleased]` only if it has entries |
+| `GET` | `/api/appearance` | The look every page applies at start, from `[web]`: `theme`, `accent_color`, `aurora_animation`, the `aurora` colors (`base`, `1`, `2`, `3`, `null` = the palette's or theme's own), `palette`, `streaks`, `speed`, `intensity`, `blur`, `pause_idle`, `glass` and `bar` |
 | `GET` | `/api/language` | Language of the interface, `{"language": "en", "supported": ["en", "de"]}`, from `[web] language` |
 | `GET` | `/api/joke` | Joke of the day (cached per day, built-in fallback); `{"enabled": false}` and no outbound call if `[web] joke_of_the_day = false` |
 | `GET` | `/api/board-address` | Local Autodarts board manager URL, for the Home hub's Board card |

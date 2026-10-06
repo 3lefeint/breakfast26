@@ -13,7 +13,9 @@ html, body { height: 100%; }
 /* Checkboxes and radio buttons use the accent color. */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 body {
-  background: var(--bg);
+  /* The base color of the aurora, so a page taller than the window (a full-page screenshot) continues
+     in the color the aurora fades into. */
+  background: var(--aurora-base, var(--bg));
   color: var(--text);
   font-family: system-ui, -apple-system, sans-serif;
 }
@@ -33,9 +35,10 @@ body {
   /* Glass: a milky, translucent panel over the aurora with a lit rim that rounds off into depth. The
      fill is lighter at the upper left, the rim catches light at the top and falls dark at the bottom,
      and the shadow lifts the panel off the background. */
-  --glass:        linear-gradient(150deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.07) 55%, rgba(255, 255, 255, 0.05) 100%);
-  --glass-strong: linear-gradient(150deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 60%, rgba(255, 255, 255, 0.08) 100%);
-  --glass-border: rgba(255, 255, 255, 0.26);
+  --glass-a: 1;   /* the strength of the glass (Settings, `[web] glass_strength`): 1 is the normal milkiness */
+  --glass:        linear-gradient(150deg, rgba(255, 255, 255, calc(0.15 * var(--glass-a))) 0%, rgba(255, 255, 255, calc(0.07 * var(--glass-a))) 55%, rgba(255, 255, 255, calc(0.05 * var(--glass-a))) 100%);
+  --glass-strong: linear-gradient(150deg, rgba(255, 255, 255, calc(0.22 * var(--glass-a))) 0%, rgba(255, 255, 255, calc(0.11 * var(--glass-a))) 60%, rgba(255, 255, 255, calc(0.08 * var(--glass-a))) 100%);
+  --glass-border: rgba(255, 255, 255, calc(0.26 * var(--glass-a)));
   --glass-blur:   blur(28px) saturate(1.5);
   --glass-shadow:
     /* the rim of a soap bubble: a thin bright line all around, light caught at the upper left and
@@ -46,6 +49,10 @@ body {
     inset 0 0 26px rgba(255, 255, 255, 0.07),
     0 22px 44px -18px rgba(0, 0, 0, 0.7), 0 3px 8px rgba(0, 0, 0, 0.25);
   /* The same for the bars at the edges of the window, with a softer lift. */
+  /* The top bar: the glass over a nearly solid base, so the page that scrolls under it does not show
+     through (`[web] bar_opacity`: higher hides it more, lower shows more of the aurora). */
+  --bar-a: 92%;
+  --glass-bar: var(--glass), color-mix(in srgb, var(--aurora-base) var(--bar-a), transparent);
   --glass-bar-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 26px -12px rgba(0, 0, 0, 0.6);
 
   /* The aurora: the base color and three large soft color areas. */
@@ -61,3 +68,11 @@ body {
   --aurora-base: #0f070d; --aurora-1: #6f2507; --aurora-2: #5c0c2c; --aurora-3: #3d166f; }
 :root[data-theme="forest"] { --accent: #34d399; --accent-soft: #103324;
   --aurora-base: #020f09; --aurora-1: #024431; --aurora-2: #09433e; --aurora-3: #253809; }
+
+/* Ready-made aurora palettes (Settings → Aurora → Palette). They replace the aurora colors of the theme, not
+   its accent, and a color the user picked replaces them in turn. */
+:root[data-aurora="northern"] { --aurora-base: #03120f; --aurora-1: #0a5c4a; --aurora-2: #1b3a8a; --aurora-3: #4a1d7a; }
+:root[data-aurora="ember"]    { --aurora-base: #120505; --aurora-1: #7a1f0a; --aurora-2: #8a3b05; --aurora-3: #4a0f2a; }
+:root[data-aurora="lavender"] { --aurora-base: #0b0715; --aurora-1: #3b1f7a; --aurora-2: #5a2a86; --aurora-3: #1f3a7a; }
+:root[data-aurora="graphite"] { --aurora-base: #0a0b0d; --aurora-1: #2b2f36; --aurora-2: #1c2026; --aurora-3: #3a3f48; }
+:root[data-aurora="sakura"]   { --aurora-base: #12060d; --aurora-1: #7a1f4a; --aurora-2: #5a1a6a; --aurora-3: #2a1a5a; }

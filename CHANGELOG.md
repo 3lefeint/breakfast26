@@ -3,9 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- Settings → General → Aurora and glass: speed, intensity and softness of the aurora, the tilted streaks on or off, five ready-made palettes (Northern lights, Ember, Lavender, Graphite, Sakura), the milkiness of the glass panels and how much the top bar covers the page under it, each as a slider with a live preview; and a pause that saves power: the aurora always stops while the page is hidden and, with `aurora_pause_idle`, after some minutes without input. `[web] aurora_palette`, `aurora_streaks`, `aurora_speed`, `aurora_intensity`, `aurora_blur`, `aurora_pause_idle`, `glass_strength`, `bar_opacity`.
+- Aurora colors: the same section sets the base color and the three color areas of the background, each with sliders for hue, saturation and brightness (or a hex value), shown at once while picking; `[web] aurora_base`, `aurora_1`, `aurora_2`, `aurora_3`, a color you do not set stays the one of the theme.
+- Setting `[web] aurora_animation` (the same section, Animate the background): false lets the aurora in the background stand still, which saves power and heat; it applies at once.
 - A standalone Windows version: `breakfast-windows-vX.Y.Z.zip` with `breakfast.exe`, no Python or Docker needed, with its own data folder, a first-start setup in the web UI, an autostart script, `ffmpeg` included, and updates from Settings → Updates with a checksum check and an automatic rollback (#38).
 
+### Fixed
+- Home and `/tv` now apply `[web] theme` and `accent_color` when they load; before, only `/audio` and the Settings page did.
+
 ### Changed
+- Interface: the footer is gone, the version (five taps unlock the Dev tab) and the link to the About page sit in the sidebar, and the MQTT and Autodarts status sits next to the board status in the top bar; the top bar is nearly opaque, so the page that scrolls under it no longer shows through, and the sidebar and the page background cover the whole page, also in a full-page screenshot.
 - Without an Autodarts account in the configuration, `direct` mode starts the web UI only instead of stopping with an error.
 
 ## [1.0.0] - 2026-10-06

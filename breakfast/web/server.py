@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -283,6 +284,64 @@ async def get_changelog():
 
 
 SUPPORTED_LANGUAGES = ("en", "de")
+
+
+_AURORA_KEYS = ("aurora_base", "aurora_1", "aurora_2", "aurora_3")
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+AURORA_PALETTES = ("northern", "ember", "lavender", "graphite", "sakura")
+# [web] settings of the look that are whole numbers: (lowest, highest, default)
+_LOOK_NUMBERS = {
+    "aurora_speed": (25, 300, 100),         # % of the normal speed of the drift
+    "aurora_intensity": (30, 115, 100),     # % of the normal strength of the color areas
+    "aurora_blur": (30, 200, 100),          # % of the normal softness
+    "aurora_pause_idle": (0, 240, 0),       # minutes without input until the aurora stops, 0 = never
+    "glass_strength": (50, 200, 100),       # % of the normal milkiness of the glass panels
+    "bar_opacity": (50, 100, 92),           # % the top bar covers the page that scrolls under it
+}
+
+
+def _look_number(web: dict, key: str) -> int:
+    low, high, default = _LOOK_NUMBERS[key]
+    value = web.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high else default
+
+
+def _bad_look_value(key: str, value):
+    """The error message for a [web] look setting that is out of range, or None if it is fine."""
+    if value is None:
+        return None
+    if key in _AURORA_KEYS and not _HEX_COLOR.match(str(value)):
+        return f"{key} must be a color like #1a2b3c"
+    if key in _LOOK_NUMBERS:
+        low, high, _ = _LOOK_NUMBERS[key]
+        if not (isinstance(value, int) and not isinstance(value, bool) and low <= value <= high):
+            return f"{key} must be a whole number from {low} to {high}"
+    if key == "aurora_palette" and value not in ("", *AURORA_PALETTES):
+        return "aurora_palette must be one of: " + ", ".join(AURORA_PALETTES)
+    if key == "aurora_streaks" and not isinstance(value, bool):
+        return "aurora_streaks must be true or false"
+    return None
+
+
+@app.get("/api/appearance")
+async def get_appearance():
+    """The look every page applies at start: the theme and the accent color, the colors of the
+    aurora (None = the one of the theme) and whether the aurora moves."""
+    web = (cfg_mod.load(_config_path) if _config_path else {}).get("web", {})
+    return {
+        "theme": web.get("theme", "default"),
+        "accent_color": web.get("accent_color"),
+        "aurora_animation": bool(web.get("aurora_animation", True)),
+        "aurora": {key.removeprefix("aurora_"): (web.get(key) or None) for key in _AURORA_KEYS},
+        "palette": web.get("aurora_palette") if web.get("aurora_palette") in AURORA_PALETTES else None,
+        "streaks": bool(web.get("aurora_streaks", True)),
+        "speed": _look_number(web, "aurora_speed"),
+        "intensity": _look_number(web, "aurora_intensity"),
+        "blur": _look_number(web, "aurora_blur"),
+        "pause_idle": _look_number(web, "aurora_pause_idle"),
+        "glass": _look_number(web, "glass_strength"),
+        "bar": _look_number(web, "bar_opacity"),
+    }
 
 
 @app.get("/api/language")
@@ -1086,6 +1145,11 @@ async def get_config():
             "accent_color": web.get("accent_color"),
             "joke_of_the_day": web.get("joke_of_the_day", True),
             "language":     web.get("language", "en"),
+            "aurora_animation": bool(web.get("aurora_animation", True)),
+            **{key: web.get(key) for key in _AURORA_KEYS},
+            "aurora_palette": web.get("aurora_palette") if web.get("aurora_palette") in AURORA_PALETTES else "",
+            "aurora_streaks": bool(web.get("aurora_streaks", True)),
+            **{key: _look_number(web, key) for key in _LOOK_NUMBERS},
         },
         "direct": _mask({
             "email":         direct.get("email"),
@@ -1156,6 +1220,11 @@ async def patch_config(body: dict):
     # Key names only, never values — matches the masking discipline
     # /api/config's own response already applies to secret fields.
     log.debug("Config PATCH requested: keys=%s", changed_keys)
+
+    for key, value in updates.get("web", {}).items():
+        problem = _bad_look_value(key, value)
+        if problem:
+            return {"saved": False, "error": problem}
 
     cfg_mod.write(_config_path, updates)
     cfg_mod.apply_runtime(updates.get("logging", {}))
