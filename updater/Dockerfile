@@ -2,14 +2,12 @@
 # fetch new releases and rebuild/restart the main `breakfast` service via
 # the host's Docker socket (mounted in by docker-compose.yml) — Debian's
 # own apt repo doesn't reliably ship a current docker-compose-plugin, so
-# this pulls the official Docker apt repo instead. `openssh-client` is
-# needed because the repo is private — fetches authenticate via a
-# repo-scoped, read-only deploy key mounted in at runtime (never baked
-# into the image), see docker-compose.yml.
+# this pulls the official Docker apt repo instead. The repository is public,
+# so fetching releases needs no credentials, see docker-compose.yml.
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl gnupg git openssh-client \
+      ca-certificates curl gnupg git \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
@@ -24,12 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # per-user ~/.gitconfig would depend on HOME being set up for that UID,
 # `--system` doesn't.
 RUN git config --system --add safe.directory "*"
-
-# GitHub's own published SSH host keys (github.com/api.github.com "meta"
-# API, fetched over HTTPS/TLS), baked in at build time — so the deploy-key
-# fetch at runtime can verify the host without either an interactive
-# "trust on first use" prompt or blindly disabling host-key checking.
-COPY updater/github_known_hosts /etc/ssh/ssh_known_hosts
 
 WORKDIR /app
 COPY updater/requirements.txt .

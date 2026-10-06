@@ -72,14 +72,10 @@ services:
   # from both sides. `${PWD}` needs `docker compose up -d` to be run from
   # the repo root, same as always.
   #
-  # This repo is private, so pulling releases needs authentication —
-  # `data/updater_deploy_key` is a dedicated, repo-scoped, **read-only**
-  # GitHub deploy key (not pmo's own SSH key), mounted read-only and never
-  # baked into the image. Before first run:
-  #   ssh-keygen -t ed25519 -N "" -f data/updater_deploy_key
-  #   gh repo deploy-key add data/updater_deploy_key.pub \
-  #     --title "breakfast26-updater (read-only)" --repo <owner>/<repo>
-  #   rm data/updater_deploy_key.pub   # only the private half needs to stay
+  # The repository is public, so releases are fetched over HTTPS without any
+  # credentials. A checkout cloned over SSH (`git@github.com:...`) works too:
+  # the GIT_CONFIG_* variables below rewrite that address to HTTPS for the
+  # updater only.
   updater:
     build:
       context: .
@@ -88,9 +84,10 @@ services:
     restart: unless-stopped
     environment:
       - REPO_DIR=${PWD}
-      - GIT_SSH_COMMAND=ssh -i /run/secrets/updater_deploy_key -o IdentitiesOnly=yes
+      - "GIT_CONFIG_COUNT=1"
+      - "GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf"
+      - "GIT_CONFIG_VALUE_0=git@github.com:"
       - LOG_LEVEL=${UPDATER_LOG_LEVEL:-INFO}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${PWD}:${PWD}
-      - ${PWD}/data/updater_deploy_key:/run/secrets/updater_deploy_key:ro

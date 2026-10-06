@@ -101,9 +101,8 @@ def _run(*args, timeout=120):
 
 
 def _fetch_and_list_tags() -> list[str]:
-    # Auth is via GIT_SSH_COMMAND + the read-only deploy key mounted in by
-    # docker-compose.yml (this repo is private) — plain `origin` works
-    # transparently once that's set up, no URL rewriting needed here.
+    # The repository is public: `origin` is fetched over HTTPS without credentials
+    # (docker-compose.yml rewrites an SSH origin address to HTTPS for this container).
     _run("git", "fetch", "--tags", "--force", "origin", "master")
     # --merged origin/master, not a plain `-l` listing: a repo whose history
     # was ever rewritten/squashed (this one has been) can still have old

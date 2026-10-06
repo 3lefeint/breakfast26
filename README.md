@@ -674,13 +674,11 @@ every git/docker command it runs is a fixed, hardcoded argv list — and it's
 reachable only from the `breakfast` container over the compose-internal
 network, never exposed to the host or the wider network.
 
-Since this repo is private, the updater needs its own read-only SSH deploy
-key to fetch from GitHub — one-time setup documented in `docker-compose.yml`'s
-own header comments for the `updater` service (generate a dedicated
-`ssh-keygen` keypair, register it via `gh repo deploy-key add`, the private
-half goes to `data/updater_deploy_key`, gitignored). Skip this setup
-entirely if self-update isn't wanted — the rest of Breakfast is unaffected
-either way, only the Settings → Updates button won't do anything useful.
+The updater fetches releases from the public repository over HTTPS and needs
+no credentials or setup beyond `docker compose up -d`. Remove the `updater`
+service from `docker-compose.yml` if self-update isn't wanted — the rest of
+Breakfast is unaffected either way, only the Settings → Updates button won't
+do anything useful.
 
 ### Testing the image manually (build, run, cleanup)
 

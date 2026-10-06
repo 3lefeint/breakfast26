@@ -7,6 +7,9 @@
 - English voice pack plan `tools/voicepack_ryan.toml` (en-GB-RyanNeural) with the same keys as the Leni plan.
 - Language switch: the interface is English or German, one language per installation, set under Settings → General → Language or with `[web] language`; it covers Home, `/tv` and `/audio`, and the achievement names and descriptions follow it (#24).
 
+### Changed
+- The updater fetches releases over HTTPS without a deploy key, an SSH address of `origin` works too.
+
 ## [0.10.0] - 2026-10-06
 
 ### Added
