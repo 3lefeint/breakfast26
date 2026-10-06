@@ -86,6 +86,10 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 
 ---
 
+## Security
+
+Breakfast has no login. Anyone who can reach its web port can watch games, start and stop them, change the settings and restart the app. Run it only on a trusted home or club network and do not expose port 8080 to the internet. If you need remote access, put your own authentication in front of it (a VPN or a reverse proxy with a login). The Autodarts and MQTT credentials are stored in plain text in `config.toml`, so keep that file private.
+
 ## Requirements
 
 - Python 3.11+

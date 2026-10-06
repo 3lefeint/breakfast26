@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- A Security section in the README and a `SECURITY.md`: Breakfast has no login and belongs on a trusted network.
 - Voice Pack tab: a pack selector, so every plan file `tools/voicepack_<name>.toml` can be edited, listened to and regenerated, not only Leni; it starts on the active profile if that has a plan (#37).
 - English voice pack plan `tools/voicepack_ryan.toml` (en-GB-RyanNeural) with the same keys as the Leni plan.
 - Language switch: the interface is English or German, one language per installation, set under Settings → General → Language or with `[web] language`; it covers Home, `/tv` and `/audio`, and the achievement names and descriptions follow it (#24).
