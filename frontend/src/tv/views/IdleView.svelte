@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Shown on /tv while no match is running: the darts currently on the board
   // (freeplay, warm-up) as dart boxes with a turn total, and the live dartboard.
   import DartBoard from '../../lib/components/DartBoard.svelte';
@@ -19,7 +20,7 @@
       </div>
     {/each}
     <div class="turn-total">
-      <div class="tlabel">Total</div>
+      <div class="tlabel">{t('Total')}</div>
       <div class="tval">{total}</div>
     </div>
   </div>

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Field Training setup: one player, the field (a number or the bull) and the number of darts.
   // The darts follow the field until they are changed: 100 at a number, 50 at the bull. A run
   // with fewer darts than that is saved as practice.
@@ -17,36 +18,36 @@
   }
 
   async function start() {
-    if (!player) { alert('Select a player.'); return; }
-    if (!Number.isInteger(darts) || darts < 1) { alert('The number of darts has to be at least 1.'); return; }
+    if (!player) { alert(t('Select a player.')); return; }
+    if (!Number.isInteger(darts) || darts < 1) { alert(t('The number of darts has to be at least 1.')); return; }
     if (await startRun({ player, field, darts })) window.location.href = '/tv';
   }
 </script>
 
 <div class="section">
-  <div class="section-title">Setup</div>
+  <div class="section-title">{t('Setup')}</div>
 
-  <div class="section-title sub">Player</div>
+  <div class="section-title sub">{t('Player')}</div>
   <div class="chips">
     {#each $players.known as name (name)}
       <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
     {/each}
   </div>
 
-  <div class="section-title sub">Field</div>
-  <div class="fields" role="radiogroup" aria-label="Field">
+  <div class="section-title sub">{t('Field')}</div>
+  <div class="fields" role="radiogroup" aria-label={t('Field')}>
     {#each Array.from({ length: 20 }, (_, i) => i + 1) as n}
       <button type="button" class="field" class:active={field === n} onclick={() => (field = n)}>{n}</button>
     {/each}
-    <button type="button" class="field bull" class:active={field === BULL} onclick={() => (field = BULL)}>Bull</button>
+    <button type="button" class="field bull" class:active={field === BULL} onclick={() => (field = BULL)}>{t('Bull')}</button>
   </div>
   <div class="hint">
-    {#if field === BULL}Outer bull 1 point, bull's eye 2 points.{:else}Single 1 point, double 2 points, triple 3 points.{/if}
-    Everything else scores 0.
+    {#if field === BULL}{t("Outer bull 1 point, bull's eye 2 points.")}{:else}{t('Single 1 point, double 2 points, triple 3 points.')}{/if}
+    {t('Everything else scores 0.')}
   </div>
 
   <div class="option-row">
-    <span class="label">Darts</span>
+    <span class="label">{t('Darts')}</span>
     <div class="counter">
       <button class="btn-counter" onclick={() => changeDarts(-10)}>−10</button>
       <button class="btn-counter" onclick={() => changeDarts(-1)}>−</button>
@@ -57,13 +58,13 @@
   </div>
   <div class="hint">
     {#if practice}
-      Fewer than {standardDarts(field)} darts at {fieldLabel(field)}: the run is saved as practice, without a rating or a personal best.
+      {t('Fewer than {n} darts at {field}: the run is saved as practice, without a rating or a personal best.', { n: standardDarts(field), field: fieldLabel(field) })}
     {:else}
-      From {standardDarts(field)} darts at {fieldLabel(field)} on a complete run counts for the rating and the personal best.
+      {t('From {n} darts at {field} on a complete run counts for the rating and the personal best.', { n: standardDarts(field), field: fieldLabel(field) })}
     {/if}
   </div>
 
-  <button class="btn btn-start" onclick={start}>▶ Start</button>
+  <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
 
 <style>

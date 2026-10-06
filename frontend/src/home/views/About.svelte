@@ -1,4 +1,5 @@
 <script>
+  import { t, language } from '../../lib/i18n.js';
   // The running version and release time, a joke of the day and the changelog.
   import { onMount } from 'svelte';
   import { health } from '../../lib/stores/health.js';
@@ -23,30 +24,30 @@
     if (!iso) return '—';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+    return d.toLocaleString(language === 'de' ? 'de-CH' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
   }
 </script>
 
-<PageHeader title="About" />
+<PageHeader title={t('About')} />
 
 <div class="tiles">
-  <div class="tile"><div class="label">App</div><div class="value brand"><img src={logo} alt="" width="40" height="40">Breakfast</div></div>
-  <div class="tile"><div class="label">Version</div><div class="value">{$health.version ? `v${$health.version}` : '—'}</div></div>
-  <div class="tile"><div class="label">Released</div><div class="value small">{released($health.releaseDate)}</div></div>
+  <div class="tile"><div class="label">{t('App')}</div><div class="value brand"><img src={logo} alt="" width="40" height="40">{t('Breakfast')}</div></div>
+  <div class="tile"><div class="label">{t('Version')}</div><div class="value">{$health.version ? `v${$health.version}` : '—'}</div></div>
+  <div class="tile"><div class="label">{t('Released')}</div><div class="value small">{released($health.releaseDate)}</div></div>
 </div>
 
 {#if joke}
   <div class="card">
-    <div class="card-title">Joke of the day</div>
+    <div class="card-title">{t('Joke of the day')}</div>
     <p class="joke">{joke}</p>
   </div>
 {/if}
 
-<div class="subtitle">Changelog</div>
+<div class="subtitle">{t('Changelog')}</div>
 {#each versions as v}
   <div class="card version">
     <div class="version-head">
-      <span class="version-name">{v.version === 'Unreleased' ? 'Unreleased' : `v${v.version}`}</span>
+      <span class="version-name">{v.version === 'Unreleased' ? t('Unreleased') : `v${v.version}`}</span>
       {#if v.date}<span class="version-date">{v.date}</span>{/if}
     </div>
     {#each v.sections as s}
@@ -57,7 +58,7 @@
     {/each}
   </div>
 {:else}
-  <div class="empty">No changelog available.</div>
+  <div class="empty">{t('No changelog available.')}</div>
 {/each}
 
 <style>

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // Header of the TV and audio pages — logo (always
   // links back to Home) + an optional centered title + a contextual
   // right-side snippet per app (sound toggle on TV/Audio, connection
@@ -20,9 +21,9 @@
 
 <header class:glow-green={glowColor === 'green'} class:glow-yellow={glowColor === 'yellow'} class:glow-red={glowColor === 'red'}>
   <div class="left-group">
-    <a class="brand-link" href="/" title="Breakfast — back to home">
+    <a class="brand-link" href="/" title={t('Breakfast — back to home')}>
       <img class="mark" src={logo} alt="" width="50" height="50">
-      <span class="word">Breakfast</span>
+      <span class="word">{t('Breakfast')}</span>
     </a>
     {@render left?.()}
   </div>

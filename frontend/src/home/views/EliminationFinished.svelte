@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #elimFinished + #rematchModal. Default rematch
   // order: first-eliminated player starts first, winner starts last
   // (elimination_order is already in that sequence — winner just gets
@@ -67,7 +68,7 @@
   }
 
   async function startRematch() {
-    if (rematchPlayers.length < 2) { alert('Select at least 2 players.'); return; }
+    if (rematchPlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
     await api('POST', '/api/elimination/start', { players: rematchPlayers, lives: rematchLives });
     window.location.href = '/tv';
   }
@@ -82,7 +83,7 @@
   let onlineError = $state('');
   async function onlineRematch() {
     const res = await apiJson('POST', '/api/online/rematch');
-    onlineError = res.error || '';
+    onlineError = res.error ? t(res.error) : '';
   }
 
   async function undoWin() {
@@ -90,7 +91,7 @@
     // stats.db — for a match-ending dart that turned out to be
     // misdetected. Elimination.svelte's own $effect redirects to /tv
     // once state flips back to "playing".
-    if (!confirm('Undo the winning turn and resume the match?')) return;
+    if (!confirm(t('Undo the winning turn and resume the match?'))) return;
     await api('POST', '/api/elimination/undo');
   }
 </script>
@@ -100,28 +101,28 @@
 <div class="elim-section finished">
   <div class="trophy">🏆</div>
   <div class="winner-name">{cap($elimination?.winner || '')}</div>
-  <div class="winner-label">Winner</div>
+  <div class="winner-label">{t('Winner')}</div>
   <div class="finished-actions">
-    <button class="btn btn-start" onclick={newGame}>New game</button>
+    <button class="btn btn-start" onclick={newGame}>{t('New game')}</button>
     {#if !$online}
-      <button class="btn btn-add" onclick={openRematchModal}>🔁 Rematch</button>
+      <button class="btn btn-add" onclick={openRematchModal}>{t('🔁 Rematch')}</button>
     {:else if $online.host}
-      <button class="btn btn-add" onclick={onlineRematch}>🔁 Rematch</button>
+      <button class="btn btn-add" onclick={onlineRematch}>{t('🔁 Rematch')}</button>
     {/if}
   </div>
-  {#if $online && !$online.host}<p class="online-note">Only the host can start a rematch.</p>{/if}
+  {#if $online && !$online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
   {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
-  {#if !$online}<button class="btn-undo-win" onclick={undoWin}>↩ Undo winning turn</button>{/if}
+  {#if !$online}<button class="btn-undo-win" onclick={undoWin}>{t('↩ Undo winning turn')}</button>{/if}
 </div>
 
 {#if showModal}
   <div class="modal-overlay">
-    <button type="button" class="overlay-backdrop" aria-label="Close" onclick={closeRematchModal}></button>
+    <button type="button" class="overlay-backdrop" aria-label={t('Close')} onclick={closeRematchModal}></button>
     <div class="modal-box">
-      <div class="elim-section-title">Rematch</div>
+      <div class="elim-section-title">{t('Rematch')}</div>
 
       <div class="lives-row">
-        <span class="label">Lives per player</span>
+        <span class="label">{t('Lives per player')}</span>
         <div class="counter">
           <button class="btn-counter" onclick={() => changeRematchLives(-1)}>−</button>
           <span class="counter-val">{rematchLives}</span>
@@ -129,7 +130,7 @@
         </div>
       </div>
 
-      <div class="elim-section-title">Players <span class="hint">(first loser starts first, winner last)</span></div>
+      <div class="elim-section-title">{t('Players')} <span class="hint">{t('(first loser starts first, winner last)')}</span></div>
       <ul class="game-players">
         {#each rematchPlayers as name, i (name + i)}
           <li>
@@ -142,12 +143,12 @@
       </ul>
 
       <div class="add-row">
-        <input type="text" placeholder="Add new player (starts first)" bind:value={newPlayerName}
+        <input type="text" placeholder={t('Add new player (starts first)')} bind:value={newPlayerName}
                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNewRematchPlayer(); } }}>
-        <button class="btn btn-add" onclick={addNewRematchPlayer}>+ Add</button>
+        <button class="btn btn-add" onclick={addNewRematchPlayer}>{t('+ Add')}</button>
       </div>
 
-      <div class="elim-section-title">Known players <span class="hint">(click to add/remove)</span></div>
+      <div class="elim-section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
       <div class="known-chips">
         {#each $players.known as name (name)}
           <button type="button" class="chip" class:in-game={rematchPlayers.includes(name)} onclick={() => toggleRematchPlayer(name)}>{cap(name)}</button>
@@ -155,8 +156,8 @@
       </div>
 
       <div class="modal-actions">
-        <button class="btn btn-add" onclick={closeRematchModal}>Cancel</button>
-        <button class="btn btn-start" onclick={startRematch}>▶ Start rematch</button>
+        <button class="btn btn-add" onclick={closeRematchModal}>{t('Cancel')}</button>
+        <button class="btn btn-start" onclick={startRematch}>{t('▶ Start rematch')}</button>
       </div>
     </div>
   </div>

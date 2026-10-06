@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../lib/i18n.js';
   // Ports breakfast/web/templates/audio.html — the minimal audio-unlock
   // page. A browser tab left open
   // on the device wired to the speakers; tapping the button unlocks
@@ -77,21 +78,19 @@
 <AppHeader>
   {#snippet left()}
     <span class="conn-dot" class:ok={connOk}></span>
-    <span class="sep">audio output</span>
+    <span class="sep">{t('audio output')}</span>
   {/snippet}
   {#snippet right()}
-    <span class="queue-info">{queueLen ? `queue: ${queueLen}` : ''}</span>
+    <span class="queue-info">{queueLen ? t('queue: {n}', { n: queueLen }) : ''}</span>
   {/snippet}
 </AppHeader>
 
 <main>
   {#if !unlocked}
-    <button id="unlockBtn" onclick={unlock}>🔊 Enable sound</button>
-    <div class="status">Browsers block automatic audio until you interact with the
-      page once. Click the button, then leave this tab open on the device
-      connected to the speakers.</div>
+    <button id="unlockBtn" onclick={unlock}>{t('🔊 Enable sound')}</button>
+    <div class="status">{t('Browsers block automatic audio until you interact with the page once. Click the button, then leave this tab open on the device connected to the speakers.')}</div>
   {:else}
-    <div class="status"><span class="on">Sound enabled.</span> Leave this tab open — incoming calls play here.</div>
+    <div class="status"><span class="on">{t('Sound enabled.')}</span> {t('Leave this tab open — incoming calls play here.')}</div>
     <div class="log">
       {#each log as line}
         <div class={line.channel}>{line.text}</div>

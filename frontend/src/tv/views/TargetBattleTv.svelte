@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Target Battle. The board is the stage: it fills most of the height, with every dart of
   // the round in the color of its player and the target's field lit up. A new round with a random
@@ -24,7 +25,7 @@
   let roundKey = $derived(`${tb.tiebreak ? 't' : 'r'}${tb.round}`);
   let rows = $derived(ranked(tb));
   let markers = $derived(boardDarts(tb));
-  let roundLabel = $derived(tb.tiebreak ? `Tiebreak · round ${tb.round}` : `Round ${tb.round} of ${tb.rounds}`);
+  let roundLabel = $derived(tb.tiebreak ? t('Tiebreak · round {n}', { n: tb.round }) : t('Round {n} of {total}', { n: tb.round, total: tb.rounds }));
   let history = $derived(tb.history || []);
 
   // The three darts of a player in this round: the live ones for whoever is up, the thrown ones for
@@ -80,13 +81,13 @@
   }
 
   async function stop() {
-    if (!confirm('Stop the current game?')) return;
+    if (!confirm(t('Stop the current game?'))) return;
     await stopGame();
     window.location.href = '/';
   }
 
   async function undo() {
-    if (!confirm('Undo the last completed turn?')) return;
+    if (!confirm(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/target-battle/undo');
   }
 
@@ -108,7 +109,7 @@
       {/if}
     </div>
     <div class="target">
-      <span class="target-label">Target</span>
+      <span class="target-label">{t('Target')}</span>
       <span class="target-value" class:spinning>{spinning ? '…' : tb.target}</span>
     </div>
   </div>
@@ -125,7 +126,7 @@
             <span class="row-name">
               <span class="swatch" style="{ringStyle(p)}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
               <span class="name">{cap(p.name)}</span>
-              {#if tb.tiebreak && !tb.contenders.includes(p.name)}<span class="out">out</span>{/if}
+              {#if tb.tiebreak && !tb.contenders.includes(p.name)}<span class="out">{t('out')}</span>{/if}
             </span>
             <span class="chips">
               {#each chips(p) as value, i}
@@ -144,7 +145,7 @@
         <table>
           <thead>
             <tr>
-              <th>Round</th><th>Target</th>
+              <th>{t('Round')}</th><th>{t('Target')}</th>
               {#each tb.order as name}
                 <th class="who">{cap(name)}</th>
               {/each}
@@ -165,8 +166,8 @@
       </div>
 
       <div class="endgame-row">
-        <button class="btn-end-game" onclick={undo}>↩ Undo</button>
-        <button class="btn-end-game" onclick={stop}>■ Stop</button>
+        <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
+        <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
       </div>
     </div>
   </div>

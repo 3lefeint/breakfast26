@@ -1,9 +1,10 @@
 <script>
+  import { t } from '../i18n.js';
   let { show = false } = $props();
 </script>
 
 {#if show}
-  <span class="freipass-badge">Freipass</span>
+  <span class="freipass-badge">{t('Freipass')}</span>
 {/if}
 
 <style>

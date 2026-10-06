@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Killer setup: players (order = play order, or random) and the two options. Every player gets a
   // random number when the game starts. Local state until Start is pressed.
   import { players } from '../../lib/stores/players.js';
@@ -36,45 +37,44 @@
   }
 
   async function start() {
-    if (gamePlayers.length < 2) { alert('Select at least 2 players.'); return; }
+    if (gamePlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     const res = await apiJson('POST', '/api/killer/start', {
       players: order, own_goal: ownGoal, singles, bull_off: bullOff, throw_numbers: throwNumbers,
     });
-    if (res.error) { alert(res.error); return; }
+    if (res.error) { alert(t(res.error)); return; }
     window.location.href = '/tv';
   }
 </script>
 
 <div class="section">
-  <div class="section-title">Setup</div>
+  <div class="section-title">{t('Setup')}</div>
 
   <p class="rules">
-    Everyone gets a number and three lives. A double on your own number makes you a killer,
-    from then on you take one life from an opponent with every double on their number. Last one standing wins.
+    {t('Everyone gets a number and three lives. A double on your own number makes you a killer, from then on you take one life from an opponent with every double on their number. Last one standing wins.')}
   </p>
 
   <label class="check-row">
     <input type="checkbox" bind:checked={bullOff}>
-    <span>Bull-off: everybody throws one dart at the bull, the closest one starts</span>
+    <span>{t('Bull-off: everybody throws one dart at the bull, the closest one starts')}</span>
   </label>
   <label class="check-row">
     <input type="checkbox" bind:checked={throwNumbers}>
-    <span>Throw for the numbers: everybody throws one dart with the other hand and gets the number it hits (a double makes a killer at once). Off: the numbers are drawn at random</span>
+    <span>{t('Throw for the numbers: everybody throws one dart with the other hand and gets the number it hits (a double makes a killer at once). Off: the numbers are drawn at random')}</span>
   </label>
 
   <label class="check-row">
     <input type="checkbox" bind:checked={singles}>
-    <span>Singles take lives too, not only doubles (triples never do)</span>
+    <span>{t('Singles take lives too, not only doubles (triples never do)')}</span>
   </label>
   <label class="check-row">
     <input type="checkbox" bind:checked={ownGoal}>
-    <span>Own goal: a killer who hits their own number loses a life</span>
+    <span>{t('Own goal: a killer who hits their own number loses a life')}</span>
   </label>
 
   <div class="columns">
     <div class="column">
-      <div class="section-title">Known players <span class="hint">(click to add/remove)</span></div>
+      <div class="section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
       <div class="known-chips">
         {#each $players.known as name (name)}
           <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
@@ -83,7 +83,7 @@
     </div>
 
     <div class="column">
-      <div class="section-title">Game players <span class="hint">(order = play order, 2 to {MAX_PLAYERS})</span></div>
+      <div class="section-title">{t('Game players')} <span class="hint">{t('(order = play order, 2 to {max})', { max: MAX_PLAYERS })}</span></div>
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
@@ -99,10 +99,10 @@
 
   <label class="check-row">
     <input type="checkbox" bind:checked={randomOrder}>
-    <span>Random order</span>
+    <span>{t('Random order')}</span>
   </label>
 
-  <button class="btn btn-start" onclick={start}>▶ Start</button>
+  <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
 
 <style>

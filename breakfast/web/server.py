@@ -281,6 +281,18 @@ async def get_changelog():
     return {"versions": changelog_mod.parse_changelog(text)}
 
 
+SUPPORTED_LANGUAGES = ("en", "de")
+
+
+@app.get("/api/language")
+async def get_language():
+    """The language of the interface, `[web] language`; anything unknown falls back to English."""
+    raw = cfg_mod.load(_config_path) if _config_path else {}
+    language = raw.get("web", {}).get("language", "en")
+    return {"language": language if language in SUPPORTED_LANGUAGES else "en",
+            "supported": list(SUPPORTED_LANGUAGES)}
+
+
 @app.get("/api/joke")
 async def get_joke():
     """Joke of the day; `[web] joke_of_the_day = false` turns it off and makes no outbound call."""
@@ -1072,6 +1084,7 @@ async def get_config():
             "theme":        web.get("theme", "default"),
             "accent_color": web.get("accent_color"),
             "joke_of_the_day": web.get("joke_of_the_day", True),
+            "language":     web.get("language", "en"),
         },
         "direct": _mask({
             "email":         direct.get("email"),

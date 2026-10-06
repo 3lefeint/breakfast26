@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Home's Target Battle page only handles the setup and the finished screen. The live view is /tv's
   // job; starting a game navigates there, and landing here while a game is already running (back
   // button, another device started it) redirects.
@@ -14,7 +15,7 @@
   });
 </script>
 
-<PageHeader title="Target Battle" />
+<PageHeader title={t('Target Battle')} />
 
 {#if $targetBattle && $targetBattle.state === 'finished'}
   <TargetBattleFinished />

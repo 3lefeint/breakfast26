@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // One row of the list of known players: avatar, name (opens the profile), the Elimination and X01
   // win counts, whether there is a recording of the name and Hide. The columns match the header row
   // of Players.svelte (`.player-row-header`).
@@ -20,13 +21,13 @@
     <span class="pwins">{#if x01Wins}<Icon name="board" size={16} /> {x01Wins}{/if}</span>
     <span class="paudio">
       {#if missingAudio}
-        <span class="no-audio-icon" title="No recording for this name"><Icon name="volume-off" size={18} /></span>
+        <span class="no-audio-icon" title={t('No recording for this name')}><Icon name="volume-off" size={18} /></span>
       {/if}
     </span>
   </span>
   <span class="phide">
     {#if onHide}
-      <button class="btn-hide" onclick={() => onHide(name)}>Hide</button>
+      <button class="btn-hide" onclick={() => onHide(name)}>{t('Hide')}</button>
     {/if}
   </span>
 </li>

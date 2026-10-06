@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The bar above the pages of the Home app: whether the board is connected, a button that opens the
   // TV view and a shortcut to Settings. It spans the whole width, the brand sits at its left.
   import Icon from '../../lib/components/Icon.svelte';
@@ -8,14 +9,14 @@
 </script>
 
 <header class="topbar">
-  <a class="brand" href="#home" title="Breakfast">
+  <a class="brand" href="#home" title={t('Breakfast')}>
     <img class="mark" src={logo} alt="" width="56" height="56">
-    <span class="word">Breakfast</span>
+    <span class="word">{t('Breakfast')}</span>
   </a>
   <div class="right">
-    <span class="status"><span class="dot" class:ok={boardConnected}></span>{boardConnected ? 'Board connected' : 'Board offline'}</span>
-    <a class="btn tv" href="/tv"><Icon name="tv" size={20} /><span>Open TV</span></a>
-    <a class="btn icon" href="#settings" aria-label="Settings" title="Settings"><Icon name="settings" size={20} /></a>
+    <span class="status"><span class="dot" class:ok={boardConnected}></span>{boardConnected ? t('Board connected') : t('Board offline')}</span>
+    <a class="btn tv" href="/tv"><Icon name="tv" size={20} /><span>{t('Open TV')}</span></a>
+    <a class="btn icon" href="#settings" aria-label={t('Settings')} title={t('Settings')}><Icon name="settings" size={20} /></a>
   </div>
 </header>
 

@@ -1,4 +1,5 @@
 <script>
+  import { t, language } from '../../../lib/i18n.js';
   // Collapsible list of recent matches for one game mode, each expandable to
   // its per-player detail.
   import { onMount } from 'svelte';
@@ -43,38 +44,39 @@
   function ordinal(n) {
     if (n == null) return '—';
     const mod100 = n % 100;
+    if (language === 'de') return n + '.';
     const suffix = mod100 >= 11 && mod100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
     return n + suffix;
   }
   function matchDate(m) { return m.started_at ? new Date(m.started_at).toLocaleString() : '?'; }
   function matchMode(m) {
     if (m.game_mode === 'Target Battle') {
-      return `Target Battle · ${m.points_start} ${m.points_start === 1 ? 'round' : 'rounds'} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
+      return `${t('Target Battle')} · ${m.points_start} ${m.points_start === 1 ? t('round') : t('rounds')} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
     }
-    if (m.game_mode === 'Killer') return 'Killer';
-    if (m.game_mode === 'Black Belt') return `Black Belt · ${m.backwards ? 'D20 down to D1' : 'D1 up to D20'}`;
+    if (m.game_mode === 'Killer') return t('Killer');
+    if (m.game_mode === 'Black Belt') return `${t('Black Belt')} · ${m.backwards ? t('D20 down to D1') : t('D1 up to D20')}`;
     if (m.game_mode === 'Field Training') {
-      return `Field Training · ${m.field != null ? fieldLabel(m.field) : '?'} · ${m.points_start} darts`;
+      return `${t('Field Training')} · ${m.field != null ? fieldLabel(m.field) : '?'} · ${t('{n} darts', { n: m.points_start })}`;
     }
-    return [m.game_mode, m.points_start ? m.points_start + ' pts' : ''].filter(Boolean).join(' ');
+    return [m.game_mode, m.points_start ? m.points_start + ' ' + t('pts') : ''].filter(Boolean).join(' ');
   }
   function matchPlayers(m) { return (m.players || []).map(cap).join(' · '); }
   function legsLine(m) {
     const lw = m.legs_won || {};
     const lt = m.legs_total || 0;
     const parts = Object.entries(lw).map(([n, c]) => `${cap(n)} ${c}`).join(' · ');
-    const suffix = lt > 0 ? `  (${lt} leg${lt !== 1 ? 's' : ''})` : '';
+    const suffix = lt > 0 ? `  (${lt === 1 ? t('{n} leg', { n: lt }) : t('{n} legs', { n: lt })})` : '';
     return parts ? parts + suffix : '';
   }
 </script>
 
 <button type="button" class="section-title collapsible-title" onclick={() => open = !open}>
-  <span class="chevron" class:open>▸</span> Recent matches
+  <span class="chevron" class:open>▸</span> {t('Recent matches')}
 </button>
 {#if open}
 <div class="stats-matches">
   {#if !matches.length}
-    <div class="stats-empty">No matches recorded yet.</div>
+    <div class="stats-empty">{t('No matches recorded yet.')}</div>
   {:else}
     {#each matches as m (m.match_id)}
       <div class="stats-match-card" role="button" tabindex="0"
@@ -88,10 +90,10 @@
         {#if openMatches.has(m.match_id)}
           <div class="stats-match-detail open">
             {#if matchDetails[m.match_id] == null}
-              <div class="stats-empty">Load failed.</div>
+              <div class="stats-empty">{t('Load failed.')}</div>
             {:else if mode === 'target_battle'}
               <table class="players-table stats-table detail">
-                <thead><tr><th>Player</th><th class="num-cell">Place</th><th class="num-cell">Points</th></tr></thead>
+                <thead><tr><th>{t('Player')}</th><th class="num-cell">{t('Place')}</th><th class="num-cell">{t('Points')}</th></tr></thead>
                 <tbody>
                   {#each matchDetails[m.match_id].players as p}
                     <tr>
@@ -105,14 +107,14 @@
               <table class="players-table stats-table detail">
                 <thead>
                   <tr>
-                    <th>Round</th><th class="num-cell">Target</th>
+                    <th>{t('Round')}</th><th class="num-cell">{t('Target')}</th>
                     {#each matchDetails[m.match_id].players as p}<th class="num-cell">{cap(p.player)}</th>{/each}
                   </tr>
                 </thead>
                 <tbody>
                   {#each matchDetails[m.match_id].history as r}
                     <tr>
-                      <td>{r.tiebreak ? `Tiebreak ${r.round}` : r.round}</td>
+                      <td>{r.tiebreak ? t('Tiebreak {n}', { n: r.round }) : r.round}</td>
                       <td class="num-cell">{r.target}</td>
                       {#each matchDetails[m.match_id].players as p}<td class="num-cell">{r.scores[p.player] ?? '—'}</td>{/each}
                     </tr>
@@ -123,8 +125,8 @@
               <table class="players-table stats-table detail">
                 <thead>
                   <tr>
-                    <th>Player</th><th class="num-cell">Fields</th><th class="num-cell">Restarts</th>
-                    <th class="num-cell">Darts</th><th class="num-cell"></th>
+                    <th>{t('Player')}</th><th class="num-cell">{t('Fields')}</th><th class="num-cell">{t('Restarts')}</th>
+                    <th class="num-cell">{t('Darts')}</th><th class="num-cell"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -133,7 +135,7 @@
                     <td class="num-cell">{matchDetails[m.match_id].furthest}</td>
                     <td class="num-cell">{matchDetails[m.match_id].restarts}</td>
                     <td class="num-cell">{matchDetails[m.match_id].darts}</td>
-                    <td class="num-cell">{matchDetails[m.match_id].belt ? 'Belt' : ''}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].belt ? t('Belt') : ''}</td>
                   </tr>
                 </tbody>
               </table>
@@ -141,9 +143,9 @@
               <table class="players-table stats-table detail">
                 <thead>
                   <tr>
-                    <th>Player</th><th class="num-cell">Darts</th><th class="num-cell">Points</th>
-                    <th class="num-cell">Hit rate</th><th class="num-cell">Singles</th>
-                    <th class="num-cell">Doubles</th><th class="num-cell">Triples</th><th class="num-cell"></th>
+                    <th>{t('Player')}</th><th class="num-cell">{t('Darts')}</th><th class="num-cell">{t('Points')}</th>
+                    <th class="num-cell">{t('Hit rate')}</th><th class="num-cell">{t('Singles')}</th>
+                    <th class="num-cell">{t('Doubles')}</th><th class="num-cell">{t('Triples')}</th><th class="num-cell"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,7 +157,7 @@
                     <td class="num-cell">{matchDetails[m.match_id].singles}</td>
                     <td class="num-cell">{matchDetails[m.match_id].doubles}</td>
                     <td class="num-cell">{matchDetails[m.match_id].triples}</td>
-                    <td class="num-cell">{matchDetails[m.match_id].counts ? RATING_LABELS[matchDetails[m.match_id].rating] : 'Practice'}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].counts ? RATING_LABELS[matchDetails[m.match_id].rating] : t('Practice')}</td>
                   </tr>
                 </tbody>
               </table>
@@ -163,10 +165,10 @@
               <table class="players-table stats-table detail">
                 <thead>
                   <tr>
-                    <th>Player</th><th class="num-cell">Place</th><th class="num-cell">Number</th>
-                    <th class="num-cell">Lives left</th><th class="num-cell">Killer on turn</th>
-                    <th class="num-cell">Taken</th><th class="num-cell">Knockouts</th>
-                    <th class="num-cell">Own goals</th>
+                    <th>{t('Player')}</th><th class="num-cell">{t('Place')}</th><th class="num-cell">{t('Number')}</th>
+                    <th class="num-cell">{t('Lives left')}</th><th class="num-cell">{t('Killer on turn')}</th>
+                    <th class="num-cell">{t('Taken')}</th><th class="num-cell">{t('Knockouts')}</th>
+                    <th class="num-cell">{t('Own goals')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -186,7 +188,7 @@
               </table>
             {:else if mode === 'elimination'}
               <table class="players-table stats-table detail">
-                <thead><tr><th>Player</th><th class="num-cell">Place</th><th class="num-cell">Lives left</th><th class="num-cell">Turns</th><th class="num-cell">Avg darts</th></tr></thead>
+                <thead><tr><th>{t('Player')}</th><th class="num-cell">{t('Place')}</th><th class="num-cell">{t('Lives left')}</th><th class="num-cell">{t('Turns')}</th><th class="num-cell">{t('Avg darts')}</th></tr></thead>
                 <tbody>
                   {#each Object.entries(matchDetails[m.match_id]) as [name, s]}
                     <tr>
@@ -201,7 +203,7 @@
               </table>
             {:else}
               <table class="players-table stats-table detail">
-                <thead><tr><th>Player</th><th class="num-cell">Avg</th><th class="num-cell">180</th><th class="num-cell">CO%</th></tr></thead>
+                <thead><tr><th>{t('Player')}</th><th class="num-cell">{t('Avg')}</th><th class="num-cell">180</th><th class="num-cell">CO%</th></tr></thead>
                 <tbody>
                   {#each Object.entries(matchDetails[m.match_id]) as [name, s]}
                     <tr>

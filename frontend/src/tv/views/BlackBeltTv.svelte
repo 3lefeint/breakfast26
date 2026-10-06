@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Black Belt. The board shows the darts of the turn with the double that is up lit; beside
   // it the darts of the turn (a hit is marked, tap one to correct it), the ladder, the darts the
@@ -24,19 +25,19 @@
   }
 
   async function finish() {
-    if (!confirm(bb.thrown ? 'End the run now and keep the darts thrown?' : 'Stop the run?')) return;
+    if (!confirm(bb.thrown ? t('End the run now and keep the darts thrown?') : t('Stop the run?'))) return;
     await finishRun();
     if (!bb.thrown) window.location.href = '/';
   }
 
   async function stop() {
-    if (!confirm('Stop the run without keeping it?')) return;
+    if (!confirm(t('Stop the run without keeping it?'))) return;
     await stopRun();
     window.location.href = '/';
   }
 
   async function undo() {
-    if (!confirm('Undo the last completed turn?')) return;
+    if (!confirm(t('Undo the last completed turn?'))) return;
     await undoTurn();
   }
 </script>
@@ -46,7 +47,7 @@
     <div class="who">
       <span class="swatch" style=""><Avatar name={bb.player || ''} color={bb.color} size={100} /></span>
       <span class="name">{bb.player}</span>
-      <span class="turn">Attempt {attempt}{bb.backwards ? ' · backwards' : ''}</span>
+      <span class="turn">{t('Attempt {n}', { n: attempt })}{bb.backwards ? ' · ' + t('backwards') : ''}</span>
     </div>
     <div class="target">
       <span class="target-label">Up</span>
@@ -72,24 +73,24 @@
 
       <div class="hand">
         {#if bb.bonus_darts > 0}
-          <span class="bonus">{bb.bonus_darts} bonus {bb.bonus_darts === 1 ? 'dart' : 'darts'} in hand</span>
+          <span class="bonus">{bb.bonus_darts === 1 ? t('{n} bonus dart in hand', { n: bb.bonus_darts }) : t('{n} bonus darts in hand', { n: bb.bonus_darts })}</span>
         {/if}
-        <span class="own">{bb.own_left} {bb.own_left === 1 ? 'dart' : 'darts'} of its own left at {stepLabel(bb.target)}</span>
+        <span class="own">{bb.own_left === 1 ? t('{n} dart of its own left at {field}', { n: bb.own_left, field: stepLabel(bb.target) }) : t('{n} darts of its own left at {field}', { n: bb.own_left, field: stepLabel(bb.target) })}</span>
       </div>
 
       <BlackBeltLadder steps={bb.steps} position={bb.position} belt={bb.belt} />
 
       <div class="stats">
-        <div class="stat"><span class="value">{bb.position}</span><span class="label">Done</span></div>
-        <div class="stat"><span class="value">{bb.furthest}</span><span class="label">Furthest</span></div>
-        <div class="stat"><span class="value">{bb.restarts}</span><span class="label">Restarts</span></div>
-        <div class="stat"><span class="value">{bb.thrown}</span><span class="label">Darts</span></div>
+        <div class="stat"><span class="value">{bb.position}</span><span class="label">{t('Done')}</span></div>
+        <div class="stat"><span class="value">{bb.furthest}</span><span class="label">{t('Furthest')}</span></div>
+        <div class="stat"><span class="value">{bb.restarts}</span><span class="label">{t('Restarts')}</span></div>
+        <div class="stat"><span class="value">{bb.thrown}</span><span class="label">{t('Darts')}</span></div>
       </div>
 
       <div class="endgame-row">
-        <button class="btn-end-game" onclick={undo}>↩ Undo</button>
-        <button class="btn-end-game" onclick={finish}>⏹ Finish</button>
-        <button class="btn-end-game" onclick={stop}>■ Stop</button>
+        <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
+        <button class="btn-end-game" onclick={finish}>{t('⏹ Finish')}</button>
+        <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
       </div>
     </div>
   </div>

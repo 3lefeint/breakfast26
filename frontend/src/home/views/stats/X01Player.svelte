@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // The X01 side of the per-player section: a player picker, activity and
   // performance tiles, the spread of the turn scores, win/loss and the average
   // per match, the checkout % per match, the doubles, the fastest legs and the highest
@@ -48,59 +49,59 @@
     const missed = Object.values(h.misses).reduce((a, n) => a + n, 0) + h.no_sector_misses;
     const row = (name, value) => ({ name, value, text: String(value), sub: `${((value / h.darts) * 100).toFixed(0)}%` });
     const kinds = [
-      row('Singles', sum((f) => f.startsWith('S'))), row('Doubles', sum((f) => f.startsWith('D'))),
-      row('Triples', sum((f) => f.startsWith('T'))), row('Bull', sum((f) => f === 'BULL' || f === '25')),
-      row('Missed', missed),
+      row(t('Singles'), sum((f) => f.startsWith('S'))), row(t('Doubles'), sum((f) => f.startsWith('D'))),
+      row(t('Triples'), sum((f) => f.startsWith('T'))), row(t('Bull'), sum((f) => f === 'BULL' || f === '25')),
+      row(t('Missed'), missed),
     ].sort((a, b) => b.value - a.value);
     const top = Object.entries(h.fields).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
-      .map(([f, n]) => row(f === 'BULL' ? 'Bull (50)' : f, n));
+      .map(([f, n]) => row(f === 'BULL' ? t('Bull (50)') : f, n));
     return { missed, kinds, top, missRate: h.darts ? (missed / h.darts) * 100 : 0 };
   }
 </script>
 
 <div class="controls">
-  <label for="x01PlayerSelect">Player</label>
+  <label for="x01PlayerSelect">{t('Player')}</label>
   <select id="x01PlayerSelect" bind:value={selected}>
     {#each names as name}<option value={name}>{cap(name)}</option>{/each}
   </select>
 </div>
 
 {#if !names.length}
-  <div class="empty">No players with stats yet — play a game first.</div>
+  <div class="empty">{t('No players with stats yet — play a game first.')}</div>
 {:else if error}
-  <div class="empty">Could not load the player.</div>
+  <div class="empty">{t('Could not load the player.')}</div>
 {:else if data}
   {@const a = data.activity}
   {@const p = data.performance}
   {@const wl = data.win_loss}
 
-  <div class="subtitle">Activity</div>
+  <div class="subtitle">{t('Activity')}</div>
   <div class="tiles">
-    <div class="tile"><div class="label">Total darts</div><div class="value">{a.total_darts}</div></div>
-    <div class="tile"><div class="label">Matches</div><div class="value">{a.total_games}</div></div>
-    <div class="tile"><div class="label">Total playtime</div><div class="value">{a.total_playtime_hours.toFixed(2)}h</div></div>
-    <div class="tile"><div class="label">Total distance</div><div class="value">{a.total_distance_km.toFixed(2)}km</div></div>
+    <div class="tile"><div class="label">{t('Total darts')}</div><div class="value">{a.total_darts}</div></div>
+    <div class="tile"><div class="label">{t('Matches')}</div><div class="value">{a.total_games}</div></div>
+    <div class="tile"><div class="label">{t('Total playtime')}</div><div class="value">{a.total_playtime_hours.toFixed(2)}h</div></div>
+    <div class="tile"><div class="label">{t('Total distance')}</div><div class="value">{a.total_distance_km.toFixed(2)}km</div></div>
   </div>
   <div class="two">
     <div class="card">
-      <div class="card-title">Darts per day played</div>
+      <div class="card-title">{t('Darts per day played')}</div>
       <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: r.darts }))} unit="darts" />
     </div>
     <div class="card">
-      <div class="card-title">Minutes per day played</div>
+      <div class="card-title">{t('Minutes per day played')}</div>
       <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: Math.round(r.minutes) }))} unit="min" />
     </div>
   </div>
 
-  <div class="subtitle">Performance</div>
+  <div class="subtitle">{t('Performance')}</div>
   <div class="tiles">
-    <div class="tile"><div class="label">Best average</div><div class="value">{p.best_avg3.toFixed(1)}</div></div>
-    <div class="tile"><div class="label">Best leg 501</div><div class="value">{p.best_leg_501_darts != null ? p.best_leg_501_darts + ' darts' : '—'}</div></div>
-    <div class="tile"><div class="label">Best checkout</div><div class="value">{p.best_checkout ?? '—'}</div></div>
-    <div class="tile"><div class="label">Total 180s</div><div class="value">{p.total_180s}</div></div>
+    <div class="tile"><div class="label">{t('Best average')}</div><div class="value">{p.best_avg3.toFixed(1)}</div></div>
+    <div class="tile"><div class="label">{t('Best leg 501')}</div><div class="value">{p.best_leg_501_darts != null ? t('{n} darts', { n: p.best_leg_501_darts }) : '—'}</div></div>
+    <div class="tile"><div class="label">{t('Best checkout')}</div><div class="value">{p.best_checkout ?? '—'}</div></div>
+    <div class="tile"><div class="label">{t('Total 180s')}</div><div class="value">{p.total_180s}</div></div>
   </div>
   <div class="card top uni">
-    <div class="card-title">Points per turn</div>
+    <div class="card-title">{t('Points per turn')}</div>
     <div class="middle"><Histogram bins={data.score_histogram.bins} mean={data.score_histogram.avg3} /></div>
   </div>
   {@const h = hitStats(data.dart_hits)}
@@ -109,16 +110,16 @@
   <div class="board-row top">
     <div class="side">
       <div class="tiles two-tiles">
-        <div class="tile"><div class="label">Darts thrown</div><div class="value">{data.dart_hits.darts}</div></div>
-        <div class="tile"><div class="label">Missed the board</div><div class="value">{h.missRate.toFixed(0)}%</div></div>
+        <div class="tile"><div class="label">{t('Darts thrown')}</div><div class="value">{data.dart_hits.darts}</div></div>
+        <div class="tile"><div class="label">{t('Missed the board')}</div><div class="value">{h.missRate.toFixed(0)}%</div></div>
       </div>
       <div class="card">
         <div class="card-title heat-title">
-          <span>Heatmap</span>
+          <span>{t('Heatmap')}</span>
           {#if pos.darts.length}
             <span class="heat-switch">
-              <button type="button" class="mode-tab" class:active={view === 'fields'} onclick={() => (heatView = 'fields')}>Fields</button>
-              <button type="button" class="mode-tab" class:active={view === 'positions'} onclick={() => (heatView = 'positions')}>Positions</button>
+              <button type="button" class="mode-tab" class:active={view === 'fields'} onclick={() => (heatView = 'fields')}>{t('Fields')}</button>
+              <button type="button" class="mode-tab" class:active={view === 'positions'} onclick={() => (heatView = 'positions')}>{t('Positions')}</button>
             </span>
           {/if}
         </div>
@@ -130,36 +131,36 @@
       </div>
     </div>
     <div class="side">
-      <RankBars title="Darts by kind" rows={h.kinds} large />
-      <RankBars title="Most hit fields" rows={h.top} large />
+      <RankBars title={t('Darts by kind')} rows={h.kinds} large />
+      <RankBars title={t('Most hit fields')} rows={h.top} large />
     </div>
   </div>
   {@const bust = data.bust_by_remaining}
   <div class="card top uni">
-    <div class="card-title">Bust rate</div>
+    <div class="card-title">{t('Bust rate')}</div>
     <div class="middle"><BustBands bands={bust.bands} /></div>
-    <div class="card-note">Games from before the fix miss the bust dart itself and busts on the first dart, so their rates are a lower bound.</div>
+    <div class="card-note">{t('Games from before the fix miss the bust dart itself and busts on the first dart, so their rates are a lower bound.')}</div>
   </div>
   <div class="two">
     <div class="card uni">
-      <div class="card-title">Win / Loss</div>
+      <div class="card-title">{t('Win / Loss')}</div>
       <div class="middle">
         <Donut
           segments={[
-            { label: 'Wins', value: wl.wins, color: 'var(--accent)' },
-            { label: 'Losses', value: wl.losses, color: 'var(--muted)' },
+            { label: t('Wins'), value: wl.wins, color: 'var(--accent)' },
+            { label: t('Losses'), value: wl.losses, color: 'var(--muted)' },
           ]}
           centerValue={wl.wins + wl.losses ? fmtPct((wl.wins / (wl.wins + wl.losses)) * 100) : ''}
           centerLabel="{wl.wins} W · {wl.losses} L" />
       </div>
     </div>
     <div class="card uni">
-      <div class="card-title">Average over time</div>
+      <div class="card-title">{t('Average over time')}</div>
       <div class="middle">
         <TrendLine yTitle="avg 3 darts"
           points={data.avg_by_match.map((m) => ({
             date: m.started_at, value: m.avg3,
-            tip: `${new Date(m.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · ${m.avg3.toFixed(1)} · ${m.darts} darts${m.points_start ? ' · ' + m.points_start : ''}`,
+            tip: `${new Date(m.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · ${m.avg3.toFixed(1)} · ${t('{n} darts', { n: m.darts })}${m.points_start ? ' · ' + m.points_start : ''}`,
           }))} />
       </div>
     </div>
@@ -167,11 +168,11 @@
 
   <div class="two">
     <div class="card uni">
-      <div class="card-title">Doubles</div>
+      <div class="card-title">{t('Doubles')}</div>
       <div class="middle"><DoublesRadar doubles={data.doubles} /></div>
     </div>
     <div class="card uni">
-      <div class="card-title">Checkout %</div>
+      <div class="card-title">{t('Checkout %')}</div>
       <div class="middle">
         <TrendLine unit="%" decimals={0}
           points={data.checkout_by_match.map((m) => ({
@@ -183,9 +184,9 @@
   </div>
 
   <div class="card top uni">
-    <div class="card-title">Top 10 legs</div>
+    <div class="card-title">{t('Top 10 legs')}</div>
     {#if !data.leg_modes.length}
-      <div class="empty">No legs won yet.</div>
+      <div class="empty">{t('No legs won yet.')}</div>
     {:else}
       <div class="mode-tabs">
         {#each data.leg_modes as m}
@@ -197,9 +198,9 @@
   </div>
 
   <div class="card top uni">
-    <div class="card-title">Top 10 checkouts</div>
+    <div class="card-title">{t('Top 10 checkouts')}</div>
     {#if !data.top_checkouts.length}
-      <div class="empty">No checkouts recorded yet.</div>
+      <div class="empty">{t('No checkouts recorded yet.')}</div>
     {:else}
       <div class="middle"><TopCheckouts checkouts={data.top_checkouts} /></div>
     {/if}

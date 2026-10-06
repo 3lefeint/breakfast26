@@ -1,8 +1,9 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // How often each turn score came up, in bins of ten points, with both axes
   // labelled, the count on each bar and the average marked. Bins sit between the
   // labelled edges: the bar between 20 and 30 holds the scores 20 to 29.
-  let { bins = [], mean = null, yTitle = 'Turns' } = $props();
+  let { bins = [], mean = null, yTitle = t('Turns') } = $props();
 
   const W = 680, H = 232, LEFT = 46, RIGHT = 10, TOP = 28, BOTTOM = 28, WIDTH = 10, AXIS_MAX = 190;
   const plotW = W - LEFT - RIGHT, plotH = H - TOP - BOTTOM;
@@ -28,19 +29,19 @@
   }
   function describe(i, count) {
     const range = i === 18 ? '180' : `${i * WIDTH}–${i * WIDTH + WIDTH - 1}`;
-    return `${range} points: ${count} ${count === 1 ? 'turn' : 'turns'} (${((count / total) * 100).toFixed(0)}%)`;
+    return t('{range} points: {count} {unit} ({pct}%)', { range, count, unit: count === 1 ? t('turn') : t('turns'), pct: ((count / total) * 100).toFixed(0) });
   }
 </script>
 
 {#if !total}
-  <div class="empty">No turns yet.</div>
+  <div class="empty">{t('No turns yet.')}</div>
 {:else}
-  <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label="Histogram of turn scores">
+  <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label={t('Histogram of turn scores')}>
     <text class="axis-title" x="11" y={TOP + plotH / 2} text-anchor="middle"
           transform="rotate(-90 11 {TOP + plotH / 2})">{yTitle}</text>
-    {#each ticks as t}
-      <line class="grid" x1={LEFT} x2={W - RIGHT} y1={y(t)} y2={y(t)} />
-      <text class="axis" x={LEFT - 6} y={y(t)} text-anchor="end" dominant-baseline="central">{Math.round(t)}</text>
+    {#each ticks as tk}
+      <line class="grid" x1={LEFT} x2={W - RIGHT} y1={y(tk)} y2={y(tk)} />
+      <text class="axis" x={LEFT - 6} y={y(tk)} text-anchor="end" dominant-baseline="central">{Math.round(tk)}</text>
     {/each}
     {#if mean != null}
       <line class="mean" x1={x(mean)} x2={x(mean)} y1={TOP - 6} y2={TOP + plotH} />

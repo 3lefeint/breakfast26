@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Target Battle per player: how they throw (points per round, how many darts land on the target,
   // perfect turns, best turn) and, for the player picked, how often they hit each target number.
   import { cap } from '../../../lib/util.js';
@@ -18,13 +19,13 @@
 </script>
 
 {#if !rows.length}
-  <div class="empty">No finished Target Battle games yet.</div>
+  <div class="empty">{t('No finished Target Battle games yet.')}</div>
 {:else}
   <table class="players-table">
     <thead>
       <tr>
-        <th>Player</th><th class="num">Rounds</th><th class="num">Points / round</th><th class="num">On target</th>
-        <th class="num">Perfect turns</th><th class="num">Best turn</th><th class="num">Alone</th>
+        <th>{t('Player')}</th><th class="num">{t('Rounds')}</th><th class="num">{t('Points / round')}</th><th class="num">{t('On target')}</th>
+        <th class="num">{t('Perfect turns')}</th><th class="num">{t('Best turn')}</th><th class="num">{t('Alone')}</th>
       </tr>
     </thead>
     <tbody>
@@ -33,7 +34,7 @@
           <td><button type="button" class="name" onclick={() => (picked = p.player)}>{cap(p.player)}</button></td>
           <td class="num">{p.turns}</td>
           <td class="num">{num(p.avg_points_per_round, 2)}</td>
-          <td class="num" title="{p.hits} of {p.darts} darts">{p.hit_pct != null ? p.hit_pct.toFixed(0) + '%' : '—'}</td>
+          <td class="num" title={t('{hits} of {darts} darts', { hits: p.hits, darts: p.darts })}>{p.hit_pct != null ? p.hit_pct.toFixed(0) + '%' : '—'}</td>
           <td class="num">{p.perfect_turns}</td>
           <td class="num">{p.best_turn?.score ?? '—'}</td>
           <td class="num">{p.solo_games}</td>
@@ -43,16 +44,16 @@
   </table>
 
   {#if current}
-    <div class="sub">{cap(current.player)} · darts on the target, by target number</div>
-    <div class="bars" role="img" aria-label="Share of darts on the target for each target number from 1 to 20">
+    <div class="sub">{cap(current.player)} · {t('darts on the target, by target number')}</div>
+    <div class="bars" role="img" aria-label={t('Share of darts on the target for each target number from 1 to 20')}>
       {#each byTarget as b (b.target)}
-        <div class="col" title={b.darts ? `${b.target}: ${b.hits} of ${b.darts} darts (${pct(b).toFixed(0)}%)` : `${b.target}: not a target yet`}>
+        <div class="col" title={b.darts ? t('{target}: {hits} of {darts} darts ({pct}%)', { target: b.target, hits: b.hits, darts: b.darts, pct: pct(b).toFixed(0) }) : t('{target}: not a target yet', { target: b.target })}>
           <div class="track"><div class="bar" class:few={b.darts > 0 && b.darts < 6} style:height="{pct(b)}%"></div></div>
           <div class="label">{b.target}</div>
         </div>
       {/each}
     </div>
-    <div class="note">Lighter bars rest on fewer than six darts.</div>
+    <div class="note">{t('Lighter bars rest on fewer than six darts.')}</div>
   {/if}
 {/if}
 

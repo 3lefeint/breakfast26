@@ -1,4 +1,5 @@
 // Helpers for the achievement badges and the profile view.
+import { t, language } from './i18n.js';
 
 // The exported motifs (tools/generate_badges.py --export) by achievement id.
 const motifFiles = import.meta.glob('./assets/badges/*.png', { eager: true, import: 'default' });
@@ -11,10 +12,9 @@ export function motifUrl(id) {
   return motifs[id] || null;
 }
 
-// Texts come in several languages, {en, de}. The UI is English until the language
-// switch exists.
+// Texts come in several languages, {en, de}; the one of the installation is shown.
 export function localized(texts) {
-  return texts ? texts.en : null;
+  return texts ? texts[language] ?? texts.en : null;
 }
 
 export function isEarned(item) {
@@ -22,14 +22,14 @@ export function isEarned(item) {
 }
 
 const GROUPS = [
-  ['general', 'General'],
+  ['general', t('General')],
   ['x01', 'X01'],
-  ['elimination', 'Elimination'],
-  ['killer', 'Killer'],
-  ['target_battle', 'Target Battle'],
-  ['field_training', 'Field Training'],
-  ['black_belt', 'Black Belt'],
-  ['easter_egg', 'Easter eggs'],
+  ['elimination', t('Elimination')],
+  ['killer', t('Killer')],
+  ['target_battle', t('Target Battle')],
+  ['field_training', t('Field Training')],
+  ['black_belt', t('Black Belt')],
+  ['easter_egg', t('Easter eggs')],
 ];
 
 // Sections by game mode, in the order above, each split into what is earned (newest
@@ -38,7 +38,7 @@ const GROUPS = [
 // show which mode they belong to. Empty sections are left out.
 export function groupAchievements(items) {
   const sections = GROUPS.map(([key, label]) => ({ key, label, earned: [], open: [] }));
-  const secret = { key: 'secret', label: 'Secret', earned: [], open: [] };
+  const secret = { key: 'secret', label: t('Secret'), earned: [], open: [] };
   for (const item of items) {
     if (item.hidden && !isEarned(item)) {
       secret.open.push(item);
@@ -66,6 +66,6 @@ export function rarityText(item) {
   if (item.percent == null) return '';
   const share = item.percent > 0 && item.percent < 1 ? '<1' : String(Math.round(item.percent));
   return item.tiers
-    ? `${share}% of players reached tier ${Math.max(item.tier, 1)}`
-    : `${share}% of players have this`;
+    ? t('{share}% of players reached tier {tier}', { share, tier: Math.max(item.tier, 1) })
+    : t('{share}% of players have this', { share });
 }

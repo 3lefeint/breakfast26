@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // What an online match needs to say on the TV: who is playing where, that the match waits for
   // a site, the host's decision once it is gone for good, and anything that went wrong.
   import { onDestroy } from 'svelte';
@@ -22,29 +23,29 @@
   {#if online.decision}
     <div class="banner decide">
       <div>
-        {online.decision.map((d) => d.site).join(', ')} did not come back.
+        {t('{sites} did not come back.', { sites: online.decision.map((d) => d.site).join(', ') })}
         {#if online.host}
-          Play on without {online.decision.length > 1 ? 'them' : 'it'} (their players are out) or end the match?
+          {online.decision.length > 1 ? t('Play on without them (their players are out) or end the match?') : t('Play on without it (their players are out) or end the match?')}
         {:else}
-          The host decides how to go on.
+          {t('The host decides how to go on.')}
         {/if}
       </div>
       {#if online.host}
         <div class="actions">
-          <button class="btn-b" onclick={() => decide('continue')}>Play on</button>
-          <button class="btn-b danger" onclick={() => decide('abort')}>End the match</button>
+          <button class="btn-b" onclick={() => decide('continue')}>{t('Play on')}</button>
+          <button class="btn-b danger" onclick={() => decide('abort')}>{t('End the match')}</button>
         </div>
       {/if}
     </div>
   {:else if online.phase === 'paused'}
-    <div class="banner warn">Waiting for {online.paused?.site} to reconnect… {seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : ''}</div>
+    <div class="banner warn">{t('Waiting for {site} to reconnect…', { site: online.paused?.site })} {seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : ''}</div>
   {:else if !online.connected}
-    <div class="banner warn">The connection to the relay is lost, reconnecting…</div>
+    <div class="banner warn">{t('The connection to the relay is lost, reconnecting…')}</div>
   {:else if online.message}
     <div class="banner err">{online.message}</div>
   {/if}
   {#if remote && online.phase === 'playing'}
-    <div class="remote">{cap(currentPlayer)} plays at {owner}</div>
+    <div class="remote">{t('{name} plays at {site}', { name: cap(currentPlayer), site: owner })}</div>
   {/if}
 {/if}
 

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Killer. The board is the stage: the field of every player's number is colored in the player's
   // color for the whole game, and the board shows what is open for whoever is up: the double of the
@@ -39,13 +40,13 @@
   }
 
   async function stop() {
-    if (!confirm('Stop the current game?')) return;
+    if (!confirm(t('Stop the current game?'))) return;
     await api('POST', '/api/killer/stop');
     window.location.href = '/';
   }
 
   async function undo() {
-    if (!confirm('Undo the last completed turn?')) return;
+    if (!confirm(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/killer/undo');
   }
 </script>
@@ -77,9 +78,9 @@
             </span>
             <span class="slot">
               {#if p.out}
-                <span class="tag">OUT</span>
+                <span class="tag">{t('OUT')}</span>
               {:else if p.killer}
-                <span class="tag killer">KILLER</span>
+                <span class="tag killer">{t('KILLER')}</span>
               {:else if killer.phase === 'bull_off'}
                 <span class="num">{p.bull_off_mm != null ? `${p.bull_off_mm} mm` : '—'}</span>
               {:else}
@@ -94,7 +95,7 @@
       {#if preGame}
         <div class="darts-row single">
           <button type="button" class="dart-box" disabled={lastThrow == null} onclick={() => (correctingLast = true)}>
-            <span class="dlabel">Last throw{thrower ? ` · ${cap(thrower.name)}` : ''}</span>
+            <span class="dlabel">{t('Last throw')}{thrower ? ` · ${cap(thrower.name)}` : ''}</span>
             <span class="dval">{lastThrow ? dartLabel(lastThrow) : '—'}</span>
           </button>
         </div>
@@ -117,8 +118,8 @@
       </ul>
 
       <div class="endgame-row">
-        <button class="btn-end-game" onclick={undo}>↩ Undo</button>
-        <button class="btn-end-game" onclick={stop}>■ Stop</button>
+        <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
+        <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
       </div>
     </div>
   </div>

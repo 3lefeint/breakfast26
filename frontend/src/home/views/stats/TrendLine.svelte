@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // A value over a series of matches, oldest to newest: one point per match,
   // evenly spaced, with both axes labelled and the dates marked where the day
   // changes. The best and the latest value carry their number. `width` is the
@@ -46,16 +47,16 @@
 </script>
 
 {#if !points.length}
-  <div class="empty">No matches yet.</div>
+  <div class="empty">{t('No matches yet.')}</div>
 {:else}
-  <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label={yTitle || 'Trend per match'}>
+  <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label={yTitle || t('Trend per match')}>
     {#if yTitle}
       <text class="axis-title" x="11" y={TOP + plotH / 2} text-anchor="middle"
             transform="rotate(-90 11 {TOP + plotH / 2})">{yTitle}</text>
     {/if}
-    {#each ticks as t}
-      <line class="grid" x1={LEFT} x2={W - RIGHT} y1={y(t)} y2={y(t)} />
-      <text class="axis" x={LEFT - 6} y={y(t)} text-anchor="end" dominant-baseline="central">{Math.round(t)}{unit}</text>
+    {#each ticks as tk}
+      <line class="grid" x1={LEFT} x2={W - RIGHT} y1={y(tk)} y2={y(tk)} />
+      <text class="axis" x={LEFT - 6} y={y(tk)} text-anchor="end" dominant-baseline="central">{Math.round(tk)}{unit}</text>
     {/each}
     {#each dayMarks as m}
       <line class="edge" x1={x(m.i)} x2={x(m.i)} y1={TOP + plotH} y2={TOP + plotH + 4} />

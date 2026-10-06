@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Ports tv.html's #activeElim: two-column layout (player card | scrollable
   // turn-queue list). Dart boxes are tap-to-correct, unlike Home's
   // plain DartsRow, so they're inlined here rather than reusing that
@@ -40,13 +41,13 @@
   }
 
   async function stop() {
-    if (!confirm(online ? 'Leave the online match?' : 'Stop the current game?')) return;
+    if (!confirm(online ? t('Leave the online match?') : t('Stop the current game?'))) return;
     await api('POST', '/api/elimination/stop');
     window.location.href = '/';
   }
 
   async function undo() {
-    if (!confirm('Undo the last completed turn?')) return;
+    if (!confirm(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/elimination/undo');
   }
 </script>
@@ -67,17 +68,17 @@
     <div class="live-board"><DartBoard readonly darts={boardDarts} /></div>
   {/if}
   <div class="elim-target-row">
-    <span class="elim-target-label">Target</span>
+    <span class="elim-target-label">{t('Target')}</span>
     <span class="elim-target-value">{elimination.target != null ? elimination.target + 1 : '—'}</span>
   </div>
   <div class="freipass-badge-row">
     {#if elimination.freipass}
-      <span class="freipass-badge">Freipass</span>
+      <span class="freipass-badge">{t('Freipass')}</span>
     {/if}
   </div>
   <div class="elim-endgame-row">
-    {#if !online}<button class="btn-end-game" onclick={undo}>↩ Undo</button>{/if}
-    <button class="btn-end-game" onclick={stop}>■ Stop</button>
+    {#if !online}<button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>{/if}
+    <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
   </div>
 </div>
 

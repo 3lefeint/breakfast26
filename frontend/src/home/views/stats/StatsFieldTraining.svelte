@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Field Training half of the Stats tab: per player and field the best and the average points of
   // the runs that count, the trend over those runs, the hit rate, where the darts landed and the
   // runs themselves. Points are on the scale of the standard length (100 darts at a number, 50 at
@@ -27,7 +28,7 @@
   let counted = $derived((field?.runs || []).filter((r) => r.counts));
   let trend = $derived(counted.map((r) => ({
     value: r.scaled_points, date: r.date,
-    tip: `${r.points} points in ${r.darts} darts · ${percent(r.hit_rate)} hit rate`,
+    tip: t('{points} points in {darts} darts · {rate} hit rate', { points: r.points, darts: r.darts, rate: percent(r.hit_rate) }),
   })));
   let recent = $derived([...(field?.runs || [])].reverse().slice(0, 15));
   let latest = $derived(counted.length ? counted[counted.length - 1] : null);
@@ -36,19 +37,19 @@
 </script>
 
 {#if loadFailed}
-  <div class="empty">Could not load stats.</div>
+  <div class="empty">{t('Could not load stats.')}</div>
 {:else if data && !players.length}
-  <div class="empty">No Field Training runs yet.</div>
+  <div class="empty">{t('No Field Training runs yet.')}</div>
 {:else if data && player && field}
   {#if players.length > 1}
-    <div class="picker" role="tablist" aria-label="Player">
+    <div class="picker" role="tablist" aria-label={t('Player')}>
       {#each players as p}
         <button type="button" class="pick" class:active={p.player === player.player}
                 onclick={() => { playerName = p.player; fieldNumber = null; }}>{cap(p.player)}</button>
       {/each}
     </div>
   {/if}
-  <div class="picker" role="tablist" aria-label="Field">
+  <div class="picker" role="tablist" aria-label={t('Field')}>
     {#each player.fields as f}
       <button type="button" class="pick" class:active={f.field === field.field}
               onclick={() => (fieldNumber = f.field)}>{fieldLabel(f.field)}</button>
@@ -57,33 +58,33 @@
 
   <div class="section-title">{cap(player.player)} · {fieldLabel(field.field)}</div>
   <div class="stat-tiles">
-    <div class="stat-tile"><div class="stat-tile-label">Runs</div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Runs')}</div>
       <div class="stat-tile-value">{field.runs.length}</div>
-      <div class="sub">{field.counted} counted · {field.practice} practice</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Best</div>
+      <div class="sub">{t('{counted} counted · {practice} practice', { counted: field.counted, practice: field.practice })}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Best')}</div>
       <div class="stat-tile-value">{field.best ?? '—'}</div>
-      <div class="sub">per {field.standard_darts} darts</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Average</div>
+      <div class="sub">{t('per {n} darts', { n: field.standard_darts })}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Average')}</div>
       <div class="stat-tile-value">{field.average ?? '—'}</div>
-      <div class="sub">per {field.standard_darts} darts</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Hit rate</div>
+      <div class="sub">{t('per {n} darts', { n: field.standard_darts })}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Hit rate')}</div>
       <div class="stat-tile-value">{percent(field.hit_rate)}</div>
-      <div class="sub">all darts</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Latest rating</div>
+      <div class="sub">{t('all darts')}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Latest rating')}</div>
       <div class="stat-tile-value">{latest?.rating ? RATING_LABELS[latest.rating] : '—'}</div>
       <div class="sub">{latest ? dateOf(latest.date) : ''}</div></div>
   </div>
 
-  <div class="section-title top">Points per run</div>
+  <div class="section-title top">{t('Points per run')}</div>
   <div class="card"><TrendLine points={trend} yTitle="Points per {field.standard_darts} darts" decimals={1} width={680} /></div>
 
-  <div class="section-title top">Where the darts landed</div>
+  <div class="section-title top">{t('Where the darts landed')}</div>
   <div class="card heat"><PositionHeatmap darts={field.positions.darts} corrected={field.positions.corrected} /></div>
 
-  <div class="section-title top">Runs</div>
+  <div class="section-title top">{t('Runs')}</div>
   <table class="runs">
     <thead>
-      <tr><th>Date</th><th class="num">Darts</th><th class="num">Points</th><th class="num">Per {field.standard_darts}</th><th class="num">Hit rate</th><th></th></tr>
+      <tr><th>{t('Date')}</th><th class="num">{t('Darts')}</th><th class="num">{t('Points')}</th><th class="num">{t('Per {n}', { n: field.standard_darts })}</th><th class="num">{t('Hit rate')}</th><th></th></tr>
     </thead>
     <tbody>
       {#each recent as r (r.match_id)}
@@ -93,7 +94,7 @@
           <td class="num">{r.points}</td>
           <td class="num">{r.counts ? r.scaled_points : '—'}</td>
           <td class="num">{percent(r.hit_rate)}</td>
-          <td class="num">{r.counts ? RATING_LABELS[r.rating] : 'Practice'}</td>
+          <td class="num">{r.counts ? RATING_LABELS[r.rating] : t('Practice')}</td>
         </tr>
       {/each}
     </tbody>

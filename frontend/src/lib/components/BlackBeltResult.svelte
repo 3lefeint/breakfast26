@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // The result of a finished Black Belt run: the belt or how far the player got, the restarts and
   // darts, how far each attempt got and where the darts landed. Shown on Home and on the TV.
   import BlackBeltLadder from './BlackBeltLadder.svelte';
@@ -16,23 +17,23 @@
 <div class="result" class:large>
   <div class="headline">
     {#if r.belt}
-      <div class="belt">🥋 Black Belt</div>
-      <div class="meta">{bb.player} · {r.darts} darts · {r.restarts} {r.restarts === 1 ? 'restart' : 'restarts'}{bb.backwards ? ' · backwards' : ''}</div>
+      <div class="belt">{t('🥋 Black Belt')}</div>
+      <div class="meta">{bb.player} · {t('{n} darts', { n: r.darts })} · {r.restarts} {r.restarts === 1 ? t('restart') : t('restarts')}{bb.backwards ? ' · ' + t('backwards') : ''}</div>
     {:else}
-      <div class="points">{r.furthest}<span class="unit">of {total} fields</span></div>
-      <div class="meta">{bb.player} · furthest {reached} · {r.darts} darts · {r.restarts} {r.restarts === 1 ? 'restart' : 'restarts'}{bb.backwards ? ' · backwards' : ''}</div>
+      <div class="points">{r.furthest}<span class="unit">{t('of {total} fields', { total })}</span></div>
+      <div class="meta">{bb.player} · {t('furthest {n}', { n: reached })} · {t('{n} darts', { n: r.darts })} · {r.restarts} {r.restarts === 1 ? t('restart') : t('restarts')}{bb.backwards ? ' · ' + t('backwards') : ''}</div>
     {/if}
   </div>
 
   <div class="content">
     <div class="left">
       <BlackBeltLadder steps={bb.steps} position={r.furthest} belt={r.belt} />
-      <div class="attempts" aria-label="Fields done in every attempt">
+      <div class="attempts" aria-label={t('Fields done in every attempt')}>
         {#each attempts as a, i}
-          <span class="bar" class:full={a >= total} title="Attempt {i + 1}: {a} of {total}" style="height: {Math.max(4, (a / total) * 100)}%"></span>
+          <span class="bar" class:full={a >= total} title={t('Attempt {n}: {a} of {total}', { n: i + 1, a, total })} style="height: {Math.max(4, (a / total) * 100)}%"></span>
         {/each}
       </div>
-      <div class="caption">Fields done per attempt</div>
+      <div class="caption">{t('Fields done per attempt')}</div>
     </div>
     <div class="board"><DartBoard readonly darts={runDots(bb)} /></div>
   </div>

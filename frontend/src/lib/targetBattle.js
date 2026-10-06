@@ -1,4 +1,5 @@
 import { api, apiJson } from './api.js';
+import { t } from './i18n.js';
 
 // Start the game that just finished once more: same players in the same order, same options.
 export async function rematch(tb) {
@@ -9,7 +10,7 @@ export async function rematch(tb) {
     tiebreak: tb.setup.tiebreak,
     targets: tb.setup.targets,
   });
-  if (res.error) alert(res.error);
+  if (res.error) alert(t(res.error));
   return !res.error;
 }
 
@@ -19,17 +20,17 @@ export function stopGame() {
 }
 
 export const SCORING_LABELS = {
-  standard: 'Standard: single 1, double 2, triple 3',
-  singles: 'Singles only',
-  doubles: 'Doubles only',
-  triples: 'Triples only',
+  standard: t('Standard: single 1, double 2, triple 3'),
+  singles: t('Singles only'),
+  doubles: t('Doubles only'),
+  triples: t('Triples only'),
 };
 
 export const SCORING_SHORT = {
-  standard: 'Standard',
-  singles: 'Singles only',
-  doubles: 'Doubles only',
-  triples: 'Triples only',
+  standard: t('Standard'),
+  singles: t('Singles only'),
+  doubles: t('Doubles only'),
+  triples: t('Triples only'),
 };
 
 // The players, best first; players on the same total keep their seating order.

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Elimination half of the Stats tab: headline numbers, how each player
   // finishes compared with chance, recent Elimination matches and per-player
   // activity.
@@ -35,56 +36,56 @@
   function recordSub(r, showTarget) {
     if (!r) return '';
     const date = new Date(r.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${showTarget ? `had to beat ${r.target} · ` : ''}${cap(r.player)} · ${date}`;
+    return `${showTarget ? `${t('had to beat {n}', { n: r.target })} · ` : ''}${cap(r.player)} · ${date}`;
   }
 
   function duration(minutes) {
     if (minutes == null) return '—';
-    return minutes < 60 ? `${minutes.toFixed(1)} min` : `${(minutes / 60).toFixed(1)} h`;
+    return minutes < 60 ? `${minutes.toFixed(1)} ${t('min')}` : `${(minutes / 60).toFixed(1)} h`;
   }
 </script>
 
 {#if loadFailed}
-  <div class="empty">Could not load stats.</div>
+  <div class="empty">{t('Could not load stats.')}</div>
 {:else if summary}
-  <div class="section-title">Overview</div>
+  <div class="section-title">{t('Overview')}</div>
   <div class="stat-tiles">
-    <div class="stat-tile"><div class="stat-tile-label">Games</div><div class="stat-tile-value">{summary.games}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Total playtime</div><div class="stat-tile-value">{duration(summary.total_minutes)}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Average game</div><div class="stat-tile-value">{duration(summary.avg_minutes)}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Longest game</div><div class="stat-tile-value">{duration(summary.longest_minutes)}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Games')}</div><div class="stat-tile-value">{summary.games}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Total playtime')}</div><div class="stat-tile-value">{duration(summary.total_minutes)}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Average game')}</div><div class="stat-tile-value">{duration(summary.avg_minutes)}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Longest game')}</div><div class="stat-tile-value">{duration(summary.longest_minutes)}</div></div>
   </div>
   {#if records}
     <div class="records">
       <div class="record">
-        <div class="stat-tile-label">Highest score</div>
+        <div class="stat-tile-label">{t('Highest score')}</div>
         <div class="stat-tile-value">{records.highest_score?.score ?? '—'}</div>
         <div class="record-sub">{recordSub(records.highest_score, false)}</div>
       </div>
       <div class="record">
-        <div class="stat-tile-label">Highest score that still lost a life</div>
+        <div class="stat-tile-label">{t('Highest score that still lost a life')}</div>
         <div class="stat-tile-value">{records.highest_lost_score?.score ?? '—'}</div>
         <div class="record-sub">{recordSub(records.highest_lost_score, true)}</div>
       </div>
     </div>
   {/if}
 
-  <div class="section-title top">Wins and placements</div>
+  <div class="section-title top">{t('Wins and placements')}</div>
   <Panel><PlacementRows {players} /></Panel>
 
-  <div class="section-title top">Form · last 15 games</div>
+  <div class="section-title top">{t('Form · last 15 games')}</div>
   <Panel><FormStrip {players} /></Panel>
 
-  <div class="section-title top">Head to head</div>
+  <div class="section-title top">{t('Head to head')}</div>
   <Panel><HeadToHead pairs={headToHead} order={players.map((p) => p.player)} /></Panel>
 
-  <div class="section-title top">Game length · by lives</div>
+  <div class="section-title top">{t('Game length · by lives')}</div>
   <Panel><GameLengths games={gameLengths} /></Panel>
 {/if}
 
 <RecentMatches mode="elimination" />
 
-<div class="section-title top2">Activity</div>
+<div class="section-title top2">{t('Activity')}</div>
 <Dashboard players={players.map((p) => p.player)} />
 
 <style>

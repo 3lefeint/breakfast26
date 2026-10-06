@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on Home: placements and scores, a rematch with the same
   // players and options, a new setup, or undoing the turn that ended the game.
@@ -17,7 +18,7 @@
   }
 
   async function undoWin() {
-    if (!confirm('Undo the last turn and resume the game?')) return;
+    if (!confirm(t('Undo the last turn and resume the game?'))) return;
     await api('POST', '/api/target-battle/undo');
   }
 </script>
@@ -26,11 +27,9 @@
   {#if !solo}<ConfettiBurst />{/if}
   <div class="section finished">
     <div class="heading">
-      {#if solo}Finished
-      {:else if tb.winners.length > 1}{tb.winners.map(cap).join(' and ')} win
-      {:else}{cap(tb.winners[0] || '')} wins{/if}
+      {#if solo}{t('Finished')}{:else if tb.winners.length > 1}{t('{names} win', { names: tb.winners.map(cap).join(t(' and ')) })}{:else}{t('{name} wins', { name: cap(tb.winners[0] || '') })}{/if}
     </div>
-    <div class="meta">{tb.rounds} {tb.rounds === 1 ? 'round' : 'rounds'} · {SCORING_LABELS[tb.scoring] || tb.scoring}</div>
+    <div class="meta">{tb.rounds} {tb.rounds === 1 ? t('round') : t('rounds')} · {SCORING_LABELS[tb.scoring] || tb.scoring}</div>
     <ul class="results">
       {#each rows as p (p.name)}
         <li class:winner={tb.winners.includes(p.name)}>
@@ -44,9 +43,9 @@
       {/each}
     </ul>
     <div class="actions">
-      <button class="btn btn-start" onclick={again}>↻ Rematch</button>
-      <button class="btn ghost" onclick={stopGame}>New game</button>
-      <button class="btn ghost" onclick={undoWin}>↩ Undo last turn</button>
+      <button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>
+      <button class="btn ghost" onclick={stopGame}>{t('New game')}</button>
+      <button class="btn ghost" onclick={undoWin}>{t('↩ Undo last turn')}</button>
     </div>
   </div>
 {/if}

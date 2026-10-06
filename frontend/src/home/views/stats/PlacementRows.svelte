@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // One row per player: a stacked bar of how often they finished 1st, 2nd and
   // 3rd, with a marker at the win share they would have by chance (a win in a
   // two-player game is worth less than in a three-player game). Bar past the
@@ -6,7 +7,7 @@
   import { cap } from '../../../lib/util.js';
   import { RANKS } from './ranks.js';
 
-  let { players = [], emptyText = 'No Elimination games yet — play one first.' } = $props();
+  let { players = [], emptyText = t('No Elimination games yet — play one first.') } = $props();
 
   let rows = $derived(players.map((p) => {
     const share = (n) => (p.games ? (n / p.games) * 100 : 0);
@@ -31,27 +32,27 @@
     {#each RANKS.filter((r) => r.key !== 'other' || hasLower) as r}
       <span class="legend-item"><span class="swatch" style:background={r.color}></span>{r.label}</span>
     {/each}
-    <span class="legend-item"><span class="tick"></span>expected by chance</span>
+    <span class="legend-item"><span class="tick"></span>{t('expected by chance')}</span>
   </div>
 
   {#each rows as p (p.player)}
     <div class="row" role="img"
-         aria-label="{cap(p.player)}: {p.wins} wins in {p.games} games, {p.expected_wins.toFixed(1)} expected by chance">
+         aria-label={t('{name}: {wins} wins in {games} games, {expected} expected by chance', { name: cap(p.player), wins: p.wins, games: p.games, expected: p.expected_wins.toFixed(1) })}>
       <div class="name">{cap(p.player)}</div>
       <div class="bar-wrap">
         <div class="bar">
           {#each p.segments as s}
             <div class="segment" style:width="{s.width}%" style:background={s.color} style:color={s.ink}
-                 title="{s.label}: {s.n} of {p.games} games ({s.width.toFixed(0)}%)">{s.n}</div>
+                 title={t('{label}: {n} of {games} games ({pct}%)', { label: s.label, n: s.n, games: p.games, pct: s.width.toFixed(0) })}>{s.n}</div>
           {/each}
         </div>
         <div class="expected" style:left="{p.expectedShare}%"
-             title="Expected by chance: {p.expected_wins.toFixed(1)} wins ({p.expectedShare.toFixed(0)}%)"></div>
+             title={t('Expected by chance: {wins} wins ({pct}%)', { wins: p.expected_wins.toFixed(1), pct: p.expectedShare.toFixed(0) })}></div>
       </div>
       <div class="numbers">
         <span class="wins">{p.wins}/{p.games}</span> <span class="pct">{p.win_pct.toFixed(0)}%</span>
         <span class="diff" class:up={p.diff > 0.05} class:down={p.diff < -0.05}
-              title="Wins minus the wins expected by chance">{signed(p.diff)}</span>
+              title={t('Wins minus the wins expected by chance')}>{signed(p.diff)}</span>
       </div>
     </div>
   {/each}

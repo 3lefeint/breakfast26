@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Home's Elimination tab only handles Setup and the Finished/rematch
   // screen — the live view is /tv's job (and does it better: full-width
   // layout, tap-to-correct darts, the voice-call role toggle). Starting
@@ -24,15 +25,15 @@
   });
 </script>
 
-<PageHeader title="Elimination" />
+<PageHeader title={t('Elimination')} />
 
 {#if $elimination && $elimination.state === 'finished'}
   <EliminationFinished />
 {:else if !($elimination && $elimination.active)}
   {#if !onlineOpen}
-    <div class="mode-chips" role="tablist" aria-label="Game type">
-      <button type="button" role="tab" class="mode-chip" class:active={mode === 'local'} aria-selected={mode === 'local'} onclick={() => (mode = 'local')}>Local</button>
-      <button type="button" role="tab" class="mode-chip" class:active={mode === 'online'} aria-selected={mode === 'online'} onclick={() => (mode = 'online')}>Online</button>
+    <div class="mode-chips" role="tablist" aria-label={t('Game type')}>
+      <button type="button" role="tab" class="mode-chip" class:active={mode === 'local'} aria-selected={mode === 'local'} onclick={() => (mode = 'local')}>{t('Local')}</button>
+      <button type="button" role="tab" class="mode-chip" class:active={mode === 'online'} aria-selected={mode === 'online'} onclick={() => (mode = 'online')}>{t('Online')}</button>
     </div>
   {/if}
   {#if onlineOpen || mode === 'online'}

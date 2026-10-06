@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // The mockup's crown — mockups/elimination_crown_mockups.png +
   // mockups/crown.png — shown above/overlapping the first letter of
   // whoever currently has the most Elimination wins, so it reads as
@@ -8,7 +9,7 @@
   import crownUrl from '../assets/crown.png';
 </script>
 
-<img class="crown-icon" src={crownUrl} alt="Most elimination wins" />
+<img class="crown-icon" src={crownUrl} alt={t('Most elimination wins')} />
 
 <style>
   .crown-icon {

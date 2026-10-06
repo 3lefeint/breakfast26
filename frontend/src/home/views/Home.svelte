@@ -3,16 +3,17 @@
   // navigation to Players, Stats, Board and Settings and the link to the TV live in the shell.
   import { fly } from 'svelte/transition';
   import Icon from '../../lib/components/Icon.svelte';
+  import { t } from '../../lib/i18n.js';
 
   const SECTIONS = [
-    { title: 'Multiplayer', columns: 3, cards: [
-      { href: '#elimination', icon: 'elimination', label: 'Elimination', sub: 'Beat the last score' },
-      { href: '#target-battle', icon: 'target-battle', label: 'Target Battle', sub: 'All throw at one number' },
-      { href: '#killer', icon: 'killer', label: 'Killer', sub: 'Last one standing' },
+    { title: t('Multiplayer'), columns: 3, cards: [
+      { href: '#elimination', icon: 'elimination', label: t('Elimination'), sub: t('Beat the last score') },
+      { href: '#target-battle', icon: 'target-battle', label: t('Target Battle'), sub: t('All throw at one number') },
+      { href: '#killer', icon: 'killer', label: t('Killer'), sub: t('Last one standing') },
     ] },
-    { title: 'Singleplayer', columns: 2, cards: [
-      { href: '#field-training', icon: 'field-training', label: 'Field Training', sub: 'Darts at one field' },
-      { href: '#black-belt', icon: 'black-belt', label: 'Black Belt', sub: 'The doubles ladder' },
+    { title: t('Singleplayer'), columns: 2, cards: [
+      { href: '#field-training', icon: 'field-training', label: t('Field Training'), sub: t('Darts at one field') },
+      { href: '#black-belt', icon: 'black-belt', label: t('Black Belt'), sub: t('The doubles ladder') },
     ] },
   ];
 </script>

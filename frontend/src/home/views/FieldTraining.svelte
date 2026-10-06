@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Home's Field Training page only handles the setup and the finished screen. The live view is
   // /tv's job; starting a run navigates there, and landing here while a run is already open (back
   // button, another device started it) redirects.
@@ -14,7 +15,7 @@
   });
 </script>
 
-<PageHeader title="Field Training" />
+<PageHeader title={t('Field Training')} />
 
 {#if $fieldTraining && $fieldTraining.state === 'finished'}
   <FieldTrainingFinished />

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Target Battle half of the Stats tab. The chips pick the scoring profile, since points are only
   // comparable under the same rules; everything below counts only games of that profile.
   import { cap } from '../../../lib/util.js';
@@ -44,12 +45,12 @@
 
   function duration(minutes) {
     if (minutes == null) return '—';
-    return minutes < 60 ? `${minutes.toFixed(1)} min` : `${(minutes / 60).toFixed(1)} h`;
+    return minutes < 60 ? `${minutes.toFixed(1)} ${t('min')}` : `${(minutes / 60).toFixed(1)} h`;
   }
   function dateOf(d) { return new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
 </script>
 
-<div class="profiles" role="tablist" aria-label="Scoring profile">
+<div class="profiles" role="tablist" aria-label={t('Scoring profile')}>
   {#each Object.entries(SCORING_SHORT) as [key, label]}
     <button type="button" role="tab" class="profile" class:active={scoring === key} aria-selected={scoring === key}
             onclick={() => select(key)}>{label}</button>
@@ -57,25 +58,25 @@
 </div>
 
 {#if loadFailed}
-  <div class="empty">Could not load stats.</div>
+  <div class="empty">{t('Could not load stats.')}</div>
 {:else if data}
-  <div class="section-title">Overview</div>
+  <div class="section-title">{t('Overview')}</div>
   <div class="stat-tiles">
-    <div class="stat-tile"><div class="stat-tile-label">Games</div><div class="stat-tile-value">{summary.games ?? 0}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Total playtime</div><div class="stat-tile-value">{duration(summary.total_minutes)}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Average game</div><div class="stat-tile-value">{duration(summary.avg_minutes)}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Longest game</div><div class="stat-tile-value">{duration(summary.longest_minutes)}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Games')}</div><div class="stat-tile-value">{summary.games ?? 0}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Total playtime')}</div><div class="stat-tile-value">{duration(summary.total_minutes)}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Average game')}</div><div class="stat-tile-value">{duration(summary.avg_minutes)}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Longest game')}</div><div class="stat-tile-value">{duration(summary.longest_minutes)}</div></div>
   </div>
   <div class="records">
     <div class="record">
-      <div class="stat-tile-label">Best game</div>
+      <div class="stat-tile-label">{t('Best game')}</div>
       <div class="stat-tile-value">{records.best_game?.score ?? '—'}</div>
       <div class="record-sub">
-        {#if records.best_game}{records.best_game.rounds} {records.best_game.rounds === 1 ? 'round' : 'rounds'} · {cap(records.best_game.player)} · {dateOf(records.best_game.date)}{/if}
+        {#if records.best_game}{records.best_game.rounds} {records.best_game.rounds === 1 ? t('round') : t('rounds')} · {cap(records.best_game.player)} · {dateOf(records.best_game.date)}{/if}
       </div>
     </div>
     <div class="record">
-      <div class="stat-tile-label">Best turn</div>
+      <div class="stat-tile-label">{t('Best turn')}</div>
       <div class="stat-tile-value">{records.best_turn?.score ?? '—'}</div>
       <div class="record-sub">
         {#if records.best_turn}{cap(records.best_turn.player)} · {dateOf(records.best_turn.date)}{/if}
@@ -83,16 +84,16 @@
     </div>
   </div>
 
-  <div class="section-title top">Wins and placements</div>
-  <Panel><PlacementRows players={competitors} emptyText="No Target Battle games against others yet." /></Panel>
+  <div class="section-title top">{t('Wins and placements')}</div>
+  <Panel><PlacementRows players={competitors} emptyText={t('No Target Battle games against others yet.')} /></Panel>
 
-  <div class="section-title top">Form · last 15 games</div>
+  <div class="section-title top">{t('Form · last 15 games')}</div>
   <Panel><FormStrip players={competitors} /></Panel>
 
-  <div class="section-title top">Head to head</div>
+  <div class="section-title top">{t('Head to head')}</div>
   <Panel><HeadToHead pairs={data.head_to_head} order={competitors.map((p) => p.player)} /></Panel>
 
-  <div class="section-title top">Players</div>
+  <div class="section-title top">{t('Players')}</div>
   <Panel><TargetBattlePlayers players={data.players} /></Panel>
 {/if}
 

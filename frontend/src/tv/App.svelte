@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../lib/i18n.js';
   import { onMount } from 'svelte';
   import { gameState } from '../lib/stores/gameState.js';
   import { players } from '../lib/stores/players.js';
@@ -45,14 +46,14 @@
   let sessionStats = $derived($gameState.session_stats || {});
 
   let matchMeta = $derived.by(() => {
-    if ($elimination && ($elimination.state === 'finished' || $elimination.active)) return 'Elimination';
-    if ($targetBattle && ($targetBattle.state === 'finished' || $targetBattle.active)) return 'Target Battle';
-    if ($killer && ($killer.state === 'finished' || $killer.active)) return 'Killer';
-    if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return 'Field Training';
-    if ($blackBelt && ($blackBelt.state === 'finished' || $blackBelt.active)) return 'Black Belt';
-    if (!game.match_started) return game.board_status ? `Board: ${game.board_status}` : '—';
-    const legLabel = game.current_leg > 1 ? ` · Leg ${game.current_leg}` : '';
-    return [game.game_mode, game.points_start ? `${game.points_start} pts` : null].filter(Boolean).join(' · ') + legLabel;
+    if ($elimination && ($elimination.state === 'finished' || $elimination.active)) return t('Elimination');
+    if ($targetBattle && ($targetBattle.state === 'finished' || $targetBattle.active)) return t('Target Battle');
+    if ($killer && ($killer.state === 'finished' || $killer.active)) return t('Killer');
+    if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return t('Field Training');
+    if ($blackBelt && ($blackBelt.state === 'finished' || $blackBelt.active)) return t('Black Belt');
+    if (!game.match_started) return game.board_status ? `${t('Board')}: ${game.board_status}` : '—';
+    const legLabel = game.current_leg > 1 ? ` · ${t('Leg {n}', { n: game.current_leg })}` : '';
+    return [game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null].filter(Boolean).join(' · ') + legLabel;
   });
 
   let view = $derived.by(() => {
@@ -109,7 +110,7 @@
 
 <AppHeader title={matchMeta} glowColor={headerGlow}>
   {#snippet right()}
-    <button type="button" class="sound-btn" title="Play voice calls on this device" onclick={toggleAudio}>
+    <button type="button" class="sound-btn" title={t('Play voice calls on this device')} onclick={toggleAudio}>
       {$audioOn ? '🔊' : '🔇'}
     </button>
   {/snippet}
@@ -119,7 +120,7 @@
   {#if $gameState.board_darts}
     <IdleView darts={$gameState.board_darts} />
   {:else}
-    <div id="idle">Waiting for match…</div>
+    <div id="idle">{t('Waiting for match…')}</div>
   {/if}
 {:else if view === 'x01'}
   <div id="active">
@@ -160,8 +161,8 @@
 <footer>
   <span class="dot-group">
     <span><span class="conn-dot" class:ok={$connDot}></span><span class="conn-label">WS</span></span>
-    <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">MQTT</span></span>
-    <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">Autodarts</span></span>
+    <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">{t('MQTT')}</span></span>
+    <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">{t('Autodarts')}</span></span>
   </span>
   <span class="version-info">{$health.version ? `v${$health.version} · ${($health.releaseDate ?? '').slice(0, 10)}` : ''}</span>
 </footer>

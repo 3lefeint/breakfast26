@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // For each range of starting scores: the share of turns that ended in a bust,
   // as a bar on a 0 to 100% axis, with the busts and turns behind it.
   let { bands = [] } = $props();
@@ -12,10 +13,10 @@
   const rate = (b) => (b.turns ? (b.busts / b.turns) * 100 : null);
 </script>
 
-<svg viewBox="0 0 {W} {height}" class="chart" role="img" aria-label="Bust rate by starting score">
-  {#each TICKS as t}
-    <line class="grid" x1={x(t)} x2={x(t)} y1={TOP} y2={TOP + bands.length * ROW} />
-    <text class="axis" x={x(t)} y={TOP + bands.length * ROW + 14} text-anchor="middle">{t}%</text>
+<svg viewBox="0 0 {W} {height}" class="chart" role="img" aria-label={t('Bust rate by starting score')}>
+  {#each TICKS as tk}
+    <line class="grid" x1={x(tk)} x2={x(tk)} y1={TOP} y2={TOP + bands.length * ROW} />
+    <text class="axis" x={x(tk)} y={TOP + bands.length * ROW + 14} text-anchor="middle">{tk}%</text>
   {/each}
   {#each bands as b, i}
     {@const cy = TOP + i * ROW + ROW / 2}
@@ -23,7 +24,7 @@
     <text class="label" x={LEFT - 10} y={cy} text-anchor="end" dominant-baseline="central">{b.label}</text>
     {#if r !== null && r > 0}
       <rect class="bar" x={LEFT} y={cy - BAR / 2} width={Math.max(x(r) - LEFT, 3)} height={BAR} rx="3">
-        <title>{b.busts} of {b.turns} turns started at {b.label} ended in a bust ({r.toFixed(0)}%)</title>
+        <title>{t('{busts} of {turns} turns started at {label} ended in a bust ({pct}%)', { busts: b.busts, turns: b.turns, label: b.label, pct: r.toFixed(0) })}</title>
       </rect>
     {/if}
     <text class="value" x={W - RIGHT + 14} y={cy} dominant-baseline="central">

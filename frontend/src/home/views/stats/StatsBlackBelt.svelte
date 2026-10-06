@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Black Belt half of the Stats tab: per player the belts earned, the furthest the player got, the
   // fewest darts for a belt, the average darts per run, how far each run got over time and the runs.
   import { cap } from '../../../lib/util.js';
@@ -20,7 +21,7 @@
   let player = $derived(players.find((p) => p.player === playerName) || players[0] || null);
   let trend = $derived((player?.runs || []).map((r) => ({
     value: r.furthest, date: r.date,
-    tip: `${r.furthest} of 21 fields · ${r.darts} darts · ${r.restarts} restarts${r.belt ? ' · belt' : ''}`,
+    tip: `${t('{n} of 21 fields', { n: r.furthest })} · ${t('{n} darts', { n: r.darts })} · ${t('{n} restarts', { n: r.restarts })}${r.belt ? ' · ' + t('belt') : ''}`,
   })));
   let recent = $derived([...(player?.runs || [])].reverse().slice(0, 15));
 
@@ -28,12 +29,12 @@
 </script>
 
 {#if loadFailed}
-  <div class="empty">Could not load stats.</div>
+  <div class="empty">{t('Could not load stats.')}</div>
 {:else if data && !players.length}
-  <div class="empty">No Black Belt runs yet.</div>
+  <div class="empty">{t('No Black Belt runs yet.')}</div>
 {:else if data && player}
   {#if players.length > 1}
-    <div class="picker" role="tablist" aria-label="Player">
+    <div class="picker" role="tablist" aria-label={t('Player')}>
       {#each players as p}
         <button type="button" class="pick" class:active={p.player === player.player}
                 onclick={() => (playerName = p.player)}>{cap(p.player)}</button>
@@ -43,21 +44,21 @@
 
   <div class="section-title">{cap(player.player)}</div>
   <div class="stat-tiles">
-    <div class="stat-tile"><div class="stat-tile-label">Runs</div><div class="stat-tile-value">{player.runs.length}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Belts</div><div class="stat-tile-value">{player.belts}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Furthest</div><div class="stat-tile-value">{player.furthest}</div><div class="sub">of 21 fields</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Fewest darts</div><div class="stat-tile-value">{player.fewest_darts ?? '—'}</div><div class="sub">for a belt</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Average darts</div><div class="stat-tile-value">{player.average_darts}</div><div class="sub">per run</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Restarts</div><div class="stat-tile-value">{player.restarts}</div><div class="sub">all runs</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Runs')}</div><div class="stat-tile-value">{player.runs.length}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Belts')}</div><div class="stat-tile-value">{player.belts}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Furthest')}</div><div class="stat-tile-value">{player.furthest}</div><div class="sub">{t('of 21 fields')}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Fewest darts')}</div><div class="stat-tile-value">{player.fewest_darts ?? '—'}</div><div class="sub">{t('for a belt')}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Average darts')}</div><div class="stat-tile-value">{player.average_darts}</div><div class="sub">{t('per run')}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Restarts')}</div><div class="stat-tile-value">{player.restarts}</div><div class="sub">{t('all runs')}</div></div>
   </div>
 
-  <div class="section-title top">Fields done per run</div>
+  <div class="section-title top">{t('Fields done per run')}</div>
   <div class="card"><TrendLine points={trend} yTitle="Fields done" decimals={0} width={680} /></div>
 
-  <div class="section-title top">Runs</div>
+  <div class="section-title top">{t('Runs')}</div>
   <table class="runs">
     <thead>
-      <tr><th>Date</th><th>Ladder</th><th class="num">Fields</th><th class="num">Restarts</th><th class="num">Darts</th><th></th></tr>
+      <tr><th>{t('Date')}</th><th>{t('Ladder')}</th><th class="num">{t('Fields')}</th><th class="num">{t('Restarts')}</th><th class="num">{t('Darts')}</th><th></th></tr>
     </thead>
     <tbody>
       {#each recent as r (r.match_id)}
@@ -67,7 +68,7 @@
           <td class="num">{r.furthest}</td>
           <td class="num">{r.restarts}</td>
           <td class="num">{r.darts}</td>
-          <td class="num">{r.belt ? '🥋 Belt' : ''}</td>
+          <td class="num">{r.belt ? t('🥋 Belt') : ''}</td>
         </tr>
       {/each}
     </tbody>

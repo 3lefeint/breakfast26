@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Online Elimination on Home: host a match or join one with a code, pick the players of this
   // site, and (as the host) order them and start. Once the match runs, /tv takes over.
   import { onMount } from 'svelte';
@@ -30,7 +31,7 @@
     error = '';
     const res = await apiJson('POST', url, body);
     busy = false;
-    if (res.error) error = res.error;
+    if (res.error) error = t(res.error);
     return res;
   }
 
@@ -82,37 +83,37 @@
 </script>
 
 <div class="elim-section">
-  <div class="elim-section-title">Online match</div>
+  <div class="elim-section-title">{t('Online match')}</div>
 
   {#if !$online}
     {#if !configured}
-      <p class="note">Set the relay address under Settings → Online first.</p>
+      <p class="note">{t('Set the relay address under Settings → Online first.')}</p>
     {:else}
       <div class="form">
-        <label>This site's name <input type="text" bind:value={site} placeholder="e.g. Home" maxlength="24"></label>
-        <label>Match password <input type="text" bind:value={password} placeholder="everyone needs the same one"></label>
+        <label>{t('This site\'s name')} <input type="text" bind:value={site} placeholder={t('e.g. Home')} maxlength="24"></label>
+        <label>{t('Match password')} <input type="text" bind:value={password} placeholder={t('everyone needs the same one')}></label>
       </div>
       <div class="two">
         <div class="box">
-          <div class="box-title">Host a match</div>
-          <button class="btn btn-start" disabled={busy || !site.trim() || !password} onclick={create}>Create</button>
+          <div class="box-title">{t('Host a match')}</div>
+          <button class="btn btn-start" disabled={busy || !site.trim() || !password} onclick={create}>{t('Create')}</button>
         </div>
         <div class="box">
-          <div class="box-title">Join with a code</div>
-          <input type="text" class="code-input" bind:value={code} placeholder="CODE" maxlength="6">
-          <button class="btn btn-add" disabled={busy || !site.trim() || !password || code.trim().length < 6} onclick={join}>Join</button>
+          <div class="box-title">{t('Join with a code')}</div>
+          <input type="text" class="code-input" bind:value={code} placeholder={t('CODE')} maxlength="6">
+          <button class="btn btn-add" disabled={busy || !site.trim() || !password || code.trim().length < 6} onclick={join}>{t('Join')}</button>
         </div>
       </div>
     {/if}
 
   {:else if $online.phase === 'connecting'}
-    <p class="note">Connecting to the relay…</p>
+    <p class="note">{t('Connecting to the relay…')}</p>
 
   {:else if $online.phase === 'lobby'}
     <div class="code-row">
-      <span class="label">Join code</span>
+      <span class="label">{t('Join code')}</span>
       <span class="code">{$online.code}</span>
-      <span class="hint">valid for 10 minutes, with the match password</span>
+      <span class="hint">{t('valid for 10 minutes, with the match password')}</span>
     </div>
 
     <div class="sites">
@@ -120,14 +121,14 @@
         <div class="site" class:me={s.site === $online.site}>
           <span class="dot" class:ok={s.connected}></span>
           <strong>{s.site}</strong>
-          {#if s.site === $online.lobby.host}<span class="tag">host</span>{/if}
-          {#if s.site === $online.site}<span class="tag">you</span>{/if}
-          <span class="site-players">{s.players.length ? s.players.map(cap).join(', ') : 'no players yet'}</span>
+          {#if s.site === $online.lobby.host}<span class="tag">{t('host')}</span>{/if}
+          {#if s.site === $online.site}<span class="tag">{t('you')}</span>{/if}
+          <span class="site-players">{s.players.length ? s.players.map(cap).join(', ') : t('no players yet')}</span>
         </div>
       {/each}
     </div>
 
-    <div class="elim-section-title">Your players <span class="hint">(click to add or remove)</span></div>
+    <div class="elim-section-title">{t('Your players')} <span class="hint">{t('(click to add or remove)')}</span></div>
     <div class="known-chips">
       {#each $players.known as name (name)}
         <button type="button" class="chip" class:in-game={mine.includes(name)} disabled={everyone.includes(name) && !mine.includes(name)}
@@ -136,7 +137,7 @@
     </div>
 
     {#if $online.host}
-      <div class="elim-section-title">Order <span class="hint">(order = play order)</span></div>
+      <div class="elim-section-title">{t('Order')} <span class="hint">{t('(order = play order)')}</span></div>
       <ul class="order">
         {#each order as name, i (name)}
           <li>
@@ -148,19 +149,19 @@
         {/each}
       </ul>
       <div class="lives-row">
-        <span class="label">Lives per player</span>
+        <span class="label">{t('Lives per player')}</span>
         <div class="counter">
           <button class="btn-counter" onclick={() => (lives = Math.max(1, lives - 1))}>−</button>
           <span class="counter-val">{lives}</span>
           <button class="btn-counter" onclick={() => (lives = Math.min(10, lives + 1))}>+</button>
         </div>
-        <button class="btn btn-add" onclick={shuffle} disabled={order.length < 2}>🔀 Shuffle</button>
+        <button class="btn btn-add" onclick={shuffle} disabled={order.length < 2}>{t('🔀 Shuffle')}</button>
       </div>
-      <button class="btn btn-start" disabled={busy || order.length < 2} onclick={start}>▶ Start</button>
+      <button class="btn btn-start" disabled={busy || order.length < 2} onclick={start}>{t('▶ Start')}</button>
     {:else}
-      <p class="note">Waiting for the host to start the match…</p>
+      <p class="note">{t('Waiting for the host to start the match…')}</p>
     {/if}
-    <button class="btn-link" onclick={leave}>Leave</button>
+    <button class="btn-link" onclick={leave}>{t('Leave')}</button>
 
   {:else if $online.phase === 'ended'}
     {#if $online.result?.placements?.length}
@@ -168,9 +169,9 @@
         {#each $online.result.placements as p}<li>{cap(p.player)}</li>{/each}
       </ol>
     {:else}
-      <p class="note">The match ended without a result.</p>
+      <p class="note">{t('The match ended without a result.')}</p>
     {/if}
-    <button class="btn btn-start" onclick={leave}>Close</button>
+    <button class="btn btn-start" onclick={leave}>{t('Close')}</button>
   {/if}
 
   {#if error || $online?.message}<p class="error">{error || $online.message}</p>{/if}

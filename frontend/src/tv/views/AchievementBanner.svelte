@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The unlock banner, like a console achievement: it slides in at the top, stays a few
   // seconds and slides out again. Several earned at once are shown one after the other.
   import { achievementQueue, achievementShown } from '../../lib/stores/achievementQueue.js';
@@ -9,7 +10,7 @@
   let current = $derived($achievementQueue[0]);
 
   function byline(item) {
-    return item.tiers ? `${cap(item.player)} · tier ${item.tier} of ${item.tiers.length}` : cap(item.player);
+    return item.tiers ? `${cap(item.player)} · ${t('tier {tier} of {count}', { tier: item.tier, count: item.tiers.length })}` : cap(item.player);
   }
 </script>
 
@@ -18,7 +19,7 @@
     <div class="banner" role="status" aria-live="polite" onanimationend={achievementShown}>
       <Badge item={current} size={64} />
       <div class="text">
-        <div class="kicker">Achievement unlocked</div>
+        <div class="kicker">{t('Achievement unlocked')}</div>
         <div class="name">{localized(current.names)}</div>
         <div class="who">{byline(current)}</div>
       </div>

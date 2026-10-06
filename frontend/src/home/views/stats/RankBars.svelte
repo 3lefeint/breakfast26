@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // One ranking as thin horizontal bars, best first: the name on the left, the
   // bar scaled from zero to the best value, the value and its sample on the right.
   let { title, rows = [], large = false } = $props();
@@ -9,7 +10,7 @@
 <div class="card" class:large>
   <div class="title">{title}</div>
   {#if !rows.length}
-    <div class="empty">No data yet.</div>
+    <div class="empty">{t('No data yet.')}</div>
   {:else}
     <div class="rows">
     {#each rows as r (r.name)}

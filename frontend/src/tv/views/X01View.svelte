@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Ports tv.html's #active X01 display and migrates index.html's
   // Scoreboard-tab controls here (Undo/Next Player/Next Leg/Reset Board,
   // throw-correction row, abandoned-match warning + force-clear) — the
@@ -28,8 +29,8 @@
   // in checkout range yet, which just renders nothing.
   let isBogey = $derived(isX01 && rem >= 2 && rem <= 170 && !checkoutHint);
 
-  let legLabel = $derived(game.current_leg > 1 ? `Leg ${game.current_leg}` : null);
-  let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} pts` : null, game.special, legLabel].filter(Boolean).join(' · '));
+  let legLabel = $derived(game.current_leg > 1 ? t('Leg {n}', { n: game.current_leg }) : null);
+  let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null, game.special, legLabel].filter(Boolean).join(' · '));
 
   let rows = $derived.by(() => {
     const players = game.players || {};
@@ -63,7 +64,7 @@
     correctField = '';
   }
   async function forceClearMatch() {
-    if (!confirm('Clear the current match locally? Only do this if it looks stuck/abandoned — this does not touch the match on the Autodarts side.')) return;
+    if (!confirm(t('Clear the current match locally? Only do this if it looks stuck/abandoned — this does not touch the match on the Autodarts side.'))) return;
     await api('POST', '/api/control/force-clear-match');
   }
 
@@ -77,7 +78,7 @@
   let abandonedText = $derived.by(() => {
     if (!showAbandonedWarning) return '';
     const mins = Math.round($health.secondsSinceActivity / 60);
-    return `Match open for ${mins} min with no activity — looks abandoned on the Autodarts side.`;
+    return t('Match open for {mins} min with no activity — looks abandoned on the Autodarts side.', { mins });
   });
 </script>
 
@@ -86,17 +87,17 @@
     {#if showAbandonedWarning}
       <div class="abandoned-warning">
         <span>{abandonedText}</span>
-        <button class="btn-ctrl danger" onclick={forceClearMatch}>⚠ Force clear match</button>
+        <button class="btn-ctrl danger" onclick={forceClearMatch}>{t('⚠ Force clear match')}</button>
       </div>
     {/if}
 
-    <div class="match-info">{matchMeta || 'No active match'}</div>
+    <div class="match-info">{matchMeta || t('No active match')}</div>
 
     <div class="player-card">
       <div class="player-name">{cap(game.active_player_name || '—')}</div>
       <div class="player-score">{cur.remaining ?? '—'}</div>
       <div id="coHint">
-        {#if checkoutHint}{checkoutHint}{:else if isBogey}<span class="bogey-badge">Bogey — no checkout</span>{/if}
+        {#if checkoutHint}{checkoutHint}{:else if isBogey}<span class="bogey-badge">{t('Bogey — no checkout')}</span>{/if}
       </div>
       <div class="darts-row">
         {#each [1, 2, 3] as n}
@@ -111,9 +112,9 @@
           </button>
         {/each}
         <div class="turn-total">
-          <div class="tlabel">Total</div>
+          <div class="tlabel">{t('Total')}</div>
           <div class="tval">{cur.turn_score ?? 0}</div>
-          <div>{#if cur.is_bust}<span class="bust-badge visible">BUST</span>{/if}</div>
+          <div>{#if cur.is_bust}<span class="bust-badge visible">{t('BUST')}</span>{/if}</div>
         </div>
       </div>
     </div>
@@ -121,7 +122,7 @@
     <div class="players-section">
       <table>
         <thead>
-          <tr><th>Player</th><th class="num-cell">Remaining</th><th class="num-cell">Legs</th><th class="num-cell">Avg</th><th class="num-cell">CO%</th></tr>
+          <tr><th>{t('Player')}</th><th class="num-cell">{t('Remaining')}</th><th class="num-cell">{t('Legs')}</th><th class="num-cell">{t('Avg')}</th><th class="num-cell">CO%</th></tr>
         </thead>
         <tbody>
           {#each rows as r (r.idx)}
@@ -137,15 +138,15 @@
         </tbody>
       </table>
 
-      <div class="section-title">Control</div>
+      <div class="section-title">{t('Control')}</div>
       <div class="control-bar">
-        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('undo')}>↩ Undo</button>
-        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-player')}>⏭ Next Player</button>
-        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>▶▶ Next Leg</button>
-        <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}>⟳ Reset Board</button>
+        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('undo')}>{t('↩ Undo')}</button>
+        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-player')}>{t('⏭ Next Player')}</button>
+        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
+        <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}>{t('⟳ Reset Board')}</button>
       </div>
       <div class="throw-correct-row">
-        <span class="lbl">Correct:</span>
+        <span class="lbl">{t('Correct:')}</span>
         <div class="dart-num-group">
           {#each [1, 2, 3] as n}
             <button class="btn-dart-num" class:sel={selectedDartNum === n} disabled={!hasCloudControl || !game.match_started} onclick={() => (selectedDartNum = n)}>D{n}</button>
@@ -155,8 +156,8 @@
                bind:value={correctField}
                oninput={(e) => { correctField = e.target.value.toUpperCase(); }}
                onkeydown={(e) => e.key === 'Enter' && correctThrowSubmit()}>
-        <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={correctThrowSubmit}>✓ Apply</button>
-        <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={() => (boardOpen = true)}>🎯 Board</button>
+        <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={correctThrowSubmit}>{t('✓ Apply')}</button>
+        <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={() => (boardOpen = true)}>{t('🎯 Board')}</button>
       </div>
     </div>
   </div>

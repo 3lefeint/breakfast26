@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The per-player section of the Elimination view: player selector, activity
   // tiles, records and the activity charts, one bundled fetch per player via
   // /api/stats/dashboard/{name}.
@@ -35,12 +36,12 @@
   function recordSub(r, showTarget) {
     if (!r) return '';
     const date = new Date(r.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${showTarget ? `had to beat ${r.target} · ` : ''}${date}`;
+    return `${showTarget ? `${t('had to beat {n}', { n: r.target })} · ` : ''}${date}`;
   }
 </script>
 
 <div class="dash-controls">
-  <label for="dashPlayerSelect">Player</label>
+  <label for="dashPlayerSelect">{t('Player')}</label>
   <select id="dashPlayerSelect" bind:value={selected}>
     {#each sortedNames as name}
       <option value={name}>{cap(name)}</option>
@@ -49,43 +50,43 @@
 </div>
 
 {#if !sortedNames.length}
-  <div class="dv-empty">No players with stats yet — play a game first.</div>
+  <div class="dv-empty">{t('No players with stats yet — play a game first.')}</div>
 {:else if error}
-  <div class="dv-empty">Could not load dashboard.</div>
+  <div class="dv-empty">{t('Could not load dashboard.')}</div>
 {:else if data}
   {@const a = data.activity}
   {@const rec = data.elimination_records}
 
   <div class="stat-tiles">
-    <div class="stat-tile"><div class="stat-tile-label">Total darts</div><div class="stat-tile-value">{a.total_darts}</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Total playtime</div><div class="stat-tile-value">{a.total_playtime_hours.toFixed(2)}h</div></div>
-    <div class="stat-tile"><div class="stat-tile-label">Total distance</div><div class="stat-tile-value">{a.total_distance_km.toFixed(2)}km</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Total darts')}</div><div class="stat-tile-value">{a.total_darts}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Total playtime')}</div><div class="stat-tile-value">{a.total_playtime_hours.toFixed(2)}h</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">{t('Total distance')}</div><div class="stat-tile-value">{a.total_distance_km.toFixed(2)}km</div></div>
   </div>
   <div class="stat-tiles records">
     <div class="stat-tile">
-      <div class="stat-tile-label">Highest score</div>
+      <div class="stat-tile-label">{t('Highest score')}</div>
       <div class="stat-tile-value">{rec.highest_score?.score ?? '—'}</div>
       <div class="stat-tile-sub">{recordSub(rec.highest_score, false)}</div>
     </div>
     <div class="stat-tile">
-      <div class="stat-tile-label">Highest score that still lost a life</div>
+      <div class="stat-tile-label">{t('Highest score that still lost a life')}</div>
       <div class="stat-tile-value">{rec.highest_lost_score?.score ?? '—'}</div>
       <div class="stat-tile-sub">{recordSub(rec.highest_lost_score, true)}</div>
     </div>
   </div>
   <div class="dash-charts-2col">
     <div class="dash-chart-card">
-      <div class="dash-chart-title">Darts per day</div>
+      <div class="dash-chart-title">{t('Darts per day')}</div>
       <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: r.darts }))} unit="darts" />
     </div>
     <div class="dash-chart-card">
-      <div class="dash-chart-title">Minutes played per day</div>
+      <div class="dash-chart-title">{t('Minutes played per day')}</div>
       <ActivityBars data={data.activity_by_date.map((r) => ({ label: r.date, value: Math.round(r.minutes) }))} unit="min" />
     </div>
   </div>
   {#if data.dart_positions.total}
     <div class="dash-chart-card top">
-      <div class="dash-chart-title">Dart positions</div>
+      <div class="dash-chart-title">{t('Dart positions')}</div>
       <PositionHeatmap darts={data.dart_positions.darts} corrected={data.dart_positions.corrected} />
     </div>
   {/if}

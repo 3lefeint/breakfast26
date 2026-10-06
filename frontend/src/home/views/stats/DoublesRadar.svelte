@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // The hit rate of every double as a radar: the doubles sit around the circle in
   // board order starting with 20 at the top, the distance from the centre is the
   // share of attempts that were hit. The rings carry the percentages.
@@ -23,14 +24,14 @@
   const at = (i, radius) => [C + radius * Math.sin(angle(i)), C - radius * Math.cos(angle(i))];
   const ringPoints = (value) => spokes.map((s) => at(s.i, (value / top) * R).join(',')).join(' ');
   let shape = $derived(spokes.map((s) => at(s.i, (s.pct / top) * R).join(',')).join(' '));
-  const tip = (s) => `D${s.n}: ${s.hits} of ${s.attempts} hit (${s.pct.toFixed(0)}%)`;
+  const tip = (s) => t('D{n}: {hits} of {attempts} hit ({pct}%)', { n: s.n, hits: s.hits, attempts: s.attempts, pct: s.pct.toFixed(0) });
 </script>
 
 {#if !doubles.some((d) => d.attempts > 0)}
-  <div class="empty">No double attempts yet.</div>
+  <div class="empty">{t('No double attempts yet.')}</div>
 {:else}
   <div class="radar">
-  <svg viewBox="0 0 {SIZE} {SIZE}" class="chart" role="img" aria-label="Hit rate per double, around the board">
+  <svg viewBox="0 0 {SIZE} {SIZE}" class="chart" role="img" aria-label={t('Hit rate per double, around the board')}>
     {#each rings as r}
       <polygon class="ring" points={ringPoints(r)} />
     {/each}

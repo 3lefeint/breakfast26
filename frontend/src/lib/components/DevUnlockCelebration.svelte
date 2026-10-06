@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // Fired once when the version number in the Home footer is tapped
   // DEV_TAP_THRESHOLD times (see home/App.svelte's onVersionTap()) — a
   // centered "Dev Mode" pop-in plus a burst of falling dickbutts, mirroring
@@ -28,7 +29,7 @@
 </script>
 
 <div class="dev-unlock-celebration" aria-hidden="true">
-  <div class="dev-mode-text">Dev Mode</div>
+  <div class="dev-mode-text">{t('Dev Mode')}</div>
   {#each pieces as p (p.id)}
     <img
       class="piece"

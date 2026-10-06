@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // Plain small win-count number — no pill/circle background (that was
   // the pre-crown design; the crown itself now carries the "most wins"
   // signal, so the number just needs to be legible, not decorative).
@@ -6,7 +7,7 @@
 </script>
 
 {#if wins}
-  <sup class="win-count" title="{wins} elimination win{wins === 1 ? '' : 's'}">{wins}</sup>
+  <sup class="win-count" title={wins === 1 ? t('{n} elimination win', { n: wins }) : t('{n} elimination wins', { n: wins })}>{wins}</sup>
 {/if}
 
 <style>

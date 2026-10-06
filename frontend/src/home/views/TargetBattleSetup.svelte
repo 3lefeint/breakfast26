@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Target Battle setup: players (order = play order, or random), number of rounds, how the target
   // of each round is chosen (random, or a fixed order), the scoring profile and the tiebreak.
   // One player is enough, to practice. Local state until Start is pressed.
@@ -31,9 +32,9 @@
   function randomTargets(n) {
     const list = [];
     for (let i = 0; i < n; i++) {
-      let t;
-      do { t = 1 + Math.floor(Math.random() * 20); } while (t === list[i - 1]);
-      list.push(t);
+      let tk;
+      do { tk = 1 + Math.floor(Math.random() * 20); } while (tk === list[i - 1]);
+      list.push(tk);
     }
     return list;
   }
@@ -61,25 +62,25 @@
   }
 
   async function start() {
-    if (gamePlayers.length < 1) { alert('Select at least 1 player.'); return; }
-    if (fixedOrder && targets.some((t) => !Number.isInteger(t) || t < 1 || t > 20)) {
-      alert('Every target has to be a number from 1 to 20.');
+    if (gamePlayers.length < 1) { alert(t('Select at least 1 player.')); return; }
+    if (fixedOrder && targets.some((tk) => !Number.isInteger(tk) || tk < 1 || tk > 20)) {
+      alert(t('Every target has to be a number from 1 to 20.'));
       return;
     }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     const res = await apiJson('POST', '/api/target-battle/start', {
       players: order, rounds, scoring, tiebreak, targets: fixedOrder ? targets : null,
     });
-    if (res.error) { alert(res.error); return; }
+    if (res.error) { alert(t(res.error)); return; }
     window.location.href = '/tv';
   }
 </script>
 
 <div class="section">
-  <div class="section-title">Setup</div>
+  <div class="section-title">{t('Setup')}</div>
 
   <div class="option-row">
-    <span class="label">Rounds</span>
+    <span class="label">{t('Rounds')}</span>
     <div class="counter">
       <button class="btn-counter" onclick={() => changeRounds(-1)}>−</button>
       <span class="counter-val">{rounds}</span>
@@ -88,10 +89,10 @@
   </div>
 
   <div class="option-row">
-    <span class="label">Targets</span>
-    <div class="seg" role="radiogroup" aria-label="Target selection">
-      <button type="button" class="seg-btn" class:active={!fixedOrder} onclick={() => setFixedOrder(false)}>Random</button>
-      <button type="button" class="seg-btn" class:active={fixedOrder} onclick={() => setFixedOrder(true)}>Fixed order</button>
+    <span class="label">{t('Targets')}</span>
+    <div class="seg" role="radiogroup" aria-label={t('Target selection')}>
+      <button type="button" class="seg-btn" class:active={!fixedOrder} onclick={() => setFixedOrder(false)}>{t('Random')}</button>
+      <button type="button" class="seg-btn" class:active={fixedOrder} onclick={() => setFixedOrder(true)}>{t('Fixed order')}</button>
     </div>
   </div>
   {#if fixedOrder}
@@ -102,12 +103,12 @@
           <input type="number" min="1" max="20" bind:value={targets[i]}>
         </label>
       {/each}
-      <button type="button" class="btn-icon" onclick={() => (targets = randomTargets(rounds))}>🔀 Shuffle</button>
+      <button type="button" class="btn-icon" onclick={() => (targets = randomTargets(rounds))}>{t('🔀 Shuffle')}</button>
     </div>
   {/if}
 
   <div class="option-row">
-    <label class="label" for="tbScoring">Scoring</label>
+    <label class="label" for="tbScoring">{t('Scoring')}</label>
     <select id="tbScoring" bind:value={scoring}>
       {#each Object.entries(SCORING_LABELS) as [key, label]}
         <option value={key}>{label}</option>
@@ -117,12 +118,12 @@
 
   <label class="check-row">
     <input type="checkbox" bind:checked={tiebreak}>
-    <span>Tiebreak: the players tied for the lead play on until one has the highest score of a round</span>
+    <span>{t('Tiebreak: the players tied for the lead play on until one has the highest score of a round')}</span>
   </label>
 
   <div class="columns">
     <div class="column">
-      <div class="section-title">Known players <span class="hint">(click to add/remove)</span></div>
+      <div class="section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
       <div class="known-chips">
         {#each $players.known as name (name)}
           <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
@@ -131,7 +132,7 @@
     </div>
 
     <div class="column">
-      <div class="section-title">Game players <span class="hint">(order = play order)</span></div>
+      <div class="section-title">{t('Game players')} <span class="hint">{t('(order = play order)')}</span></div>
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
@@ -147,10 +148,10 @@
 
   <label class="check-row">
     <input type="checkbox" bind:checked={randomOrder}>
-    <span>Random order</span>
+    <span>{t('Random order')}</span>
   </label>
 
-  <button class="btn btn-start" onclick={start}>▶ Start</button>
+  <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
 
 <style>

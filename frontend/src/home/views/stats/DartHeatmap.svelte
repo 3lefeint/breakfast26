@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Where the darts went: every field of the board shaded by how often it was
   // hit, and a ring outside the board for the darts that missed it, by sector.
   // Shading follows the square root of the count so the rarely hit fields still
@@ -22,21 +23,21 @@
   }
   const hits = (field) => fields[field] ?? 0;
   const pct = (n) => (darts ? ((n / darts) * 100).toFixed(1) : '0');
-  const tip = (label, n) => `${label}: ${n} ${n === 1 ? 'dart' : 'darts'} (${pct(n)}%)`;
+  const tip = (label, n) => `${label}: ${n} ${n === 1 ? t('dart') : t('darts')} (${pct(n)}%)`;
 
   let sectors = $derived(SEGMENT_ORDER.map((n, i) => {
     const a0 = i * 18 - 9, a1 = i * 18 + 9;
     const single = hits('S' + n);
     return {
       n, i,
-      single: { fill: shade(single, maxHit, 'var(--accent)'), tip: tip(`S${n} (inner and outer single)`, single),
+      single: { fill: shade(single, maxHit, 'var(--accent)'), tip: tip(t('S{n} (inner and outer single)', { n }), single),
                 inner: bandPath(RINGS_MM.OUTER_BULL, RINGS_MM.TRIPLE_IN, a0, a1, K),
                 outer: bandPath(RINGS_MM.TRIPLE_OUT, RINGS_MM.DOUBLE_IN, a0, a1, K) },
       triple: { fill: shade(hits('T' + n), maxHit, 'var(--accent)'), tip: tip('T' + n, hits('T' + n)),
                 path: bandPath(RINGS_MM.TRIPLE_IN, RINGS_MM.TRIPLE_OUT, a0, a1, K) },
       double: { fill: shade(hits('D' + n), maxHit, 'var(--accent)'), tip: tip('D' + n, hits('D' + n)),
                 path: bandPath(RINGS_MM.DOUBLE_IN, RINGS_MM.DOUBLE_OUT, a0, a1, K) },
-      miss: { fill: shade(misses[n], maxMiss, 'var(--red)'), tip: tip(`Missed next to ${n}`, misses[n] ?? 0),
+      miss: { fill: shade(misses[n], maxMiss, 'var(--red)'), tip: tip(t('Missed next to {n}', { n }), misses[n] ?? 0),
               path: bandPath(MISS_IN, MISS_OUT, a0, a1, K) },
       label: polar(LABEL_R, i * 18, K),
     };
@@ -44,11 +45,11 @@
 </script>
 
 {#if !darts}
-  <div class="empty">No darts recorded yet.</div>
+  <div class="empty">{t('No darts recorded yet.')}</div>
 {:else}
   <div class="wrap">
     <svg viewBox="{-HALF} {-HALF} {2 * HALF} {2 * HALF}" class="board" role="img"
-         aria-label="Dartboard shaded by how often each field was hit">
+         aria-label={t('Dartboard shaded by how often each field was hit')}>
       <circle r={MISS_OUT * K + 4} fill="var(--bg)" />
       {#each sectors as s (s.n)}
         <path d={s.miss.path} fill={s.miss.fill} class="cell"><title>{s.miss.tip}</title></path>
@@ -59,10 +60,10 @@
         <text class="num" x={s.label[0]} y={s.label[1]}>{s.n}</text>
       {/each}
       <circle r={RINGS_MM.OUTER_BULL * K} fill={shade(hits('25'), maxHit, 'var(--accent)')} class="cell">
-        <title>{tip('25 (single bull)', hits('25'))}</title>
+        <title>{tip(t('25 (single bull)'), hits('25'))}</title>
       </circle>
       <circle r={RINGS_MM.BULL * K} fill={shade(hits('BULL'), maxHit, 'var(--accent)')} class="cell">
-        <title>{tip('Bull (50)', hits('BULL'))}</title>
+        <title>{tip(t('Bull (50)'), hits('BULL'))}</title>
       </circle>
     </svg>
   </div>

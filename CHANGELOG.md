@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Language switch: the interface is English or German, one language per installation, set under Settings → General → Language or with `[web] language`; it covers Home, `/tv` and `/audio`, and the achievement names and descriptions follow it (#24).
+
 ## [0.10.0] - 2026-10-06
 
 ### Added

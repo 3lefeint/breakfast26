@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Settings → Achievements (shown with the Dev tab): which sound each achievement plays when it is
   // earned. Every achievement lists what plays now (an assignment, the `achievement_<id>` file or the
   // general `achievement` file) and can be given one or more files of the achievements folder, which are
@@ -8,9 +9,9 @@
   import { cap } from '../../lib/util.js';
 
   const URL = '/api/admin/achievement-sounds';
-  const MODES = { general: 'General', x01: 'X01', elimination: 'Elimination', killer: 'Killer',
-                  target_battle: 'Target Battle', field_training: 'Field Training', black_belt: 'Black Belt', easter_egg: 'Easter eggs' };
-  const SOURCE_LABEL = { assigned: 'assigned', id: 'file name', generic: 'general sound', none: 'no sound' };
+  const MODES = { general: t('General'), x01: 'X01', elimination: t('Elimination'), killer: t('Killer'),
+                  target_battle: t('Target Battle'), field_training: t('Field Training'), black_belt: t('Black Belt'), easter_egg: t('Easter eggs') };
+  const SOURCE_LABEL = { assigned: t('assigned'), id: t('file name'), generic: t('general sound'), none: t('no sound') };
 
   let data = $state(null);
   let error = $state('');
@@ -27,7 +28,7 @@
       const body = await fetch(URL).then((r) => r.json());
       if (body.error) { error = body.error; data = null; } else { error = ''; data = body; }
     } catch (e) {
-      error = 'Could not load the achievements.';
+      error = t('Could not load the achievements.');
     }
   }
   onMount(load);
@@ -39,7 +40,7 @@
   function preview(file) {
     if (playing) playing.pause();
     playing = new Audio(`/api/sound/${encodeURIComponent(file)}`);
-    playing.play().catch(() => { message = `Could not play ${file}.`; });
+    playing.play().catch(() => { message = t('Could not play {file}.', { file }); });
   }
 
   async function assign(a, files) {
@@ -47,7 +48,7 @@
     const res = await fetch(`${URL}/${a.id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }),
     }).then((r) => r.json());
-    if (res.error) { message = res.error; return; }
+    if (res.error) { message = t(res.error); return; }
     await load();
   }
 
@@ -63,10 +64,10 @@
     try {
       const res = await fetch(`${URL}/upload?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file })
         .then((r) => r.json());
-      message = res.error ? res.error : `Uploaded ${res.file}.`;
+      message = res.error ? t(res.error) : t('Uploaded {file}.', { file: res.file });
       if (!res.error) await load();
     } catch (e) {
-      message = 'The upload failed.';
+      message = t('The upload failed.');
     } finally {
       uploading = false;
     }
@@ -82,18 +83,18 @@
     const res = await fetch(`${URL}/files/${encodeURIComponent(file)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }),
     }).then((r) => r.json());
-    if (res.error) { message = res.error; return; }
+    if (res.error) { message = t(res.error); return; }
     renaming = null;
     await load();
   }
 
   async function removeFile(f) {
     const users = f.used_by.map((u) => u.names?.en || u.id).join(', ');
-    const warning = users ? `\n\nIt is assigned to: ${users}. It is taken out there.` : '';
-    if (!confirm(`Delete ${f.name}?${warning}`)) return;
+    const warning = users ? '\n\n' + t('It is assigned to: {users}. It is taken out there.', { users }) : '';
+    if (!confirm(t('Delete {name}?', { name: f.name }) + warning)) return;
     message = '';
     const res = await fetch(`${URL}/files/${encodeURIComponent(f.name)}`, { method: 'DELETE' }).then((r) => r.json());
-    if (res.error) { message = res.error; return; }
+    if (res.error) { message = t(res.error); return; }
     await load();
   }
 
@@ -103,46 +104,45 @@
 
   function describe(a) {
     const now = a.plays_now;
-    if (now.source === 'none') return 'No sound';
+    if (now.source === 'none') return t('No sound');
     return `${SOURCE_LABEL[now.source]}: ${now.files.join(', ')}`;
   }
 </script>
 
 {#if error}
-  <div class="empty">{error.startsWith('locked') ? 'Unlock the Dev tab first.' : error}</div>
+  <div class="empty">{error.startsWith('locked') ? t('Unlock the Dev tab first.') : t(error)}</div>
 {:else if !data}
-  <div class="empty">Loading…</div>
+  <div class="empty">{t('Loading…')}</div>
 {:else}
   <div class="intro">
-    Without an assignment an achievement plays <code>achievement_&lt;id&gt;.mp3</code> from the achievements
-    folder, else <code>achievement.mp3</code>. Give it one or more files here and one of them is picked at random.
+    {t('Without an assignment an achievement plays')} <code>achievement_&lt;id&gt;.mp3</code> {t('from the achievements folder, else')} <code>{t('achievement.mp3')}</code>{t('. Give it one or more files here and one of them is picked at random.')}
   </div>
 
   <div class="files">
     <div class="files-head">
-      <span class="files-title">Files in the achievements folder</span>
+      <span class="files-title">{t('Files in the achievements folder')}</span>
       <label class="upload" class:busy={uploading}>
-        {uploading ? 'Uploading…' : '⬆ Upload an mp3'}
+        {uploading ? t('Uploading…') : t('⬆ Upload an mp3')}
         <input type="file" accept=".mp3,audio/mpeg" onchange={upload} disabled={uploading}>
       </label>
     </div>
     {#if !data.file_details.length}
-      <div class="empty small">No sound files yet. Upload an mp3.</div>
+      <div class="empty small">{t('No sound files yet. Upload an mp3.')}</div>
     {:else}
       <ul class="file-list">
         {#each data.file_details as f (f.name)}
           <li>
-            <button type="button" class="play" title="Preview" onclick={() => preview(f.name)}>▶</button>
+            <button type="button" class="play" title={t('Preview')} onclick={() => preview(f.name)}>▶</button>
             {#if renaming === f.name}
-              <input class="rename" type="text" bind:value={newName} aria-label="New name of {f.name}"
+              <input class="rename" type="text" bind:value={newName} aria-label={t('New name of {name}', { name: f.name })}
                      onkeydown={(e) => { if (e.key === 'Enter') rename(f.name); if (e.key === 'Escape') renaming = null; }}>
-              <button type="button" class="act" onclick={() => rename(f.name)}>Save</button>
-              <button type="button" class="act" onclick={() => (renaming = null)}>Cancel</button>
+              <button type="button" class="act" onclick={() => rename(f.name)}>{t('Save')}</button>
+              <button type="button" class="act" onclick={() => (renaming = null)}>{t('Cancel')}</button>
             {:else}
               <span class="fname">{f.name}</span>
-              <span class="fmeta">{size(f.size)}{f.used_by.length ? ` · used by ${f.used_by.length}` : ''}</span>
-              <button type="button" class="act" onclick={() => startRename(f.name)}>Rename</button>
-              <button type="button" class="act danger" onclick={() => removeFile(f)}>Delete</button>
+              <span class="fmeta">{size(f.size)}{f.used_by.length ? ` · ${t('used by {n}', { n: f.used_by.length })}` : ''}</span>
+              <button type="button" class="act" onclick={() => startRename(f.name)}>{t('Rename')}</button>
+              <button type="button" class="act danger" onclick={() => removeFile(f)}>{t('Delete')}</button>
             {/if}
           </li>
         {/each}
@@ -151,9 +151,9 @@
   </div>
 
   <div class="toolbar">
-    <input type="search" placeholder="Search" bind:value={search} aria-label="Search achievements">
-    <select bind:value={mode} aria-label="Game mode">
-      <option value="all">All modes</option>
+    <input type="search" placeholder={t('Search')} bind:value={search} aria-label={t('Search achievements')}>
+    <select bind:value={mode} aria-label={t('Game mode')}>
+      <option value="all">{t('All modes')}</option>
       {#each Object.entries(MODES) as [key, label]}<option value={key}>{label}</option>{/each}
     </select>
   </div>
@@ -166,27 +166,27 @@
           <span class="name">{a.names?.en || a.id}</span>
           <span class="chip">{MODES[a.mode] || a.mode}</span>
           <span class="chip">{a.difficulty === 'hidden' ? 'secret' : a.difficulty.replace('_', ' ')}</span>
-          {#if a.tiers}<span class="chip">tiers {a.tiers.join(' · ')}</span>{/if}
+          {#if a.tiers}<span class="chip">{t('tiers {list}', { list: a.tiers.join(' · ') })}</span>{/if}
         </div>
-        <div class="now" class:none={a.plays_now.source === 'none'}>Plays now · {describe(a)}</div>
+        <div class="now" class:none={a.plays_now.source === 'none'}>{t('Plays now · {what}', { what: describe(a) })}</div>
         <div class="assigned">
           {#each a.assigned as file (file)}
             <span class="file" class:missing={a.missing.includes(file)}>
-              <button type="button" class="play" title="Preview" disabled={a.missing.includes(file)}
+              <button type="button" class="play" title={t('Preview')} disabled={a.missing.includes(file)}
                       onclick={() => preview(file)}>▶</button>
-              {file}{a.missing.includes(file) ? ' (missing)' : ''}
-              <button type="button" class="remove" title="Remove" onclick={() => remove(a, file)}>×</button>
+              {file}{a.missing.includes(file) ? ' ' + t('(missing)') : ''}
+              <button type="button" class="remove" title={t('Remove')} onclick={() => remove(a, file)}>×</button>
             </span>
           {/each}
-          <select aria-label="Add a sound to {a.names?.en}" onchange={(e) => { add(a, e.target.value); e.target.value = ''; }}>
-            <option value="">+ Add a sound…</option>
+          <select aria-label={t('Add a sound to {name}', { name: a.names?.en })} onchange={(e) => { add(a, e.target.value); e.target.value = ''; }}>
+            <option value="">{t('+ Add a sound…')}</option>
             {#each data.files.filter((f) => !a.assigned.includes(f)) as f}<option value={f}>{f}</option>{/each}
           </select>
         </div>
       </li>
     {/each}
   </ul>
-  {#if !rows.length}<div class="empty">No achievement matches.</div>{/if}
+  {#if !rows.length}<div class="empty">{t('No achievement matches.')}</div>{/if}
 {/if}
 
 <style>

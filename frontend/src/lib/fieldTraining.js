@@ -1,9 +1,10 @@
 import { api, apiJson } from './api.js';
+import { t } from './i18n.js';
 
 export const BULL = 25;
 
 export function fieldLabel(field) {
-  return field === BULL ? 'Bull' : String(field);
+  return field === BULL ? t('Bull') : String(field);
 }
 
 // The number of darts a run has by default, and from which on it counts for the personal best and the rating.
@@ -11,11 +12,11 @@ export function standardDarts(field) {
   return field === BULL ? 50 : 100;
 }
 
-export const RATING_LABELS = { beginner: 'Beginner', advanced: 'Advanced', pro: 'Pro' };
+export const RATING_LABELS = { beginner: t('Beginner'), advanced: t('Advanced'), pro: t('Pro') };
 
 export async function startRun(setup) {
   const res = await apiJson('POST', '/api/field-training/start', setup);
-  if (res.error) alert(res.error);
+  if (res.error) alert(t(res.error));
   return !res.error;
 }
 

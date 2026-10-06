@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // A donut with the share in the middle. Hovering a segment gives its count.
   let { segments = [], centerValue = '', centerLabel = '' } = $props();
 
@@ -17,7 +18,7 @@
 </script>
 
 {#if !total}
-  <div class="empty">Nothing decided yet.</div>
+  <div class="empty">{t('Nothing decided yet.')}</div>
 {:else}
   <div class="donut">
     <svg viewBox="0 0 {SIZE} {SIZE}" class="ring" role="img"

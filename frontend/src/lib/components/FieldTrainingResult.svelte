@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // The result of a finished Field Training run: the points, the hit rate and the share of singles,
   // doubles and triples, the rating and the personal best of a run that counts, the points of every
   // turn and where the darts landed. Shown on Home and on the TV.
@@ -12,41 +13,41 @@
   let hits = $derived(ft.hits || {});
   let hitCount = $derived((hits.singles || 0) + (hits.doubles || 0) + (hits.triples || 0));
   let maxTurn = $derived(Math.max(1, ...(ft.turn_points || [0])));
-  let mark = $derived(r.personal_best ? 'Personal best' : null);
+  let mark = $derived(r.personal_best ? t('Personal best') : null);
 </script>
 
 <div class="result" class:large>
   <div class="headline">
-    <div class="points">{r.points}<span class="unit">points</span></div>
+    <div class="points">{r.points}<span class="unit">{t('points')}</span></div>
     <div class="meta">
-      {ft.player} · {fieldLabel(ft.field)} · {r.darts} of {ft.darts} darts
+      {ft.player} · {fieldLabel(ft.field)} · {t('{n} of {total} darts', { n: r.darts, total: ft.darts })}
     </div>
     <div class="badges">
       {#if r.counts && r.rating}<span class="badge rating {r.rating}">{RATING_LABELS[r.rating]}</span>{/if}
       {#if mark}<span class="badge best">{mark}</span>{/if}
-      {#if !r.counts}<span class="badge practice">Practice</span>{/if}
+      {#if !r.counts}<span class="badge practice">{t('Practice')}</span>{/if}
     </div>
     {#if r.counts && !r.personal_best && r.previous_best != null}
-      <div class="meta">Best so far {r.previous_best} points per {ft.standard_darts} darts, this run {r.scaled_points}</div>
+      <div class="meta">{t('Best so far {best} points per {n} darts, this run {run}', { best: r.previous_best, n: ft.standard_darts, run: r.scaled_points })}</div>
     {/if}
   </div>
 
   <div class="content">
     <div class="stats">
-      <div class="stat"><span class="value">{percent(r.hit_rate)}</span><span class="label">Hit rate</span></div>
-      <div class="stat"><span class="value">{hitCount}</span><span class="label">Hits</span></div>
-      <div class="stat"><span class="value">{hits.singles || 0}</span><span class="label">{isBull ? 'Outer bull' : 'Singles'}</span></div>
-      <div class="stat"><span class="value">{hits.doubles || 0}</span><span class="label">{isBull ? "Bull's eye" : 'Doubles'}</span></div>
-      {#if !isBull}<div class="stat"><span class="value">{hits.triples || 0}</span><span class="label">Triples</span></div>{/if}
+      <div class="stat"><span class="value">{percent(r.hit_rate)}</span><span class="label">{t('Hit rate')}</span></div>
+      <div class="stat"><span class="value">{hitCount}</span><span class="label">{t('Hits')}</span></div>
+      <div class="stat"><span class="value">{hits.singles || 0}</span><span class="label">{isBull ? t('Outer bull') : t('Singles')}</span></div>
+      <div class="stat"><span class="value">{hits.doubles || 0}</span><span class="label">{isBull ? t("Bull's eye") : t('Doubles')}</span></div>
+      {#if !isBull}<div class="stat"><span class="value">{hits.triples || 0}</span><span class="label">{t('Triples')}</span></div>{/if}
     </div>
 
     <div class="turns-box">
-      <div class="turns" aria-label="Points of every turn">
+      <div class="turns" aria-label={t('Points of every turn')}>
         {#each ft.turn_points || [] as p, i}
-          <span class="bar" title="Turn {i + 1}: {p}" style="height: {Math.max(4, (p / maxTurn) * 100)}%"></span>
+          <span class="bar" title={t('Turn {n}: {p}', { n: i + 1, p })} style="height: {Math.max(4, (p / maxTurn) * 100)}%"></span>
         {/each}
       </div>
-      <div class="caption">Points per turn</div>
+      <div class="caption">{t('Points per turn')}</div>
     </div>
 
     <div class="board">

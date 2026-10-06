@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The known players (name, wins, audio, Hide), the form that adds one, and the hidden players with
   // Unhide.
   import { players } from '../../lib/stores/players.js';
@@ -26,15 +27,15 @@
   }
 </script>
 
-<PageHeader title="Players" back="#home" />
+<PageHeader title={t('Players')} back="#home" />
 
 <Panel>
   <div class="player-row-header">
     <span></span>
-    <span>Name</span>
-    <span>Elimination</span>
+    <span>{t('Name')}</span>
+    <span>{t('Elimination')}</span>
     <span>X01</span>
-    <span class="right">Audio</span>
+    <span class="right">{t('Audio')}</span>
     <span></span>
   </div>
   <ul class="known-list">
@@ -51,19 +52,19 @@
     {/each}
   </ul>
   <div class="add-row">
-    <input type="text" placeholder="Name" bind:value={newPlayerName}
+    <input type="text" placeholder={t('Name')} bind:value={newPlayerName}
            onkeydown={(e) => e.key === 'Enter' && addPlayer()}>
-    <button class="btn-add" onclick={addPlayer}><Icon name="plus" size={18} stroke={2.2} /> Add</button>
+    <button class="btn-add" onclick={addPlayer}><Icon name="plus" size={18} stroke={2.2} /> {t('Add')}</button>
   </div>
 </Panel>
 
 {#if $players.hidden.length}
-  <Panel title="Hidden players">
+  <Panel title={t('Hidden players')}>
     <ul class="hidden-players-list">
       {#each $players.hidden as name (name)}
         <li>
           <span class="pname">{cap(name)}</span>
-          <button class="btn-hide" onclick={() => unhidePlayer(name)}>Unhide</button>
+          <button class="btn-hide" onclick={() => unhidePlayer(name)}>{t('Unhide')}</button>
         </li>
       {/each}
     </ul>

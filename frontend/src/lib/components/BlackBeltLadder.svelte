@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // The ladder of a Black Belt run: one pill per field in order, the fields done in this attempt
   // filled, the field that is up marked.
   import { stepLabel } from '../blackBelt.js';
@@ -6,7 +7,7 @@
   let { steps = [], position = 0, belt = false } = $props();
 </script>
 
-<div class="ladder" role="list" aria-label="Ladder">
+<div class="ladder" role="list" aria-label={t('Ladder')}>
   {#each steps as field, i}
     <span class="pill" role="listitem" class:done={belt || i < position} class:now={!belt && i === position}>{stepLabel(field)}</span>
   {/each}

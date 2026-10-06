@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // How long games take, one row per lives setting. Every finished game is a
   // dot on a shared minutes axis and the average is a tick, so a handful of
   // games is shown as it is instead of being squeezed into one bar.
@@ -39,7 +40,7 @@
     return [...list].sort((a, b) => a.minutes - b.minutes).map((g) => {
       const cx = x(g.minutes);
       let lane = 0;
-      while (lane < LANES.length - 1 && taken.some((t) => t.lane === lane && Math.abs(t.cx - cx) < 2 * R + 1)) lane++;
+      while (lane < LANES.length - 1 && taken.some((tk) => tk.lane === lane && Math.abs(tk.cx - cx) < 2 * R + 1)) lane++;
       taken.push({ cx, lane });
       return { ...g, cx, dy: LANES[lane] };
     });
@@ -47,23 +48,23 @@
 
   function describe(g) {
     const date = new Date(g.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${date} · ${g.minutes.toFixed(1)} min · ${g.size} players${g.winner ? ' · won by ' + cap(g.winner) : ''}`;
+    return `${date} · ${g.minutes.toFixed(1)} ${t('min')} · ${t('{n} players', { n: g.size })}${g.winner ? ' · ' + t('won by {name}', { name: cap(g.winner) }) : ''}`;
   }
-  const livesLabel = (n) => `${n} ${n === 1 ? 'life' : 'lives'}`;
+  const livesLabel = (n) => `${n} ${n === 1 ? t('life') : t('lives')}`;
 </script>
 
 {#if !groups.length}
-  <div class="empty">No finished games with a recorded length yet.</div>
+  <div class="empty">{t('No finished games with a recorded length yet.')}</div>
 {:else}
   <div class="legend">
-    <span class="legend-item"><span class="dot"></span>one game</span>
-    <span class="legend-item"><span class="avg"></span>average</span>
+    <span class="legend-item"><span class="dot"></span>{t('one game')}</span>
+    <span class="legend-item"><span class="avg"></span>{t('average')}</span>
   </div>
   <svg viewBox="0 0 {W} {height}" class="chart" role="img"
-       aria-label="Game length in minutes by lives setting">
-    {#each ticks as t}
-      <line class="grid" x1={x(t)} x2={x(t)} y1={TOP} y2={TOP + groups.length * ROW} />
-      <text class="tick" x={x(t)} y={TOP + groups.length * ROW + 15} text-anchor="middle">{t}{t === axisMax ? ' min' : ''}</text>
+       aria-label={t('Game length in minutes by lives setting')}>
+    {#each ticks as tk}
+      <line class="grid" x1={x(tk)} x2={x(tk)} y1={TOP} y2={TOP + groups.length * ROW} />
+      <text class="tick" x={x(tk)} y={TOP + groups.length * ROW + 15} text-anchor="middle">{tk}{tk === axisMax ? ' ' + t('min') : ''}</text>
     {/each}
     {#each groups as g, i}
       {@const cy = TOP + i * ROW + ROW / 2}
@@ -73,7 +74,7 @@
         <circle class="game" cx={d.cx} cy={cy + d.dy} r={R}><title>{describe(d)}</title></circle>
       {/each}
       <text class="value" x={W - RIGHT + 14} y={cy} dominant-baseline="central">
-        {g.list.length} {g.list.length === 1 ? 'game' : 'games'} · Ø {g.avg.toFixed(1)} min
+        {g.list.length} {g.list.length === 1 ? t('game') : t('games')} · Ø {g.avg.toFixed(1)} {t('min')}
       </text>
     {/each}
   </svg>

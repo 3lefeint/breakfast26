@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // Mirrors index.html's .elim-darts markup: 3 dart boxes + a running total.
   // darts: array of 0-3 numbers (thrown darts so far this turn).
   let { darts = [] } = $props();
@@ -13,7 +14,7 @@
     </div>
   {/each}
   <div class="turn-total">
-    <div class="label">Total</div>
+    <div class="label">{t('Total')}</div>
     <div class="value">{total}</div>
   </div>
 </div>

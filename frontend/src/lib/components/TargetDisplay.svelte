@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // passes = score > target, so target itself isn't enough to beat it —
   // show the actual minimum passing score (target + 1), same reasoning
   // as the filler_target audio cue.
@@ -6,7 +7,7 @@
 </script>
 
 <div class="live-target">
-  <div class="label">Target</div>
+  <div class="label">{t('Target')}</div>
   <div class="value">{target + 1}</div>
 </div>
 

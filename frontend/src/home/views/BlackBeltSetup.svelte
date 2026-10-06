@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Black Belt setup: one player and the direction of the ladder. There is no limit, a run ends
   // with the belt or when it is finished.
   import { players } from '../../lib/stores/players.js';
@@ -9,33 +10,31 @@
   let backwards = $state(false);
 
   async function start() {
-    if (!player) { alert('Select a player.'); return; }
+    if (!player) { alert(t('Select a player.')); return; }
     if (await startRun({ player, backwards })) window.location.href = '/tv';
   }
 </script>
 
 <div class="section">
-  <div class="section-title">Setup</div>
+  <div class="section-title">{t('Setup')}</div>
 
-  <div class="section-title sub">Player</div>
+  <div class="section-title sub">{t('Player')}</div>
   <div class="chips">
     {#each $players.known as name (name)}
       <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
     {/each}
   </div>
 
-  <div class="section-title sub">Ladder</div>
-  <div class="seg" role="radiogroup" aria-label="Direction">
-    <button type="button" class="seg-btn" class:active={!backwards} onclick={() => (backwards = false)}>D1 up to D20</button>
-    <button type="button" class="seg-btn" class:active={backwards} onclick={() => (backwards = true)}>D20 down to D1</button>
+  <div class="section-title sub">{t('Ladder')}</div>
+  <div class="seg" role="radiogroup" aria-label={t('Direction')}>
+    <button type="button" class="seg-btn" class:active={!backwards} onclick={() => (backwards = false)}>{t('D1 up to D20')}</button>
+    <button type="button" class="seg-btn" class:active={backwards} onclick={() => (backwards = true)}>{t('D20 down to D1')}</button>
   </div>
   <div class="hint">
-    Hit the double of every field in order, the bull's eye comes last. Each field has three darts of its own;
-    the darts left in your hand after a hit are bonus darts at the next field. Miss a field with them and the
-    ladder starts again. A run has no limit: it ends with the belt, or when you finish it.
+    {t('Hit the double of every field in order, the bull\'s eye comes last. Each field has three darts of its own; the darts left in your hand after a hit are bonus darts at the next field. Miss a field with them and the ladder starts again. A run has no limit: it ends with the belt, or when you finish it.')}
   </div>
 
-  <button class="btn btn-start" onclick={start}>▶ Start</button>
+  <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
 
 <style>

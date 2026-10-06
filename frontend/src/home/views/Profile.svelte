@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // A player's profile: the achievements with their badges, in sections by game mode, each
   // split into earned and still to earn. Secret ones that are not earned yet come last.
   import { cap } from '../../lib/util.js';
@@ -41,12 +42,12 @@
   async function saveColor(value) {
     colorError = '';
     const res = await apiJson('PATCH', `/api/players/${encodeURIComponent(name)}/color`, { color: value });
-    if (res.error) colorError = res.error;
+    if (res.error) colorError = t(res.error);
   }
 
   function earnedLine(item) {
     const date = new Date(item.earned_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return item.tiers ? `Earned ${date} · tier ${item.tier} of ${item.tiers.length}` : `Earned ${date}`;
+    return item.tiers ? t('Earned {date} · tier {tier} of {count}', { date, tier: item.tier, count: item.tiers.length }) : t('Earned {date}', { date });
   }
 </script>
 
@@ -56,37 +57,37 @@
 
 <Panel>
   <div class="color-row">
-    <label for="playerColor">Color</label>
+    <label for="playerColor">{t('Color')}</label>
     <input type="color" id="playerColor" value={color || '#7c6aff'}
            onchange={(e) => saveColor(e.currentTarget.value)}>
     <span class="color-hint">
-      {#if color}{color}{:else}No color set, a random one is picked when a game needs it.{/if}
+      {#if color}{color}{:else}{t('No color set, a random one is picked when a game needs it.')}{/if}
     </span>
     {#if color}
-      <button type="button" class="clear" onclick={() => saveColor(null)}>Clear</button>
+      <button type="button" class="clear" onclick={() => saveColor(null)}>{t('Clear')}</button>
     {/if}
     {#if colorError}<span class="color-error">{colorError}</span>{/if}
   </div>
 </Panel>
 
 {#if status === 'loading'}
-  <p class="note">Loading…</p>
+  <p class="note">{t('Loading…')}</p>
 {:else if status === 'error'}
-  <p class="note">The achievements could not be loaded.</p>
+  <p class="note">{t('The achievements could not be loaded.')}</p>
 {:else if !total}
-  <p class="note">Achievements are not available without the stats database.</p>
+  <p class="note">{t('Achievements are not available without the stats database.')}</p>
 {:else}
   <div class="summary">
-    <span>Achievements · {earnedTotal} of {total}</span>
+    <span>{t('Achievements · {earned} of {total}', { earned: earnedTotal, total })}</span>
     <span class="bar"><span class="fill" style="width: {(100 * earnedTotal / total).toFixed(1)}%"></span></span>
   </div>
   {#each sections as section (section.key)}
     <Panel>
       <div class="title">
         <span>{section.label}</span>
-        {#if section.key !== 'secret'}<span class="count">{section.earned.length} of {section.total}</span>{/if}
+        {#if section.key !== 'secret'}<span class="count">{t('{n} of {total}', { n: section.earned.length, total: section.total })}</span>{/if}
       </div>
-      {#each [['Earned', section.earned], ['To earn', section.open]] as [heading, list]}
+      {#each [[t('Earned'), section.earned], [t('To earn'), section.open]] as [heading, list]}
         {#if list.length}
           {#if section.key !== 'secret'}<div class="sub">{heading}</div>{/if}
           <ul class="grid">
@@ -94,8 +95,8 @@
               <li class="card" class:earned={isEarned(item)}>
                 <Badge {item} size={72} />
                 <div class="text">
-                  <div class="name">{localized(item.names) || 'Secret achievement'}</div>
-                  <div class="desc">{localized(item.descriptions) || 'Keep playing to find out.'}</div>
+                  <div class="name">{localized(item.names) || t('Secret achievement')}</div>
+                  <div class="desc">{localized(item.descriptions) || t('Keep playing to find out.')}</div>
                   {#if isEarned(item)}
                     <div class="meta">{earnedLine(item)}</div>
                   {/if}

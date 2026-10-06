@@ -8,7 +8,7 @@ from pathlib import Path
 _DEFAULT_PATH = Path("config.toml")
 
 # Fields that can be changed at runtime without restarting the service.
-RUNTIME_FIELDS = {"log_level"}
+RUNTIME_FIELDS = {"log_level", "language"}
 
 
 def load(path: str | Path | None = None) -> dict:

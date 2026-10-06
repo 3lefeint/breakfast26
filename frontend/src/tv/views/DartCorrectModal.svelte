@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Fixes a misrecognized dart before it's pulled: click the spot on the
   // dartboard, or use the multiplier + number pad. Opened by tapping D1/D2/D3
   // on the live Elimination view (only while that dart has a value already),
@@ -21,17 +22,17 @@
 </script>
 
 <div class="modal-overlay">
-  <button type="button" class="overlay-backdrop" aria-label="Close" onclick={onClose}></button>
+  <button type="button" class="overlay-backdrop" aria-label={t('Close')} onclick={onClose}></button>
   <div class="modal-box">
-    <div class="section-title">Correct D{dartIndex + 1}</div>
+    <div class="section-title">{t('Correct D{n}', { n: dartIndex + 1 })}</div>
 
     <DartBoard onSelect={submit} />
 
-    <div class="pad-label">Or pick a field</div>
+    <div class="pad-label">{t('Or pick a field')}</div>
     <div class="mult-row">
-      <button class="btn-mult" class:sel={mult === 1} onclick={() => (mult = 1)}>Single</button>
-      <button class="btn-mult" class:sel={mult === 2} onclick={() => (mult = 2)}>Double</button>
-      <button class="btn-mult" class:sel={mult === 3} onclick={() => (mult = 3)}>Triple</button>
+      <button class="btn-mult" class:sel={mult === 1} onclick={() => (mult = 1)}>{t('Single')}</button>
+      <button class="btn-mult" class:sel={mult === 2} onclick={() => (mult = 2)}>{t('Double')}</button>
+      <button class="btn-mult" class:sel={mult === 3} onclick={() => (mult = 3)}>{t('Triple')}</button>
     </div>
 
     <div class="number-grid">
@@ -41,12 +42,12 @@
     </div>
 
     <div class="special-row">
-      <button onclick={() => submit('25')}>Bull (25)</button>
-      <button onclick={() => submit('50')}>D-Bull (50)</button>
-      <button onclick={() => submit('0')}>Miss</button>
+      <button onclick={() => submit('25')}>{t('Bull (25)')}</button>
+      <button onclick={() => submit('50')}>{t('D-Bull (50)')}</button>
+      <button onclick={() => submit('0')}>{t('Miss')}</button>
     </div>
 
-    <button class="btn btn-add" style="width:100%" onclick={onClose}>Cancel</button>
+    <button class="btn btn-add" style="width:100%" onclick={onClose}>{t('Cancel')}</button>
   </div>
 </div>
 

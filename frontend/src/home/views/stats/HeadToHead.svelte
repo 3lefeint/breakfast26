@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Players against each other: a cell is the share of their shared games in
   // which the row player finished ahead of the column player. Green = the row
   // player leads, red = trails, neutral = even; every cell also carries the
@@ -34,17 +35,17 @@
 </script>
 
 {#if !pairs.length}
-  <div class="empty">No games with two or more players yet.</div>
+  <div class="empty">{t('No games with two or more players yet.')}</div>
 {:else}
   <div class="legend">
-    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--accent) 45%, rgba(0, 0, 0, 0.28))"></span>row player ahead more often</span>
-    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--red) 45%, rgba(0, 0, 0, 0.28))"></span>behind more often</span>
-    <span class="legend-item"><span class="swatch" style:background="rgba(0, 0, 0, 0.28)"></span>even</span>
+    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--accent) 45%, rgba(0, 0, 0, 0.28))"></span>{t('row player ahead more often')}</span>
+    <span class="legend-item"><span class="swatch" style:background="color-mix(in srgb, var(--red) 45%, rgba(0, 0, 0, 0.28))"></span>{t('behind more often')}</span>
+    <span class="legend-item"><span class="swatch" style:background="rgba(0, 0, 0, 0.28)"></span>{t('even')}</span>
   </div>
-  <div class="note">Share of shared games in which the row player finished ahead of the column player.</div>
+  <div class="note">{t('Share of shared games in which the row player finished ahead of the column player.')}</div>
 
   <div class="matrix" style:--n={names.length} style:max-width="calc(5.5rem + {names.length} * 4.4rem)"
-       role="table" aria-label="Head to head: how often the row player finished ahead of the column player">
+       role="table" aria-label={t('Head to head: how often the row player finished ahead of the column player')}>
     <div class="corner"></div>
     {#each names as col}
       <div class="col-head" title={cap(col)}>{cap(col)}</div>
@@ -59,12 +60,12 @@
           {@const l = look(cell)}
           {#if l}
             <div class="cell" style:background={l.background}
-                 title="{cap(row)} finished ahead of {cap(col)} in {cell.ahead} of {cell.games} games ({l.percent}%)">
+                 title={t('{row} finished ahead of {col} in {ahead} of {games} games ({pct}%)', { row: cap(row), col: cap(col), ahead: cell.ahead, games: cell.games, pct: l.percent })}>
               <span class="pct">{l.percent}%</span>
               <span class="count">{cell.ahead}/{cell.games}</span>
             </div>
           {:else}
-            <div class="cell none" title="{cap(row)} and {cap(col)} have not played together">·</div>
+            <div class="cell none" title={t('{row} and {col} have not played together', { row: cap(row), col: cap(col) })}>·</div>
           {/if}
         {/if}
       {/each}

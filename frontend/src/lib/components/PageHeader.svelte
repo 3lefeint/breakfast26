@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // The heading of a page of the Home app: the title, an optional line below it and, on sub-pages, a
   // way back. The sidebar is the main navigation; the back button leads one level up (default: the
   // Play page).
@@ -8,7 +9,7 @@
 </script>
 
 <div class="page-header">
-  <a class="back" href={back} aria-label={back === '#home' ? 'Back to Play' : 'Back'}><Icon name="back" size={20} stroke={2.2} /></a>
+  <a class="back" href={back} aria-label={back === '#home' ? t('Back to Play') : t('Back')}><Icon name="back" size={20} stroke={2.2} /></a>
   {@render lead?.()}
   <div class="text">
     <h1>{title}</h1>

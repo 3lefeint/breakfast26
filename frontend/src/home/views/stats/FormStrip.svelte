@@ -1,4 +1,5 @@
 <script>
+  import { t, language } from '../../../lib/i18n.js';
   // One row per player: their last finished games as small squares, oldest to
   // newest, coloured by the place they finished, plus their win streak.
   import { cap } from '../../../lib/util.js';
@@ -11,12 +12,13 @@
 
   function ordinal(n) {
     const mod100 = n % 100;
+    if (language === 'de') return n + '.';
     const suffix = mod100 >= 11 && mod100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
     return n + suffix;
   }
   function describe(g) {
     const date = new Date(g.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${date} · ${ordinal(g.placement)} of ${g.size} · vs ${g.opponents.map(cap).join(', ')}`;
+    return `${date} · ${t('{place} of {size}', { place: ordinal(g.placement), size: g.size })} · ${t('vs {names}', { names: g.opponents.map(cap).join(', ') })}`;
   }
 </script>
 
@@ -25,11 +27,11 @@
     {#each RANKS.filter((r) => r.key !== 'other' || hasLower) as r}
       <span class="legend-item"><span class="swatch" style:background={r.color}></span>{r.label}</span>
     {/each}
-    <span class="legend-item">oldest → newest</span>
+    <span class="legend-item">{t('oldest → newest')}</span>
   </div>
   {#each rows as p (p.player)}
     <div class="row" role="img"
-         aria-label="{cap(p.player)}, last {p.form.games.length} games: {p.form.games.map((g) => ordinal(g.placement)).join(', ')}">
+         aria-label={t('{name}, last {count} games: {places}', { name: cap(p.player), count: p.form.games.length, places: p.form.games.map((g) => ordinal(g.placement)).join(', ') })}>
       <div class="name">{cap(p.player)}</div>
       <div class="squares">
         {#each p.form.games as g (g.match_id)}
@@ -38,8 +40,8 @@
         {/each}
       </div>
       <div class="streak">
-        <span class:hot={p.form.current_streak >= 2}>Streak {p.form.current_streak}</span>
-        <span class="best">best {p.form.best_streak}</span>
+        <span class:hot={p.form.current_streak >= 2}>{t('Streak {n}', { n: p.form.current_streak })}</span>
+        <span class="best">{t('best {n}', { n: p.form.best_streak })}</span>
       </div>
     </div>
   {/each}

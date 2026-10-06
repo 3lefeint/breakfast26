@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The result of a finished Black Belt run on the TV.
   import { rematch, stopRun, undoTurn } from '../../lib/blackBelt.js';
   import BlackBeltResult from '../../lib/components/BlackBeltResult.svelte';
@@ -7,7 +8,7 @@
   let { bb } = $props();
 
   async function undoLast() {
-    if (!confirm('Undo the last turn and resume the run?')) return;
+    if (!confirm(t('Undo the last turn and resume the run?'))) return;
     await undoTurn();
   }
 
@@ -22,9 +23,9 @@
 <div class="finished">
   <BlackBeltResult {bb} large />
   <div class="actions">
-    <button class="btn" onclick={() => rematch(bb)}>↻ Again</button>
-    <button class="btn ghost" onclick={undoLast}>↩ Undo last turn</button>
-    <button class="btn ghost" onclick={done}>Done</button>
+    <button class="btn" onclick={() => rematch(bb)}>{t('↻ Again')}</button>
+    <button class="btn ghost" onclick={undoLast}>{t('↩ Undo last turn')}</button>
+    <button class="btn ghost" onclick={done}>{t('Done')}</button>
   </div>
 </div>
 

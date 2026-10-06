@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Stats tab shell: the chips pick the game mode whose stats are shown.
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import StatsX01 from './stats/StatsX01.svelte';
@@ -10,11 +11,11 @@
 
   const MODES = [
     { id: 'x01', label: 'X01' },
-    { id: 'elimination', label: 'Elimination' },
-    { id: 'target_battle', label: 'Target Battle' },
-    { id: 'killer', label: 'Killer' },
-    { id: 'field_training', label: 'Training' },
-    { id: 'black_belt', label: 'Black Belt' },
+    { id: 'elimination', label: t('Elimination') },
+    { id: 'target_battle', label: t('Target Battle') },
+    { id: 'killer', label: t('Killer') },
+    { id: 'field_training', label: t('Training') },
+    { id: 'black_belt', label: t('Black Belt') },
   ];
 
   function remembered() {
@@ -34,9 +35,9 @@
   }
 </script>
 
-<PageHeader title="Stats" />
+<PageHeader title={t('Stats')} />
 
-<div class="chips" role="tablist" aria-label="Stats view">
+<div class="chips" role="tablist" aria-label={t('Stats view')}>
   {#each MODES as m}
     <button type="button" role="tab" class="chip" class:active={mode === m.id} aria-selected={mode === m.id}
             onclick={() => select(m.id)}>{m.label}</button>

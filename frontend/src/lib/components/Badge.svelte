@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // One achievement badge: the motif image inside a round rim. The rim shows the
   // difficulty (plain, bronze with one notch, silver with two, gold with three, gold
   // with a crown, or segments that fill with each tier), the label (a number) is
@@ -30,7 +31,7 @@
   let notches = $derived(NOTCHES[item.difficulty] || 0);
   let crown = $derived(item.difficulty === 'extreme');
   let segments = $derived(item.difficulty === 'endurance' && item.tiers ? item.tiers.length : 0);
-  let name = $derived(localized(item.names) || 'Secret achievement');
+  let name = $derived(localized(item.names) || t('Secret achievement'));
 
   function point(deg, r) {
     const rad = ((deg - 90) * Math.PI) / 180;

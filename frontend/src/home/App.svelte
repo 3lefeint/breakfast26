@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../lib/i18n.js';
   import { onMount } from 'svelte';
   import { connect, wsStatus, gameState } from '../lib/stores/gameState.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
@@ -37,7 +38,7 @@
   let boardConnected = $derived($gameState.board_darts != null);
 
   let connLabel = $derived(
-    $wsStatus === 'connected' ? 'Connected' : $wsStatus === 'reconnecting' ? 'Reconnecting…' : 'connecting…'
+    $wsStatus === 'connected' ? t('Connected') : $wsStatus === 'reconnecting' ? t('Reconnecting…') : t('connecting…')
   );
 
   // Android-style hidden unlock: tap the version number DEV_TAP_THRESHOLD
@@ -113,12 +114,12 @@
         {#if $wsStatus !== 'connected'}
           <span><span class="conn-dot"></span><span class="conn-label">{connLabel}</span></span>
         {/if}
-        <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">MQTT</span></span>
-        <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">Autodarts</span></span>
+        <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">{t('MQTT')}</span></span>
+        <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">{t('Autodarts')}</span></span>
       </span>
       <span class="version-group">
         <button type="button" class="version-info" onclick={onVersionTap}>{$health.version ? `v${$health.version}` : ''}</button>
-        <button type="button" class="about-btn" aria-label="About" title="About" onclick={() => navigate('about')}><Icon name="info" size={16} /></button>
+        <button type="button" class="about-btn" aria-label={t('About')} title={t('About')} onclick={() => navigate('about')}><Icon name="info" size={16} /></button>
       </span>
   </footer>
 </div>

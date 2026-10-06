@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../i18n.js';
   // Dartboard. By default a click turns into the same field string the
   // correction endpoints already accept (`T20`, `D16`, `25`, `50`, `0`).
   // With `readonly` it only displays `darts` ({ n, x, y }, unit = outer edge
@@ -89,9 +90,9 @@
 
   function labelFor(field) {
     if (!field) return '';
-    if (field === '0') return 'Miss';
-    if (field === '25') return 'Bull (25)';
-    if (field === '50') return 'D-Bull (50)';
+    if (field === '0') return t('Miss');
+    if (field === '25') return t('Bull (25)');
+    if (field === '50') return t('D-Bull (50)');
     return field;
   }
 </script>
@@ -99,7 +100,7 @@
 <div class="board-wrap" class:disabled class:readonly>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <svg viewBox="{-HALF} {-HALF} {2 * HALF} {2 * HALF}" class="dartboard"
-       aria-label={readonly ? 'Dartboard: darts on the board' : 'Dartboard: click where the dart landed'}
+       aria-label={readonly ? t('Dartboard: darts on the board') : t('Dartboard: click where the dart landed')}
        onclick={(e) => !readonly && !disabled && onSelect(fieldFromEvent(e))}
        onpointermove={(e) => { hover = readonly || disabled ? '' : fieldFromEvent(e); }}
        onpointerleave={() => (hover = '')}>

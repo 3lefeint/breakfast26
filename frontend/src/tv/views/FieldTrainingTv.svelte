@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Field Training. The board fills most of the height with the darts of the turn in progress,
   // the field lit up (a number; the bull is named in the bar). Beside it: the darts of the turn
@@ -28,19 +29,19 @@
   }
 
   async function finish() {
-    if (!confirm(ft.thrown ? 'End the run now and keep the darts thrown as practice?' : 'Stop the run?')) return;
+    if (!confirm(ft.thrown ? t('End the run now and keep the darts thrown as practice?') : t('Stop the run?'))) return;
     await finishRun();
     if (!ft.thrown) window.location.href = '/';
   }
 
   async function stop() {
-    if (!confirm('Stop the run without keeping it?')) return;
+    if (!confirm(t('Stop the run without keeping it?'))) return;
     await stopRun();
     window.location.href = '/';
   }
 
   async function undo() {
-    if (!confirm('Undo the last completed turn?')) return;
+    if (!confirm(t('Undo the last completed turn?'))) return;
     await undoTurn();
   }
 </script>
@@ -50,10 +51,10 @@
     <div class="who">
       <span class="swatch" style=""><Avatar name={ft.player || ''} color={ft.color} size={100} /></span>
       <span class="name">{ft.player}</span>
-      <span class="turn">Turn {ft.turn}</span>
+      <span class="turn">{t('Turn {n}', { n: ft.turn })}</span>
     </div>
     <div class="target">
-      <span class="target-label">Field</span>
+      <span class="target-label">{t('Field')}</span>
       <span class="target-value">{fieldLabel(ft.field)}</span>
     </div>
   </div>
@@ -75,27 +76,27 @@
 
       <div class="progress">
         <div class="progress-line"><span class="progress-fill" style="width: {progress}%"></span></div>
-        <div class="progress-text"><strong>{ft.thrown}</strong> of {ft.darts} darts · {ft.remaining} left</div>
+        <div class="progress-text"><strong>{ft.thrown}</strong> {t('of {total} darts · {left} left', { total: ft.darts, left: ft.remaining })}</div>
       </div>
 
       <div class="stats">
-        <div class="stat"><span class="value">{ft.points}</span><span class="label">Points</span></div>
-        <div class="stat"><span class="value">{percent(ft.hit_rate)}</span><span class="label">Hit rate</span></div>
-        <div class="stat"><span class="value">{ft.hits.singles}</span><span class="label">{isBull ? 'Outer' : 'Singles'}</span></div>
-        <div class="stat"><span class="value">{ft.hits.doubles}</span><span class="label">{isBull ? "Bull's eye" : 'Doubles'}</span></div>
-        {#if !isBull}<div class="stat"><span class="value">{ft.hits.triples}</span><span class="label">Triples</span></div>{/if}
+        <div class="stat"><span class="value">{ft.points}</span><span class="label">{t('Points')}</span></div>
+        <div class="stat"><span class="value">{percent(ft.hit_rate)}</span><span class="label">{t('Hit rate')}</span></div>
+        <div class="stat"><span class="value">{ft.hits.singles}</span><span class="label">{isBull ? t('Outer') : t('Singles')}</span></div>
+        <div class="stat"><span class="value">{ft.hits.doubles}</span><span class="label">{isBull ? t("Bull's eye") : t('Doubles')}</span></div>
+        {#if !isBull}<div class="stat"><span class="value">{ft.hits.triples}</span><span class="label">{t('Triples')}</span></div>{/if}
       </div>
 
       <div class="last">
-        <span class="last-label">Last turns</span>
+        <span class="last-label">{t('Last turns')}</span>
         {#each lastTurns as p}<span class="last-chip" class:zero={p === 0}>{p}</span>{/each}
         {#if !lastTurns.length}<span class="none">—</span>{/if}
       </div>
 
       <div class="endgame-row">
-        <button class="btn-end-game" onclick={undo}>↩ Undo</button>
-        <button class="btn-end-game" onclick={finish}>⏹ Finish</button>
-        <button class="btn-end-game" onclick={stop}>■ Stop</button>
+        <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
+        <button class="btn-end-game" onclick={finish}>{t('⏹ Finish')}</button>
+        <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
       </div>
     </div>
   </div>

@@ -1,13 +1,14 @@
 import { api, apiJson } from './api.js';
+import { t } from './i18n.js';
 
 // A field of the ladder: D5, or the bull's eye (25) which is always last.
 export function stepLabel(field) {
-  return field === 25 ? 'Bull' : `D${field}`;
+  return field === 25 ? t('Bull') : `D${field}`;
 }
 
 export async function startRun(setup) {
   const res = await apiJson('POST', '/api/black-belt/start', setup);
-  if (res.error) alert(res.error);
+  if (res.error) alert(t(res.error));
   return !res.error;
 }
 

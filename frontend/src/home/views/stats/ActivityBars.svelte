@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Bars for the days someone played, with a labelled axis and the value on
   // each bar. Days without play are left out instead of stretching the axis, so
   // a few sessions months apart stay readable.
@@ -32,12 +33,12 @@
 </script>
 
 {#if !days.length}
-  <div class="empty">No data yet.</div>
+  <div class="empty">{t('No data yet.')}</div>
 {:else}
-  <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label="{unit} per day played">
-    {#each ticks as t}
-      <line class="grid" x1={LEFT} x2={W - 8} y1={y(t)} y2={y(t)} />
-      <text class="axis" x={LEFT - 6} y={y(t)} text-anchor="end" dominant-baseline="central">{Math.round(t)}</text>
+  <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label={t('{unit} per day played', { unit })}>
+    {#each ticks as tk}
+      <line class="grid" x1={LEFT} x2={W - 8} y1={y(tk)} y2={y(tk)} />
+      <text class="axis" x={LEFT - 6} y={y(tk)} text-anchor="end" dominant-baseline="central">{Math.round(tk)}</text>
     {/each}
     {#each days as d, i (d.label)}
       {@const cx = LEFT + slot * i + slot / 2}

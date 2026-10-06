@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The navigation of the Home app: the four main places and Settings at the bottom. On
   // narrow screens it becomes a bar along the bottom edge. Board opens the board manager of the
   // installation and is disabled when none is configured.
@@ -9,15 +10,15 @@
   const PLAY_ROUTES = ['', 'home', 'elimination', 'target-battle', 'killer', 'field-training', 'black-belt'];
 
   let items = $derived([
-    { id: 'play', label: 'Play', icon: 'play', href: '#home', active: PLAY_ROUTES.includes(route) },
-    { id: 'players', label: 'Players', icon: 'players', href: '#players', active: route === 'players' || route.startsWith('profile/') },
-    { id: 'stats', label: 'Stats', icon: 'stats', href: '#stats', active: route === 'stats' },
-    { id: 'board', label: 'Board', icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
+    { id: 'play', label: t('Play'), icon: 'play', href: '#home', active: PLAY_ROUTES.includes(route) },
+    { id: 'players', label: t('Players'), icon: 'players', href: '#players', active: route === 'players' || route.startsWith('profile/') },
+    { id: 'stats', label: t('Stats'), icon: 'stats', href: '#stats', active: route === 'stats' },
+    { id: 'board', label: t('Board'), icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
   ]);
   let settingsActive = $derived(route === 'settings');
 </script>
 
-<nav class="sidebar" aria-label="Main">
+<nav class="sidebar" aria-label={t('Main')}>
   <ul class="items">
     {#each items as item (item.id)}
       <li>
@@ -34,7 +35,7 @@
 
   <a class="item settings" class:active={settingsActive} href="#settings" aria-current={settingsActive ? 'page' : undefined}>
     <Icon name="settings" size={22} />
-    <span>Settings</span>
+    <span>{t('Settings')}</span>
   </a>
 </nav>
 

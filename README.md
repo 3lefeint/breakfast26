@@ -76,6 +76,7 @@ Connects straight to the Autodarts cloud — no darts-caller required.
 - Config file — no long CLI commands needed in production
 - Colored, leveled log output (DEBUG/INFO/WARNING/ERROR/CRITICAL), opt out via `NO_COLOR`
 - **Settings tab**: edit all `config.toml` settings from the browser without touching the file, organized into General / MQTT / Autodarts Source / Voice & Caller categories (the voice-pack profile is picked from a dropdown of the installed profiles)
+- **Language**: the interface is English or German, one setting per installation (`[web] language` or Settings → General → Language), applied to Home, `/tv` and `/audio` after a reload; player names, voice-pack entries and the changelog are not translated
 - **About page**: the ℹ️ button in the footer opens the running version, its release time (UTC), a joke of the day (icanhazdadjoke.com, cached per day, a built-in joke if the request fails; `[web] joke_of_the_day = false` turns it off and makes no outbound call) and the changelog
 - **Online Elimination**: play one Elimination match with Breakfast installations elsewhere. One site hosts and gets a join code, the others join with the code and a shared match password, each adds its own players, the host sets lives and order, and after a match the host can start a rematch without a new lobby (the first eliminated starts, the winner is last; players can change). The darts of every player appear live on every TV, the calls play locally, and every site stores the whole match in its own `stats.db`. Needs a relay (`relay/`, a Cloudflare Worker) and `[online] relay_url`; without it online play stays off
 - **X01 win tracking**: alongside Elimination wins, the Players tab shows each player's X01 match win count too
@@ -166,6 +167,7 @@ password = "mqtt"
 
 [web]
 port = 8080
+# language = "en"         # language of the interface, "en" or "de"; one setting for the whole installation, the TV included
 # joke_of_the_day = true   # About page fetches a joke from icanhazdadjoke.com; false = no outbound call
 
 # [online]
@@ -773,6 +775,7 @@ The web server exposes a REST API alongside the WebSocket.
 | `POST` | `/api/online/rematch` | Host only, after a finished match: back to the lobby with the same sites and players |
 | `POST` | `/api/online/leave` | Leave the online match |
 | `GET` | `/api/changelog` | `CHANGELOG.md` as versions with their sections, for the About page; `[Unreleased]` only if it has entries |
+| `GET` | `/api/language` | Language of the interface, `{"language": "en", "supported": ["en", "de"]}`, from `[web] language` |
 | `GET` | `/api/joke` | Joke of the day (cached per day, built-in fallback); `{"enabled": false}` and no outbound call if `[web] joke_of_the_day = false` |
 | `GET` | `/api/board-address` | Local Autodarts board manager URL, for the Home hub's Board card |
 | `GET` | `/api/sound/{filename}` | Serves one voice-pack sound file (used by `/audio`) |

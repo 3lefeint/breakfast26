@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on the TV: the placements with their scores, the winners
   // marked with the crown, and the table of every round. Players who tied share a placement and all win.
@@ -14,11 +15,11 @@
   let solo = $derived((tb.players || []).length === 1);
   let history = $derived(tb.history || []);
   let heading = $derived(
-    solo ? 'Finished' : tb.winners.length > 1 ? `${tb.winners.map(cap).join(' and ')} win` : `${cap(tb.winners[0] || '')} wins`
+    solo ? t('Finished') : tb.winners.length > 1 ? t('{names} win', { names: tb.winners.map(cap).join(t(' and ')) }) : t('{name} wins', { name: cap(tb.winners[0] || '') })
   );
 
   async function undo() {
-    if (!confirm('Undo the last turn and resume the game?')) return;
+    if (!confirm(t('Undo the last turn and resume the game?'))) return;
     await api('POST', '/api/target-battle/undo');
   }
 
@@ -48,7 +49,7 @@
     <table>
       <thead>
         <tr>
-          <th>Round</th><th>Target</th>
+          <th>{t('Round')}</th><th>{t('Target')}</th>
           {#each rows as p}<th class="player">{cap(p.name)}</th>{/each}
         </tr>
       </thead>
@@ -64,9 +65,9 @@
     </table>
   </div>
   <div class="actions">
-    <button class="btn" onclick={() => rematch(tb)}>↻ Rematch</button>
-    <button class="btn ghost" onclick={undo}>↩ Undo last turn</button>
-    <button class="btn ghost" onclick={done}>Done</button>
+    <button class="btn" onclick={() => rematch(tb)}>{t('↻ Rematch')}</button>
+    <button class="btn ghost" onclick={undo}>{t('↩ Undo last turn')}</button>
+    <button class="btn ghost" onclick={done}>{t('Done')}</button>
   </div>
 </div>
 

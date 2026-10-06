@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Killer game on Home: placements, a rematch with the same players and
   // options (new numbers), a new setup, correcting a dart of the last turn or undoing it. A game won
@@ -20,7 +21,7 @@
   }
 
   async function undoWin() {
-    if (!confirm('Undo the last turn and resume the game?')) return;
+    if (!confirm(t('Undo the last turn and resume the game?'))) return;
     await api('POST', '/api/killer/undo');
   }
 </script>
@@ -28,7 +29,7 @@
 {#if k}
   <ConfettiBurst />
   <div class="section finished">
-    <div class="heading">{cap(k.winner || '')} wins</div>
+    <div class="heading">{t('{name} wins', { name: cap(k.winner || '') })}</div>
     <div class="meta">{ruleChips(k).join(' · ')}</div>
     <ul class="results">
       {#each rows as p (p.name)}
@@ -44,17 +45,17 @@
     </ul>
     {#if lastDarts.length}
       <div class="last">
-        <span class="last-label">Last turn, {cap(k.last_turn.player)}</span>
+        <span class="last-label">{t('Last turn, {name}', { name: cap(k.last_turn.player) })}</span>
         {#each lastDarts as d, i}
           <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
         {/each}
-        <span class="hint">tap a dart to correct it</span>
+        <span class="hint">{t('tap a dart to correct it')}</span>
       </div>
     {/if}
     <div class="actions">
-      <button class="btn btn-start" onclick={again}>↻ Rematch</button>
-      <button class="btn ghost" onclick={stopGame}>New game</button>
-      <button class="btn ghost" onclick={undoWin}>↩ Undo last turn</button>
+      <button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>
+      <button class="btn ghost" onclick={stopGame}>{t('New game')}</button>
+      <button class="btn ghost" onclick={undoWin}>{t('↩ Undo last turn')}</button>
     </div>
   </div>
 {/if}

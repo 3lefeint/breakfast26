@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // The result of a finished Field Training run on the TV.
   import { rematch, stopRun, undoTurn } from '../../lib/fieldTraining.js';
   import FieldTrainingResult from '../../lib/components/FieldTrainingResult.svelte';
@@ -6,7 +7,7 @@
   let { ft } = $props();
 
   async function undoLast() {
-    if (!confirm('Undo the last turn and resume the run?')) return;
+    if (!confirm(t('Undo the last turn and resume the run?'))) return;
     await undoTurn();
   }
 
@@ -19,9 +20,9 @@
 <div class="finished">
   <FieldTrainingResult {ft} large />
   <div class="actions">
-    <button class="btn" onclick={() => rematch(ft)}>↻ Again</button>
-    <button class="btn ghost" onclick={undoLast}>↩ Undo last turn</button>
-    <button class="btn ghost" onclick={done}>Done</button>
+    <button class="btn" onclick={() => rematch(ft)}>{t('↻ Again')}</button>
+    <button class="btn ghost" onclick={undoLast}>{t('↩ Undo last turn')}</button>
+    <button class="btn ghost" onclick={done}>{t('Done')}</button>
   </div>
 </div>
 

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // The fastest legs won, best first: one bar per leg, its length is the darts
   // thrown on an axis from 0 and printed inside it, with the 3-dart average of
   // that leg on the right. The date is in the hover.
@@ -13,16 +14,16 @@
   const when = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 </script>
 
-<svg viewBox="0 0 {W} {TOP + SLOTS * ROW + AXIS}" class="chart" role="img" aria-label="Fastest legs won, by darts thrown">
-  {#each ticks as t}
-    <line class="grid" x1={x(t)} x2={x(t)} y1={TOP} y2={TOP + SLOTS * ROW} />
-    <text class="axis" x={x(t)} y={TOP + SLOTS * ROW + 14} text-anchor="middle">{t}</text>
+<svg viewBox="0 0 {W} {TOP + SLOTS * ROW + AXIS}" class="chart" role="img" aria-label={t('Fastest legs won, by darts thrown')}>
+  {#each ticks as tk}
+    <line class="grid" x1={x(tk)} x2={x(tk)} y1={TOP} y2={TOP + SLOTS * ROW} />
+    <text class="axis" x={x(tk)} y={TOP + SLOTS * ROW + 14} text-anchor="middle">{tk}</text>
   {/each}
   {#each legs as l, i}
     {@const cy = TOP + i * ROW + ROW / 2}
     <text class="rank" x="0" y={cy} dominant-baseline="central">#{i + 1}</text>
     <rect class="bar" x={LEFT} y={cy - BAR / 2} width={x(l.darts) - LEFT} height={BAR} rx="3">
-      <title>{when(l.started_at)} · {l.points_start} · {l.darts} darts · avg {l.avg3.toFixed(1)}</title>
+      <title>{when(l.started_at)} · {l.points_start} · {t('{darts} darts · avg {avg}', { darts: l.darts, avg: l.avg3.toFixed(1) })}</title>
     </rect>
     <text class="inside" x={LEFT + 8} y={cy} dominant-baseline="central" pointer-events="none">{l.darts}</text>
     <text class="avg" x={W - RIGHT + 14} y={cy} dominant-baseline="central">Ø {l.avg3.toFixed(1)}</text>

@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Where the darts landed: every dart as a glowing point on the board and, from
   // DENSITY_MIN darts on, a density overlay that shows where they cluster.
   import { SEGMENT_ORDER, RINGS_MM, polar } from '../../../lib/dartboard.js';
@@ -46,11 +47,11 @@
 </script>
 
 {#if !darts.length}
-  <div class="empty">No dart positions recorded yet.</div>
+  <div class="empty">{t('No dart positions recorded yet.')}</div>
 {:else}
   <div class="wrap">
     <svg viewBox="{-HALF} {-HALF} {2 * HALF} {2 * HALF}" class="board" role="img"
-         aria-label="Dartboard with the positions of the darts">
+         aria-label={t('Dartboard with the positions of the darts')}>
       <defs>
         <filter id="dart-glow" x="-200%" y="-200%" width="500%" height="500%">
           <feGaussianBlur stdDeviation="2.2" result="blur" />
@@ -80,7 +81,7 @@
     </svg>
   </div>
   <div class="note">
-    {darts.length} {darts.length === 1 ? 'dart' : 'darts'} with a position{#if corrected} · {corrected} corrected {corrected === 1 ? 'dart is' : 'darts are'} left out{/if}
+    {t('{n} darts with a position', { n: darts.length })}{#if corrected} · {t('{n} corrected darts are left out', { n: corrected })}{/if}
   </div>
 {/if}
 

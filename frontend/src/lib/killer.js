@@ -1,5 +1,6 @@
 import { api, apiJson } from './api.js';
 import { cap } from './util.js';
+import { t } from './i18n.js';
 
 // Start the game that just finished once more: same players in the same order, same options. Every
 // player gets a new number.
@@ -11,7 +12,7 @@ export async function rematch(k) {
     bull_off: k.setup.bull_off,
     throw_numbers: k.setup.throw_numbers,
   });
-  if (res.error) alert(res.error);
+  if (res.error) alert(t(res.error));
   return !res.error;
 }
 
@@ -23,15 +24,15 @@ export function stopGame() {
 // The rules that are on, for the chips on the screens: which darts take a life, and the own goal.
 export function ruleChips(k) {
   const rules = k?.rules || {};
-  return [rules.singles ? 'Singles and doubles take lives' : 'Only doubles take lives',
-          ...(rules.own_goal ? ['Own goals cost a life'] : []),
-          ...(rules.bull_off ? ['Bull-off'] : []),
-          ...(rules.throw_numbers ? ['Numbers thrown'] : [])];
+  return [rules.singles ? t('Singles and doubles take lives') : t('Only doubles take lives'),
+          ...(rules.own_goal ? [t('Own goals cost a life')] : []),
+          ...(rules.bull_off ? [t('Bull-off')] : []),
+          ...(rules.throw_numbers ? [t('Numbers thrown')] : [])];
 }
 
 // A dart of the board view as the chip shows it: its field, or "Miss" outside every field.
 export function dartLabel(dart) {
-  if (!dart || !dart.field || /^M\d*$/i.test(dart.field)) return 'Miss';
+  if (!dart || !dart.field || /^M\d*$/i.test(dart.field)) return t('Miss');
   return dart.field;
 }
 
@@ -40,15 +41,15 @@ export function eventText(e) {
   const who = cap(e.player);
   const victim = e.victim ? cap(e.victim) : '';
   switch (e.kind) {
-    case 'killer': return `${who} is a killer`;
-    case 'hit': return `${who} hits ${victim}, ${e.lives} left`;
-    case 'own_goal': return `${who} own goal, ${e.lives} left`;
-    case 'out': return `${victim} is out`;
-    case 'bull_off': return `${who}: ${e.distance} mm from the bull`;
-    case 'bull_off_tie': return 'Tied for the closest, they throw again';
-    case 'starts': return `${who} starts`;
-    case 'number': return `${who} gets ${e.number}`;
-    case 'again': return e.reason === 'taken' ? `${e.number} is taken, ${who} throws again` : `No number, ${who} throws again`;
+    case 'killer': return t('{who} is a killer', { who });
+    case 'hit': return t('{who} hits {victim}, {lives} left', { who, victim, lives: e.lives });
+    case 'own_goal': return t('{who} own goal, {lives} left', { who, lives: e.lives });
+    case 'out': return t('{victim} is out', { victim });
+    case 'bull_off': return t('{who}: {distance} mm from the bull', { who, distance: e.distance });
+    case 'bull_off_tie': return t('Tied for the closest, they throw again');
+    case 'starts': return t('{who} starts', { who });
+    case 'number': return t('{who} gets {number}', { who, number: e.number });
+    case 'again': return e.reason === 'taken' ? t('{number} is taken, {who} throws again', { number: e.number, who }) : t('No number, {who} throws again', { who });
     default: return '';
   }
 }
@@ -76,7 +77,7 @@ export function boardZones(k) {
 
 // The line next to the name of the player who is up before the game, nothing in the game.
 export function phaseLabel(k) {
-  if (k?.phase === 'bull_off') return 'Bull-off: one dart at the bull';
-  if (k?.phase === 'numbers') return 'Throw for the number, with the other hand';
+  if (k?.phase === 'bull_off') return t('Bull-off: one dart at the bull');
+  if (k?.phase === 'numbers') return t('Throw for the number, with the other hand');
   return '';
 }

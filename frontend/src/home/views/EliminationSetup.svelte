@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #elimSetup: lives counter, reorderable game-player
   // list, known-player chips to add/remove, start button. Local-only state
   // (gamePlayers/livesCount) until Start is pressed, exactly like the
@@ -38,7 +39,7 @@
   }
 
   async function start() {
-    if (gamePlayers.length < 2) { alert('Select at least 2 players.'); return; }
+    if (gamePlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     await api('POST', '/api/elimination/start', { players: order, lives: livesCount });
     window.location.href = '/tv';
@@ -46,10 +47,10 @@
 </script>
 
 <div class="elim-section">
-  <div class="elim-section-title">Setup</div>
+  <div class="elim-section-title">{t('Setup')}</div>
 
   <div class="lives-row">
-    <span class="label">Lives per player</span>
+    <span class="label">{t('Lives per player')}</span>
     <div class="counter">
       <button class="btn-counter" onclick={() => changeLives(-1)}>−</button>
       <span class="counter-val">{livesCount}</span>
@@ -59,7 +60,7 @@
 
   <div class="elim-columns">
     <div class="elim-column">
-      <div class="elim-section-title">Known players <span class="hint">(click to add/remove)</span></div>
+      <div class="elim-section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
       <div class="known-chips">
         {#each $players.known as name (name)}
           <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
@@ -68,7 +69,7 @@
     </div>
 
     <div class="elim-column">
-      <div class="elim-section-title">Game players <span class="hint">(order = play order)</span></div>
+      <div class="elim-section-title">{t('Game players')} <span class="hint">{t('(order = play order)')}</span></div>
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
@@ -84,10 +85,10 @@
 
   <label class="random-order-row">
     <input type="checkbox" bind:checked={randomOrder}>
-    <span>Random order</span>
+    <span>{t('Random order')}</span>
   </label>
 
-  <button class="btn btn-start" onclick={start}>▶ Start</button>
+  <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
 
 <style>

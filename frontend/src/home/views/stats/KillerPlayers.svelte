@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../../../lib/i18n.js';
   // Killer per player: how often they became a killer and how fast, what they took from others
   // (lives, knockouts), and what they lost (own goals, lives).
   import { cap } from '../../../lib/util.js';
@@ -11,14 +12,14 @@
 </script>
 
 {#if !rows.length}
-  <div class="empty">No finished Killer games yet.</div>
+  <div class="empty">{t('No finished Killer games yet.')}</div>
 {:else}
   <table class="players-table">
     <thead>
       <tr>
-        <th>Player</th><th class="num">Games</th><th class="num">Became killer</th><th class="num">Turns to killer</th>
-        <th class="num">Lives taken</th><th class="num">Per game</th><th class="num">Knockouts</th>
-        <th class="num">Own goals</th><th class="num">Lives lost</th>
+        <th>{t('Player')}</th><th class="num">{t('Games')}</th><th class="num">{t('Became killer')}</th><th class="num">{t('Turns to killer')}</th>
+        <th class="num">{t('Lives taken')}</th><th class="num">{t('Per game')}</th><th class="num">{t('Knockouts')}</th>
+        <th class="num">{t('Own goals')}</th><th class="num">{t('Lives lost')}</th>
       </tr>
     </thead>
     <tbody>
@@ -26,8 +27,8 @@
         <tr>
           <td>{cap(p.player)}</td>
           <td class="num">{p.games}</td>
-          <td class="num" title="{p.killer_games} of {p.games} games">{p.killer_pct != null ? p.killer_pct.toFixed(0) + '%' : '—'}</td>
-          <td class="num" title={p.fastest_killer != null ? `fastest: ${p.fastest_killer}` : ''}>{num(p.avg_turns_to_killer)}</td>
+          <td class="num" title={t('{n} of {games} games', { n: p.killer_games, games: p.games })}>{p.killer_pct != null ? p.killer_pct.toFixed(0) + '%' : '—'}</td>
+          <td class="num" title={p.fastest_killer != null ? t('fastest: {n}', { n: p.fastest_killer }) : ''}>{num(p.avg_turns_to_killer)}</td>
           <td class="num">{p.lives_taken}</td>
           <td class="num">{num(p.lives_taken_per_game)}</td>
           <td class="num">{p.knockouts}</td>
@@ -37,7 +38,7 @@
       {/each}
     </tbody>
   </table>
-  <div class="note">Turns to killer count up to and including the turn that made the killer; a double thrown for the number counts as the first.</div>
+  <div class="note">{t('Turns to killer count up to and including the turn that made the killer; a double thrown for the number counts as the first.')}</div>
 {/if}
 
 <style>
