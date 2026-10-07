@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-07
+
 ### Added
 - Checkout Trainer on the Play page, with three exercises: Random checkout (a finishable score from 2 to 170 is drawn, up to three darts on the board, in a range, a number of attempts and optionally with the standard route shown, with the next score drawn after a miss), Route quiz (tap the first dart of a route on a virtual board) and Setup shots (tap the darts that set up a finish and see what is left and what it allows). The routes come from a table of the usual checkout chart; any other valid route counts too. The Stats page has a Checkout view with the success rate by range and score and the weakest scores (#32).
 
