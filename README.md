@@ -199,7 +199,9 @@ and a heatmap of the board. Leaderboards rank players by average, 180s and check
 
 Players earn achievements in their matches: a bullseye, a 180, a big checkout, streaks, a nine-dart leg and
 many more, some with several tiers and some secret. They appear as badges in the player profile. Only
-matches played after achievements were first enabled on your installation count.
+matches played after achievements were first enabled on your installation count. Most are announced as soon
+as they happen and made final when the match ends, so a game with many players does not end with a long run
+of banners.
 
 <img src="media/player-profile.webp" alt="A player profile with its achievements" width="600">
 

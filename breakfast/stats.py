@@ -288,6 +288,7 @@ class StatsDB:
         # Called with a match id after a change that can decide achievements (a match
         # closed or reopened, a turn undone or corrected). See achievements.py.
         self.on_match_changed = None
+        self.on_turn_stored = None          # set by AchievementEngine.attach()
         self.achievement_engine = None      # set by AchievementEngine.attach()
         with self._lock:
             self._conn.executescript(_SCHEMA)
@@ -394,6 +395,15 @@ class StatsDB:
             self.on_match_changed(match_id)
         except Exception:
             log.exception("Match listener failed for %s", match_id)
+
+    def _turn_stored(self, match_id: str):
+        """Tell the listener a turn was stored; like _match_changed() it never reaches the game."""
+        if self.on_turn_stored is None:
+            return
+        try:
+            self.on_turn_stored(match_id)
+        except Exception:
+            log.exception("Turn listener failed for %s", match_id)
 
     def open_match(self, match_id: str, game_mode: str, points_start: int):
         log.debug("DB write: open_match match_id=%s game_mode=%s points_start=%s",
@@ -765,6 +775,7 @@ class StatsDB:
             self._insert_positions(match_id, "Target Battle", player, 1, turn,
                                    [((p or {}).get("field"), p) for p in positions or []])
             self._conn.commit()
+        self._turn_stored(match_id)
 
     def correct_last_target_battle_turn(self, match_id: str, player: str, score: int):
         """The total of a finished turn was corrected: rewrite the score of the player's most
@@ -1108,6 +1119,7 @@ class StatsDB:
             self._insert_positions(match_id, "Killer", player, 1, turn,
                                    [((p or {}).get("field"), p) for p in positions or []])
             self._conn.commit()
+        self._turn_stored(match_id)
 
     def delete_last_killer_turn(self, match_id: str, player: str):
         """Undo insert_killer_turn() for the player's most recent turn."""
@@ -1368,6 +1380,7 @@ class StatsDB:
             self._insert_positions(match_id, "Elimination", player, 1, turn,
                                    [((p or {}).get("field"), p) for p in positions or []])
             self._conn.commit()
+        self._turn_stored(match_id)
 
     def correct_last_elimination_turn(self, match_id: str, player: str, score: int, passed: bool):
         """A finished turn's total was corrected: rewrite the score and whether it
@@ -1431,6 +1444,7 @@ class StatsDB:
             self._insert_positions(match_id, "X01", player, leg, turn,
                                    [(f, p) for (f, _, _), p in zip(darts, positions or [])])
             self._conn.commit()
+        self._turn_stored(match_id)
 
     def _insert_positions(self, match_id, game_mode, player, leg, turn, fields_positions):
         """Caller holds the lock and commits. fields_positions: (field, position) per
@@ -1765,6 +1779,14 @@ class StatsDB:
                 "SELECT achievement_id, tier, earned_at, match_id FROM achievements_earned"
                 " WHERE player = ? ORDER BY earned_at, id", (player,)).fetchall()
         return [dict(r) for r in rows]
+
+    def earned_from_match(self, match_id: str) -> list:
+        """(player, achievement id) of everything that was earned in this match."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, achievement_id FROM achievements_earned WHERE match_id = ?",
+                (match_id,)).fetchall()
+        return [(r["player"], r["achievement_id"]) for r in rows]
 
     def add_earned(self, player: str, achievement_id: str, tier: int, match_id: str | None):
         log.debug("DB write: add_earned player=%s achievement=%s tier=%s match_id=%s",

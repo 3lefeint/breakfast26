@@ -201,6 +201,7 @@ class Achievement:
     peak: bool = False         # counter: the total is the highest value of any match, not the sum
     motif: str | None = None   # id of the badge motif to share, default: its own
     practice: bool = False     # also decided by a Field Training run that is only practice
+    live: bool = False         # event: can be decided while the match is still running (see the engine)
 
     def applies_to(self, game_mode: str) -> bool:
         if self.game_modes == ANY:
@@ -895,22 +896,22 @@ ACHIEVEMENTS = (
                 check=_first_breakfast),
     Achievement("bullseye", "general", "easy", {"en": "Bullseye", "de": "Bullseye"},
                 {"en": "Hit the inner bull.", "de": "Das innere Bull treffen."},
-                check=_bullseye),
+                check=_bullseye, live=True),
     Achievement("shanghai", "general", "medium", {"en": "Shanghai", "de": "Shanghai"},
                 {"en": "Hit a single, a double and a triple of the same number in one turn, in any order.",
                  "de": "Single, Double und Triple derselben Zahl in einer Aufnahme treffen, Reihenfolge beliebig."},
-                label="SDT", check=_shanghai),
+                label="SDT", check=_shanghai, live=True),
     Achievement("double_pack", "general", "hard", {"en": "Triple Double", "de": "Doppelpack"},
                 {"en": "Hit a double with all three darts of a turn, the bull counts.",
                  "de": "Mit allen drei Darts einer Aufnahme ein Double treffen, das Bull zählt."},
-                check=_double_pack),
+                check=_double_pack, live=True),
     Achievement("maximum", "general", "hard", {"en": "180!", "de": "180!"},
                 {"en": "Hit three treble 20s in one turn.", "de": "Drei T20 in einer Aufnahme treffen."},
-                label="180", check=_maximum),
+                label="180", check=_maximum, live=True),
     Achievement("triple_bull", "general", "very_hard", {"en": "Triple Bull", "de": "Bull-Trio"},
                 {"en": "Hit the inner bull with all three darts of a turn.",
                  "de": "Mit allen drei Darts einer Aufnahme das innere Bull treffen."},
-                check=_triple_bull),
+                check=_triple_bull, live=True),
     Achievement("maximum_collector", "general", "endurance",
                 {"en": "Maximum Collector", "de": "Maximum-Sammler"},
                 {"en": "Score 180 again and again: 10, 100 and 1,000 times.",
@@ -930,32 +931,32 @@ ACHIEVEMENTS = (
                 game_modes=X01, check=_first_bite),
     Achievement("job_done", "x01", "easy", {"en": "Job Done", "de": "Feierabend"},
                 {"en": "Finish a leg with a checkout.", "de": "Ein Leg mit einem Checkout beenden."},
-                game_modes=X01, check=_job_done),
+                game_modes=X01, check=_job_done, live=True),
     Achievement("last_dart_finish", "x01", "easy",
                 {"en": "Last-Dart Finish", "de": "Auf den letzten Drücker"},
                 {"en": "Check out with the third dart of a turn.",
                  "de": "Mit dem dritten Dart einer Aufnahme auschecken."},
-                game_modes=X01, check=_last_dart_finish),
+                game_modes=X01, check=_last_dart_finish, live=True),
     Achievement("double_trouble", "x01", "easy", {"en": "Double Trouble", "de": "Double Trouble"},
                 {"en": "Finish a leg on D1.", "de": "Ein Leg auf D1 beenden."},
-                game_modes=X01, label="D1", check=_double_trouble),
+                game_modes=X01, label="D1", check=_double_trouble, live=True),
     Achievement("high_finish", "x01", "medium", {"en": "High Finish", "de": "High Finish"},
                 {"en": "Check out from 100 or more in one turn.",
                  "de": "Aus mindestens 100 Rest in einer Aufnahme auschecken."},
-                game_modes=X01, label="100+", check=_high_finish),
+                game_modes=X01, label="100+", check=_high_finish, live=True),
     Achievement("straight_to_the_double", "x01", "easy",
                 {"en": "Straight to the Double", "de": "Ohne Umweg"},
                 {"en": "Check out with the first dart of a turn.",
                  "de": "Mit dem ersten Dart einer Aufnahme auschecken."},
-                game_modes=X01, check=_straight_to_the_double),
+                game_modes=X01, check=_straight_to_the_double, live=True),
     Achievement("big_fish", "x01", "very_hard", {"en": "Big Fish", "de": "Big Fish"},
                 {"en": "Check out 170 with T20, T20 and the inner bull.",
                  "de": "170 Rest mit T20, T20 und dem inneren Bull auschecken."},
-                game_modes=X01, label="170", check=_big_fish),
+                game_modes=X01, label="170", check=_big_fish, live=True),
     Achievement("perfect_leg", "x01", "extreme", {"en": "Perfect Leg", "de": "Perfektes Leg"},
                 {"en": "Win a 501 leg in exactly nine darts.",
                  "de": "Ein 501-Leg in genau neun Darts beenden."},
-                game_modes=X01, label="501", check=_perfect_leg),
+                game_modes=X01, label="501", check=_perfect_leg, live=True),
     Achievement("last_at_the_table", "elimination", "easy",
                 {"en": "Last at the Table", "de": "Letzter am Tisch"},
                 {"en": "Win an Elimination match.", "de": "Ein Elimination-Spiel gewinnen."},
@@ -964,17 +965,17 @@ ACHIEVEMENTS = (
                 {"en": "Raising the Bar", "de": "Latte höher"},
                 {"en": "Beat the previous score without a free pass for the first time.",
                  "de": "Ohne Freipass erstmals die Punktzahl des Vorgängers überbieten."},
-                game_modes=ELIMINATION, check=_raising_the_bar),
+                game_modes=ELIMINATION, check=_raising_the_bar, live=True),
     Achievement("one_is_enough", "elimination", "easy",
                 {"en": "One Is Enough", "de": "Ein Punkt reicht"},
                 {"en": "Beat the previous score by exactly one point, without a free pass.",
                  "de": "Ohne Freipass die Punktzahl des Vorgängers um genau einen Punkt überbieten."},
-                game_modes=ELIMINATION, label="+1", check=_one_is_enough),
+                game_modes=ELIMINATION, label="+1", check=_one_is_enough, live=True),
     Achievement("second_chance", "elimination", "easy",
                 {"en": "Second Chance", "de": "Zweite Chance"},
                 {"en": "Lose a life and beat the score to beat in your very next turn, without a free pass.",
                  "de": "Nach einem Lebensverlust in der nächsten eigenen Aufnahme ohne Freipass die Vorgabe überbieten."},
-                game_modes=ELIMINATION, check=_second_chance),
+                game_modes=ELIMINATION, check=_second_chance, live=True),
     Achievement("last_life_standing", "elimination", "medium",
                 {"en": "Last Life Standing", "de": "Letztes Leben"},
                 {"en": "Win a match that started with at least two lives with exactly one life left.",
@@ -999,11 +1000,11 @@ ACHIEVEMENTS = (
                 {"en": "No Free Ride", "de": "Aus eigener Kraft"},
                 {"en": "Beat the score to beat in five turns in a row, none of them with a free pass.",
                  "de": "Fünf eigene Aufnahmen hintereinander ohne Freipass spielen und jedes Mal die Vorgabe überbieten."},
-                game_modes=ELIMINATION, label="5", check=_no_free_ride),
+                game_modes=ELIMINATION, label="5", check=_no_free_ride, live=True),
     Achievement("maximum_beaten", "elimination", "very_hard",
                 {"en": "Maximum Beaten", "de": "Maximum geknackt"},
                 {"en": "Beat a score of 179 with 180.", "de": "Eine Vorgabe von 179 mit 180 überbieten."},
-                game_modes=ELIMINATION, label="180", check=_maximum_beaten),
+                game_modes=ELIMINATION, label="180", check=_maximum_beaten, live=True),
     Achievement("back_from_the_brink", "elimination", "hard",
                 {"en": "Back from the Brink", "de": "Dem Tod von der Schippe"},
                 {"en": "With at least three lives and three players, fall to one life, pass at least three turns without a free pass from there and win.",
@@ -1013,12 +1014,12 @@ ACHIEVEMENTS = (
                 {"en": "Target Acquired", "de": "Ziel erfasst"},
                 {"en": "Hit the target number with all three darts of a turn.",
                  "de": "Mit allen drei Darts einer Aufnahme die Zielzahl treffen."},
-                game_modes=TARGET_BATTLE, check=_target_acquired),
+                game_modes=TARGET_BATTLE, check=_target_acquired, live=True),
     Achievement("nine_out_of_nine", "target_battle", "hard",
                 {"en": "Nine out of Nine", "de": "Neun von neun"},
                 {"en": "Hit three triples of the target in a turn, nine points, with the standard scoring.",
                  "de": "Im Standard-Wertungsprofil mit drei Triples der Zielzahl neun Punkte in einer Aufnahme erzielen."},
-                game_modes=TARGET_BATTLE, label="9", check=_nine_out_of_nine),
+                game_modes=TARGET_BATTLE, label="9", check=_nine_out_of_nine, live=True),
     Achievement("no_empty_rounds", "target_battle", "medium",
                 {"en": "No Empty Rounds", "de": "Keine leere Runde"},
                 {"en": "Score at least one point in every round of a standard game of ten rounds.",
@@ -1028,17 +1029,17 @@ ACHIEVEMENTS = (
                 {"en": "On Target", "de": "Treffsicher"},
                 {"en": "Score at least 60 of 90 points in a standard game of ten rounds.",
                  "de": "Im Standardspiel mit zehn Runden mindestens 60 von 90 Punkten erzielen."},
-                game_modes=TARGET_BATTLE, label="60", check=_points_at_least(60)),
+                game_modes=TARGET_BATTLE, label="60", check=_points_at_least(60), live=True),
     Achievement("sharpshooter", "target_battle", "very_hard",
                 {"en": "Sharpshooter", "de": "Meisterschütze"},
                 {"en": "Score at least 75 of 90 points in a standard game of ten rounds.",
                  "de": "Im Standardspiel mit zehn Runden mindestens 75 von 90 Punkten erzielen."},
-                game_modes=TARGET_BATTLE, label="75", check=_points_at_least(75)),
+                game_modes=TARGET_BATTLE, label="75", check=_points_at_least(75), live=True),
     Achievement("perfect_battle", "target_battle", "extreme",
                 {"en": "Perfect Battle", "de": "Perfektes Battle"},
                 {"en": "Score all 90 of 90 points in a standard game of ten rounds.",
                  "de": "Im Standardspiel mit zehn Runden 90 von 90 Punkten erzielen."},
-                game_modes=TARGET_BATTLE, label="90", check=_points_at_least(90)),
+                game_modes=TARGET_BATTLE, label="90", check=_points_at_least(90), live=True),
     Achievement("photo_finish", "target_battle", "medium",
                 {"en": "Photo Finish", "de": "Fotofinish"},
                 {"en": "Win a standard game against at least one opponent by exactly one point, without a tiebreak.",
@@ -1053,27 +1054,27 @@ ACHIEVEMENTS = (
                 {"en": "Double Focus", "de": "Double-Fokus"},
                 {"en": "Score at least 15 of 30 points in the doubles-only profile with ten rounds.",
                  "de": "Im Trainingsprofil „Nur Doubles“ mit zehn Runden mindestens 15 von 30 Punkten erzielen."},
-                game_modes=TARGET_BATTLE, label="15", check=_training_focus("doubles")),
+                game_modes=TARGET_BATTLE, label="15", check=_training_focus("doubles"), live=True),
     Achievement("triple_focus", "target_battle", "very_hard",
                 {"en": "Triple Focus", "de": "Triple-Fokus"},
                 {"en": "Score at least 15 of 30 points in the triples-only profile with ten rounds.",
                  "de": "Im Trainingsprofil „Nur Triples“ mit zehn Runden mindestens 15 von 30 Punkten erzielen."},
-                game_modes=TARGET_BATTLE, label="15", check=_training_focus("triples")),
+                game_modes=TARGET_BATTLE, label="15", check=_training_focus("triples"), live=True),
     Achievement("either_side_of_twenty", "target_battle", "hidden",
                 {"en": "Either Side of Twenty", "de": "Rechts und links vorbei"},
                 {"en": "With target 20, hit only 1 and 5 with the three darts of a turn, both of them.",
                  "de": "Bei Zielzahl 20 mit allen drei Darts ausschliesslich die Zahlen 1 oder 5 treffen, beide müssen vorkommen."},
-                game_modes=TARGET_BATTLE, hidden=True, label="1 5", check=_either_side_of_twenty),
+                game_modes=TARGET_BATTLE, hidden=True, label="1 5", check=_either_side_of_twenty, live=True),
     Achievement("wrong_maximum", "target_battle", "hidden",
                 {"en": "Wrong Maximum", "de": "Falsches Maximum"},
                 {"en": "Hit three T20 in a turn when the target is not 20, with the standard scoring.",
                  "de": "Im Standard-Wertungsprofil bei einer anderen Zielzahl als 20 drei T20 treffen."},
-                game_modes=TARGET_BATTLE, hidden=True, label="180", check=_wrong_maximum),
+                game_modes=TARGET_BATTLE, hidden=True, label="180", check=_wrong_maximum, live=True),
     Achievement("better_late_than_never", "target_battle", "hidden",
                 {"en": "Better Late Than Never", "de": "Besser spät als nie"},
                 {"en": "Score nothing with the first two darts of a turn and hit the triple of the target with the third.",
                  "de": "In einer Aufnahme mit den ersten beiden Darts keine Punkte erzielen und mit dem dritten Dart das Triple der Zielzahl treffen."},
-                game_modes=TARGET_BATTLE, hidden=True, check=_better_late_than_never),
+                game_modes=TARGET_BATTLE, hidden=True, check=_better_late_than_never, live=True),
     Achievement("exactly_sixty", "target_battle", "hidden",
                 {"en": "Exactly Sixty", "de": "Punktlandung"},
                 {"en": "Finish a standard game of ten rounds with exactly 60 points.",
@@ -1138,12 +1139,12 @@ ACHIEVEMENTS = (
                 {"en": "Short Order", "de": "Kurzer Prozess"},
                 {"en": "Finish a 501 leg in at most 18 darts.",
                  "de": "Ein 501-Leg in höchstens 18 Darts beenden."},
-                game_modes=X01, label="18", check=_short_order),
+                game_modes=X01, label="18", check=_short_order, live=True),
     Achievement("bullseye_finish", "x01", "medium",
                 {"en": "Bullseye Finish", "de": "Volltreffer"},
                 {"en": "Finish a leg on the inner bull.",
                  "de": "Ein Leg mit dem inneren Bull beenden."},
-                game_modes=X01, check=_bullseye_finish),
+                game_modes=X01, check=_bullseye_finish, live=True),
     Achievement("streak_master", "x01", "hard",
                 {"en": "Streak Master", "de": "Serienmeister"},
                 {"en": "Win three X01 matches in a row.",
@@ -1163,122 +1164,122 @@ ACHIEVEMENTS = (
                 {"en": "Roughly Pi", "de": "Pi mal Daumen"},
                 {"en": "Leave exactly 314 after a turn.",
                  "de": "Nach einer Aufnahme stehen genau 314 Punkte aus."},
-                game_modes=X01, hidden=True, label="314", check=_rest_after_turn_is(314)),
+                game_modes=X01, hidden=True, label="314", check=_rest_after_turn_is(314), live=True),
     Achievement("repdigit", "x01", "hidden",
                 {"en": "Repdigit", "de": "Schnapszahl"},
                 {"en": "Leave exactly 111, 222, 333 or 444 after a turn.",
                  "de": "Nach einer Aufnahme stehen genau 111, 222, 333 oder 444 Punkte aus."},
-                game_modes=X01, hidden=True, label="333", check=_rest_after_turn_is(111, 222, 333, 444)),
+                game_modes=X01, hidden=True, label="333", check=_rest_after_turn_is(111, 222, 333, 444), live=True),
     Achievement("small_fry", "x01", "hidden",
                 {"en": "Small Fry", "de": "Kleinvieh macht auch Mist"},
                 {"en": "Hit three S1 in one turn.",
                  "de": "Drei S1 in einer Aufnahme treffen."},
-                game_modes=X01, hidden=True, label="111", check=_small_fry),
+                game_modes=X01, hidden=True, label="111", check=_small_fry, live=True),
     Achievement("fasting", "x01", "hidden",
                 {"en": "Fasting", "de": "Diät"},
                 {"en": "Throw all three darts of a turn outside every scoring field.",
                  "de": "Alle drei Darts einer Aufnahme ausserhalb aller Wertungsfelder werfen."},
-                game_modes=X01, hidden=True, check=_fasting),
+                game_modes=X01, hidden=True, check=_fasting, live=True),
     Achievement("deja_vu", "x01", "hidden",
                 {"en": "Déjà Vu", "de": "Déjà-vu"},
                 {"en": "Hit the same three fields in the same order in two turns in a row.",
                  "de": "In zwei aufeinanderfolgenden eigenen Aufnahmen dieselben drei Felder in derselben Reihenfolge treffen."},
-                game_modes=X01, hidden=True, check=_deja_vu),
+                game_modes=X01, hidden=True, check=_deja_vu, live=True),
     Achievement("case_of_the_jitters", "x01", "hidden",
                 {"en": "Case of the Jitters", "de": "Nervenflattern"},
                 {"en": "Throw at least nine darts in one leg at a rest that one dart could finish, without finishing.",
                  "de": "In einem Leg mindestens neun Darts werfen, bei denen der Rest mit einem Dart auscheckbar war, ohne auszuchecken."},
-                game_modes=X01, hidden=True, check=_case_of_the_jitters),
+                game_modes=X01, hidden=True, check=_case_of_the_jitters, live=True),
     Achievement("spoilsport", "x01", "hidden",
                 {"en": "Spoilsport", "de": "Spielverderber"},
                 {"en": "Finish a leg while an opponent has a rest that one dart could finish.",
                  "de": "Ein Leg beenden, während ein Gegner einen Rest hat, der mit einem Dart auscheckbar ist."},
-                game_modes=X01, hidden=True, check=_spoilsport),
+                game_modes=X01, hidden=True, check=_spoilsport, live=True),
     Achievement("lonely_one", "x01", "hidden",
                 {"en": "Lonely One", "de": "Einsamer Einser"},
                 {"en": "Bust by leaving exactly one.",
                  "de": "Einen Bust verursachen, der 1 Rest hinterlassen würde."},
-                game_modes=X01, hidden=True, check=_lonely_one),
+                game_modes=X01, hidden=True, check=_lonely_one, live=True),
     Achievement("early_bird", "x01", "hidden",
                 {"en": "Early Bird", "de": "Frühaufsteher"},
                 {"en": "Win a leg before 7:00 local time.",
                  "de": "Ein Leg vor 7:00 Uhr lokaler Zeit gewinnen."},
-                game_modes=X01, hidden=True, check=_early_bird),
+                game_modes=X01, hidden=True, check=_early_bird, live=True),
     Achievement("night_owl", "x01", "hidden",
                 {"en": "Night Owl", "de": "Nachtschwärmer"},
                 {"en": "Win a leg between 0:00 and 4:00 local time.",
                  "de": "Ein Leg zwischen 0:00 und 4:00 Uhr lokaler Zeit gewinnen."},
-                game_modes=X01, hidden=True, check=_night_owl),
+                game_modes=X01, hidden=True, check=_night_owl, live=True),
     Achievement("answer_to_everything", "x01", "hidden",
                 {"en": "Answer to Everything", "de": "Antwort auf alles"},
                 {"en": "Check out 42 with S10 and then D16 in one turn.",
                  "de": "42 Rest mit S10 und anschliessend D16 in einer Aufnahme auschecken."},
-                game_modes=X01, hidden=True, label="42", check=_answer_to_everything),
+                game_modes=X01, hidden=True, label="42", check=_answer_to_everything, live=True),
     Achievement("burnt_toast", "x01", "hidden",
                 {"en": "Burnt Toast", "de": "Toast verbrannt"},
                 {"en": "Hit T20 with 2 left and bust.",
                  "de": "Bei 2 Rest T20 treffen und dadurch einen Bust verursachen."},
-                game_modes=X01, hidden=True, check=_burnt_toast),
+                game_modes=X01, hidden=True, check=_burnt_toast, live=True),
     Achievement("breakfast_switch", "x01", "hidden",
                 {"en": "Breakfast Switch", "de": "Frühstückswechsel"},
                 {"en": "Check out 110 with T20, S10 and D20 in this order.",
                  "de": "110 Rest mit T20, S10 und D20 in dieser Reihenfolge auschecken."},
-                game_modes=X01, hidden=True, check=_breakfast_switch),
+                game_modes=X01, hidden=True, check=_breakfast_switch, live=True),
     Achievement("not_found", "easter_egg", "hidden",
                 {"en": "Not Found", "de": "Nicht gefunden"},
                 {"en": "Throw S4, a miss outside every scoring field and S4, in this order in one turn.",
                  "de": "S4, einen Fehlwurf ausserhalb aller Wertungsfelder und S4 in genau dieser Reihenfolge in einer Aufnahme werfen."},
-                game_modes=ANY, hidden=True, label="404", check=_not_found),
+                game_modes=ANY, hidden=True, label="404", check=_not_found, live=True),
     Achievement("service_unavailable", "easter_egg", "hidden",
                 {"en": "Service Unavailable", "de": "Dienst nicht verfügbar"},
                 {"en": "Throw S5, a miss outside every scoring field and S3, in this order in one turn.",
                  "de": "S5, einen Fehlwurf ausserhalb aller Wertungsfelder und S3 in genau dieser Reihenfolge in einer Aufnahme werfen."},
-                game_modes=ANY, hidden=True, label="503", check=_service_unavailable),
+                game_modes=ANY, hidden=True, label="503", check=_service_unavailable, live=True),
     Achievement("full_english", "easter_egg", "hidden",
                 {"en": "Full English", "de": "Englisches Frühstück"},
                 {"en": "Hit S20, D20 and T20 in one turn, in any order.",
                  "de": "S20, D20 und T20 in einer Aufnahme treffen, Reihenfolge beliebig."},
-                game_modes=ANY, hidden=True, check=_full_english),
+                game_modes=ANY, hidden=True, check=_full_english, live=True),
     Achievement("copying_costs", "elimination", "hidden",
                 {"en": "Copying Costs", "de": "Kopieren kostet"},
                 {"en": "Score exactly the score to beat without a free pass and lose a life.",
                  "de": "Ohne Freipass genau die Vorgabe werfen und dadurch ein Leben verlieren."},
-                game_modes=ELIMINATION, hidden=True, label="=", check=_copying_costs),
+                game_modes=ELIMINATION, hidden=True, label="=", check=_copying_costs, live=True),
     Achievement("a_new_low", "elimination", "hidden",
                 {"en": "A New Low", "de": "Tiefer geht immer"},
                 {"en": "Score below a positive score to beat without a free pass, and the next player scores below that new score too. Both of you lose a life and earn it.",
                  "de": "Eine positive Vorgabe ohne Freipass unterbieten, der nächste Spieler unterbietet ohne Freipass auch diese neue Vorgabe. Beide verlieren ein Leben und erhalten den Erfolg."},
-                game_modes=ELIMINATION, hidden=True, check=_a_new_low),
+                game_modes=ELIMINATION, hidden=True, check=_a_new_low, live=True),
     Achievement("free_pass_failed", "elimination", "hidden",
                 {"en": "Free Pass, Failed", "de": "Freipass verpasst"},
                 {"en": "Score nothing with a free pass and lose a life.",
                  "de": "Bei einem Freipass null Punkte werfen und ein Leben verlieren."},
-                game_modes=ELIMINATION, hidden=True, label="0", check=_free_pass_failed),
+                game_modes=ELIMINATION, hidden=True, label="0", check=_free_pass_failed, live=True),
     Achievement("one_crumb_is_enough", "elimination", "hidden",
                 {"en": "One Crumb Is Enough", "de": "Ein Krümel genügt"},
                 {"en": "Score exactly one point with a free pass and keep your life.",
                  "de": "Bei einem Freipass insgesamt genau einen Punkt werfen und das Leben behalten."},
-                game_modes=ELIMINATION, hidden=True, label="1", check=_one_crumb_is_enough),
+                game_modes=ELIMINATION, hidden=True, label="1", check=_one_crumb_is_enough, live=True),
     Achievement("tied_to_the_grave", "elimination", "hidden",
                 {"en": "Tied to the Grave", "de": "Gleichstand im Grab"},
                 {"en": "Score exactly the score to beat with your last life, without a free pass, and be out.",
                  "de": "Mit dem letzten Leben ohne Freipass genau die Vorgabe treffen und dadurch ausscheiden."},
-                game_modes=ELIMINATION, hidden=True, label="=", check=_tied_to_the_grave),
+                game_modes=ELIMINATION, hidden=True, label="=", check=_tied_to_the_grave, live=True),
     Achievement("after_me_the_deluge", "elimination", "hidden",
                 {"en": "After Me, the Deluge", "de": "Nach mir die Sintflut"},
                 {"en": "Score 180, and the next player loses a life without a free pass.",
                  "de": "180 werfen, der nächste Spieler spielt ohne Freipass und verliert ein Leben."},
-                game_modes=ELIMINATION, hidden=True, label="180", check=_after_me_the_deluge),
+                game_modes=ELIMINATION, hidden=True, label="180", check=_after_me_the_deluge, live=True),
     Achievement("chips_for_breakfast", "elimination", "hidden",
                 {"en": "Chips for Breakfast", "de": "Chips zum Frühstück"},
                 {"en": "Hit S5, S20 and S1 without a free pass and beat the score to beat with the 26 points, in any order.",
                  "de": "Ohne Freipass je S5, S20 und S1 treffen und mit den 26 Punkten die Vorgabe überbieten, Reihenfolge beliebig."},
-                game_modes=ELIMINATION, hidden=True, check=_chips_for_breakfast),
+                game_modes=ELIMINATION, hidden=True, check=_chips_for_breakfast, live=True),
     Achievement("close_still_costs", "elimination", "hidden",
                 {"en": "Close Still Costs", "de": "Knapp vorbei ist auch verloren"},
                 {"en": "Stay exactly one point below the score to beat without a free pass and lose a life.",
                  "de": "Ohne Freipass genau einen Punkt unter der Vorgabe bleiben und ein Leben verlieren."},
-                game_modes=ELIMINATION, hidden=True, label="-1", check=_close_still_costs),
+                game_modes=ELIMINATION, hidden=True, label="-1", check=_close_still_costs, live=True),
     Achievement("four_course_meal", "general", "easy",
                 {"en": "Four-Course Meal", "de": "Vier-Gänge-Menü"},
                 {"en": "Finish a match of X01, Elimination, Killer and Target Battle each.",
@@ -1287,32 +1288,32 @@ ACHIEVEMENTS = (
     Achievement("licence_to_breakfast", "killer", "easy",
                 {"en": "Licence to Breakfast", "de": "Lizenz zum Frühstücken"},
                 {"en": "Become a killer for the first time.", "de": "Erstmals den Killer-Status aktivieren."},
-                game_modes=KILLER, check=_licence_to_breakfast),
+                game_modes=KILLER, check=_licence_to_breakfast, live=True),
     Achievement("armed_immediately", "killer", "medium",
                 {"en": "Armed Immediately", "de": "Sofort scharf"},
                 {"en": "Become a killer with your first dart of the game.",
                  "de": "Mit dem ersten eigenen Dart des Spiels den Killer-Status aktivieren."},
-                game_modes=KILLER, check=_armed_immediately),
+                game_modes=KILLER, check=_armed_immediately, live=True),
     Achievement("first_blood", "killer", "easy", {"en": "First Blood", "de": "Erster Treffer"},
                 {"en": "Take a life from an opponent for the first time.",
                  "de": "Erstmals einem Gegner ein Leben abziehen."},
-                game_modes=KILLER, check=_first_blood),
+                game_modes=KILLER, check=_first_blood, live=True),
     Achievement("three_in_one", "killer", "medium", {"en": "Three in One", "de": "Drei auf einen Streich"},
                 {"en": "Take three lives from opponents in one turn.",
                  "de": "In einer Aufnahme insgesamt drei gegnerische Leben abziehen."},
-                game_modes=KILLER, label="3", check=_three_in_one),
+                game_modes=KILLER, label="3", check=_three_in_one, live=True),
     Achievement("all_round_attack", "killer", "hard", {"en": "All-Round Attack", "de": "Rundumschlag"},
                 {"en": "Take a life from three different opponents in one turn, in a game of at least four players.",
                  "de": "In einer Aufnahme drei unterschiedlichen Gegnern je ein Leben abziehen, bei mindestens vier Teilnehmern."},
-                game_modes=KILLER, label="3", check=_all_round_attack),
+                game_modes=KILLER, label="3", check=_all_round_attack, live=True),
     Achievement("finisher", "killer", "easy", {"en": "Finisher", "de": "Vollstrecker"},
                 {"en": "Put an opponent out with one of your hits.",
                  "de": "Mit einem eigenen Treffer einen Gegner auf null Leben bringen."},
-                game_modes=KILLER, check=_finisher),
+                game_modes=KILLER, check=_finisher, live=True),
     Achievement("double_knockout", "killer", "hard", {"en": "Double Knockout", "de": "Doppeltes Aus"},
                 {"en": "Put two different opponents out in one turn.",
                  "de": "In einer Aufnahme zwei unterschiedliche Gegner durch eigene Treffer ausschalten."},
-                game_modes=KILLER, label="2", check=_double_knockout),
+                game_modes=KILLER, label="2", check=_double_knockout, live=True),
     Achievement("unscathed", "killer", "hard", {"en": "Unscathed", "de": "Unversehrt"},
                 {"en": "Win a game of at least three players without losing a life.",
                  "de": "Mit mindestens drei Teilnehmern gewinnen, ohne ein Leben zu verlieren."},
@@ -1327,11 +1328,11 @@ ACHIEVEMENTS = (
     Achievement("self_service", "killer", "hidden", {"en": "Self-Service", "de": "Selbstbedienung"},
                 {"en": "Lose your last life to your own hit and be out, with own goals on.",
                  "de": "Bei aktivierten Eigentoren durch einen eigenen Treffer das letzte Leben verlieren und ausscheiden."},
-                game_modes=KILLER, hidden=True, check=_self_service),
+                game_modes=KILLER, hidden=True, check=_self_service, live=True),
     Achievement("glass_cannon", "killer", "hidden", {"en": "Glass Cannon", "de": "Glaskanone"},
                 {"en": "As a killer with one life left, take two lives from opponents in a turn and then put yourself out with an own goal.",
                  "de": "Als aktiver Killer mit einem verbleibenden Leben in einer Aufnahme zuerst zwei gegnerische Leben abziehen und anschliessend durch ein Eigentor ausscheiden."},
-                game_modes=KILLER, hidden=True, check=_glass_cannon),
+                game_modes=KILLER, hidden=True, check=_glass_cannon, live=True),
     Achievement("friendly_to_the_end", "killer", "hidden", {"en": "Friendly to the End", "de": "Freundlich bis zuletzt"},
                 {"en": "Be out in a game of at least three players without having taken a life from anyone.",
                  "de": "In einem Spiel mit mindestens drei Teilnehmern ausscheiden, ohne einem Gegner ein Leben abgezogen zu haben."},
@@ -1339,10 +1340,10 @@ ACHIEVEMENTS = (
     Achievement("own_worst_enemy", "killer", "hidden", {"en": "Own Worst Enemy", "de": "Eigene Baustelle"},
                 {"en": "Lose all three lives to own goals alone, with own goals on.",
                  "de": "Bei aktivierten Eigentoren alle drei eigenen Leben ausschliesslich durch Eigentore verlieren."},
-                game_modes=KILLER, hidden=True, check=_own_worst_enemy),
+                game_modes=KILLER, hidden=True, check=_own_worst_enemy, live=True),
     Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
                 {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
-                hidden=True, label="666", check=_beast_mode),
+                hidden=True, label="666", check=_beast_mode, live=True),
 )
 
 BY_ID = {a.id: a for a in ACHIEVEMENTS}
@@ -1409,10 +1410,12 @@ class AchievementEngine:
         self.definitions = tuple(definitions)
         self.on_earned = on_earned
         self.on_revoked = on_revoked
+        self._shown = {}      # match id -> (player, achievement) announced while it runs, not stored yet
 
     def attach(self):
         """Evaluate a match whenever the database reports it changed."""
         self.db.on_match_changed = self.evaluate_match
+        self.db.on_turn_stored = self.evaluate_live
         self.db.achievement_engine = self
         return self
 
@@ -1485,16 +1488,43 @@ class AchievementEngine:
         return items
 
     def evaluate_match(self, match_id: str) -> dict:
-        """Reconcile the earned achievements of every player of a match with the stored data."""
-        result = {"earned": [], "revoked": []}
+        """Reconcile the earned achievements of every player of a match with the stored data.
+        While the match is still running only the live ones are looked at, see _evaluate_open()."""
+        result = {"earned": [], "revoked": [], "provisional": []}
         match = self.db.match_row(match_id)
         if not match:
             return result
         start = self.db.achievements_start()
         if match["started_at"] < start:
             return result
+        if match["ended_at"] is None:
+            # Reopened or corrected while running: take back what it earned before, then look at the live ones.
+            shown = self._shown.get(match_id, set())
+            live = {a.id for a in self.definitions if a.live}
+            earned_here = {(p, a) for p, a in self.db.earned_from_match(match_id) if a in live}
+            self._reconcile_match(match, start, result)
+            self._live_pass(match, shown | earned_here, result)    # those were announced when they were earned
+            self._notify(result)
+            return result
+        shown = self._shown.pop(match_id, set())
+        self._reconcile_match(match, start, result)
+        self._notify(result, already_shown=shown)
+        return result
+
+    def evaluate_live(self, match_id: str) -> dict:
+        """A turn of a match was stored. While the match runs only the live achievements are
+        looked at, which is cheap enough to do after every turn."""
+        result = {"earned": [], "revoked": [], "provisional": []}
+        match = self.db.match_row(match_id)
+        if not match or match["ended_at"] is not None or match["started_at"] < self.db.achievements_start():
+            return result
+        self._live_pass(match, self._shown.get(match_id, set()), result)
+        self._notify(result)
+        return result
+
+    def _reconcile_match(self, match, start, result):
         hidden = set(self.db.hidden_players())
-        for player in self.db.match_participants(match_id):
+        for player in self.db.match_participants(match["match_id"]):
             if player in hidden:
                 continue
             for achievement in self.definitions:
@@ -1504,8 +1534,30 @@ class AchievementEngine:
                     self._reconcile_event(achievement, player, match, start, result)
                 else:
                     self._reconcile_counter(achievement, player, match, start, result)
-        self._notify(result)
-        return result
+
+    def _live_pass(self, match, shown, result):
+        """The live achievements of a match that is still running: a newly reached one is announced
+        at once as provisional and remembered in memory, nothing is stored, the match decides when
+        it closes. One that no longer holds, because an undo or a correction took its turn back, is
+        forgotten, so it is announced again if it is earned again."""
+        match_id = match["match_id"]
+        hidden = set(self.db.hidden_players())
+        holding = set()
+        for player in self.db.match_participants(match_id):
+            if player in hidden:
+                continue
+            context = None
+            for a in self.definitions:
+                if not (a.live and a.applies_to(match["game_mode"]) and a.counts_match(match)):
+                    continue
+                if self.db.earned_rows(player, a.id):
+                    continue
+                context = context or self._context(match, player)
+                if a.check(context):
+                    holding.add((player, a.id))
+                    if (player, a.id) not in shown:
+                        result["provisional"].append(_change(player, a, 0))
+        self._shown = {match_id: holding}          # a match that is not this one was abandoned
 
     def _context(self, match, player):
         return MatchContext(self.db, match, player)
@@ -1546,11 +1598,16 @@ class AchievementEngine:
                 self.db.delete_earned(row["id"])
                 result["revoked"].append(_change(player, a, tier))
 
-    def _notify(self, result):
-        for key, callback in (("earned", self.on_earned), ("revoked", self.on_revoked)):
+    def _notify(self, result, already_shown=frozenset()):
+        """Tell the listeners. An unlock that was announced while the match was running is not
+        announced a second time when it is made final."""
+        for key, callback in (("provisional", self.on_earned), ("earned", self.on_earned),
+                              ("revoked", self.on_revoked)):
             if not callback:
                 continue
             for change in result[key]:
+                if key == "earned" and (change["player"], change["achievement"]) in already_shown:
+                    continue
                 try:
                     callback(change)
                 except Exception:

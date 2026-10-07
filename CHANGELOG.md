@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Achievements that can be decided during a match (a bullseye, a maximum, a first hit in Killer, ...) are announced as soon as they happen, as provisional, and made final when the match ends; only the ones that need the result (a win, a first match, the counters) come at the end. An undo takes a provisional one back, and a match that is abandoned stores nothing, so a game with many players no longer ends with minutes of banners (#44).
+
 ### Fixed
 - Achievements earned together in one match are announced one at a time, each with its own banner and sound, one banner length apart; before, the sounds ran back to back while the first banner was still showing (#36).
 - Elimination: a dart of the last turn can be corrected after it ended the match; the finished screens show the darts of that turn, tapping one plays the turn again with the corrected dart and resumes the match if it no longer decides it. The correction of a turn total no longer changes the turn before after such a finish (#43).
