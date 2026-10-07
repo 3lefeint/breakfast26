@@ -21,7 +21,7 @@ COPY main.py .
 COPY CHANGELOG.md .
 COPY breakfast/ ./breakfast/
 COPY tools/ ./tools/
-COPY --from=frontend-builder /frontend/dist ./breakfast/web/dist
+COPY --from=frontend-builder /breakfast/web/dist ./breakfast/web/dist
 
 # All of the app's config/data defaults (config.toml, stats.db, sessions/,
 # sounds/) are plain relative paths resolved against the process cwd — so

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- A build from source (`npm run build` in `frontend/`) now writes the Web UI to `breakfast/web/dist`, where the server serves it from; before, it landed in `frontend/dist` and a source install showed no or an outdated interface.
+
 ## [1.1.0] - 2026-10-07
 
 ### Added

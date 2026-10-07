@@ -39,7 +39,7 @@ with open(_version_file, "w", encoding="utf-8") as fh:
 """)
 
 datas = [
-    (str(root / "frontend" / "dist"), "breakfast/web/dist"),   # the output of `npm run build`
+    (str(root / "breakfast" / "web" / "dist"), "breakfast/web/dist"),   # the output of `npm run build`
     (str(root / "breakfast" / "web" / "static"), "breakfast/web/static"),
     (str(root / "CHANGELOG.md"), "."),
 ]

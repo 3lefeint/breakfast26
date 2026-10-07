@@ -8,6 +8,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [svelte()],
   build: {
+    // Straight into the folder the server serves (breakfast/web/dist)
+    outDir: '../breakfast/web/dist',
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         home: 'index.html',
