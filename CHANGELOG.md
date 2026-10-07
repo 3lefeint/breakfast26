@@ -15,6 +15,7 @@
 ### Changed
 - Interface: the footer is gone, the version (five taps unlock the Dev tab) and the link to the About page sit in the sidebar, and the MQTT and Autodarts status sits next to the board status in the top bar; the top bar is nearly opaque, so the page that scrolls under it no longer shows through, and the sidebar and the page background cover the whole page, also in a full-page screenshot.
 - Without an Autodarts account in the configuration, `direct` mode starts the web UI only instead of stopping with an error.
+- Frontend build dependencies updated (devalue, postcss, source-map-js, nanoid), which closes the security alerts for them.
 
 ## [1.0.0] - 2026-10-06
 
