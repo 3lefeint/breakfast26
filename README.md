@@ -12,7 +12,7 @@ own account and needs no other add-on.
 ## Features
 
 - [Live scoreboard and TV view](#tv-view): full screen on a TV or tablet, with checkout suggestions and a live dartboard
-- [Games and drills](#games-and-drills): X01, Elimination, Target Battle, Killer, Field Training and Black Belt
+- [Games and drills](#games-and-drills): X01, Elimination, Target Battle, Killer, Field Training, Black Belt and a Checkout Trainer
 - [Voice caller](#voice-caller-and-voice-packs): announces the game, with English and German voice packs and an editor for your own
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
@@ -151,6 +151,11 @@ dartboard.
 - **Black Belt**: a doubles drill for one player. Hit D1 to D20 and finally the bull's eye, in order (or from
   D20 down to D1). If a field is not hit with its darts, you start again from the beginning. You earn the
   belt by getting through the whole ladder in one go.
+- **Checkout Trainer**: three exercises for finishing. *Random checkout* draws a score you can finish with
+  three darts, and you throw it on the board (the standard route can be shown while you throw). The Stats page
+  shows which scores work and which do not. *Route quiz* and *Setup shots* are played on a virtual board
+  without darts, also on a phone: tap the first dart of a route, or tap the darts that set up a finish and see
+  what is left and what that rest allows.
 
 <table>
 <tr>
@@ -226,7 +231,7 @@ works without it. All topics are published under a base topic (default `autodart
 | Topic | Value |
 |-------|-------|
 | `autodarts/current/...`, `autodarts/match/...`, `autodarts/players/<index>/...`, `autodarts/board/status` | the active player and their darts, the match, the remaining score of each player and the board status |
-| `autodarts/<game>/active`, `.../state` | for `elimination`, `target_battle`, `killer`, `field_training` and `black_belt`: whether the game is running, and its full state as retained JSON |
+| `autodarts/<game>/active`, `.../state` | for `elimination`, `target_battle`, `killer`, `field_training`, `black_belt` and `checkout_training`: whether the game is running, and its full state as retained JSON |
 | `autodarts/<game>/current/...`, `.../last_turn/...`, `.../events/...` | the turn in progress, the last finished turn and one-time events of the game |
 | `autodarts/<game>/command` | Breakfast listens here: JSON `{"action": ...}` to start, stop, undo or correct a game |
 

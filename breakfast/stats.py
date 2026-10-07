@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from breakfast.dartboard import field_centers
+from breakfast.checkout_routes import standard_route as checkout_route
 from breakfast.field_training import rating as field_training_rating, scaled_points, standard_darts
 from breakfast.target_battle_scoring import SCORING
 
@@ -120,6 +121,26 @@ CREATE TABLE IF NOT EXISTS field_training_turns (
     triples     INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT
 );
+CREATE TABLE IF NOT EXISTS checkout_training_games (
+    match_id   TEXT PRIMARY KEY,
+    player     TEXT NOT NULL,
+    low        INTEGER NOT NULL,
+    high       INTEGER NOT NULL,
+    attempts   INTEGER NOT NULL,
+    show_route INTEGER NOT NULL DEFAULT 0,
+    completed  INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS checkout_training_turns (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id     TEXT NOT NULL,
+    player       TEXT NOT NULL,
+    attempt_no   INTEGER NOT NULL,
+    score        INTEGER NOT NULL,
+    success      INTEGER NOT NULL,
+    darts_count  INTEGER NOT NULL,
+    finish_field TEXT,
+    created_at   TEXT
+);
 CREATE TABLE IF NOT EXISTS black_belt_games (
     match_id  TEXT PRIMARY KEY,
     player    TEXT NOT NULL,
@@ -173,6 +194,7 @@ CREATE TABLE IF NOT EXISTS killer_results (
 );
 CREATE INDEX IF NOT EXISTS idx_killer_turns_match  ON killer_turns  (match_id);
 CREATE INDEX IF NOT EXISTS idx_field_training_turns_match ON field_training_turns (match_id);
+CREATE INDEX IF NOT EXISTS idx_checkout_training_turns_match ON checkout_training_turns (match_id);
 CREATE INDEX IF NOT EXISTS idx_black_belt_darts_match ON black_belt_darts (match_id);
 CREATE INDEX IF NOT EXISTS idx_killer_events_match ON killer_events (match_id);
 CREATE TABLE IF NOT EXISTS dart_positions (
@@ -219,7 +241,7 @@ _TURN_TABLES = {"all": ("turns", "elimination_turns"), "x01": ("turns",), "elimi
 
 
 # The games that are not X01. Everything else in `matches` is an X01 variant.
-_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer', 'Field Training', 'Black Belt')"
+_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer', 'Field Training', 'Black Belt', 'Checkout Training')"
 
 # A match counts as "solo" (practice, no opponent) when exactly one distinct
 # player ever appears in its `turns` rows — Elimination is excluded here
@@ -425,8 +447,9 @@ class StatsDB:
                     " UNION SELECT DISTINCT player FROM target_battle_turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM killer_turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM field_training_turns WHERE match_id = ?"
-                    " UNION SELECT DISTINCT player FROM black_belt_darts WHERE match_id = ?",
-                    (match_id, match_id, match_id, match_id, match_id, match_id),
+                    " UNION SELECT DISTINCT player FROM black_belt_darts WHERE match_id = ?"
+                    " UNION SELECT DISTINCT player FROM checkout_training_turns WHERE match_id = ?",
+                    (match_id, match_id, match_id, match_id, match_id, match_id, match_id),
                 ).fetchall()
             ]
             log.debug("DB write: close_match match_id=%s players=%s", match_id, players)
@@ -739,6 +762,130 @@ class StatsDB:
                 self._conn.execute("DELETE FROM field_training_turns WHERE id = ?", (row["id"],))
                 self._conn.commit()
         self._match_changed(match_id)
+
+    # ── Checkout Training ────────────────────────────────────────────────────
+
+    def record_checkout_training_setup(self, match_id: str, player: str, low: int, high: int,
+                                       attempts: int, show_route: bool):
+        log.debug("DB write: record_checkout_training_setup match_id=%s player=%s range=%s-%s attempts=%s",
+                  match_id, player, low, high, attempts)
+        with self._lock:
+            self._ensure_player(player)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO checkout_training_games"
+                " (match_id, player, low, high, attempts, show_route, completed) VALUES (?, ?, ?, ?, ?, ?, 0)",
+                (match_id, player, low, high, attempts, int(show_route)))
+            self._conn.commit()
+
+    def set_checkout_training_completed(self, match_id: str, completed: bool):
+        log.debug("DB write: set_checkout_training_completed match_id=%s completed=%s", match_id, completed)
+        with self._lock:
+            self._conn.execute("UPDATE checkout_training_games SET completed = ? WHERE match_id = ?",
+                               (int(completed), match_id))
+            self._conn.commit()
+
+    def insert_checkout_training_turn(self, match_id, player, attempt_no, score, success, darts_count,
+                                      finish_field, positions=None):
+        """One attempt: the score to finish, whether it worked, the darts it took and the field
+        that finished it. positions: one {"field", "x", "y"} (or None) per dart."""
+        log.debug("DB write: insert_checkout_training_turn match_id=%s player=%s attempt=%s score=%s success=%s",
+                  match_id, player, attempt_no, score, success)
+        with self._lock:
+            self._ensure_player(player)
+            self._conn.execute(
+                "INSERT INTO checkout_training_turns"
+                " (match_id, player, attempt_no, score, success, darts_count, finish_field, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (match_id, player, attempt_no, score, int(success), darts_count, finish_field, _now_iso()))
+            self._insert_positions(match_id, "Checkout Training", player, 1, attempt_no,
+                                   [((p or {}).get("field"), p) for p in positions or []])
+            self._conn.commit()
+
+    def delete_last_checkout_training_turn(self, match_id: str, player: str):
+        """Undo insert_checkout_training_turn() for the player's most recent attempt."""
+        log.debug("DB write: delete_last_checkout_training_turn match_id=%s player=%s", match_id, player)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, attempt_no FROM checkout_training_turns WHERE match_id = ? AND player = ?"
+                " ORDER BY id DESC LIMIT 1", (match_id, player)).fetchone()
+            if row:
+                self._conn.execute(
+                    "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'Checkout Training'"
+                    " AND player = ? AND turn = ?", (match_id, player, row["attempt_no"]))
+                self._conn.execute("DELETE FROM checkout_training_turns WHERE id = ?", (row["id"],))
+                self._conn.commit()
+
+    def _checkout_training_runs(self, where="", params=()):
+        """Every finished run with its attempts, oldest first. `where` narrows the games (alias g)."""
+        with self._lock:
+            games = self._conn.execute(
+                "SELECT g.match_id, g.player, g.low, g.high, g.attempts AS planned, g.show_route, g.completed,"
+                " m.started_at FROM checkout_training_games g JOIN matches m ON m.match_id = g.match_id"
+                " WHERE m.ended_at IS NOT NULL" + where + " ORDER BY m.started_at, g.match_id", params).fetchall()
+            turns = self._conn.execute(
+                "SELECT match_id, attempt_no, score, success, darts_count, finish_field"
+                " FROM checkout_training_turns ORDER BY match_id, attempt_no").fetchall()
+        by_match = {}
+        for t in turns:
+            by_match.setdefault(t["match_id"], []).append({
+                "attempt": t["attempt_no"], "score": t["score"], "success": bool(t["success"]),
+                "darts": t["darts_count"], "finish": t["finish_field"]})
+        runs = []
+        for g in games:
+            attempts = by_match.get(g["match_id"], [])
+            if not attempts:
+                continue
+            successes = sum(1 for a in attempts if a["success"])
+            runs.append({
+                "match_id": g["match_id"], "player": g["player"], "date": g["started_at"],
+                "low": g["low"], "high": g["high"], "planned": g["planned"], "completed": bool(g["completed"]),
+                "show_route": bool(g["show_route"]), "attempts": len(attempts), "successes": successes,
+                "rate": round(successes / len(attempts), 3), "turns": attempts})
+        return runs
+
+    def match_checkout_training_stats(self, match_id: str) -> dict:
+        """One Checkout Training run: who trained which range and how it went."""
+        runs = self._checkout_training_runs(" AND g.match_id = ?", (match_id,))
+        return runs[0] if runs else {}
+
+    def checkout_training_overview(self) -> dict:
+        """The Checkout Training statistics per player: the success rate overall, by range and by
+        score, the weakest scores and every run (oldest first)."""
+        hidden = set(self.hidden_players())
+        runs = [r for r in self._checkout_training_runs() if r["player"] not in hidden]
+        ranges = ((2, 40), (41, 100), (101, 170))
+        players = {}
+        for run in runs:
+            entry = players.setdefault(run["player"], {"player": run["player"], "attempts": 0, "successes": 0,
+                                                       "scores": {}, "runs": []})
+            entry["runs"].append({k: run[k] for k in ("match_id", "date", "low", "high", "attempts", "successes", "rate", "completed")})
+            for a in run["turns"]:
+                entry["attempts"] += 1
+                entry["successes"] += int(a["success"])
+                row = entry["scores"].setdefault(a["score"], {"score": a["score"], "attempts": 0, "successes": 0, "darts": 0})
+                row["attempts"] += 1
+                row["successes"] += int(a["success"])
+                row["darts"] += a["darts"] if a["success"] else 0
+        result = []
+        for entry in players.values():
+            scores = sorted(entry.pop("scores").values(), key=lambda r: r["score"])
+            for row in scores:
+                row["rate"] = round(row["successes"] / row["attempts"], 3)
+                row["route"] = checkout_route(row["score"])
+            by_range = []
+            for low, high in ranges:
+                inside = [r for r in scores if low <= r["score"] <= high]
+                attempts = sum(r["attempts"] for r in inside)
+                successes = sum(r["successes"] for r in inside)
+                by_range.append({"low": low, "high": high, "attempts": attempts, "successes": successes,
+                                 "rate": round(successes / attempts, 3) if attempts else None})
+            repeated = [r for r in scores if r["attempts"] >= 2 and r["successes"] < r["attempts"]]
+            pool = repeated or [r for r in scores if r["successes"] < r["attempts"]]
+            weakest = sorted(pool, key=lambda r: (r["rate"], -r["attempts"], r["score"]))[:10]
+            result.append({**entry, "rate": round(entry["successes"] / entry["attempts"], 3),
+                           "by_range": by_range, "by_score": scores, "weakest": weakest})
+        result.sort(key=lambda e: e["player"])
+        return {"players": result}
 
     def field_training_best(self, player: str, field: int, exclude: str | None = None):
         """The best run of the player at the field that counts, in points on the scale of the
@@ -1570,6 +1717,9 @@ class StatsDB:
             self._conn.execute("DELETE FROM field_training_games WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM field_training_turns WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Field Training'", (player,))
+            self._conn.execute("DELETE FROM checkout_training_games WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM checkout_training_turns WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Checkout Training'", (player,))
             self._conn.execute("DELETE FROM black_belt_games WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM black_belt_darts WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Black Belt'", (player,))
@@ -1821,6 +1971,7 @@ class StatsDB:
             "killer": " AND game_mode = 'Killer'",
             "field_training": " AND game_mode = 'Field Training'",
             "black_belt": " AND game_mode = 'Black Belt'",
+            "checkout_training": " AND game_mode = 'Checkout Training'",
         }.get(mode, "")
         with self._lock:
             rows = self._conn.execute(
@@ -1832,7 +1983,9 @@ class StatsDB:
                 "    OR EXISTS (SELECT 1 FROM killer_turns WHERE killer_turns.match_id = matches.match_id)"
                 "    OR EXISTS (SELECT 1 FROM field_training_turns"
                 "               WHERE field_training_turns.match_id = matches.match_id)"
-                "    OR EXISTS (SELECT 1 FROM black_belt_darts WHERE black_belt_darts.match_id = matches.match_id))"
+                "    OR EXISTS (SELECT 1 FROM black_belt_darts WHERE black_belt_darts.match_id = matches.match_id)"
+                "    OR EXISTS (SELECT 1 FROM checkout_training_turns"
+                "               WHERE checkout_training_turns.match_id = matches.match_id))"
                 + mode_sql +
                 " ORDER BY started_at DESC LIMIT ?",
                 (limit,),
@@ -1852,11 +2005,17 @@ class StatsDB:
             scoring = None
             field = None
             backwards = None
+            checkout_range = None
             if r["game_mode"] == "Field Training":
                 with self._lock:
                     setup = self._conn.execute(
                         "SELECT field FROM field_training_games WHERE match_id = ?", (mid,)).fetchone()
                 field = setup["field"] if setup else None
+            if r["game_mode"] == "Checkout Training":
+                with self._lock:
+                    setup = self._conn.execute(
+                        "SELECT low, high FROM checkout_training_games WHERE match_id = ?", (mid,)).fetchone()
+                checkout_range = [setup["low"], setup["high"]] if setup else None
             if r["game_mode"] == "Black Belt":
                 with self._lock:
                     setup = self._conn.execute(
@@ -1872,6 +2031,7 @@ class StatsDB:
                 "scoring":     scoring,
                 "field":       field,
                 "backwards":   backwards,
+                "range":       checkout_range,
                 "started_at":  r["started_at"],
                 "ended_at":    r["ended_at"],
                 "game_mode":   r["game_mode"],
@@ -1930,6 +2090,8 @@ class StatsDB:
             return self.match_field_training_stats(match_id)
         if mode_row and mode_row["game_mode"] == "Black Belt":
             return self.match_black_belt_stats(match_id)
+        if mode_row and mode_row["game_mode"] == "Checkout Training":
+            return self.match_checkout_training_stats(match_id)
         with self._lock:
             rows = self._conn.execute(f"""
                 SELECT player,

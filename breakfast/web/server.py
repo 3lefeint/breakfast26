@@ -15,7 +15,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
@@ -30,6 +30,8 @@ from breakfast import frozen, self_update
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
 from breakfast import voicepack_overlay as vo
+from breakfast import checkout_routes as co_routes
+from breakfast.checkout_training import RANGES as CHECKOUT_RANGES
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ _elim_ctrl = None
 _tb_ctrl = None
 _killer_ctrl = None
 _ft_ctrl = None
+_co_ctrl = None
 _bb_ctrl = None
 _online = None
 _cloud_client = None
@@ -74,8 +77,8 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online
     _game_state = game_state
@@ -83,6 +86,7 @@ def wire(game_state, elim_ctrl,
     _tb_ctrl = tb_ctrl
     _killer_ctrl = killer_ctrl
     _ft_ctrl = ft_ctrl
+    _co_ctrl = co_ctrl
     _bb_ctrl = bb_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
@@ -127,6 +131,12 @@ def _build_payload() -> dict:
         bb_snap = {"active": False}
     else:
         bb_snap = None
+    if _co_ctrl and _co_ctrl.game:
+        co_snap = _co_ctrl.game.snapshot()
+    elif _co_ctrl:
+        co_snap = {"active": False}
+    else:
+        co_snap = None
     session_stats = _stats_tracker.computed_session_stats() if _stats_tracker else {}
     known_players = kp.load(_stats_db)
     return {
@@ -137,6 +147,7 @@ def _build_payload() -> dict:
         "killer": killer_snap,
         "field_training": ft_snap,
         "black_belt": bb_snap,
+        "checkout_training": co_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
         "player_colors": _stats_db.player_colors() if _stats_db else {},
@@ -517,6 +528,8 @@ async def elim_start(body: StartBody):
         return {"error": "a Field Training run is open, stop it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, stop it first"}
+    if _co_ctrl and _co_ctrl.active:
+        return {"error": "a Checkout Training run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -607,6 +620,8 @@ async def tb_start(body: TargetBattleStartBody):
         return {"error": "a Field Training run is open, stop it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, stop it first"}
+    if _co_ctrl and _co_ctrl.active:
+        return {"error": "a Checkout Training run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _tb_ctrl.start(players, rounds=body.rounds, targets=body.targets,
@@ -679,6 +694,8 @@ async def killer_start(body: KillerStartBody):
         return {"error": "a Field Training run is open, stop it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, stop it first"}
+    if _co_ctrl and _co_ctrl.active:
+        return {"error": "a Checkout Training run is open, stop it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles,
@@ -755,6 +772,8 @@ async def ft_start(body: FieldTrainingStartBody):
         return {"error": "a Killer game is running, stop it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, stop it first"}
+    if _co_ctrl and _co_ctrl.active:
+        return {"error": "a Checkout Training run is open, stop it first"}
     try:
         _ft_ctrl.start(body.player, body.field, darts=body.darts)
     except ValueError as e:
@@ -824,6 +843,8 @@ async def bb_start(body: BlackBeltStartBody):
         return {"error": "a Killer game is running, stop it first"}
     if _ft_ctrl and _ft_ctrl.active:
         return {"error": "a Field Training run is open, stop it first"}
+    if _co_ctrl and _co_ctrl.active:
+        return {"error": "a Checkout Training run is open, stop it first"}
     try:
         _bb_ctrl.start(body.player, backwards=body.backwards)
     except ValueError as e:
@@ -995,7 +1016,7 @@ async def achievements_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training|black_belt)$")):
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training|black_belt|checkout_training)$")):
     if not _stats_db:
         return []
     return _stats_db.recent_matches(mode=mode)
@@ -1046,6 +1067,13 @@ async def stats_field_training_overview():
     if not _stats_db:
         return {"players": []}
     return _stats_db.field_training_overview()
+
+
+@app.get("/api/stats/checkout-training/overview")
+async def stats_checkout_training_overview():
+    if not _stats_db:
+        return {"players": []}
+    return _stats_db.checkout_training_overview()
 
 
 @app.get("/api/stats/black-belt/overview")
@@ -1557,6 +1585,137 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
     log.info("Voice-pack variant deleted: group=%s key=%s index=%d",
               body.group, body.key, body.variant_index)
     return {"ok": True}
+
+
+# ── REST: checkout training ───────────────────────────────────────────────────
+
+class CheckoutTrainingStartBody(BaseModel):
+    player: str
+    range: str | None = None       # low (2 to 40), mid (41 to 100), high (101 to 170) or all
+    low: int = 2                   # used when no named range is given
+    high: int = 170
+    attempts: int = 10
+    show_route: bool = False
+
+
+@app.post("/api/checkout-training/start")
+async def co_start(body: CheckoutTrainingStartBody):
+    log.debug("Checkout Training start requested: player=%s range=%s attempts=%s", body.player, body.range, body.attempts)
+    if not _co_ctrl:
+        return {"error": "no checkout training controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    for ctrl, message in ((_elim_ctrl, "an Elimination game is running, stop it first"),
+                          (_tb_ctrl, "a Target Battle is running, stop it first"),
+                          (_killer_ctrl, "a Killer game is running, stop it first"),
+                          (_ft_ctrl, "a Field Training run is open, stop it first"),
+                          (_bb_ctrl, "a Black Belt run is open, stop it first")):
+        if ctrl and ctrl.active:
+            return {"error": message}
+    if body.range is not None and body.range not in CHECKOUT_RANGES:
+        return {"error": "range must be low, mid, high or all"}
+    low, high = CHECKOUT_RANGES[body.range] if body.range else (body.low, body.high)
+    try:
+        _co_ctrl.start(body.player, low=low, high=high, attempts=body.attempts, show_route=body.show_route)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/checkout-training/stop")
+async def co_stop():
+    log.debug("Checkout Training stop requested")
+    if _co_ctrl:
+        _co_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/checkout-training/finish")
+async def co_finish():
+    """End the run early and keep the attempts so far; a run without a finished attempt is dropped."""
+    log.debug("Checkout Training finish requested")
+    if not _co_ctrl:
+        return {"error": "no checkout training controller"}
+    if not _co_ctrl.finish_early():
+        _co_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/checkout-training/undo")
+async def co_undo():
+    log.debug("Checkout Training undo requested")
+    if not (_co_ctrl and _co_ctrl.game):
+        return {"error": "no active or finished run"}
+    if not _co_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/checkout-training/correct-dart")
+async def co_correct_dart(body: CorrectDartBody):
+    log.debug("Checkout Training correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _co_ctrl and _co_ctrl.game:
+        _co_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field)
+    return {"ok": True}
+
+
+# The pure side of the trainer, for the route quiz and the setup shots (no darts, also on a phone).
+
+_FIELD_PATTERN = "^(S([1-9]|1[0-9]|20)|D([1-9]|1[0-9]|20)|T([1-9]|1[0-9]|20)|25|50|0)$"
+
+
+@app.get("/api/checkout/random")
+async def checkout_random(low: int = Query(2, ge=2, le=170), high: int = Query(170, ge=2, le=170),
+                          avoid: int | None = None):
+    """A finishable score from low to high, not *avoid* if another is left."""
+    try:
+        score = co_routes.draw(low, high, avoid=(avoid,) if avoid else ())
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"score": score}
+
+
+@app.get("/api/checkout/route")
+async def checkout_route(score: int = Query(..., ge=1, le=999)):
+    """The standard route of a score, how many darts it takes at the least and which first darts are valid."""
+    return {"score": score, "finishable": co_routes.finishable(score), "route": co_routes.standard_route(score),
+            "darts": co_routes.darts_to_finish(score), "first_darts": co_routes.valid_first_darts(score)}
+
+
+class CheckoutJudgeBody(BaseModel):
+    score: int
+    field: str = Field(pattern=_FIELD_PATTERN)
+
+
+@app.post("/api/checkout/judge")
+async def checkout_judge(body: CheckoutJudgeBody):
+    """Route quiz: how a first dart at a score is rated, "standard", "valid" or "invalid"."""
+    if not co_routes.finishable(body.score):
+        return {"error": "that score cannot be finished with three darts"}
+    return {"verdict": co_routes.judge_first_dart(body.score, body.field), "route": co_routes.standard_route(body.score)}
+
+
+class CheckoutSetupBody(BaseModel):
+    score: int
+    fields: list[str] = Field(max_length=3)
+
+
+@app.post("/api/checkout/setup")
+async def checkout_setup(body: CheckoutSetupBody):
+    """Setup shots: what is left of a score after the darts, and what that rest allows."""
+    if any(not re.match(_FIELD_PATTERN, f) for f in body.fields):
+        return {"error": "unknown field"}
+    after = co_routes.after_darts(body.score, body.fields)
+    left = 3 - len(body.fields)
+    allowed = None
+    if after["state"] == "open" and left > 0:
+        allowed = co_routes.darts_to_finish(after["rest"], left)
+    return {**after, "darts_left": left, "darts_to_finish": allowed,
+            "route": co_routes.standard_route(after["rest"]) if allowed else None,
+            "best_first": co_routes.standard_route(body.score)}
 
 
 # ── REST: achievement sounds ─────────────────────────────────────────────────

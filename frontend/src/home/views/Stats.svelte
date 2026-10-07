@@ -8,6 +8,7 @@
   import StatsKiller from './stats/StatsKiller.svelte';
   import StatsFieldTraining from './stats/StatsFieldTraining.svelte';
   import StatsBlackBelt from './stats/StatsBlackBelt.svelte';
+  import StatsCheckoutTraining from './stats/StatsCheckoutTraining.svelte';
 
   const MODES = [
     { id: 'x01', label: 'X01' },
@@ -16,6 +17,7 @@
     { id: 'killer', label: t('Killer') },
     { id: 'field_training', label: t('Training') },
     { id: 'black_belt', label: t('Black Belt') },
+    { id: 'checkout_training', label: t('Checkout') },
   ];
 
   function remembered() {
@@ -54,6 +56,8 @@
   <StatsFieldTraining />
 {:else if mode === 'black_belt'}
   <StatsBlackBelt />
+{:else if mode === 'checkout_training'}
+  <StatsCheckoutTraining />
 {:else}
   <StatsElimination />
 {/if}

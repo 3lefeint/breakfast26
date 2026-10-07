@@ -8,6 +8,7 @@
   import { killer } from '../lib/stores/killer.js';
   import { fieldTraining } from '../lib/stores/fieldTraining.js';
   import { blackBelt } from '../lib/stores/blackBelt.js';
+  import { checkoutTraining } from '../lib/stores/checkoutTraining.js';
   import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
   import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
@@ -27,6 +28,8 @@
   import FieldTrainingFinishedTv from './views/FieldTrainingFinishedTv.svelte';
   import BlackBeltTv from './views/BlackBeltTv.svelte';
   import BlackBeltFinishedTv from './views/BlackBeltFinishedTv.svelte';
+  import CheckoutTrainingTv from './views/CheckoutTrainingTv.svelte';
+  import CheckoutTrainingFinishedTv from './views/CheckoutTrainingFinishedTv.svelte';
 
   onMount(() => {
     connect();
@@ -51,6 +54,7 @@
     if ($killer && ($killer.state === 'finished' || $killer.active)) return t('Killer');
     if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return t('Field Training');
     if ($blackBelt && ($blackBelt.state === 'finished' || $blackBelt.active)) return t('Black Belt');
+    if ($checkoutTraining && ($checkoutTraining.state === 'finished' || $checkoutTraining.active)) return t('Checkout Training');
     if (!game.match_started) return game.board_status ? `${t('Board')}: ${game.board_status}` : '—';
     const legLabel = game.current_leg > 1 ? ` · ${t('Leg {n}', { n: game.current_leg })}` : '';
     return [game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null].filter(Boolean).join(' · ') + legLabel;
@@ -67,6 +71,8 @@
     if ($fieldTraining && $fieldTraining.active) return 'ft-live';
     if ($blackBelt && $blackBelt.state === 'finished') return 'bb-finished';
     if ($blackBelt && $blackBelt.active) return 'bb-live';
+    if ($checkoutTraining && $checkoutTraining.state === 'finished') return 'co-finished';
+    if ($checkoutTraining && $checkoutTraining.active) return 'co-live';
     if (game.match_started) return 'x01';
     return 'idle';
   });
@@ -156,6 +162,12 @@
   </div>
 {:else if view === 'bb-finished'}
   <BlackBeltFinishedTv bb={$blackBelt} />
+{:else if view === 'co-live'}
+  <div id="activeElim">
+    <CheckoutTrainingTv co={$checkoutTraining} />
+  </div>
+{:else if view === 'co-finished'}
+  <CheckoutTrainingFinishedTv co={$checkoutTraining} />
 {/if}
 
 <footer>

@@ -13,6 +13,10 @@
   import TargetBattle from './views/TargetBattle.svelte';
   import FieldTraining from './views/FieldTraining.svelte';
   import BlackBelt from './views/BlackBelt.svelte';
+  import CheckoutTrainer from './views/CheckoutTrainer.svelte';
+  import CheckoutTraining from './views/CheckoutTraining.svelte';
+  import CheckoutQuiz from './views/CheckoutQuiz.svelte';
+  import SetupShots from './views/SetupShots.svelte';
   import Killer from './views/Killer.svelte';
   import Players from './views/Players.svelte';
   import Profile from './views/Profile.svelte';
@@ -92,6 +96,14 @@
           <FieldTraining />
         {:else if $route === 'black-belt'}
           <BlackBelt />
+        {:else if $route === 'checkout-trainer'}
+          <CheckoutTrainer />
+        {:else if $route === 'checkout-training'}
+          <CheckoutTraining />
+        {:else if $route === 'checkout-quiz'}
+          <CheckoutQuiz />
+        {:else if $route === 'setup-shots'}
+          <SetupShots />
         {:else if $route === 'players'}
           <Players />
         {:else if $route.startsWith('profile/')}

@@ -11,9 +11,10 @@
       { href: '#target-battle', icon: 'target-battle', label: t('Target Battle'), sub: t('All throw at one number') },
       { href: '#killer', icon: 'killer', label: t('Killer'), sub: t('Last one standing') },
     ] },
-    { title: t('Singleplayer'), columns: 2, cards: [
+    { title: t('Singleplayer'), columns: 3, cards: [
       { href: '#field-training', icon: 'field-training', label: t('Field Training'), sub: t('Darts at one field') },
       { href: '#black-belt', icon: 'black-belt', label: t('Black Belt'), sub: t('The doubles ladder') },
+      { href: '#checkout-trainer', icon: 'checkout', label: t('Checkout Trainer'), sub: t('Learn to finish') },
     ] },
   ];
 </script>
@@ -37,7 +38,7 @@
   h2:not(:first-of-type) { margin-top: 2rem; }
 
   .grid { display: grid; grid-template-columns: repeat(var(--columns), 1fr); gap: 1.25rem; }
-  .grid[style*="--columns: 2"] .card { min-height: 12.5rem; }
+  .grid[style*="--columns: 2"] .card, .grid[style*="--columns: 3"] .card { min-height: 12.5rem; }
   .card {
     position: relative; display: flex; flex-direction: column; min-height: 14rem;
     padding: 1.25rem 1.4rem; border-radius: 16px; text-decoration: none; color: var(--text);

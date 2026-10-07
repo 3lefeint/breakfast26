@@ -6,6 +6,7 @@
   import { cap } from '../../../lib/util.js';
   import { SCORING_SHORT } from '../../../lib/targetBattle.js';
   import { fieldLabel, RATING_LABELS, percent } from '../../../lib/fieldTraining.js';
+  import { rangeLabel, fieldName } from '../../../lib/checkoutTraining.js';
 
   let { mode } = $props();
 
@@ -54,6 +55,9 @@
       return `${t('Target Battle')} · ${m.points_start} ${m.points_start === 1 ? t('round') : t('rounds')} · ${SCORING_SHORT[m.scoring] || m.scoring}`;
     }
     if (m.game_mode === 'Killer') return t('Killer');
+    if (m.game_mode === 'Checkout Training') {
+      return `${t('Checkout Training')}${m.range ? ' · ' + rangeLabel(m.range[0], m.range[1]) : ''} · ${t('{n} attempts', { n: m.points_start })}`;
+    }
     if (m.game_mode === 'Black Belt') return `${t('Black Belt')} · ${m.backwards ? t('D20 down to D1') : t('D1 up to D20')}`;
     if (m.game_mode === 'Field Training') {
       return `${t('Field Training')} · ${m.field != null ? fieldLabel(m.field) : '?'} · ${t('{n} darts', { n: m.points_start })}`;
@@ -117,6 +121,20 @@
                       <td>{r.tiebreak ? t('Tiebreak {n}', { n: r.round }) : r.round}</td>
                       <td class="num-cell">{r.target}</td>
                       {#each matchDetails[m.match_id].players as p}<td class="num-cell">{r.scores[p.player] ?? '—'}</td>{/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else if mode === 'checkout_training'}
+              <table class="players-table stats-table detail">
+                <thead><tr><th class="num-cell">#</th><th class="num-cell">{t('Score')}</th><th class="num-cell">{t('Worked')}</th><th class="num-cell">{t('Darts')}</th></tr></thead>
+                <tbody>
+                  {#each matchDetails[m.match_id].turns || [] as a}
+                    <tr>
+                      <td class="num-cell">{a.attempt}</td>
+                      <td class="num-cell">{a.score}</td>
+                      <td class="num-cell">{a.success ? `✓ ${fieldName(a.finish)}` : '✗'}</td>
+                      <td class="num-cell">{a.darts}</td>
                     </tr>
                   {/each}
                 </tbody>

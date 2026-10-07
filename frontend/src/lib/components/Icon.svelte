@@ -8,6 +8,7 @@
     'target-battle': '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/><path d="M12 2.5v9M12 12.5v9M2.5 12h9M12.5 12h9M5.3 5.3l6.4 6.4M12.3 12.3l6.4 6.4M18.7 5.3l-6.4 6.4M11.7 12.3l-6.4 6.4"/>',
     killer: '<path d="M21 3 9 15M3 3l12 12"/><path d="M21 3h-4.5M21 3v4.5M3 3h4.5M3 3v4.5"/><path d="M5 15h4v4M19 15h-4v4"/>',
     'field-training': '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.6"/>',
+    checkout: '<circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.5l3 3.2 6-7"/>',
     'black-belt': '<path d="M2 8.5c3 0 5 .3 7 .8v6.4c-2-.5-4-.8-7-.8z"/><path d="M22 8.5c-3 0-5 .3-7 .8v6.4c2-.5 4-.8 7-.8z"/><rect x="9" y="7" width="6" height="10" rx="1.8"/><path d="M10.3 17 8.6 21.5l2.4-.5 1-2M13.7 17l1.7 4.5-2.4-.5-1-2"/>',
     // Navigation
     play: '<circle cx="12" cy="12" r="9.5"/><path d="M12 12l4.2-4.2"/><path d="M7.5 7.5l.9.9M12 5.2v1.3M16.5 7.5l-.9.9M5.2 12h1.3"/>',
