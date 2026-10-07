@@ -100,8 +100,8 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 
 # ── Dev mode ──────────────────────────────────────────────────────────────────
 # Exposes a Settings "Dev" tab to simulate a full X01 leg or Elimination match
-# at runtime (no physical board needed) — see README "Dev mode". Off by
-# default; not meant to be enabled on a shared/production instance.
+# at runtime (no physical board needed). Off by default; not meant to be
+# enabled on a shared/production instance.
 # [dev]
 # enabled = true
 
