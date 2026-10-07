@@ -565,6 +565,22 @@ async def elim_correct_dart(body: CorrectDartBody):
     return {"ok": True}
 
 
+@app.post("/api/elimination/correct-last-dart")
+async def elim_correct_last_dart(body: CorrectDartBody):
+    """Correct a dart of the last finished turn, also after it ended the match."""
+    log.debug("Elimination correct-last-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if not (_elim_ctrl and _elim_ctrl.game):
+        return {"error": "no active or finished game"}
+    if _elim_ctrl.game.online:
+        return {"error": "correcting a finished turn is not available in an online match yet"}
+    if not _elim_ctrl.game.correct_last_dart(body.dart - 1, body.field):
+        return {"error": "no turn to correct"}
+    _move_board_dart(body.dart - 1, body.field)
+    return {"ok": True}
+
+
 # ── REST: target battle ───────────────────────────────────────────────────────
 
 class TargetBattleStartBody(BaseModel):

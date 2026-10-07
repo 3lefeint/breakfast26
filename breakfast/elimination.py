@@ -3,7 +3,7 @@ import json
 import logging
 import threading
 
-from .turn_game import TurnGame, TurnGameController, dart_positions
+from .turn_game import TurnGame, TurnGameController, dart_positions, parse_field
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +38,9 @@ class EliminationGame(TurnGame):
         self.freipass = True  # first player only needs > 0
         self.winner = None
         self.elimination_order = []  # names in the order they were eliminated
+        self._last_turn_throws = []  # the darts of the last finished turn, for correct_last_dart()
+        self._last_turn_player = None
+        self._silent = False         # replaying a corrected turn: no calls, no events
         # Online play (see online.py): `online` sends this site's darts, turns and
         # state hashes to the relay, `local_players` are the players whose turns
         # are thrown at this site's board; None means every player is local.
@@ -96,6 +99,9 @@ class EliminationGame(TurnGame):
             "current_darts": list(self._current_darts),
             "last_darts": last_darts,
             "elimination_order": list(self.elimination_order),
+            "last_turn": {"player": self._last_turn_player,
+                          "darts": [self.board_dart(t) for t in self._last_turn_throws]}
+            if self._last_turn_throws else None,
             "players": [
                 {
                     "name": p,
@@ -151,7 +157,10 @@ class EliminationGame(TurnGame):
                 self._publish_event(event, player, score)
                 if is_match_over:
                     self._record_turn(player, score, len(self._last_throws))
-                    self._push_history(self._snapshot_state(player), turn_recorded=self.stats_db is not None)
+                    self._turn_snapshot = self._snapshot_state(player)
+                    self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
+                    self._last_turn_throws = list(self._last_throws)
+                    self._last_turn_player = player
                     self.lives[player] = future_lives
                     eliminated_before = len(self.elimination_order)
                     self._finish_match(player, score)
@@ -185,7 +194,7 @@ class EliminationGame(TurnGame):
         self.state = "finished"
         self.current_idx = 0
         self._record_result()
-        if self.audio:
+        if self.audio and not self._silent:
             # Winner name before matchshot — reversed
             # from the old matchshot-then-name order. Wrapped in its own
             # batch (re-entrant with _publish_turn_preview()'s already-open
@@ -195,7 +204,8 @@ class EliminationGame(TurnGame):
             with self._audio_batch():
                 self._announce(self.winner)
                 self.audio.play("matchshot")
-        self._publish_event("game_won", self.winner, score)
+        if not self._silent:
+            self._publish_event("game_won", self.winner, score)
         self._outcome_published = False
         self._preview_fired = False
         self._publish_state()
@@ -241,6 +251,8 @@ class EliminationGame(TurnGame):
         eliminated_before = len(self.elimination_order)
         self._turn_snapshot = self._snapshot_state(player)
         self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
+        self._last_turn_throws = list(throws)
+        self._last_turn_player = player
         self._publish_last_turn(self._current_darts)
         self._record_turn(player, score, len(self._last_throws))
         # Clear the in-progress darts now that the turn is over, so the next
@@ -254,7 +266,7 @@ class EliminationGame(TurnGame):
         # _outcome_published is only set on a *failed* turn, so it can't be
         # used here — a passing turn always left it False, causing the
         # preview's own score (already played) to be announced again.
-        if not self._preview_fired and self.audio:
+        if not self._preview_fired and self.audio and not self._silent:
             self.audio.play(str(score))
         self._apply_turn(player, score)
         self._after_turn(player, throws, eliminated_before)
@@ -361,13 +373,15 @@ class EliminationGame(TurnGame):
             positions=dart_positions(self._last_throws))
 
     def _apply_turn(self, player, score, silent=False):
+        silent = silent or self._silent
         passes = score > (0 if self.freipass else self.target)
         self.target = score
         self.freipass = False
 
         with self._audio_batch():
             if passes:
-                self._publish_event("turn_pass", player, score)
+                if not silent:
+                    self._publish_event("turn_pass", player, score)
                 self._advance()
             else:
                 self.lives[player] -= 1
@@ -446,7 +460,47 @@ class EliminationGame(TurnGame):
         if self.online:
             log.warning("Undo is not available in an online match yet")
             return False
-        return super().undo()
+        undone = super().undo()
+        if undone:
+            self._last_turn_throws = []
+            self._last_turn_player = None
+        return undone
+
+    def correct_last_dart(self, dart_index, field):
+        """Correct one dart of the last finished turn, also after it ended the match: the game goes
+        back to before that turn and plays it again with the corrected dart. Returns False when there
+        is no such turn."""
+        if self.online:
+            log.warning("Correcting a finished turn is not available in an online match yet")
+            return False
+        if not self._history or not self._last_turn_throws or dart_index not in (0, 1, 2):
+            log.warning("No turn to correct")
+            return False
+        if self.state == "playing" and self._current_darts:
+            log.warning("The next turn has begun, the last one can no longer be corrected")
+            return False
+        snap = self._history.pop()
+        was_finished = self.state == "finished"
+        throws = list(self._last_turn_throws)
+        while len(throws) <= dart_index:
+            throws.append({"segment": {"number": 0, "multiplier": 0}})
+        throws[dart_index] = parse_field(field)
+        if self.stats_db:
+            self._forget_stored_turn(snap, was_finished)
+        self._restore(snap)
+        self._last_throws = throws
+        self._current_darts = [self.value_of(t) for t in throws]
+        self._dart_overrides = {}
+        # The darts may still be on the board: leave them alone until they are pulled.
+        self._prev_count = 0
+        self._await_pull = self._board_count > 0
+        self._silent = True
+        try:
+            self._end_turn()
+        finally:
+            self._silent = False
+        log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
+        return True
 
     def _restore(self, snap):
         self.lives = dict(snap["lives"])

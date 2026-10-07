@@ -98,6 +98,8 @@ class TurnGame:
         self.match_id = match_id or uuid.uuid4().hex
         self.state = "playing"
         self._prev_count = 0
+        self._board_count = 0        # darts on the board right now, also while the game is not playing
+        self._await_pull = False     # ignore the board until the darts that are on it now are pulled
         self._last_throws = []
         self._current_darts = []     # what each dart of the turn in progress is worth
         self._dart_overrides = {}    # dart index -> a dart corrected by tapping
@@ -137,6 +139,12 @@ class TurnGame:
     # ── following the board ──────────────────────────────────────────────────
 
     def on_board_state(self, count, throws):
+        self._board_count = count
+        if self._await_pull:
+            if count == 0:
+                self._await_pull = False
+                self._prev_count = 0
+            return
         if self.state != "playing":
             return
         if count > 0:

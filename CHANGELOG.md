@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Elimination: a dart of the last turn can be corrected after it ended the match; the finished screens show the darts of that turn, tapping one plays the turn again with the corrected dart and resumes the match if it no longer decides it. The correction of a turn total no longer changes the turn before after such a finish (#43).
 - A build from source (`npm run build` in `frontend/`) now writes the Web UI to `breakfast/web/dist`, where the server serves it from; before, it landed in `frontend/dist` and a source install showed no or an outdated interface.
 
 ## [1.1.0] - 2026-10-07

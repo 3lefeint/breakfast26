@@ -672,3 +672,136 @@ class TestRecordedTurnDetails:
         game.on_board_state(3, [_throw(1, 1)] * 3)
         assert game.state == "finished"
         assert game.undo() is True
+
+
+class TestCorrectLastDart:
+    """A dart of the last turn can be corrected, also when that turn ended the match (#43)."""
+
+    def _game(self, **kw):
+        game = EliminationGame(["ben", "anna"], 1, FakeMqttClient(), "autodarts", **kw)
+        game.on_board_state(1, [_throw(13, 3)])      # ben: 39 via the freipass
+        game.on_board_state(0, [])
+        return game
+
+    def _misread_third_dart(self, game):
+        """Anna needs more than 39, throws 10 and 12 and the board reads the third dart as 1."""
+        game.on_board_state(1, [_throw(10, 1)])
+        game.on_board_state(2, [_throw(10, 1), _throw(12, 1)])
+        game.on_board_state(3, [_throw(10, 1), _throw(12, 1), _throw(1, 1)])
+
+    def test_the_match_ends_at_the_third_dart_and_nothing_can_be_corrected_yet(self):
+        game = self._game()
+        self._misread_third_dart(game)
+        assert game.state == "finished" and game.winner == "ben"
+        assert game.snapshot()["last_turn"]["player"] == "anna"
+        assert [d["points"] for d in game.snapshot()["last_turn"]["darts"]] == [10, 12, 1]
+
+    def test_a_corrected_dart_resumes_a_match_it_no_longer_decides(self):
+        game = self._game()
+        self._misread_third_dart(game)
+
+        assert game.correct_last_dart(2, "S20") is True
+
+        assert game.state == "playing" and game.winner is None
+        assert game.target == 42 and game.current_player == "ben"
+        assert game.lives == {"ben": 1, "anna": 1}
+        assert [d["points"] for d in game.snapshot()["last_turn"]["darts"]] == [10, 12, 20]
+
+    def test_a_corrected_dart_that_changes_nothing_keeps_the_match_finished(self):
+        game = self._game()
+        self._misread_third_dart(game)
+
+        assert game.correct_last_dart(2, "S2") is True
+
+        assert game.state == "finished" and game.winner == "ben"
+
+    def test_the_corrected_turn_replaces_the_stored_one_and_the_result_follows(self):
+        db = StatsDB(":memory:")
+        game = self._game(stats_db=db)
+        self._misread_third_dart(game)
+        assert db._conn.execute("SELECT winner, ended_at FROM matches WHERE match_id=?",
+                                (game.match_id,)).fetchone()["winner"] == "ben"
+
+        game.correct_last_dart(2, "S20")
+
+        row = db._conn.execute("SELECT winner, ended_at FROM matches WHERE match_id=?", (game.match_id,)).fetchone()
+        assert row["winner"] is None and row["ended_at"] is None
+        turns = db._conn.execute("SELECT score, passed FROM elimination_turns WHERE match_id=? AND player='anna'",
+                                 (game.match_id,)).fetchall()
+        assert [(t["score"], t["passed"]) for t in turns] == [(42, 1)]
+        assert db._conn.execute("SELECT COUNT(*) AS n FROM elimination_results WHERE match_id=?",
+                                (game.match_id,)).fetchone()["n"] == 0
+
+    def test_the_replay_makes_no_calls_and_no_events(self):
+        audio = FakeAudio()
+        client = FakeMqttClient()
+        game = EliminationGame(["ben", "anna"], 1, client, "autodarts", audio=audio)
+        game.on_board_state(1, [_throw(13, 3)])
+        game.on_board_state(0, [])
+        self._misread_third_dart(game)
+        played, events = len(audio.played), len(client.published)
+
+        game.correct_last_dart(2, "S20")
+
+        assert len(audio.played) == played
+        assert not any("/events/" in t for t, _, _ in client.published[events:])
+
+    def test_darts_still_on_the_board_do_not_count_again(self):
+        game = self._game()
+        self._misread_third_dart(game)
+        game.correct_last_dart(2, "S20")       # the three darts are still in the board
+
+        game.on_board_state(3, [_throw(10, 1), _throw(12, 1), _throw(1, 1)])   # a repeated report
+        assert game._current_darts == []
+        game.on_board_state(0, [])             # pulled: that is not a turn of ben
+        assert game.target == 42 and game.current_player == "ben" and game._history[-1]["player"] == "anna"
+
+        game.on_board_state(1, [_throw(20, 3)])                               # now ben's own darts count
+        game.on_board_state(0, [])
+        assert game.current_player == "anna" and game.target == 60
+
+    def test_darts_already_pulled_are_not_waited_for(self):
+        game = self._game()
+        self._misread_third_dart(game)
+        game.on_board_state(0, [])             # pulled while the match was finished
+
+        game.correct_last_dart(2, "S20")
+
+        game.on_board_state(1, [_throw(20, 3)])
+        assert game._current_darts == [60]
+
+    def test_a_turn_that_ended_normally_can_be_corrected_before_the_next_one_begins(self):
+        game = EliminationGame(["ben", "anna", "carl"], 3, FakeMqttClient(), "autodarts")
+        game.on_board_state(3, [_throw(20, 1)] * 3)                              # ben: 60
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(20, 1), _throw(20, 1), _throw(1, 1)])     # anna: 41, a life lost
+        game.on_board_state(0, [])
+        assert game.lives["anna"] == 2 and game.current_player == "carl"
+
+        assert game.correct_last_dart(2, "T20") is True                          # the third dart was a triple 20
+
+        assert game.lives["anna"] == 3 and game.target == 100 and game.current_player == "carl"
+
+    def test_nothing_to_correct_before_a_turn_or_once_the_next_one_has_begun(self):
+        game = EliminationGame(["ben", "anna", "carl"], 3, FakeMqttClient(), "autodarts")
+        assert game.correct_last_dart(0, "S20") is False
+        game.on_board_state(1, [_throw(20, 1)])
+        game.on_board_state(0, [])
+        game.on_board_state(1, [_throw(5, 1)])           # anna's turn is on
+        assert game.correct_last_dart(0, "S20") is False
+        assert game.correct_last_dart(3, "S20") is False
+
+    def test_undo_forgets_the_darts_of_the_turn_it_took_back(self):
+        game = self._game()
+        self._misread_third_dart(game)
+        game.undo()
+        assert game.snapshot()["last_turn"] is None
+
+    def test_the_turn_total_correction_hits_the_turn_that_ended_the_match(self):
+        game = self._game()
+        self._misread_third_dart(game)
+
+        game.correct_turn(42)
+
+        assert game.target == 42 and game.current_player == "ben"
+        assert game.state == "playing" and game.lives == {"ben": 1, "anna": 1}

@@ -9,8 +9,12 @@
   import { api, apiJson } from '../../lib/api.js';
   import { players } from '../../lib/stores/players.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
+  import { dartLabel } from '../../lib/killer.js';
+  import DartCorrectModal from './DartCorrectModal.svelte';
 
   let { elimination, online = null } = $props();
+  let lastDarts = $derived(elimination.last_turn?.darts || []);
+  let correctingIndex = $state(null);
 
   let showModal = $state(false);
   let rematchPlayers = $state([]);
@@ -101,6 +105,14 @@
     <div class="trophy">🏆</div>
     <div class="winner-name">{cap(elimination.winner || '')}</div>
     <div class="winner-label">{t('Winner')}</div>
+    {#if lastDarts.length && !online}
+      <div class="last">
+        <span class="last-label">{t('Last turn, {name}', { name: cap(elimination.last_turn.player) })}</span>
+        {#each lastDarts as d, i}
+          <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
+        {/each}
+      </div>
+    {/if}
     <div class="finished-actions">
       <button class="btn btn-start" onclick={newGame}>{t('New game')}</button>
       {#if !online}
@@ -164,6 +176,11 @@
   </div>
 {/if}
 
+{#if correctingIndex != null}
+  <DartCorrectModal dartIndex={correctingIndex} onClose={() => (correctingIndex = null)}
+                    endpoint="/api/elimination/correct-last-dart" />
+{/if}
+
 <style>
   .elim-finished { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; }
   .winner-card { padding: 3vw 5vw; border-radius: 28px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
@@ -179,6 +196,10 @@
     cursor: pointer;
   }
   .btn-undo-win:hover { color: var(--text); }
+  .last { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin: -0.5rem 0 1.2rem; }
+  .last-label { color: var(--muted); font-size: 0.9rem; }
+  .dart-chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.3rem 0.8rem; font-family: inherit; font-weight: 700; color: var(--text); cursor: pointer; }
+  .dart-chip:hover { border-color: var(--accent); }
   .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }
   .lives-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
