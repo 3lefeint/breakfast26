@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -220,6 +222,72 @@ class TestUnlockSound:
     def test_an_assigned_file_that_cannot_play_falls_back(self, sounds):
         self._earn(sounds, {"ton_up": ["gone.mp3"]})
         assert [m["file"] for m in sounds[3]] == ["achievement_ton_up.mp3"]
+
+
+
+class TestUnlockPacing:
+    """Several unlocks of one match come one banner apart, each with its banner and sound (#36)."""
+    SPACING = 0.15
+
+    def _announce(self, sounds, **kwargs):
+        engine = sounds[0]
+        log = []                     # ("banner", id) and ("sound", file), in the order they happen
+        sent = sounds[3]
+        ach = AchievementEngine(StatsDB(":memory:")).announce(
+            lambda m: log.append(("banner", m["id"], time.monotonic())), engine,
+            sounds=lambda a: {"ton_up": ["fanfare.mp3"], "bullseye": ["party.mp3"]}.get(a, []),
+            spacing=self.SPACING, **kwargs)
+        return ach, log, sent
+
+    def _change(self, achievement):
+        return {"player": "ana", "achievement": achievement, "tier": 1}
+
+    def _wait_for(self, predicate, timeout=3.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not predicate():
+            time.sleep(0.01)
+        return predicate()
+
+    def test_the_first_unlock_comes_at_once_with_its_sound(self, sounds):
+        ach, log, sent = self._announce(sounds)
+        ach.on_earned(self._change("ton_up"))
+        assert [e[:2] for e in log] == [("banner", "ton_up")]
+        assert [m["file"] for m in sent] == ["fanfare.mp3"]
+
+    def test_the_next_ones_wait_for_the_banner_before_them(self, sounds):
+        ach, log, sent = self._announce(sounds)
+        for a in ("ton_up", "bullseye", "ton_up"):
+            ach.on_earned(self._change(a))
+        assert len(log) == 1 and len(sent) == 1           # only the first one so far
+        assert self._wait_for(lambda: len(log) == 3)
+        times = [e[2] for e in log]
+        assert times[1] - times[0] >= self.SPACING * 0.9 and times[2] - times[1] >= self.SPACING * 0.9
+        assert [e[1] for e in log] == ["ton_up", "bullseye", "ton_up"]
+        assert [m["file"] for m in sent] == ["fanfare.mp3", "party.mp3", "fanfare.mp3"]
+
+    def test_an_unlock_long_after_the_last_one_comes_at_once_again(self, sounds):
+        ach, log, sent = self._announce(sounds)
+        ach.on_earned(self._change("ton_up"))
+        time.sleep(self.SPACING * 1.5)
+        ach.on_earned(self._change("bullseye"))
+        assert len(log) == 2
+
+    def test_a_failing_release_does_not_stop_the_queue(self, sounds):
+        calls = []
+
+        def push(message):
+            calls.append(message["id"])
+            if len(calls) == 1:
+                raise RuntimeError("browser gone")
+
+        ach = AchievementEngine(StatsDB(":memory:")).announce(push, sounds[0], spacing=self.SPACING)
+        ach.on_earned(self._change("ton_up"))
+        ach.on_earned(self._change("bullseye"))
+        assert self._wait_for(lambda: len(calls) == 2)
+
+    def test_the_default_spacing_is_one_banner_plus_a_short_pause(self):
+        from breakfast.achievements import BANNER_SECONDS, UNLOCK_SPACING
+        assert BANNER_SECONDS == 5.2 and 0 < UNLOCK_SPACING - BANNER_SECONDS < 1
 
 
 @pytest.fixture

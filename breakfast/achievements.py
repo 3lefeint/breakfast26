@@ -18,6 +18,9 @@ Rules the engine applies:
 import logging
 import random
 import re
+import threading
+import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Callable
 
@@ -1347,6 +1350,57 @@ BY_ID = {a.id: a for a in ACHIEVEMENTS}
 
 # ── Engine ───────────────────────────────────────────────────────────────────
 
+# How long one unlock banner stays on /tv (the animation in AchievementBanner.svelte) and a short
+# pause after it, so that two sounds never run into each other.
+BANNER_SECONDS = 5.2
+UNLOCK_SPACING = BANNER_SECONDS + 0.3
+
+
+class _Pacer:
+    """Runs actions one *spacing* apart: the first at once, each of the next ones when the one
+    before it has had its time. Used to give every unlock its own moment when a match earns
+    several achievements together."""
+
+    def __init__(self, spacing, clock=time.monotonic):
+        self.spacing = spacing
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._pending = deque()
+        self._next = 0.0
+        self._timer = None
+
+    def submit(self, action):
+        with self._lock:
+            self._pending.append(action)
+            waiting = self._timer is not None
+        if not waiting:
+            self._release()
+
+    def _release(self):
+        with self._lock:
+            self._timer = None
+            if not self._pending:
+                return
+            wait = self._next - self._clock()
+            if wait > 0:
+                self._schedule(wait)
+                return
+            action = self._pending.popleft()
+            self._next = self._clock() + self.spacing
+        try:
+            action()
+        except Exception:
+            log.exception("Releasing an achievement failed")
+        with self._lock:
+            if self._pending and self._timer is None:
+                self._schedule(max(0.0, self._next - self._clock()))
+
+    def _schedule(self, wait):
+        self._timer = threading.Timer(wait, self._release)
+        self._timer.daemon = True
+        self._timer.start()
+
+
 class AchievementEngine:
     def __init__(self, db, definitions=ACHIEVEMENTS, on_earned=None, on_revoked=None):
         """on_earned / on_revoked are called with {"player", "achievement", "tier"} for each
@@ -1372,12 +1426,15 @@ class AchievementEngine:
                 "tiers": list(a.tiers) if a.tiers else None,
                 "tier": change["tier"] or 1}
 
-    def announce(self, push, audio=None, sounds=None):
+    def announce(self, push, audio=None, sounds=None, spacing=UNLOCK_SPACING):
         """Send every newly earned achievement to the browsers with `push` and play its sound.
         `sounds(id)` gives the files assigned to the achievement; one of them is played. Without
         one: `achievement_<id>` if there is a file for that achievement, else the general
-        `achievement`. No file means no sound. Revoked ones are not announced."""
-        def on_earned(change):
+        `achievement`. No file means no sound. Revoked ones are not announced.
+        Several unlocks of one match come one banner apart, each with its own banner and sound."""
+        pacer = _Pacer(spacing)
+
+        def release(change):
             push(self.notification(change))
             if not audio:
                 return
@@ -1385,7 +1442,8 @@ class AchievementEngine:
             if assigned and audio.play_file(random.choice(assigned)):
                 return
             audio.play(f"achievement_{change['achievement']}") or audio.play("achievement")
-        self.on_earned = on_earned
+
+        self.on_earned = lambda change: pacer.submit(lambda: release(change))
         return self
 
     def overview(self, player: str) -> list:
