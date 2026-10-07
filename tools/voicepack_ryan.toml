@@ -324,6 +324,8 @@ pitch = "-3Hz"
 # registered under in the app's player list. `variants` are different
 # spellings/pronunciations of that same person. An English voice reads some
 # of the names oddly: respell a name phonetically here if it does.
+# Real names do not belong into this tracked file: the Voice Pack tab saves them into
+# data/voicepack/ryan.toml, which the generator merges into this group.
 # ─────────────────────────────────────────────────────────────────────────
 
 [[group]]

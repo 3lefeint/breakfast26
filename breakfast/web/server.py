@@ -29,6 +29,7 @@ from breakfast import online as online_mod
 from breakfast import frozen, self_update
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
+from breakfast import voicepack_overlay as vo
 
 log = logging.getLogger(__name__)
 
@@ -1266,12 +1267,41 @@ def _voicepack_plan_path(pack: str | None = None) -> Path | None:
     return plans.get(pack)
 
 
-def _voicepack_doc(pack: str | None):
-    """(plan path, parsed plan) for *pack*, or (None, error answer)."""
+def _voicepack_overlay_file(pack_name: str) -> Path | None:
+    """The private player-name file of a pack, next to `config.toml`; None without a config file."""
+    return vo.overlay_path(Path(_config_path).parent, pack_name) if _config_path else None
+
+
+def _voicepack_doc(pack: str | None, overlay: bool = True):
+    """(plan path, parsed plan) for *pack*, or (None, error answer). With *overlay* the private
+    player names are merged in, for everything but writing a plan: never save that copy."""
     path = _voicepack_plan_path(pack)
     if path is None:
         return None, {"error": "unknown voice pack" if pack else "no voice-pack plan"}
-    return path, ve.load_plan(path)
+    doc = ve.load_plan(path)
+    file = _voicepack_overlay_file(ve.profile_dir_name(doc)) if overlay else None
+    if file is not None:
+        try:
+            doc = ve.merge_overlay(doc, vo.read_entries(file))
+        except ValueError as e:
+            return None, {"error": f"private player file: {e}"}
+    return path, doc
+
+
+def _voicepack_save(plan_path: Path, doc, group_name: str):
+    """Write the edited *doc*: the private file for the player names, else the plan. Returns an
+    error answer or None."""
+    if group_name != vo.PLAYER_GROUP:
+        ve.save_plan(plan_path, doc)
+        return None
+    file = _voicepack_overlay_file(ve.profile_dir_name(doc))
+    if file is None:
+        return {"error": "no config file, so no place for the private player names"}
+    try:
+        ve.write_overlay(file, ve.overlay_changes(ve.load_plan(plan_path), doc))
+    except ValueError as e:
+        return {"error": str(e)}
+    return None
 
 
 def _voicepack_out_dir(profile_name: str) -> Path:
@@ -1319,6 +1349,12 @@ async def voicepack_generate(body: VoicepackGenerateBody):
     with open(plan_path, "rb") as f:
         plan = tomllib.load(f)
     name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
+    file = _voicepack_overlay_file(name)
+    if file is not None:
+        try:
+            vo.merge_into_plan(plan, vo.read_entries(file))
+        except ValueError as e:
+            return {"error": f"private player file: {e}"}
     out_dir = _voicepack_out_dir(name)
 
     _voicepack_status.update(running=True, done=0, skipped=0, total=0, error=None)
@@ -1442,7 +1478,7 @@ async def voicepack_save_entry(body: VoicepackEntryBody):
     if not variants:
         return {"error": "at least one variant is required"}
 
-    plan_path, doc = _voicepack_doc(body.pack)
+    plan_path, doc = _voicepack_doc(body.pack, overlay=body.group == vo.PLAYER_GROUP)
     if plan_path is None:
         return doc
     groups = {g["name"]: g for g in doc["group"]}
@@ -1467,7 +1503,9 @@ async def voicepack_save_entry(body: VoicepackEntryBody):
         return {"error": f"synthesis failed: {e}"}
 
     ve.prune_extra_variant_files(out_dir, result["stem"], keep_count=len(variants))
-    ve.save_plan(plan_path, doc)
+    error = _voicepack_save(plan_path, doc, body.group)
+    if error:
+        return error
     if _audio_engine:
         _audio_engine.invalidate(result["stem"])
     log.info("Voice-pack entry saved: group=%s key=%s variants=%d", body.group, key, len(variants))
@@ -1486,7 +1524,7 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
     """Remove one variant, renumbering the remaining higher-indexed files
     down so none of them silently fall past AudioEngine's gap-stops-the-
     scan cutoff — and keeps the plan's variants list in sync."""
-    plan_path, doc = _voicepack_doc(body.pack)
+    plan_path, doc = _voicepack_doc(body.pack, overlay=body.group == vo.PLAYER_GROUP)
     if plan_path is None:
         return doc
     out_dir = _voicepack_out_dir(ve.profile_dir_name(doc))
@@ -1494,8 +1532,10 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
     if result is None:
         return {"error": "entry not found"}
 
+    error = _voicepack_save(plan_path, doc, body.group)
+    if error:
+        return error
     ve.renumber_after_delete(out_dir, result["stem"], body.variant_index, result["new_count"])
-    ve.save_plan(plan_path, doc)
     if _audio_engine:
         _audio_engine.invalidate(result["stem"])
     log.info("Voice-pack variant deleted: group=%s key=%s index=%d",

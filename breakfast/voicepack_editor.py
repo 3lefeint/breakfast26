@@ -15,12 +15,73 @@ from pathlib import Path
 
 import tomlkit
 
+from breakfast import voicepack_overlay as vo
+
 
 def load_plan(path: Path):
     return tomlkit.parse(path.read_text(encoding="utf-8"))
 
 
 def save_plan(path: Path, doc):
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+
+
+_OVERLAY_TEMPLATE = """\
+# Private player names for this voice pack (git ignores this folder). Same format as the "Player names"
+# group of the plan; an entry here replaces the entry of the same key in the plan.
+
+[group.keys]
+"""
+
+
+def merge_overlay(doc, entries: dict):
+    """A copy of the plan *doc* with the private player *entries* merged into its "Player names"
+    group. Never save this copy as the plan, it holds the names that must stay out of git."""
+    merged = tomlkit.parse(tomlkit.dumps(doc))
+    group = _find_group(merged, vo.PLAYER_GROUP)
+    if group is None:
+        return merged
+    table = group.setdefault("keys", tomlkit.table())
+    for key, value in entries.items():
+        entry = tomlkit.table()
+        for field, v in value.items():
+            entry[field] = v
+        table[key] = entry
+    return merged
+
+
+def _plain(value):
+    return value.unwrap() if hasattr(value, "unwrap") else value
+
+
+def overlay_changes(plan_doc, merged_doc) -> dict[str, dict]:
+    """The entries of the "Player names" group of *merged_doc* that the plain *plan_doc* does not have
+    as they are: what belongs into the private file. ValueError if an entry of the plan is gone,
+    because the file cannot take an entry away from the plan."""
+    plan_group, merged_group = _find_group(plan_doc, vo.PLAYER_GROUP), _find_group(merged_doc, vo.PLAYER_GROUP)
+    plan_keys = {k: _plain(v) for k, v in (plan_group.get("keys", {}) if plan_group is not None else {}).items()}
+    merged_keys = {k: _plain(v) for k, v in (merged_group.get("keys", {}) if merged_group is not None else {}).items()}
+    gone = sorted(set(plan_keys) - set(merged_keys))
+    if gone:
+        raise ValueError(f"{gone[0]} is part of the plan and cannot be removed here")
+    return {k: v for k, v in merged_keys.items() if plan_keys.get(k) != v}
+
+
+def write_overlay(path: Path, changes: dict[str, dict]):
+    """Write *changes* as the entries of the private file at *path*, creating the file and its folder
+    on the first call and keeping the comments of an existing file."""
+    path = Path(path)
+    doc = tomlkit.parse(path.read_text(encoding="utf-8") if path.is_file() else _OVERLAY_TEMPLATE)
+    group = doc.setdefault("group", tomlkit.table())
+    keys = group.setdefault("keys", tomlkit.table())
+    for key in [k for k in keys if k not in changes]:
+        del keys[key]
+    for key, value in changes.items():
+        entry = tomlkit.table()
+        for field, v in value.items():
+            entry[field] = v
+        keys[key] = entry
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 

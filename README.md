@@ -354,7 +354,13 @@ the active `[audio] profile` if that has a plan), pick a group, type the key
 and one or more variant texts, preview how each sounds (synthesized on the
 fly, not saved), then save — writes the .mp3 file(s) and updates the pack's
 plan (comment-preserving), immediately usable
-without a restart. The same tab also browses/plays/deletes what's already
+without a restart. Player names are the exception: they are private, so they are saved into
+`data/voicepack/<pack>.toml` (for example `ryan.toml`, created with the first name you save, in the folder
+of `config.toml`, which git does not track) and never into the tracked plan. The tab, the preview and the
+generator show and use the plan's "Player names" group together with that file, and
+`python tools/generate_voicepack.py <plan> --overlay <file>` takes another file (it reads
+`data/voicepack/<pack>.toml` on its own when it exists). The file holds `[group.keys.<name>]` blocks with
+`variants = [...]`, like the plan; a block with the key of a plan entry replaces that entry. The same tab also browses/plays/deletes what's already
 generated; deleting a variant renumbers the remaining ones so none of
 them go silently unreachable.
 
@@ -913,8 +919,8 @@ The web server exposes a REST API alongside the WebSocket.
 | `GET` | `/api/voicepack/groups` | List the plan's `[[group]]` names (`name`, `is_range`); this and the voice-pack calls below take `pack` (query parameter or body field) and default to the active profile's plan |
 | `GET` | `/api/voicepack/entries?group=<name>` | Every key currently defined in that group, with each variant's text and whether its `.mp3` has actually been generated |
 | `POST` | `/api/voicepack/preview` | Synthesize `text` on the fly with `group`'s voice/rate/pitch/volume — returns audio bytes directly, nothing is saved |
-| `POST` | `/api/voicepack/entries` | Add/replace a key's variants (`group`, `key`, `variants`) — synthesizes every file and updates the plan |
-| `DELETE` | `/api/voicepack/entries` | Remove one variant (`group`, `key`, `variant_index`) — renumbers the remaining files and updates the plan |
+| `POST` | `/api/voicepack/entries` | Add/replace a key's variants (`group`, `key`, `variants`) — synthesizes every file and updates the plan, or `data/voicepack/<pack>.toml` for the "Player names" group |
+| `DELETE` | `/api/voicepack/entries` | Remove one variant (`group`, `key`, `variant_index`) — renumbers the remaining files and updates the plan, or the private player file |
 | `GET` | `/api/voicepack/file/{filename}` | Serves an already-generated variant file straight from the plan's own profile directory |
 
 **Updates** (Docker deployments with the `updater` sidecar set up, see **Self-update** above):
@@ -1003,6 +1009,7 @@ breakfast26/
     ├── caller_x01.py              # X01 call logic (per-dart, totals, checkout calls)
     ├── voicepack.py               # Sound directory resolution + voice-pack installer
     ├── voicepack_editor.py        # Per-key plan read/write (tomlkit, comment-preserving) + synth for the Settings Voice Pack tab
+    ├── voicepack_overlay.py       # Private player-name file of a voice pack (data/voicepack/<pack>.toml)
     ├── mqtt_output.py             # MQTT publisher with auto-reconnect
     ├── audio_engine.py            # Browser-based audio: play instructions over WebSocket
     ├── recorder.py                # Session recorder

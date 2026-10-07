@@ -30,6 +30,10 @@ Usage:
     python tools/generate_voicepack.py tools/voicepack_leni.toml --dry-run
     python tools/generate_voicepack.py tools/voicepack_leni.toml --force
     python tools/generate_voicepack.py tools/voicepack_leni.toml --no-trim
+    python tools/generate_voicepack.py tools/voicepack_leni.toml --overlay data/voicepack/leni.toml
+
+The names of the players are private: the plan's "Player names" group is extended by the entries of
+`data/voicepack/<pack>.toml` (or the file given with --overlay), which git does not track.
 """
 
 import argparse
@@ -38,6 +42,9 @@ import shutil
 import sys
 import tomllib
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # `breakfast` when run as a script
+from breakfast import voicepack_overlay  # noqa: E402
 
 try:
     import edge_tts
@@ -181,6 +188,8 @@ def main():
     ap.add_argument("--only", help="Only process groups whose name contains this substring")
     ap.add_argument("--force", action="store_true", help="Regenerate files that already exist")
     ap.add_argument("--dry-run", action="store_true", help="Print the resolved plan, generate nothing")
+    ap.add_argument("--overlay", help="Private player-name file to merge into the plan "
+                     "(default: data/voicepack/<voice-name>.toml if it exists)")
     ap.add_argument("--no-trim", action="store_true",
                      help="Skip the ffmpeg silence-trim pass (requires ffmpeg on PATH otherwise)")
     args = ap.parse_args()
@@ -193,12 +202,17 @@ def main():
     with open(args.plan, "rb") as f:
         plan = tomllib.load(f)
 
-    if args.out:
-        out_dir = Path(args.out)
-    else:
-        # "de-CH-LeniNeural" -> "leni"
-        short_name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
-        out_dir = Path("sounds/profiles") / short_name
+    # "de-CH-LeniNeural" -> "leni"
+    short_name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
+    out_dir = Path(args.out) if args.out else Path("sounds/profiles") / short_name
+
+    overlay = Path(args.overlay) if args.overlay else voicepack_overlay.overlay_path("data", short_name)
+    if args.overlay or overlay.is_file():
+        try:
+            voicepack_overlay.merge_into_plan(plan, voicepack_overlay.read_entries(overlay))
+        except ValueError as e:
+            print(f"Cannot read the player-name file: {e}", file=sys.stderr)
+            sys.exit(1)
 
     asyncio.run(run(plan, out_dir, args.only, args.force, args.dry_run, not args.no_trim))
 

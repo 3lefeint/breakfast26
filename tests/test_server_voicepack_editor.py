@@ -268,3 +268,93 @@ def test_saving_an_entry_writes_into_the_chosen_pack(two_packs):
     assert (two_packs["audio_dir"] / "profiles" / "ryan" / "gameon.mp3").is_file()
     assert "gameon" in (server._TOOLS_DIR / "voicepack_ryan.toml").read_text(encoding="utf-8")
     assert "gameon" not in (server._TOOLS_DIR / "voicepack_leni.toml").read_text(encoding="utf-8")
+
+
+# ── private player names ─────────────────────────────────────────────────────
+
+_PLAYERS = """
+[[group]]
+name = "Player names"
+
+[group.keys]
+
+[group.keys.unknown_player]
+variants = ["dude", "mister x"]
+"""
+
+
+@pytest.fixture
+def wired_players(wired, tmp_path):
+    wired["plan_path"].write_text(_PLAN + _PLAYERS, encoding="utf-8")
+    wired["overlay"] = tmp_path / "voicepack" / "leni.toml"
+    wired["plan_text"] = wired["plan_path"].read_text(encoding="utf-8")
+    return wired
+
+
+def test_a_player_entry_goes_into_the_private_file_not_the_plan(wired_players):
+    body = server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna", "Annie"])
+    assert asyncio.run(server.voicepack_save_entry(body)) == {"ok": True}
+
+    assert wired_players["plan_path"].read_text(encoding="utf-8") == wired_players["plan_text"]
+    assert "anna" in wired_players["overlay"].read_text(encoding="utf-8")
+    out_dir = wired_players["audio_dir"] / "profiles" / "leni"
+    assert (out_dir / "anna+1.mp3").is_file()
+
+
+def test_the_player_entries_show_the_plan_and_the_private_file_together(wired_players):
+    asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna"])))
+    res = asyncio.run(server.voicepack_entries("Player names"))
+    assert [e["key"] for e in res["entries"]] == ["anna", "unknown_player"]
+
+
+def test_a_phrase_still_goes_into_the_plan(wired_players):
+    body = server.VoicepackEntryBody(group="Phrases", key="newkey", variants=["hi"])
+    assert asyncio.run(server.voicepack_save_entry(body)) == {"ok": True}
+    assert "newkey" in wired_players["plan_path"].read_text(encoding="utf-8")
+    assert not wired_players["overlay"].exists()
+
+
+def test_a_saved_plan_never_contains_a_private_name(wired_players):
+    asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna"])))
+    asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Phrases", key="newkey", variants=["hi"])))
+    assert "anna" not in wired_players["plan_path"].read_text(encoding="utf-8").lower()
+
+
+def test_deleting_a_private_variant_updates_the_private_file(wired_players):
+    asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna", "Annie"])))
+    body = server.VoicepackDeleteVariantBody(group="Player names", key="anna", variant_index=0)
+    assert asyncio.run(server.voicepack_delete_variant(body)) == {"ok": True}
+    assert 'variants = ["Annie"]' in wired_players["overlay"].read_text(encoding="utf-8").replace("'", '"')
+    assert wired_players["plan_path"].read_text(encoding="utf-8") == wired_players["plan_text"]
+
+
+def test_the_last_variant_of_a_plan_entry_cannot_be_deleted(wired_players):
+    out_dir = wired_players["audio_dir"] / "profiles" / "leni"
+    asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Player names", key="unknown_player", variants=["only"])))
+    body = server.VoicepackDeleteVariantBody(group="Player names", key="unknown_player", variant_index=0)
+    res = asyncio.run(server.voicepack_delete_variant(body))
+    assert "error" in res
+    assert (out_dir / "unknown_player.mp3").is_file()
+
+
+def test_the_last_variant_of_a_private_entry_removes_the_entry(wired_players):
+    asyncio.run(server.voicepack_save_entry(
+        server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna"])))
+    body = server.VoicepackDeleteVariantBody(group="Player names", key="anna", variant_index=0)
+    assert asyncio.run(server.voicepack_delete_variant(body)) == {"ok": True}
+    assert "anna" not in wired_players["overlay"].read_text(encoding="utf-8")
+
+
+def test_a_broken_private_file_is_reported_and_left_alone(wired_players):
+    wired_players["overlay"].parent.mkdir(parents=True)
+    wired_players["overlay"].write_text("not [ valid", encoding="utf-8")
+    res = asyncio.run(server.voicepack_entries("Player names"))
+    assert "error" in res
+    body = server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna"])
+    assert "error" in asyncio.run(server.voicepack_save_entry(body))
+    assert wired_players["overlay"].read_text(encoding="utf-8") == "not [ valid"

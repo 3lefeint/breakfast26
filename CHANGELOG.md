@@ -8,6 +8,7 @@
 - Setting `[web] aurora_animation` (the same section, Animate the background): false lets the aurora in the background stand still, which saves power and heat; it applies at once.
 - A standalone Windows version: `breakfast-windows-vX.Y.Z.zip` with `breakfast.exe`, no Python or Docker needed, with its own data folder, a first-start setup in the web UI, an autostart script, `ffmpeg` included, and updates from Settings → Updates with a checksum check and an automatic rollback (#38).
 - Windows build: `breakfast.exe` carries a version resource (product name and version) (#38).
+- Voice-pack player names live in a private file `data/voicepack/<pack>.toml` that git does not track: the Voice Pack tab saves them there instead of into the plan, and the generator (`--overlay <file>`) and the tab merge them into the plan's "Player names" group (#42).
 
 ### Fixed
 - Home and `/tv` now apply `[web] theme` and `accent_color` when they load; before, only `/audio` and the Settings page did.

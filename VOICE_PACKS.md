@@ -248,6 +248,18 @@ pip install edge-tts        # plus ffmpeg on the PATH
 python tools/generate_voicepack.py tools/voicepack_ryan.toml --out <audio dir>/profiles/ryan
 ```
 
+The names of your players do not go into the plan, which git tracks. Keep them in
+`data/voicepack/<pack>.toml` (next to `config.toml`, for example `data/voicepack/ryan.toml`), with one
+block per person in the format of the plan's "Player names" group:
+
+```toml
+[group.keys.anna]
+variants = ["Anna", "Annie"]
+```
+
+The generator reads that file on its own (or the one given with `--overlay`), and the Voice Pack tab saves
+a name there when you add one in the "Player names" group.
+
 Then set `[audio] profile = "ryan"`. The Settings → Voice Pack tab edits,
 listens to and regenerates single entries of either plan. A pack from another
 source (for example one of the darts-caller project) works too, if you put its

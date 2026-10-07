@@ -493,6 +493,8 @@ pitch = "-5Hz"
 # peter+2.mp3, ...) and picked at random each time, same as every other
 # variant set in this pack (t20+1.mp3 etc.). Not for different people —
 # each real person gets their own [group.keys.<name>] block below.
+# Real names do not belong into this tracked file: the Voice Pack tab saves them into
+# data/voicepack/leni.toml, which the generator merges into this group.
 # ─────────────────────────────────────────────────────────────────────────
 [[group]]
 name = "Player names"
