@@ -25,13 +25,13 @@
   }
 
   async function finish() {
-    if (!confirm(bb.thrown ? t('End the run now and keep the darts thrown?') : t('Stop the run?'))) return;
+    if (!confirm(bb.thrown ? t('End the run now and keep the darts thrown?') : t('Cancel the run?'))) return;
     await finishRun();
     if (!bb.thrown) window.location.href = '/';
   }
 
   async function stop() {
-    if (!confirm(t('Stop the run without keeping it?'))) return;
+    if (!confirm(t('Cancel the run without keeping it?'))) return;
     await stopRun();
     window.location.href = '/';
   }
@@ -90,7 +90,7 @@
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
         <button class="btn-end-game" onclick={finish}>{t('⏹ Finish')}</button>
-        <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
+        <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
       </div>
     </div>
   </div>

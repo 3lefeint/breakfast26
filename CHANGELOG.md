@@ -6,6 +6,7 @@
 - Checkout Trainer on the Play page, with three exercises: Random checkout (a finishable score from 2 to 170 is drawn, up to three darts on the board, in a range, a number of attempts and optionally with the standard route shown, with the next score drawn after a miss), Route quiz (tap the first dart of a route on a virtual board) and Setup shots (tap the darts that set up a finish and see what is left and what it allows). The routes come from a table of the usual checkout chart; any other valid route counts too. The Stats page has a Checkout view with the success rate by range and score and the weakest scores (#32).
 
 ### Changed
+- The Stop button of the games on `/tv` is now Cancel, as are its questions and the messages that ask to cancel a running game first; in German Abbrechen instead of Stopp.
 - Achievements that can be decided during a match (a bullseye, a maximum, a first hit in Killer, ...) are announced as soon as they happen, as provisional, and made final when the match ends; only the ones that need the result (a win, a first match, the counters) come at the end. An undo takes a provisional one back, and a match that is abandoned stores nothing, so a game with many players no longer ends with minutes of banners (#44).
 
 ### Fixed

@@ -41,7 +41,7 @@
   }
 
   async function stop() {
-    if (!confirm(online ? t('Leave the online match?') : t('Stop the current game?'))) return;
+    if (!confirm(online ? t('Leave the online match?') : t('Cancel the current game?'))) return;
     await api('POST', '/api/elimination/stop');
     window.location.href = '/';
   }
@@ -78,7 +78,7 @@
   </div>
   <div class="elim-endgame-row">
     {#if !online}<button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>{/if}
-    <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
+    <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
   </div>
 </div>
 

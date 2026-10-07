@@ -81,7 +81,7 @@
   }
 
   async function stop() {
-    if (!confirm(t('Stop the current game?'))) return;
+    if (!confirm(t('Cancel the current game?'))) return;
     await stopGame();
     window.location.href = '/';
   }
@@ -167,7 +167,7 @@
 
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
-        <button class="btn-end-game" onclick={stop}>{t('■ Stop')}</button>
+        <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
       </div>
     </div>
   </div>

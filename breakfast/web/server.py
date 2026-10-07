@@ -521,15 +521,15 @@ async def elim_start(body: StartBody):
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
     if _tb_ctrl and _tb_ctrl.active:
-        return {"error": "a Target Battle is running, stop it first"}
+        return {"error": "a Target Battle is running, cancel it first"}
     if _killer_ctrl and _killer_ctrl.active:
-        return {"error": "a Killer game is running, stop it first"}
+        return {"error": "a Killer game is running, cancel it first"}
     if _ft_ctrl and _ft_ctrl.active:
-        return {"error": "a Field Training run is open, stop it first"}
+        return {"error": "a Field Training run is open, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
-        return {"error": "a Black Belt run is open, stop it first"}
+        return {"error": "a Black Belt run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
-        return {"error": "a Checkout Training run is open, stop it first"}
+        return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
@@ -613,15 +613,15 @@ async def tb_start(body: TargetBattleStartBody):
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
     if _elim_ctrl and _elim_ctrl.active:
-        return {"error": "an Elimination game is running, stop it first"}
+        return {"error": "an Elimination game is running, cancel it first"}
     if _killer_ctrl and _killer_ctrl.active:
-        return {"error": "a Killer game is running, stop it first"}
+        return {"error": "a Killer game is running, cancel it first"}
     if _ft_ctrl and _ft_ctrl.active:
-        return {"error": "a Field Training run is open, stop it first"}
+        return {"error": "a Field Training run is open, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
-        return {"error": "a Black Belt run is open, stop it first"}
+        return {"error": "a Black Belt run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
-        return {"error": "a Checkout Training run is open, stop it first"}
+        return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _tb_ctrl.start(players, rounds=body.rounds, targets=body.targets,
@@ -687,15 +687,15 @@ async def killer_start(body: KillerStartBody):
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
     if _elim_ctrl and _elim_ctrl.active:
-        return {"error": "an Elimination game is running, stop it first"}
+        return {"error": "an Elimination game is running, cancel it first"}
     if _tb_ctrl and _tb_ctrl.active:
-        return {"error": "a Target Battle is running, stop it first"}
+        return {"error": "a Target Battle is running, cancel it first"}
     if _ft_ctrl and _ft_ctrl.active:
-        return {"error": "a Field Training run is open, stop it first"}
+        return {"error": "a Field Training run is open, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
-        return {"error": "a Black Belt run is open, stop it first"}
+        return {"error": "a Black Belt run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
-        return {"error": "a Checkout Training run is open, stop it first"}
+        return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles,
@@ -765,15 +765,15 @@ async def ft_start(body: FieldTrainingStartBody):
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
     if _elim_ctrl and _elim_ctrl.active:
-        return {"error": "an Elimination game is running, stop it first"}
+        return {"error": "an Elimination game is running, cancel it first"}
     if _tb_ctrl and _tb_ctrl.active:
-        return {"error": "a Target Battle is running, stop it first"}
+        return {"error": "a Target Battle is running, cancel it first"}
     if _killer_ctrl and _killer_ctrl.active:
-        return {"error": "a Killer game is running, stop it first"}
+        return {"error": "a Killer game is running, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
-        return {"error": "a Black Belt run is open, stop it first"}
+        return {"error": "a Black Belt run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
-        return {"error": "a Checkout Training run is open, stop it first"}
+        return {"error": "a Checkout Training run is open, cancel it first"}
     try:
         _ft_ctrl.start(body.player, body.field, darts=body.darts)
     except ValueError as e:
@@ -836,15 +836,15 @@ async def bb_start(body: BlackBeltStartBody):
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
     if _elim_ctrl and _elim_ctrl.active:
-        return {"error": "an Elimination game is running, stop it first"}
+        return {"error": "an Elimination game is running, cancel it first"}
     if _tb_ctrl and _tb_ctrl.active:
-        return {"error": "a Target Battle is running, stop it first"}
+        return {"error": "a Target Battle is running, cancel it first"}
     if _killer_ctrl and _killer_ctrl.active:
-        return {"error": "a Killer game is running, stop it first"}
+        return {"error": "a Killer game is running, cancel it first"}
     if _ft_ctrl and _ft_ctrl.active:
-        return {"error": "a Field Training run is open, stop it first"}
+        return {"error": "a Field Training run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
-        return {"error": "a Checkout Training run is open, stop it first"}
+        return {"error": "a Checkout Training run is open, cancel it first"}
     try:
         _bb_ctrl.start(body.player, backwards=body.backwards)
     except ValueError as e:
@@ -948,7 +948,7 @@ async def online_create(body: OnlineCreateBody):
     if not site:
         return {"error": "give this site a name"}
     if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
-        return {"error": "a game is running, stop it first"}
+        return {"error": "a game is running, cancel it first"}
     return await _online_call(_online.create, relay_url, site, body.password)
 
 
@@ -961,7 +961,7 @@ async def online_join(body: OnlineJoinBody):
     if not site:
         return {"error": "give this site a name"}
     if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
-        return {"error": "a game is running, stop it first"}
+        return {"error": "a game is running, cancel it first"}
     return await _online_call(_online.join, relay_url, body.code, site, body.password)
 
 
@@ -1605,11 +1605,11 @@ async def co_start(body: CheckoutTrainingStartBody):
         return {"error": "no checkout training controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
-    for ctrl, message in ((_elim_ctrl, "an Elimination game is running, stop it first"),
-                          (_tb_ctrl, "a Target Battle is running, stop it first"),
-                          (_killer_ctrl, "a Killer game is running, stop it first"),
-                          (_ft_ctrl, "a Field Training run is open, stop it first"),
-                          (_bb_ctrl, "a Black Belt run is open, stop it first")):
+    for ctrl, message in ((_elim_ctrl, "an Elimination game is running, cancel it first"),
+                          (_tb_ctrl, "a Target Battle is running, cancel it first"),
+                          (_killer_ctrl, "a Killer game is running, cancel it first"),
+                          (_ft_ctrl, "a Field Training run is open, cancel it first"),
+                          (_bb_ctrl, "a Black Belt run is open, cancel it first")):
         if ctrl and ctrl.active:
             return {"error": message}
     if body.range is not None and body.range not in CHECKOUT_RANGES:
