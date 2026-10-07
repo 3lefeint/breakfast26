@@ -70,8 +70,6 @@ jobs:
           "$hash  $name" | Out-File -Encoding ascii "release/$name.sha256"
           Get-ChildItem release | Format-Table Name, Length
 
-      # A signing step goes here once the SignPath Foundation has approved the project.
-
       - name: Smoke test the packaged program
         run: |
           $version = "${{ steps.package.outputs.version }}"

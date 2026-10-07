@@ -7,6 +7,7 @@
 - Aurora colors: the same section sets the base color and the three color areas of the background, each with sliders for hue, saturation and brightness (or a hex value), shown at once while picking; `[web] aurora_base`, `aurora_1`, `aurora_2`, `aurora_3`, a color you do not set stays the one of the theme.
 - Setting `[web] aurora_animation` (the same section, Animate the background): false lets the aurora in the background stand still, which saves power and heat; it applies at once.
 - A standalone Windows version: `breakfast-windows-vX.Y.Z.zip` with `breakfast.exe`, no Python or Docker needed, with its own data folder, a first-start setup in the web UI, an autostart script, `ffmpeg` included, and updates from Settings → Updates with a checksum check and an automatic rollback (#38).
+- Windows build: `breakfast.exe` carries a version resource (product name and version) (#38).
 
 ### Fixed
 - Home and `/tv` now apply `[web] theme` and `accent_color` when they load; before, only `/audio` and the Settings page did.

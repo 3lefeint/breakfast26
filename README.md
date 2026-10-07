@@ -672,7 +672,7 @@ release, downloads the new version, verifies its SHA-256 checksum and installs i
 version is kept until the new one answers `/api/health`, and comes back if it does not (the
 update log is `update/update.log`). `ffmpeg` is included for generating voice packs.
 
-The program is not signed yet, so Windows may say "Windows protected your PC": choose **More
+The program is not signed, so Windows may say "Windows protected your PC": choose **More
 info**, then **Run anyway**. The zip comes with a `.sha256` file to check the download.
 
 Maintainers: `.github/workflows/windows.yml` builds the zip with PyInstaller
