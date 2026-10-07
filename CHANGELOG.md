@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-07
+
 ### Added
 - Settings → General → Aurora and glass: speed, intensity and softness of the aurora, the tilted streaks on or off, five ready-made palettes (Northern lights, Ember, Lavender, Graphite, Sakura), the milkiness of the glass panels and how much the top bar covers the page under it, each as a slider with a live preview; and a pause that saves power: the aurora always stops while the page is hidden and, with `aurora_pause_idle`, after some minutes without input. `[web] aurora_palette`, `aurora_streaks`, `aurora_speed`, `aurora_intensity`, `aurora_blur`, `aurora_pause_idle`, `glass_strength`, `bar_opacity`.
 - Aurora colors: the same section sets the base color and the three color areas of the background, each with sliders for hue, saturation and brightness (or a hex value), shown at once while picking; `[web] aurora_base`, `aurora_1`, `aurora_2`, `aurora_3`, a color you do not set stays the one of the theme.
