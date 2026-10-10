@@ -47,12 +47,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # `breakfast` whe
 from breakfast import voicepack_overlay  # noqa: E402
 
 try:
+    import aiohttp
     import edge_tts
 except ImportError:
     print("Missing dependency: pip install edge-tts", file=sys.stderr)
     sys.exit(1)
 
-CONCURRENCY = 5
+CONCURRENCY = 2
+RETRIES = 3
+RETRY_DELAY = 2.0
 
 # Trims leading+trailing silence: forward pass removes the lead-in, then
 # the same filter run on the reversed audio (and reversed back) removes
@@ -119,8 +122,15 @@ def resolve_entries(plan):
 
 
 async def synthesize(voice, text, rate, pitch, volume, dest, trim):
-    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
-    await communicate.save(str(dest))
+    for attempt in range(RETRIES + 1):
+        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+        try:
+            await communicate.save(str(dest))
+            break
+        except aiohttp.WSServerHandshakeError:
+            if attempt == RETRIES:
+                raise
+            await asyncio.sleep(RETRY_DELAY * (attempt + 1))
     if trim:
         await trim_silence(dest)
 

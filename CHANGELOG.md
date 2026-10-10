@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Voice-pack generation sends fewer requests at once and retries when the speech service rejects one, instead of aborting the run.
+
 ## [1.2.0] - 2026-10-07
 
 ### Added
