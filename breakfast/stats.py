@@ -318,6 +318,7 @@ class StatsDB:
                 "INSERT OR IGNORE INTO achievements_meta (key, value) VALUES ('start', ?)",
                 (_now_iso(),))
             self._migrate_matches_winner()
+            self._migrate_matches_has_bot()
             self._migrate_elimination_turn_details()
             self._migrate_turn_times()
             self._migrate_misread()
@@ -333,6 +334,11 @@ class StatsDB:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
         if "winner" not in cols:
             self._conn.execute("ALTER TABLE matches ADD COLUMN winner TEXT")
+
+    def _migrate_matches_has_bot(self):
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
+        if "has_bot" not in cols:
+            self._conn.execute("ALTER TABLE matches ADD COLUMN has_bot INTEGER NOT NULL DEFAULT 0")
 
     def _migrate_elimination_turn_details(self):
         """Turns recorded before the per-turn details existed keep NULL in the new
@@ -436,6 +442,12 @@ class StatsDB:
                 " VALUES (?, ?, ?, ?)",
                 (match_id, _now_iso(), game_mode, points_start),
             )
+            self._conn.commit()
+
+    def mark_bot_match(self, match_id: str):
+        """Tag a match in which a computer opponent played, so it can be filtered."""
+        with self._lock:
+            self._conn.execute("UPDATE matches SET has_bot = 1 WHERE match_id = ?", (match_id,))
             self._conn.commit()
 
     def close_match(self, match_id: str):

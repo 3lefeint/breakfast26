@@ -28,6 +28,25 @@ def _point(radius_mm: float, degrees: float) -> dict:
     return {"x": r * math.sin(a), "y": r * math.cos(a)}
 
 
+def field_at(x_mm: float, y_mm: float) -> str:
+    """The field name (`S20`, `D16`, `T19`, `25`, `50`, `0` for a miss) at a point given in
+    millimetres from the center, x to the right, y up."""
+    radius = math.hypot(x_mm, y_mm)
+    if radius > DOUBLE_OUT_MM:
+        return "0"
+    if radius <= BULL_MM:
+        return "50"
+    if radius <= OUTER_BULL_MM:
+        return "25"
+    degrees = math.degrees(math.atan2(x_mm, y_mm)) % 360
+    number = SEGMENT_ORDER[int((degrees + 9) % 360 // 18)]
+    if TRIPLE_IN_MM < radius <= TRIPLE_OUT_MM:
+        return f"T{number}"
+    if radius > DOUBLE_IN_MM:
+        return f"D{number}"
+    return f"S{number}"
+
+
 def field_centers() -> dict:
     """Field name (`S20`, `D16`, `T19`, `25`, `50`, `0`) -> center point."""
     centers = {"0": dict(MISS_POINT), "50": {"x": 0.0, "y": 0.0},

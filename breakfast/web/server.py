@@ -499,6 +499,27 @@ async def control_correct_throw(body: CorrectThrowBody):
 class StartBody(BaseModel):
     players: list[str]
     lives: int = 3
+    bots: dict[str, int] = {}   # name -> level of the players the computer plays, see bot.LEVELS
+
+
+def _check_bots(players, bots):
+    """The bots of a game start as {name: level}, or an error text. A bot is one of the players,
+    has a level that exists, is not a known player and does not play alone (except in dev mode,
+    to watch bots play each other)."""
+    from breakfast.bot import LEVELS
+    bots = {k.strip(): v for k, v in bots.items() if k.strip()}
+    if not bots:
+        return {}, None
+    if any(name not in players for name in bots):
+        return None, "a bot has to be one of the players"
+    if any(level not in LEVELS for level in bots.values()):
+        return None, "unknown bot level"
+    known = {n.lower() for n in kp.load(_stats_db)}
+    if any(name.lower() in known for name in bots):
+        return None, "a bot cannot have the name of a player"
+    if len(bots) >= len(players) and not _dev_enabled():
+        return None, "at least one player has to be human"
+    return bots, None
 
 
 class CorrectBody(BaseModel):
@@ -533,7 +554,10 @@ async def elim_start(body: StartBody):
     players = [p.strip() for p in body.players if p.strip()]
     if len(players) < 2:
         return {"error": "need at least 2 players"}
-    _elim_ctrl.start(players, max(1, body.lives))
+    bots, error = _check_bots(players, body.bots)
+    if error:
+        return {"error": error}
+    _elim_ctrl.start(players, max(1, body.lives), bots=bots)
     return {"ok": True}
 
 
@@ -676,6 +700,7 @@ class KillerStartBody(BaseModel):
     singles: bool = False      # singles take lives too, not only doubles
     bull_off: bool = True      # the closest dart at the bull starts
     throw_numbers: bool = True # everybody throws a dart for their number, else they are drawn
+    bots: dict[str, int] = {}  # name -> level of the players the computer plays, see bot.LEVELS
 
 
 @app.post("/api/killer/start")
@@ -697,9 +722,12 @@ async def killer_start(body: KillerStartBody):
     if _co_ctrl and _co_ctrl.active:
         return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
+    bots, error = _check_bots(players, body.bots)
+    if error:
+        return {"error": error}
     try:
         _killer_ctrl.start(players, own_goal=body.own_goal, singles=body.singles,
-                           bull_off=body.bull_off, throw_numbers=body.throw_numbers)
+                           bull_off=body.bull_off, throw_numbers=body.throw_numbers, bots=bots)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}

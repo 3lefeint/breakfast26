@@ -5,10 +5,12 @@
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
+  import BotAdder from '../../lib/components/BotAdder.svelte';
 
   const MAX_PLAYERS = 20;
 
   let gamePlayers = $state([]);
+  let bots = $state({});
   let ownGoal = $state(false);
   let singles = $state(false);
   let bullOff = $state(true);
@@ -20,7 +22,7 @@
     if (idx >= 0) gamePlayers.splice(idx, 1);
     else if (gamePlayers.length < MAX_PLAYERS) gamePlayers.push(name);
   }
-  function removeFromGame(i) { gamePlayers.splice(i, 1); }
+  function removeFromGame(i) { delete bots[gamePlayers[i]]; gamePlayers.splice(i, 1); }
   function movePlayer(i, dir) {
     const j = i + dir;
     if (j < 0 || j >= gamePlayers.length) return;
@@ -40,7 +42,7 @@
     if (gamePlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     const res = await apiJson('POST', '/api/killer/start', {
-      players: order, own_goal: ownGoal, singles, bull_off: bullOff, throw_numbers: throwNumbers,
+      players: order, own_goal: ownGoal, singles, bull_off: bullOff, throw_numbers: throwNumbers, bots,
     });
     if (res.error) { alert(t(res.error)); return; }
     window.location.href = '/tv';
@@ -87,7 +89,7 @@
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
-            <span class="player-name-text">{cap(name)}</span>
+            <span class="player-name-text">{cap(name)}{#if bots[name]} <span class="bot-tag">{t('Computer')} {bots[name]}+</span>{/if}</span>
             <button class="btn-icon" onclick={() => movePlayer(i, -1)} disabled={i === 0}>↑</button>
             <button class="btn-icon" onclick={() => movePlayer(i, +1)} disabled={i === gamePlayers.length - 1}>↓</button>
             <button class="btn-icon remove" onclick={() => removeFromGame(i)}>×</button>
@@ -96,6 +98,8 @@
       </ul>
     </div>
   </div>
+
+  <BotAdder bind:gamePlayers bind:bots max={MAX_PLAYERS} />
 
   <label class="check-row">
     <input type="checkbox" bind:checked={randomOrder}>
@@ -137,6 +141,7 @@
   .game-players li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border); }
   .game-players li:last-child { border: none; }
   .player-name-text { flex: 1; font-size: 0.95rem; }
+  .bot-tag { color: var(--muted); font-size: 0.75rem; margin-left: 0.4rem; }
   .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
   .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }

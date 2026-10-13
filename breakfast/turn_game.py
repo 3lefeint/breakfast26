@@ -273,6 +273,7 @@ class TurnGameController:
         self.game = None
         self._on_change = on_change
         self._lock = threading.RLock()
+        self.bots = None     # a BotRunner for the games that can be played against the computer
 
         mqtt_pub.subscribe(self._topic("command"), self._handle_command)
         mqtt_pub.client.publish(self._topic("active"), "false", retain=True)
@@ -288,14 +289,39 @@ class TurnGameController:
     def active(self):
         return self.game is not None and self.game.state == "playing"
 
+    def _init_bots(self, aim, darts):
+        """Let the computer play in this controller's games: *aim* says what a bot throws at, *darts*
+        how many darts of a visit count. A bot plays whenever the game changes and it is up."""
+        from .bot import BotRunner      # bot.py builds on this module
+        self.bots = BotRunner(self, aim, darts)
+        inner = self._on_change
+
+        def changed():
+            if inner:
+                inner()
+            self.bots.poll()
+        self._on_change = changed
+
+    def _bot_is_playing(self):
+        """While a bot throws, the messages of the real board are ignored."""
+        return self.bots is not None and self.bots.playing
+
     def on_board_state(self, count, throws):
         with self._lock:
-            if self.game:
+            if self.game and not self._bot_is_playing():
                 self.game.on_board_state(count, throws)
+                self._poll_bots()
+
+    def _poll_bots(self):
+        """A bot may be up now: the darts were pulled, which does not always change what is shown."""
+        if self.bots:
+            self.bots.poll()
 
     def stop(self):
         with self._lock:
             self.game = None
+            if self.bots:
+                self.bots.clear()
         client = self.mqtt_pub.client
         client.publish(self._topic("active"), "false", retain=True)
         client.publish(self._topic("state"), "", retain=True)

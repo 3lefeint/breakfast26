@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 
+from .bot import StatsWithoutBots, aim_elimination, darts_elimination
 from .turn_game import TurnGame, TurnGameController, dart_positions, parse_field
 
 log = logging.getLogger(__name__)
@@ -587,15 +588,20 @@ class EliminationGame(TurnGame):
 class EliminationController(TurnGameController):
     TOPIC = "elimination"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._init_bots(aim_elimination, darts_elimination)
+
     def on_board_state(self, count, throws):
         with self._lock:
             game = self.game
-            if not game:
+            if not game or self._bot_is_playing():
                 return
             if game.online and game.state == "playing" and (
                     not game.is_local(game.current_player) or not game.online.can_play()):
                 return      # online: only the board of the site whose player is up counts
             game.on_board_state(count, throws)
+            self._poll_bots()
 
     def start_online(self, order, lives, match_id, local_players, online):
         """The host started an online match: every player in `order` plays, the ones in
@@ -628,12 +634,16 @@ class EliminationController(TurnGameController):
             if self.game:
                 self.game.apply_placements(placements)
 
-    def start(self, players: list, lives: int):
-        self.game = EliminationGame(
-            players, lives, self.mqtt_pub.client, self.base_topic,
-            audio=self.audio, on_change=self._on_change,
-            stats_db=self.stats_db,
-        )
+    def start(self, players: list, lives: int, bots: dict | None = None):
+        """*bots*: {name: level} of the players the computer plays; they are among *players*."""
+        bots = {p: lv for p, lv in (bots or {}).items() if p in players}
+        with self._lock:
+            self.bots.set_bots(bots)
+            self.game = EliminationGame(
+                players, lives, self.mqtt_pub.client, self.base_topic,
+                audio=self.audio, on_change=self._on_change,
+                stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db,
+            )
         self.game.announce_start()
 
     def _command_start(self, cmd):

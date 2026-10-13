@@ -5,10 +5,12 @@
   // (gamePlayers/livesCount) until Start is pressed, exactly like the
   // original vanilla-JS globals.
   import { players } from '../../lib/stores/players.js';
-  import { api } from '../../lib/api.js';
+  import { apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
+  import BotAdder from '../../lib/components/BotAdder.svelte';
 
   let gamePlayers = $state([]);
+  let bots = $state({});
   let livesCount = $state(3);
   let randomOrder = $state(false);
 
@@ -18,6 +20,7 @@
     else gamePlayers.push(name);
   }
   function removeFromGame(i) {
+    delete bots[gamePlayers[i]];
     gamePlayers.splice(i, 1);
   }
   function movePlayer(i, dir) {
@@ -41,7 +44,8 @@
   async function start() {
     if (gamePlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
-    await api('POST', '/api/elimination/start', { players: order, lives: livesCount });
+    const res = await apiJson('POST', '/api/elimination/start', { players: order, lives: livesCount, bots });
+    if (res.error) { alert(t(res.error)); return; }
     window.location.href = '/tv';
   }
 </script>
@@ -73,7 +77,7 @@
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
-            <span class="player-name-text">{cap(name)}</span>
+            <span class="player-name-text">{cap(name)}{#if bots[name]} <span class="bot-tag">{t('Computer')} {bots[name]}+</span>{/if}</span>
             <button class="btn-icon" onclick={() => movePlayer(i, -1)} disabled={i === 0}>↑</button>
             <button class="btn-icon" onclick={() => movePlayer(i, +1)} disabled={i === gamePlayers.length - 1}>↓</button>
             <button class="btn-icon remove" onclick={() => removeFromGame(i)}>×</button>
@@ -82,6 +86,8 @@
       </ul>
     </div>
   </div>
+
+  <BotAdder bind:gamePlayers bind:bots />
 
   <label class="random-order-row">
     <input type="checkbox" bind:checked={randomOrder}>
@@ -138,6 +144,7 @@
   }
   .game-players li:last-child { border: none; }
   .player-name-text { flex: 1; font-size: 0.95rem; }
+  .bot-tag { color: var(--muted); font-size: 0.75rem; margin-left: 0.4rem; }
   .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
   .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }

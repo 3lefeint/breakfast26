@@ -146,6 +146,11 @@ dartboard.
 - **Killer**: every player gets a number. Hitting the double of your own number makes you a killer, and a
   killer takes a life from an opponent by hitting the double of that opponent's number. The last player left
   wins.
+- **Computer opponent**: Elimination and Killer can be played against the computer, so one person can play a
+  full match on the board. Add it on the setup page with a level from 10+ to 110+ (its three-dart average when
+  it aims at the triple 20). It throws its three darts with short pauses, and the TV view, voice calls, undo and
+  corrections work as for a player. The match is stored, but the computer has no stats, leaderboard entries or
+  achievements.
 - **Field Training**: one player throws a fixed number of darts at a single field, a number or the bull. The
   result shows the points, the hit rate and a rating.
 - **Black Belt**: a doubles drill for one player. Hit D1 to D20 and finally the bull's eye, in order (or from

@@ -32,6 +32,7 @@ import logging
 import random
 import threading
 
+from .bot import StatsWithoutBots, aim_killer, darts_killer
 from .player_colors import assign_colors
 from .turn_game import TurnGame, TurnGameController, dart_positions
 
@@ -625,15 +626,23 @@ class KillerGame(TurnGame):
 class KillerController(TurnGameController):
     TOPIC = "killer"
 
-    def start(self, players, own_goal=False, singles=False, bull_off=True, throw_numbers=True):
-        """Start a game. Raises ValueError for a setup that cannot be played."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._init_bots(aim_killer, darts_killer)
+
+    def start(self, players, own_goal=False, singles=False, bull_off=True, throw_numbers=True, bots=None):
+        """Start a game. Raises ValueError for a setup that cannot be played. *bots*: {name: level} of
+        the players the computer plays; they are among *players*."""
         chosen = self.stats_db.player_colors() if self.stats_db else {}
+        bots = {p: lv for p, lv in (bots or {}).items() if p in players}
         game = KillerGame(
             players, self.mqtt_pub.client, self.base_topic, own_goal=own_goal, singles=singles,
             bull_off=bull_off, throw_numbers=throw_numbers,
-            audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
+            audio=self.audio, on_change=self._on_change,
+            stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db,
             colors=assign_colors(players, chosen))
         with self._lock:
+            self.bots.set_bots(bots)
             self.game = game
         game.announce_start()
 
