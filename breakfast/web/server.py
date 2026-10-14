@@ -2082,6 +2082,39 @@ async def set_player_color(name: str, body: ColorBody):
     return {"ok": True}
 
 
+def _a_game_is_running() -> bool:
+    """A match is being played, in any mode: names are in use in memory then."""
+    ctrls = (_elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl)
+    return any(c and c.active for c in ctrls) or bool(_game_state and _game_state.match_started)
+
+
+class MergeBody(BaseModel):
+    source: str
+    target: str
+
+
+@app.get("/api/players/merge-preview")
+async def merge_players_preview(source: str, target: str):
+    """What merging `source` into `target` would move, or why it cannot be done."""
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    return _stats_db.merge_preview(source, target)
+
+
+@app.post("/api/players/merge")
+async def merge_players(body: MergeBody):
+    """Merge a player into another one: their matches, stats and achievements go to the target
+    and the source player is removed. A copy of stats.db is made first."""
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    if _a_game_is_running():
+        return {"error": "finish the running game first"}
+    result = _stats_db.merge_players(body.source, body.target)
+    if "error" not in result:
+        push()
+    return result
+
+
 @app.get("/api/players/hidden")
 async def hidden_players():
     if not _stats_db:

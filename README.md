@@ -111,7 +111,7 @@ The other sections (`[audio]`, `[mqtt]`, `[stats]`, `[online]`, `[logging]` and 
 ### Web UI
 
 Open `http://<host>:8080` from any device on your network. **Play** sets up and starts the games and drills,
-**Players** lists the players with their profiles and achievements, **Stats** shows the statistics, and
+**Players** lists the players with their profiles and achievements and merges a player that was created twice (for example after a name change) into another one, **Stats** shows the statistics, and
 **Settings** edits everything in `config.toml` without touching the file. Settings also holds the voice-pack
 editor, the update check and the look of the interface: language, theme, accent color and an animated
 background. `/tv` and `/audio` are separate pages, described below.

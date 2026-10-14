@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Players tab can merge a player into another one, for example after a name change: matches, stats and achievements move to the target, the source is removed, and a copy of `stats.db` is made first (#52).
 - Side menu entry that opens the Autodarts web app in a new tab (#51).
 - Next button next to Undo in Elimination, Killer, Target Battle, Field Training, Black Belt and the Checkout Trainer: ends the turn by hand like pulling the darts, a turn without a dart counts as misses (#55).
 - A dart the board did not detect can be entered by hand: tap its empty dart box in Elimination, Killer, Target Battle, Field Training, Black Belt or the Checkout Trainer and pick the field (#54).

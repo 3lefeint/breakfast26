@@ -304,6 +304,7 @@ def _safe_name(raw) -> str | None:
 class StatsDB:
     def __init__(self, path: str, tz: str | None = "UTC"):
         self.tz = load_timezone(tz)
+        self.path = path
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
@@ -1739,6 +1740,109 @@ class StatsDB:
             self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
             self._conn.commit()
         log.info("Deleted all stats for player: %s", player)
+
+    # ── Merging two players ───────────────────────────────────────────────────
+
+    # Tables with a plain `player` column that only needs the new name.
+    _MERGE_TABLES = ("turns", "elimination_turns", "target_battle_turns", "field_training_games",
+                     "field_training_turns", "checkout_training_games", "checkout_training_turns",
+                     "black_belt_games", "black_belt_darts", "killer_turns", "dart_positions")
+    # Tables with a row per player and match, one row for each player of a match.
+    _MERGE_RESULT_TABLES = ("elimination_results", "target_battle_results", "killer_results")
+    _MATCH_TABLES = ("turns", "elimination_turns", "elimination_results", "target_battle_turns",
+                     "target_battle_results", "killer_turns", "killer_results", "field_training_games",
+                     "checkout_training_games", "black_belt_games")
+
+    def _matches_of(self, player):
+        sql = " UNION ".join(f"SELECT match_id FROM {t} WHERE player = ?" for t in self._MATCH_TABLES)
+        return {r[0] for r in self._conn.execute(sql, (player,) * len(self._MATCH_TABLES))}
+
+    def _check_merge(self, source, target):
+        """The reason two players cannot be merged, or None."""
+        if source == target:
+            return "pick two different players"
+        for name in (source, target):
+            if not self._conn.execute("SELECT 1 FROM players WHERE name = ?", (name,)).fetchone():
+                return f"unknown player: {name}"
+        shared = self._matches_of(source) & self._matches_of(target)
+        if shared:
+            return f"both players are in {len(shared)} of the same matches"
+        return None
+
+    def merge_preview(self, source, target):
+        """What merging `source` into `target` would move: {"matches", "achievements"} or {"error"}."""
+        with self._lock:
+            problem = self._check_merge(source, target)
+            if problem:
+                return {"error": problem}
+            return {
+                "matches": len(self._matches_of(source)),
+                "achievements": self._conn.execute(
+                    "SELECT COUNT(*) FROM achievements_earned WHERE player = ?", (source,)).fetchone()[0],
+            }
+
+    def merge_players(self, source, target):
+        """Move everything of `source` to `target` and remove `source`. The target keeps its name,
+        color and hidden flag; an achievement both earned is kept once, with the earlier date. A copy
+        of the database is made first. Returns {"matches", "achievements", "backup"} or {"error"}."""
+        log.debug("DB write: merge_players source=%s target=%s", source, target)
+        with self._lock:
+            problem = self._check_merge(source, target)
+            if problem:
+                return {"error": problem}
+            moved = {
+                "matches": len(self._matches_of(source)),
+                "achievements": self._conn.execute(
+                    "SELECT COUNT(*) FROM achievements_earned WHERE player = ?", (source,)).fetchone()[0],
+            }
+            backup = f"{self.path}.before-merge-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+            self._conn.commit()         # a copy waits forever for a transaction that is still open
+            copy = sqlite3.connect(backup)
+            try:
+                self._conn.backup(copy)
+            finally:
+                copy.close()
+            try:
+                c = self._conn
+                for table in self._MERGE_TABLES + self._MERGE_RESULT_TABLES:
+                    c.execute(f"UPDATE {table} SET player = ? WHERE player = ?", (target, source))
+                c.execute("UPDATE killer_events SET player = ? WHERE player = ?", (target, source))
+                c.execute("UPDATE killer_events SET victim = ? WHERE victim = ?", (target, source))
+                c.execute("UPDATE legs SET winner = ? WHERE winner = ?", (target, source))
+                c.execute("UPDATE matches SET winner = ? WHERE winner = ?", (target, source))
+                for row in c.execute("SELECT match_id, players FROM matches WHERE players LIKE ?",
+                                     (f"%{json.dumps(source)[1:-1]}%",)).fetchall():
+                    try:
+                        names = json.loads(row["players"] or "[]")
+                    except ValueError:
+                        continue
+                    if source in names:
+                        merged = list(dict.fromkeys(target if n == source else n for n in names))
+                        c.execute("UPDATE matches SET players = ? WHERE match_id = ?",
+                                  (json.dumps(merged), row["match_id"]))
+                for row in c.execute("SELECT id, achievement_id, tier, earned_at, match_id "
+                                     "FROM achievements_earned WHERE player = ?", (source,)).fetchall():
+                    twin = c.execute(
+                        "SELECT id, earned_at FROM achievements_earned "
+                        "WHERE player = ? AND achievement_id = ? AND tier = ?",
+                        (target, row["achievement_id"], row["tier"])).fetchone()
+                    if twin is None:
+                        c.execute("UPDATE achievements_earned SET player = ? WHERE id = ?", (target, row["id"]))
+                    else:
+                        if row["earned_at"] < twin["earned_at"]:
+                            c.execute("UPDATE achievements_earned SET earned_at = ?, match_id = ? WHERE id = ?",
+                                      (row["earned_at"], row["match_id"], twin["id"]))
+                        c.execute("DELETE FROM achievements_earned WHERE id = ?", (row["id"],))
+                c.execute("UPDATE players SET created_at = MIN(created_at, "
+                          "(SELECT created_at FROM players WHERE name = ?)) WHERE name = ?", (source, target))
+                c.execute("DELETE FROM players WHERE name = ?", (source,))
+                c.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+        log.info("Merged player %s into %s: %s matches, %s achievements, backup %s",
+                 source, target, moved["matches"], moved["achievements"], backup)
+        return {**moved, "backup": backup}
 
     # ── Achievements ──────────────────────────────────────────────────────────
 
