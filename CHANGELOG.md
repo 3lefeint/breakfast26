@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-14
+
 ### Added
 - Players tab can merge a player into another one, for example after a name change: matches, stats and achievements move to the target, the source is removed, and a copy of `stats.db` is made first (#52).
 - Side menu entry that opens the Autodarts web app in a new tab (#51).
