@@ -35,7 +35,7 @@
   }
 
   function openCorrect(index) {
-    if (killer.state !== 'playing' || darts[index] == null) return;
+    if (killer.state !== 'playing') return;
     correctingIndex = index;
   }
 
@@ -103,7 +103,7 @@
       <div class="darts-row">
         {#each [0, 1, 2] as i}
           <button type="button" class="dart-box" class:miss={darts[i] && dartLabel(darts[i]) === 'Miss'}
-                  disabled={darts[i] == null} onclick={() => openCorrect(i)}>
+                  disabled={killer.state !== 'playing'} onclick={() => openCorrect(i)}>
             <span class="dlabel">D{i + 1}</span>
             <span class="dval">{darts[i] ? dartLabel(darts[i]) : '—'}</span>
           </button>

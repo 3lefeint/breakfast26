@@ -256,6 +256,17 @@ class TestCorrections:
         game.correct_current_dart(0, "D20")
         assert player(game, "ana")["killer"] and lives(game)["bo"] == 2
 
+    def test_a_dart_the_board_missed_can_be_entered_by_hand(self):
+        game, _ = new_game()
+        play(game, hit(20, 2))
+        play(game, MISS)
+        game.on_board_state(1, [MISS])
+        game.correct_current_dart(1, "D5")              # not detected, entered by hand
+        assert lives(game)["bo"] == 2
+        game.on_board_state(2, [MISS, hit(1, 1)])       # the next dart is the second one for the board
+        assert lives(game)["bo"] == 2
+        assert [d["points"] for d in game.snapshot()["darts"]] == [0, 10, 1]
+
     def test_a_correction_does_not_announce_the_same_event_twice(self):
         game, client = new_game()
         game.on_board_state(1, [hit(20, 2)])

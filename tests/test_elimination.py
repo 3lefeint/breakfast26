@@ -247,6 +247,74 @@ def test_correct_current_dart_survives_next_board_event():
     assert game._current_darts == [1, 5], "D1's correction must survive D2 landing"
 
 
+def test_a_dart_the_board_missed_can_be_entered_by_hand():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(1, [_throw(20, 3)])        # D1 = T20, the next dart is not detected
+    game.correct_current_dart(1, "S5")             # D2 entered by hand
+    assert game._current_darts == [60, 5]
+    assert game.board_index(1) is None and game.board_index(0) == 0
+
+    game.on_board_state(0, [])                     # pulled
+    assert game.target == 65
+
+
+def test_the_darts_of_the_turn_before_do_not_come_back_when_a_dart_is_corrected():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(3, [_throw(20, 1)] * 3)    # alice: 20, 20, 20
+    game.on_board_state(0, [])                     # pulled, bob is up
+    assert game._current_darts == []
+
+    game.correct_current_dart(0, "S19")            # bob's first dart, tapped before it was detected
+    assert game._current_darts == [19]
+
+    game.on_board_state(1, [_throw(5, 1)])
+    assert game._current_darts == [19, 5]
+
+
+def test_a_dart_entered_by_hand_is_not_replaced_by_the_next_detected_dart():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(1, [_throw(20, 3)])
+    game.correct_current_dart(1, "S5")             # entered by hand
+    # D3 lands on the board; for the board it is the second dart
+    game.on_board_state(2, [_throw(20, 3), _throw(19, 1)])
+    assert game._current_darts == [60, 5, 19]
+    assert game.board_index(2) == 1
+
+    game.on_board_state(0, [])
+    assert game.target == 84
+
+
+def test_darts_before_an_entered_dart_become_misses():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(1, [_throw(20, 3)])
+    game.correct_current_dart(2, "D10")            # D2 empty: a miss
+    assert game._current_darts == [60, 0, 20]
+
+
+def test_a_dart_entered_by_hand_can_be_corrected_again():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(1, [_throw(20, 3)])
+    game.correct_current_dart(1, "S5")
+    game.correct_current_dart(1, "S7")
+    assert game._current_darts == [60, 7]
+    game.on_board_state(2, [_throw(20, 3), _throw(1, 1)])
+    assert game._current_darts == [60, 7, 1], "still entered by hand after a correction"
+
+
+def test_nothing_changes_for_the_board_events_without_a_dart_entered_by_hand():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(1, [_throw(20, 3)])
+    game.on_board_state(2, [_throw(20, 3), _throw(5, 1)])
+    assert game._current_darts == [60, 5]
+    assert game.board_index(1) == 1
+
+
 def test_correct_current_dart_noop_when_not_playing():
     game = EliminationGame(["alice", "bob"], 1, FakeMqttClient(), "autodarts")
     game._apply_turn(game.current_player, 10, silent=True)  # alice passes (freipass)

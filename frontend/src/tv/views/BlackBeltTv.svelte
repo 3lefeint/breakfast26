@@ -20,7 +20,7 @@
   let correctingIndex = $state(null);
 
   function openCorrect(index) {
-    if (bb.state !== 'playing' || darts[index] == null) return;
+    if (bb.state !== 'playing') return;
     correctingIndex = index;
   }
 
@@ -64,7 +64,7 @@
       <div class="darts">
         {#each [0, 1, 2] as i}
           <button type="button" class="dart-chip" class:hit={darts[i]?.hit} class:miss={darts[i] && !darts[i].hit}
-                  class:empty={darts[i] == null} disabled={darts[i] == null} onclick={() => openCorrect(i)}>
+                  class:empty={darts[i] == null} disabled={bb.state !== 'playing'} onclick={() => openCorrect(i)}>
             {#if darts[i]}{stepLabel(darts[i].field)}{:else}—{/if}
             {#if darts[i]?.hit}<span class="tick">✓</span>{/if}
           </button>
@@ -127,7 +127,7 @@
   .dart-chip:not(:disabled):hover { border-color: var(--accent); }
   .dart-chip.hit { border-color: var(--green); color: var(--green); }
   .dart-chip.miss { color: var(--red); }
-  .dart-chip.empty { color: var(--muted); cursor: default; }
+  .dart-chip.empty { color: var(--muted); }
   .tick { position: absolute; top: 0.1em; right: 0.35em; font-size: 0.35em; }
 
   .hand { display: flex; flex-direction: column; gap: 0.2em; color: var(--muted); }

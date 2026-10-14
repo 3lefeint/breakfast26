@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- A dart the board did not detect can be entered by hand: tap its empty dart box in Elimination, Killer, Target Battle, Field Training, Black Belt or the Checkout Trainer and pick the field (#54).
 - Elimination on the TV view can mark the fields on the board that still beat the target; switched with the Hint button during a match or in the Settings, off by default (#50).
 - Computer opponent for Elimination and Killer: added on the setup page with a level from 10+ to 110+ (its three-dart average), it throws its darts through the same path as the board with short pauses and waits for the board to be clear. Matches with a computer are stored and marked (`matches.has_bot`); the computer has no stats, leaderboard entries or achievements; with `[dev] enabled` a game may consist of computer players only (#35).
 

@@ -48,7 +48,6 @@
 
   function openCorrect(index) {
     if (elimination.state !== 'playing') return;
-    if (darts[index] == null) return;
     if (online && online.match && online.match.owners[elimination.current_player] !== online.site) return;   // theirs
     correctingIndex = index;
   }

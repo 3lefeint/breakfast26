@@ -24,7 +24,7 @@
   let correctingIndex = $state(null);
 
   function openCorrect(index) {
-    if (co.state !== 'playing' || darts[index] == null) return;
+    if (co.state !== 'playing') return;
     correctingIndex = index;
   }
 
@@ -77,7 +77,7 @@
       <div class="darts">
         {#each [0, 1, 2] as i}
           <button type="button" class="dart-chip" class:miss={darts[i]?.points === 0} class:empty={darts[i] == null}
-                  disabled={darts[i] == null} onclick={() => openCorrect(i)}>
+                  disabled={co.state !== 'playing'} onclick={() => openCorrect(i)}>
             {darts[i] != null ? (darts[i].points === 0 ? t('Miss') : fieldName(darts[i].field)) : '—'}
           </button>
         {/each}
@@ -139,7 +139,7 @@
   .dart-chip { flex: 1; padding: 0.4em 0; text-align: center; font-family: inherit; font-weight: 800; font-size: clamp(1.4rem, 3.4vw, 3.4rem); color: var(--text); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); border-radius: 12px; cursor: pointer; }
   .dart-chip:not(:disabled):hover { border-color: var(--accent); }
   .dart-chip.miss { color: var(--red); }
-  .dart-chip.empty { color: var(--muted); cursor: default; }
+  .dart-chip.empty { color: var(--muted); }
 
   .progress-line { height: clamp(8px, 1vw, 16px); background: rgba(255, 255, 255, 0.14); border-radius: 999px; overflow: hidden; }
   .progress-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.3s; }

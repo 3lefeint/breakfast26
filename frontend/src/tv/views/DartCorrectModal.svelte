@@ -2,7 +2,7 @@
   import { t } from '../../lib/i18n.js';
   // Fixes a misrecognized dart before it's pulled: click the spot on the
   // dartboard, or use the multiplier + number pad. Opened by tapping D1/D2/D3
-  // on the live Elimination view (only while that dart has a value already),
+  // on the live game views (an empty box enters a dart the board did not detect),
   // and from the X01 view's Board button.
   import { api } from '../../lib/api.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';

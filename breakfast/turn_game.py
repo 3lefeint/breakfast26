@@ -149,19 +149,22 @@ class TurnGame:
             return
         if count > 0:
             new_vals = [self.value_of(t) for t in throws]
+            seen = self._current_darts
+            if any(t.get("manual") for t in self._last_throws):
+                seen = [v for v, t in zip(self._current_darts, self._last_throws) if not t.get("manual")]
             is_new_dart = count > self._prev_count
-            is_correction = count == self._prev_count and new_vals != self._current_darts
+            is_correction = count == self._prev_count and new_vals != seen
             if is_new_dart or is_correction:
                 self._last_throws = list(throws)
                 self._current_darts = new_vals
-                # The board reports the whole turn afresh each time, so a dart corrected by
-                # tapping has to be put back on top of it or the next dart would undo it.
+                # The board reports the whole turn afresh each time, so the darts corrected or
+                # entered by tapping have to be put back on top of it or the next dart would undo them.
                 self._apply_dart_overrides()
                 self._publish_turn()
                 self._changed()
                 if is_correction:
                     log.debug("Live correction detected: %s", new_vals)
-                self._dart_seen(count, is_new_dart, is_correction)
+                self._dart_seen(len(self._last_throws), is_new_dart, is_correction)
         if count == 0 and self._prev_count > 0:
             self._end_turn()
         self._prev_count = count
@@ -173,20 +176,46 @@ class TurnGame:
             return
         if dart_index not in (0, 1, 2):
             return
-        self._dart_overrides[dart_index] = parse_field(field)
+        throw = parse_field(field)
+        entered = dart_index >= len(self._current_darts)
+        if entered:
+            # A dart the board did not see. The empty boxes before it were misses.
+            for i in range(len(self._current_darts), dart_index):
+                self._dart_overrides[i] = {**parse_field("0"), "manual": True}
+        if entered or self._dart_overrides.get(dart_index, {}).get("manual"):
+            throw["manual"] = True
+        self._dart_overrides[dart_index] = throw
         self._apply_dart_overrides()
         self._publish_turn()
         self._changed()
         log.info("Dart %d corrected: %s", dart_index + 1, field)
 
     def _apply_dart_overrides(self):
+        """Lay the darts corrected or entered by hand over those of the board. A corrected dart
+        takes the place of the one the board reported; an entered one (marked `manual`) is
+        inserted at its place, because the board never counted it and its next dart comes
+        in at that place."""
+        # Some games keep the throws of the turn before in `_last_throws` until the first dart of the
+        # next one, so only as many as the turn in progress has count.
+        throws = [t for t in self._last_throws[:len(self._current_darts)] if not t.get("manual")]
+        manual = sorted(i for i, t in self._dart_overrides.items() if t.get("manual"))
+        for idx in manual:
+            throws.insert(min(idx, len(throws)), self._dart_overrides[idx])
         for idx, throw in self._dart_overrides.items():
-            while len(self._last_throws) <= idx:
-                self._last_throws.append({"segment": {"number": 0, "multiplier": 0}})
-            while len(self._current_darts) <= idx:
-                self._current_darts.append(0)
-            self._last_throws[idx] = throw
-            self._current_darts[idx] = self.value_of(throw)
+            if throw.get("manual"):
+                continue
+            while len(throws) <= idx:
+                throws.append({"segment": {"number": 0, "multiplier": 0}})
+            throws[idx] = throw
+        self._last_throws = throws
+        self._current_darts = [self.value_of(t) for t in throws]
+
+    def board_index(self, dart_index):
+        """Where dart `dart_index` of the turn sits among the darts the board reports, None for a
+        dart that was entered by hand."""
+        if self._dart_overrides.get(dart_index, {}).get("manual"):
+            return None
+        return dart_index - sum(1 for i, t in self._dart_overrides.items() if t.get("manual") and i < dart_index)
 
     def board_dart(self, throw):
         """A dart for the board view: its field, what it is worth and where it sits."""

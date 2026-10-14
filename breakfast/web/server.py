@@ -169,9 +169,16 @@ def _build_payload() -> dict:
     }
 
 
-def _move_board_dart(index: int, field: str):
+def _board_index(ctrl, dart_index: int):
+    """Where dart `dart_index` of the running turn sits among the darts the board reports, None for
+    a dart that was entered by hand."""
+    game = ctrl.game if ctrl else None
+    return game.board_index(dart_index) if game else dart_index
+
+
+def _move_board_dart(index: int | None, field: str):
     """Show a corrected dart at the center of its new field."""
-    if _game_state and _game_state.board_darts.override(index, field):
+    if index is not None and _game_state and _game_state.board_darts.override(index, field):
         push()
 
 
@@ -602,7 +609,7 @@ async def elim_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _elim_ctrl and _elim_ctrl.game:
         _elim_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_elim_ctrl, body.dart - 1), body.field)
     return {"ok": True}
 
 
@@ -692,7 +699,7 @@ async def tb_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _tb_ctrl and _tb_ctrl.game:
         _tb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_tb_ctrl, body.dart - 1), body.field)
     return {"ok": True}
 
 
@@ -763,7 +770,7 @@ async def killer_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _killer_ctrl and _killer_ctrl.game:
         _killer_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_killer_ctrl, body.dart - 1), body.field)
     return {"ok": True}
 
 
@@ -849,7 +856,7 @@ async def ft_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _ft_ctrl and _ft_ctrl.game:
         _ft_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_ft_ctrl, body.dart - 1), body.field)
     return {"ok": True}
 
 
@@ -920,7 +927,7 @@ async def bb_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _bb_ctrl and _bb_ctrl.game:
         _bb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_bb_ctrl, body.dart - 1), body.field)
     return {"ok": True}
 
 
@@ -1695,7 +1702,7 @@ async def co_correct_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if _co_ctrl and _co_ctrl.game:
         _co_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_co_ctrl, body.dart - 1), body.field)
     return {"ok": True}
 
 

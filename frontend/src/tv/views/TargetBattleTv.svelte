@@ -76,7 +76,7 @@
   let correctingIndex = $state(null);
 
   function openCorrect(p, index) {
-    if (!p.current || tb.state !== 'playing' || darts[index] == null) return;
+    if (!p.current || tb.state !== 'playing') return;
     correctingIndex = index;
   }
 
@@ -131,7 +131,7 @@
             <span class="chips">
               {#each chips(p) as value, i}
                 <button type="button" class="chip" class:live={p.current} class:miss={value === 0}
-                        disabled={!p.current || value == null} onclick={() => openCorrect(p, i)}>
+                        disabled={!p.current || tb.state !== 'playing'} onclick={() => openCorrect(p, i)}>
                   {value ?? '—'}
                 </button>
               {/each}
