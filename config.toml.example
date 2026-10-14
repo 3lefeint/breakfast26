@@ -55,6 +55,7 @@ port = 8080
 # glass_strength = 100      # % of the normal milkiness of the glass panels, 50..200
 # bar_opacity = 92          # % the top bar covers the page that scrolls under it, 50..100
 # language = "en"          # language of the interface: "en" or "de"
+# elimination_beat_hint = false  # Elimination on /tv: mark the fields on the board that still beat the target
 # joke_of_the_day = true    # About page: joke from icanhazdadjoke.com; false = no outbound call
 
 # ── Online Elimination ───────────────────────────────────────────────────────

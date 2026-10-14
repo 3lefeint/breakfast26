@@ -139,7 +139,8 @@ dartboard.
 - **X01**: played on the board as usual; Breakfast adds the scoreboard, checkout suggestions and voice calls.
 - **Elimination**: any number of players, each with a number of lives. Every turn has to beat the total of
   the previous turn, otherwise the player loses a life; the last player with lives left wins. Turns can be
-  corrected and undone.
+  corrected and undone. An optional hint on the TV view marks the fields on the board that still beat the
+  target.
 - **Target Battle**: in each round, all players throw at the same target number, and only a dart on that
   number scores. A wheel picks a random target every round, or you set the order yourself. Single, double and
   triple score 1, 2 and 3 points, or you practice with only one of them counting.

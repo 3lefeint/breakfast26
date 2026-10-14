@@ -66,6 +66,7 @@ _audio_engine = None
 _board_manager_url: str | None = None
 _voicepack_status = {"running": False, "done": 0, "skipped": 0, "total": 0, "error": None}
 _dev_demo = None
+_elim_beat_hint = False   # `[web] elimination_beat_hint`, kept here because every push sends it
 
 # ── WebSocket broadcaster ─────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ def wire(game_state, elim_ctrl,
          tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None):
     global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online
+           _dev_demo, _online, _elim_beat_hint
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
@@ -97,6 +98,8 @@ def wire(game_state, elim_ctrl,
     _audio_engine = audio_engine
     _board_manager_url = board_manager_url
     _dev_demo = dev_demo
+    web_cfg = (cfg_mod.load(config_path) if config_path else {}).get("web", {})
+    _elim_beat_hint = web_cfg.get("elimination_beat_hint") is True
 
 
 def _build_payload() -> dict:
@@ -143,6 +146,7 @@ def _build_payload() -> dict:
         "game": game_snap,
         "board_darts": _game_state.board_darts.snapshot() if _game_state else None,
         "elimination": elim_snap,
+        "elimination_beat_hint": _elim_beat_hint,
         "target_battle": tb_snap,
         "killer": killer_snap,
         "field_training": ft_snap,
@@ -330,8 +334,8 @@ def _bad_look_value(key: str, value):
             return f"{key} must be a whole number from {low} to {high}"
     if key == "aurora_palette" and value not in ("", *AURORA_PALETTES):
         return "aurora_palette must be one of: " + ", ".join(AURORA_PALETTES)
-    if key == "aurora_streaks" and not isinstance(value, bool):
-        return "aurora_streaks must be true or false"
+    if key in ("aurora_streaks", "elimination_beat_hint") and not isinstance(value, bool):
+        return f"{key} must be true or false"
     return None
 
 
@@ -1222,6 +1226,7 @@ async def get_config():
             **{key: web.get(key) for key in _AURORA_KEYS},
             "aurora_palette": web.get("aurora_palette") if web.get("aurora_palette") in AURORA_PALETTES else "",
             "aurora_streaks": bool(web.get("aurora_streaks", True)),
+            "elimination_beat_hint": web.get("elimination_beat_hint") is True,
             **{key: _look_number(web, key) for key in _LOOK_NUMBERS},
         },
         "direct": _mask({
@@ -1301,6 +1306,10 @@ async def patch_config(body: dict):
 
     cfg_mod.write(_config_path, updates)
     cfg_mod.apply_runtime(updates.get("logging", {}))
+    global _elim_beat_hint
+    if "elimination_beat_hint" in updates.get("web", {}):
+        _elim_beat_hint = updates["web"]["elimination_beat_hint"] is True
+        push()
 
     log.info("Config saved: keys=%s restart_required=%s", changed_keys, changed_non_runtime)
     return {"saved": True, "restart_required": changed_non_runtime}

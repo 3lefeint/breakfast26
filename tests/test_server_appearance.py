@@ -104,3 +104,28 @@ class TestLanguage:
     def test_an_unknown_language_falls_back_to_english(self, configure):
         configure({"language": "klingon"})
         assert asyncio.run(server.get_language())["language"] == "en"
+
+
+class TestEliminationBeatHint:
+    def test_off_by_default(self, configure):
+        configure()
+        assert server._build_payload()["elimination_beat_hint"] is False
+        assert asyncio.run(server.get_config())["web"]["elimination_beat_hint"] is False
+
+    def test_is_read_from_the_config_at_start(self, configure):
+        configure({"elimination_beat_hint": True})
+        assert server._build_payload()["elimination_beat_hint"] is True
+
+    def test_switching_it_needs_no_restart_and_reaches_the_payload(self, configure):
+        configure()
+        res = asyncio.run(server.patch_config({"web": {"elimination_beat_hint": True}}))
+        assert res == {"saved": True, "restart_required": []}
+        assert server._build_payload()["elimination_beat_hint"] is True
+        asyncio.run(server.patch_config({"web": {"elimination_beat_hint": False}}))
+        assert server._build_payload()["elimination_beat_hint"] is False
+
+    def test_something_that_is_no_boolean_is_refused(self, configure):
+        configure()
+        res = asyncio.run(server.patch_config({"web": {"elimination_beat_hint": "yes"}}))
+        assert res["saved"] is False
+        assert server._build_payload()["elimination_beat_hint"] is False

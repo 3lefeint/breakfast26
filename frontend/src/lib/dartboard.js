@@ -46,3 +46,21 @@ export function bandPath(rInMm, rOutMm, deg0, deg1, scale) {
   const rOut = rOutMm * scale, rIn = rInMm * scale;
   return `M${x0},${y0} A${rOut},${rOut} 0 0 1 ${x1},${y1} L${x2},${y2} A${rIn},${rIn} 0 0 0 ${x3},${y3} Z`;
 }
+
+// Zones for the board (see DartBoard `zones`) that mark every field worth more than `rest` points:
+// the singles, double, triple and bull of the numbers that are high enough. Nothing for a rest that
+// is not a whole number of 0 or more, or that no field beats.
+export function beatZones(rest) {
+  if (!Number.isInteger(rest) || rest < 0) return [];
+  const zones = [];
+  for (const n of SEGMENT_ORDER) {
+    const parts = [];
+    if (n > rest) parts.push('outerSingle', 'innerSingle');
+    if (2 * n > rest) parts.push('double');
+    if (3 * n > rest) parts.push('triple');
+    if (parts.length) zones.push({ n, parts, level: 'strong' });
+  }
+  if (25 > rest) zones.push({ n: 25, level: 'strong' });
+  if (50 > rest) zones.push({ n: 50, level: 'strong' });
+  return zones;
+}

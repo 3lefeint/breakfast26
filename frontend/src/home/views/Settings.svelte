@@ -22,7 +22,7 @@
     logging: { level: 'INFO', events: false, file: '' },
     mqtt: { enabled: true, host: '', port: '', username: '', password: '', base_topic: '' },
     stats: { db: '', timezone: '' },
-    web: { port: '', theme: 'default', accent_color: '', language: 'en', aurora_animation: true,
+    web: { port: '', theme: 'default', accent_color: '', language: 'en', aurora_animation: true, elimination_beat_hint: false,
            aurora_base: '', aurora_1: '', aurora_2: '', aurora_3: '',
            aurora_palette: '', aurora_streaks: true, aurora_speed: 100, aurora_intensity: 100, aurora_blur: 100,
            aurora_pause_idle: 0, glass_strength: 100, bar_opacity: 92 },
@@ -355,6 +355,7 @@
     (updates.logging ??= {}).events = cfg.logging.events;
     (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
     (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
+    (updates.web ??= {}).elimination_beat_hint = cfg.web.elimination_beat_hint;
     (updates.web ??= {}).aurora_animation = cfg.web.aurora_animation;
     for (const key of ['enabled', 'per_dart', 'turn_total', 'announce_change', 'call_player', 'call_misses']) {
       (updates.caller ??= {})[key] = cfg.caller[key];
@@ -575,6 +576,11 @@
         <input type="checkbox" id="sWebJoke" bind:checked={cfg.web.joke_of_the_day}>
       </div>
       <p class="note">{t('The About page fetches the joke from icanhazdadjoke.com. Switch it off to make no outbound request.')}</p>
+      <div class="settings-row">
+        <label for="sWebBeatHint">{t('Elimination: mark the fields that beat the target')}</label>
+        <input type="checkbox" id="sWebBeatHint" bind:checked={cfg.web.elimination_beat_hint}>
+      </div>
+      <p class="note">{t('On /tv the board marks every field that is still enough to beat the target. It can also be switched during a match with the Hint button.')}</p>
     </div>
 
     <div class="settings-section look">

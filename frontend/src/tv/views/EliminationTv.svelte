@@ -14,6 +14,7 @@
   import Avatar from '../../lib/components/Avatar.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
+  import { beatZones } from '../../lib/dartboard.js';
   import DartCorrectModal from './DartCorrectModal.svelte';
   import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
 
@@ -29,6 +30,18 @@
   let maxWins = $derived(Math.max(0, ...turnOrder.map((p) => winsFor(p.name))));
   function isTopWinner(name) {
     return maxWins > 0 && winsFor(name) === maxWins;
+  }
+
+  // The fields that still beat the target, if the hint is on: what is left of the target after the
+  // darts of this turn. Nothing during the freipass, once the target is beaten or after the third dart.
+  let beatHint = $derived($gameState.elimination_beat_hint === true);
+  let beatRest = $derived(elimination.target != null ? elimination.target - total : null);
+  let hintZones = $derived(
+    beatHint && elimination.state === 'playing' && !elimination.freipass && darts.length < 3 && beatRest != null
+      ? beatZones(beatRest) : []);
+
+  async function toggleHint() {
+    await api('PATCH', '/api/config', { web: { elimination_beat_hint: !beatHint } });
   }
 
   let correctingIndex = $state(null);
@@ -65,7 +78,7 @@
     {/each}
   </div>
   {#if boardDarts}
-    <div class="live-board"><DartBoard readonly darts={boardDarts} /></div>
+    <div class="live-board"><DartBoard readonly darts={boardDarts} zones={hintZones} /></div>
   {/if}
   <div class="elim-target-row">
     <span class="elim-target-label">{t('Target')}</span>
@@ -78,6 +91,7 @@
   </div>
   <div class="elim-endgame-row">
     {#if !online}<button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>{/if}
+    <button class="btn-end-game" class:on={beatHint} aria-pressed={beatHint} onclick={toggleHint}>{t('◎ Hint')}</button>
     <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
   </div>
 </div>
@@ -147,6 +161,7 @@
     font-size: clamp(0.8rem, 1.3vw, 1rem); font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
+  .btn-end-game.on { border-color: var(--accent); color: var(--accent); }
   .btn-end-game:hover { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.08); }
   .players-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 1.8vw 2vw; min-height: 0; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
   /* The rows share the height of the card, up to a limit, and sit in the middle of it: a few players

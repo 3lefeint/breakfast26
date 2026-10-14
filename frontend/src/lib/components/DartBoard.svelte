@@ -17,7 +17,7 @@
   // `zones` colors parts of the board: [{ n, color, parts, level }], `parts` any of 'double',
   // 'outerSingle', 'innerSingle', 'triple' (or 'all'), `level` 'strong' (what is open, pulses),
   // 'owned' (the field of a number that belongs to a player), 'danger' (a hit costs you, red
-  // dashed) or 'dead' (darkened).
+  // dashed) or 'dead' (darkened). `n` 25 and 50 are the outer bull and the bullseye.
   let { onSelect, disabled = false, readonly = false, darts = [], highlight = null, pointer = null,
         zones = [] } = $props();
 
@@ -73,7 +73,16 @@
   const PARTS = ['double', 'outerSingle', 'triple', 'innerSingle'];
 
   // The zones as paths to draw: one per part of every zone.
+  const BULL_PATHS = {
+    25: `M${-RINGS_MM.OUTER_BULL * K},0 A${RINGS_MM.OUTER_BULL * K},${RINGS_MM.OUTER_BULL * K} 0 1 0 ${RINGS_MM.OUTER_BULL * K},0 A${RINGS_MM.OUTER_BULL * K},${RINGS_MM.OUTER_BULL * K} 0 1 0 ${-RINGS_MM.OUTER_BULL * K},0 Z `
+      + `M${-RINGS_MM.BULL * K},0 A${RINGS_MM.BULL * K},${RINGS_MM.BULL * K} 0 1 1 ${RINGS_MM.BULL * K},0 A${RINGS_MM.BULL * K},${RINGS_MM.BULL * K} 0 1 1 ${-RINGS_MM.BULL * K},0 Z`,
+    50: `M${-RINGS_MM.BULL * K},0 A${RINGS_MM.BULL * K},${RINGS_MM.BULL * K} 0 1 0 ${RINGS_MM.BULL * K},0 A${RINGS_MM.BULL * K},${RINGS_MM.BULL * K} 0 1 0 ${-RINGS_MM.BULL * K},0 Z`,
+  };
+
   let zonePaths = $derived(zones.flatMap((z) => {
+    if (z.n === 25 || z.n === 50) {
+      return [{ key: `${z.n}-${z.level || 'strong'}`, d: BULL_PATHS[z.n], color: z.color, level: z.level || 'strong' }];
+    }
     const seg = segments[SEGMENT_ORDER.indexOf(z.n)];
     if (!seg) return [];
     const parts = z.parts === 'all' || !z.parts ? PARTS : z.parts;
@@ -120,7 +129,7 @@
       {/each}
     </g>
     {#each zonePaths as z (z.key)}
-      <path class="zone {z.level}" d={z.d} style="--zone: {z.color || 'var(--accent)'}" />
+      <path class="zone {z.level}" d={z.d} fill-rule="evenodd" style="--zone: {z.color || 'var(--accent)'}" />
     {/each}
     {#if highlightPath}
       <path class="dim" d="{disc} {highlightPath}" fill-rule="evenodd" />
