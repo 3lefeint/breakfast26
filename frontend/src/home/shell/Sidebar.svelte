@@ -3,7 +3,8 @@
   // The navigation of the Home app: the four main places and Settings at the bottom, below them the
   // version (five taps in a row unlock the Dev tab) and the link to the About page. The panel is as
   // tall as the page, its content stays in view. On narrow screens it becomes a bar along the bottom
-  // edge. Board opens the board manager of the installation and is disabled when none is configured.
+  // edge. Board opens the board manager of the installation and is disabled when none is configured; Autodarts
+  // opens its web app in a new tab.
   import Icon from '../../lib/components/Icon.svelte';
 
   let { route, boardAddress = null, version = '', onVersionTap = () => {} } = $props();
@@ -15,6 +16,7 @@
     { id: 'players', label: t('Players'), icon: 'players', href: '#players', active: route === 'players' || route.startsWith('profile/') },
     { id: 'stats', label: t('Stats'), icon: 'stats', href: '#stats', active: route === 'stats' },
     { id: 'board', label: t('Board'), icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
+    { id: 'autodarts', label: 'Autodarts', icon: 'external', href: 'https://play.autodarts.com/', external: true },
   ]);
   let settingsActive = $derived(route === 'settings');
 </script>

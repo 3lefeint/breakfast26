@@ -23,6 +23,7 @@
     chevron: '<path d="M9 18l6-6-6-6"/>',
     back: '<path d="M15 18l-6-6 6-6"/>',
     arrow: '<path d="M5 12h14M12 5l7 7-7 7"/>',
+    external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>',
     info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5M12 7.5v.01"/>',
   };
 </script>

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Side menu entry that opens the Autodarts web app in a new tab (#51).
 - Next button next to Undo in Elimination, Killer, Target Battle, Field Training, Black Belt and the Checkout Trainer: ends the turn by hand like pulling the darts, a turn without a dart counts as misses (#55).
 - A dart the board did not detect can be entered by hand: tap its empty dart box in Elimination, Killer, Target Battle, Field Training, Black Belt or the Checkout Trainer and pick the field (#54).
 - Elimination on the TV view can mark the fields on the board that still beat the target; switched with the Hint button during a match or in the Settings, off by default (#50).
