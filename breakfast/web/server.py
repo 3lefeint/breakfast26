@@ -602,6 +602,16 @@ async def elim_undo():
     return {"ok": True}
 
 
+@app.post("/api/elimination/next")
+async def elim_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_elim_ctrl and _elim_ctrl.game):
+        return {"error": "no active game"}
+    if not _elim_ctrl.next_turn():
+        return {"error": "no turn to end"}
+    return {"ok": True}
+
+
 @app.post("/api/elimination/correct-dart")
 async def elim_correct_dart(body: CorrectDartBody):
     log.debug("Elimination correct-dart requested: dart=%s field=%s", body.dart, body.field)
@@ -692,6 +702,16 @@ async def tb_undo():
     return {"ok": True}
 
 
+@app.post("/api/target-battle/next")
+async def tb_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_tb_ctrl and _tb_ctrl.game):
+        return {"error": "no active game"}
+    if not _tb_ctrl.next_turn():
+        return {"error": "no turn to end"}
+    return {"ok": True}
+
+
 @app.post("/api/target-battle/correct-dart")
 async def tb_correct_dart(body: CorrectDartBody):
     log.debug("Target Battle correct-dart requested: dart=%s field=%s", body.dart, body.field)
@@ -759,6 +779,16 @@ async def killer_undo():
         return {"error": "no active or finished game"}
     if not _killer_ctrl.game.undo():
         return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/killer/next")
+async def killer_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_killer_ctrl and _killer_ctrl.game):
+        return {"error": "no active game"}
+    if not _killer_ctrl.next_turn():
+        return {"error": "no turn to end"}
     return {"ok": True}
 
 
@@ -849,6 +879,16 @@ async def ft_undo():
     return {"ok": True}
 
 
+@app.post("/api/field-training/next")
+async def ft_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_ft_ctrl and _ft_ctrl.game):
+        return {"error": "no active game"}
+    if not _ft_ctrl.next_turn():
+        return {"error": "no turn to end"}
+    return {"ok": True}
+
+
 @app.post("/api/field-training/correct-dart")
 async def ft_correct_dart(body: CorrectDartBody):
     log.debug("Field Training correct-dart requested: dart=%s field=%s", body.dart, body.field)
@@ -917,6 +957,16 @@ async def bb_undo():
         return {"error": "no active or finished run"}
     if not _bb_ctrl.game.undo():
         return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/black-belt/next")
+async def bb_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_bb_ctrl and _bb_ctrl.game):
+        return {"error": "no active game"}
+    if not _bb_ctrl.next_turn():
+        return {"error": "no turn to end"}
     return {"ok": True}
 
 
@@ -1692,6 +1742,16 @@ async def co_undo():
         return {"error": "no active or finished run"}
     if not _co_ctrl.game.undo():
         return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/checkout-training/next")
+async def co_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_co_ctrl and _co_ctrl.game):
+        return {"error": "no active game"}
+    if not _co_ctrl.next_turn():
+        return {"error": "no turn to end"}
     return {"ok": True}
 
 

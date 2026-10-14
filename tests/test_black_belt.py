@@ -288,3 +288,9 @@ class TestServer:
         assert over["players"][0]["runs"][0]["furthest"] == 2
         (match,) = c.get("/api/stats/matches?mode=black_belt").json()
         assert c.get(f"/api/stats/match/{match['match_id']}").json()["darts"] == 3
+
+
+def test_next_ends_a_turn_without_a_dart_as_misses():
+    game = new_game()
+    assert game.next_turn() is True
+    assert game.thrown == 3

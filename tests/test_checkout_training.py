@@ -237,3 +237,9 @@ class TestController:
         assert ctrl.game.player == "bo" and (ctrl.game.low, ctrl.game.high) == (101, 170)
         with pytest.raises(ValueError):
             ctrl.start("", 2, 170, 5)
+
+
+def test_next_ends_an_attempt_without_a_dart_as_failed():
+    g = game(score=40, attempts=3)
+    assert g.next_turn() is True
+    assert len(g.results) == 1 and g.results[0]["success"] is False

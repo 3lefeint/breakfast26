@@ -426,6 +426,11 @@ class KillerGame(TurnGame):
         if before == "playing":
             self._replay_turn()
 
+    def next_turn(self):
+        if self.phase != "playing":
+            return False        # before the game a dart counts as it lands
+        return super().next_turn()
+
     def _end_turn(self):
         """The darts were pulled: the turn is over."""
         if self.phase != "playing" or self._one_dart_taken:

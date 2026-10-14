@@ -273,6 +273,45 @@ def test_the_darts_of_the_turn_before_do_not_come_back_when_a_dart_is_corrected(
     assert game._current_darts == [19, 5]
 
 
+def test_next_ends_a_turn_without_a_detected_dart_as_misses():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    assert game.next_turn() is True
+    assert game.current_player == "bob"
+    assert game.lives["alice"] == 2, "no dart counts as three misses, the freipass needs more than 0"
+
+
+def test_next_ends_a_turn_with_darts_entered_by_hand():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.correct_current_dart(0, "T20")
+    game.correct_current_dart(1, "S5")
+    assert game.next_turn() is True
+    assert game.current_player == "bob"
+    assert game.target == 65 and game.lives["alice"] == 3
+
+
+def test_next_while_darts_are_still_on_the_board_ignores_the_board_until_they_are_pulled():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(2, [_throw(20, 1), _throw(20, 1)])
+    game.next_turn()
+    assert game.current_player == "bob" and game.target == 40
+    game.on_board_state(1, [_throw(20, 1)])        # alice pulls the first dart
+    assert game._current_darts == [], "not bob's dart"
+    game.on_board_state(0, [])                     # all pulled: the next dart is bob's
+    game.on_board_state(1, [_throw(5, 1)])
+    assert game._current_darts == [5]
+
+
+def test_next_does_nothing_when_the_game_is_not_playing():
+    game = EliminationGame(["alice", "bob"], 1, FakeMqttClient(), "autodarts")
+    game._apply_turn(game.current_player, 10, silent=True)
+    game._apply_turn(game.current_player, 0, silent=True)
+    assert game.state == "finished"
+    assert game.next_turn() is False
+
+
 def test_a_dart_entered_by_hand_is_not_replaced_by_the_next_detected_dart():
     game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
 

@@ -86,6 +86,11 @@
     window.location.href = '/';
   }
 
+  // Ends the turn by hand, like pulling the darts.
+  async function nextTurn() {
+    await api('POST', '/api/target-battle/next');
+  }
+
   async function undo() {
     if (!confirm(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/target-battle/undo');
@@ -167,6 +172,7 @@
 
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
+        <button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>
         <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
       </div>
     </div>

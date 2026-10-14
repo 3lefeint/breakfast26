@@ -210,6 +210,25 @@ class TurnGame:
         self._last_throws = throws
         self._current_darts = [self.value_of(t) for t in throws]
 
+    def darts_per_turn(self):
+        """How many darts a turn has when the player ends it without throwing any."""
+        return 3
+
+    def next_turn(self):
+        """End the turn by hand, like pulling the darts from the board. A turn without a dart counts
+        as misses. Returns False when the game is not playing."""
+        if self.state != "playing":
+            return False
+        if not self._current_darts:
+            miss = {"segment": {"number": 0, "multiplier": 0}}
+            self._last_throws = [dict(miss) for _ in range(self.darts_per_turn())]
+            self._current_darts = [self.value_of(t) for t in self._last_throws]
+        # The darts that are still on the board are pulled later, until then it is ignored.
+        self._await_pull = self._board_count > 0
+        self._prev_count = 0
+        self._end_turn()
+        return True
+
     def board_index(self, dart_index):
         """Where dart `dart_index` of the turn sits among the darts the board reports, None for a
         dart that was entered by hand."""
@@ -340,6 +359,16 @@ class TurnGameController:
             if self.game and not self._bot_is_playing():
                 self.game.on_board_state(count, throws)
                 self._poll_bots()
+
+    def next_turn(self):
+        """End the turn of the player who is up by hand. False when there is no turn to end, or a
+        bot is throwing."""
+        with self._lock:
+            if not self.game or self._bot_is_playing():
+                return False
+            ended = self.game.next_turn()
+            self._poll_bots()
+            return ended
 
     def _poll_bots(self):
         """A bot may be up now: the darts were pulled, which does not always change what is shown."""

@@ -528,6 +528,11 @@ class EliminationGame(TurnGame):
             return      # a remote player's darts are corrected at their own site
         super().correct_current_dart(dart_index, field)
 
+    def next_turn(self):
+        if self.online and not self.is_local(self.current_player):
+            return False    # a remote player's turn is ended at their own site
+        return super().next_turn()
+
     def _advance(self):
         self.current_idx = (self.current_idx + 1) % len(self.active)
 

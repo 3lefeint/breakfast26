@@ -121,6 +121,9 @@ class FieldTrainingGame(TurnGame):
         self._publish_last_turn([])
         self._publish_event("start", player=self.player, field=self.field, darts=self.darts)
 
+    def darts_per_turn(self):
+        return min(3, self.remaining)
+
     def _end_turn(self):
         # A turn never takes more darts than are left; the board may show three.
         throws = list(self._last_throws)[:self.remaining]

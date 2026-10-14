@@ -826,3 +826,10 @@ class TestCalls:
         assert heard(audio) == []
         game.undo()
         assert heard(audio) == []
+
+
+def test_next_ends_a_turn_without_a_dart_as_misses():
+    game = new_game()
+    first = game.snapshot()["current_player"]
+    assert game.next_turn() is True
+    assert game.snapshot()["current_player"] != first

@@ -58,6 +58,11 @@
     window.location.href = '/';
   }
 
+  // Ends the turn by hand, like pulling the darts.
+  async function nextTurn() {
+    await api('POST', '/api/elimination/next');
+  }
+
   async function undo() {
     if (!confirm(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/elimination/undo');
@@ -88,6 +93,7 @@
   </div>
   <div class="elim-endgame-row">
     {#if !online}<button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>{/if}
+    <button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>
     <button class="btn-end-game" class:on={beatHint} aria-pressed={beatHint} onclick={toggleHint}>{t('◎ Hint')}</button>
     <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
   </div>

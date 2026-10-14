@@ -882,3 +882,16 @@ class TestBeforeTheGameController:
         pub.subscribed["autodarts/killer/command"](json.dumps(
             {"action": "start", "players": ["ana", "bo"], "bull_off": False, "throw_numbers": False}))
         assert ctrl.game.phase == "playing"
+
+
+class TestNext:
+    def test_next_ends_a_turn_without_a_dart_and_the_next_player_is_up(self):
+        game, _ = new_game()
+        assert game.next_turn() is True
+        assert game.snapshot()["current_player"] == "bo"
+
+    def test_next_with_darts_entered_by_hand_scores_them(self):
+        game, _ = new_game()
+        game.correct_current_dart(0, "D20")
+        assert game.next_turn() is True
+        assert player(game, "ana")["killer"] and game.snapshot()["current_player"] == "bo"

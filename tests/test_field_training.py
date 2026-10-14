@@ -192,3 +192,16 @@ def test_the_controller_starts_a_run_and_reads_the_mqtt_command(db):
     assert ctrl.game.player == "bo" and ctrl.game.darts == 50
     assert ctrl.finish_early() is False
     pub.subscribed["autodarts/field_training/command"]('{"action": "correct_turn", "total": 3}')
+
+
+def test_next_ends_a_turn_without_a_dart_as_misses():
+    game = new_game(darts=6)
+    assert game.next_turn() is True
+    assert game.thrown == 3 and game.points == 0
+
+
+def test_next_in_the_last_turn_takes_only_the_darts_that_are_left():
+    game = new_game(darts=4)
+    game.next_turn()
+    game.next_turn()
+    assert game.thrown == 4 and game.state == "finished"

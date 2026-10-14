@@ -395,6 +395,7 @@ export default {
   'Achievement unlocked': 'Achievement freigeschaltet',
   'Done': 'Fertig',
   '↩ Undo': '↩ Rückgängig',
+  '⏭ Next': '⏭ Weiter',
   '◎ Hint': '◎ Tipp',
   '⏹ Finish': '⏹ Beenden',
   'Or pick a field': 'Oder ein Feld wählen',
