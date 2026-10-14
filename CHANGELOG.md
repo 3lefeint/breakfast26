@@ -7,6 +7,7 @@
 - Computer opponent for Elimination and Killer: added on the setup page with a level from 10+ to 110+ (its three-dart average), it throws its darts through the same path as the board with short pauses and waits for the board to be clear. Matches with a computer are stored and marked (`matches.has_bot`); the computer has no stats, leaderboard entries or achievements; with `[dev] enabled` a game may consist of computer players only (#35).
 
 ### Fixed
+- The board in the Elimination and X01 views on the TV is shown without a board connection too (#53).
 - Voice-pack generation sends fewer requests at once and retries when the speech service rejects one, instead of aborting the run.
 
 ## [1.2.0] - 2026-10-07

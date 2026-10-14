@@ -14,7 +14,7 @@
 
   const ABANDONED_MATCH_THRESHOLD_S = 900;
 
-  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = null } = $props();
+  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [] } = $props();
 
   let cur = $derived(game.current || {});
   let isX01 = $derived(game.game_mode && (game.game_mode.includes('01') || game.game_mode === 'Random Checkout'));
@@ -161,9 +161,7 @@
       </div>
     </div>
   </div>
-  {#if boardDarts}
-    <div class="x01-board"><DartBoard readonly darts={boardDarts} /></div>
-  {/if}
+  <div class="x01-board"><DartBoard readonly darts={boardDarts} /></div>
 </div>
 
 {#if boardOpen}

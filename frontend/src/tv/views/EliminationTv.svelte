@@ -18,7 +18,7 @@
   import DartCorrectModal from './DartCorrectModal.svelte';
   import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
 
-  let { elimination, winsFor, boardDarts = null, online = null } = $props();
+  let { elimination, winsFor, boardDarts = [], online = null } = $props();
 
   let darts = $derived(elimination.current_darts || []);
   let total = $derived(darts.reduce((a, b) => a + b, 0));
@@ -77,9 +77,7 @@
       </button>
     {/each}
   </div>
-  {#if boardDarts}
-    <div class="live-board"><DartBoard readonly darts={boardDarts} zones={hintZones} /></div>
-  {/if}
+  <div class="live-board"><DartBoard readonly darts={boardDarts} zones={hintZones} /></div>
   <div class="elim-target-row">
     <span class="elim-target-label">{t('Target')}</span>
     <span class="elim-target-value">{elimination.target != null ? elimination.target + 1 : '—'}</span>
