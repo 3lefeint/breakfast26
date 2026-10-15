@@ -1688,6 +1688,55 @@ class StatsDB:
             return None
         return _row_stats_full(row)
 
+    def x01_turn_counts(self, match_id: str, leg: int) -> dict:
+        """{player: number of turns stored in this leg}, to number the next turn."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, MAX(turn) AS n FROM turns WHERE match_id = ? AND leg = ? GROUP BY player",
+                (match_id, leg)).fetchall()
+        return {r["player"]: r["n"] for r in rows}
+
+    def x01_session_accumulators(self, match_id: str) -> dict:
+        """The counters the tracker keeps for the live statistics of a match, rebuilt from what is stored."""
+        with self._lock:
+            rows = self._conn.execute(f"""
+                SELECT player,
+                    COUNT(*) AS turns,
+                    SUM(score) AS total_score,
+                    SUM(darts_count) AS total_darts,
+                    SUM(CASE WHEN score = 180 THEN 1 ELSE 0 END) AS s180,
+                    SUM(CASE WHEN score >= 140 AND score < 180 THEN 1 ELSE 0 END) AS s140,
+                    SUM(CASE WHEN score >= 100 AND score < 140 THEN 1 ELSE 0 END) AS s100,
+                    {_checkout_columns()}
+                FROM turns WHERE match_id = ? GROUP BY player""", (match_id,)).fetchall()
+        return {r["player"]: {k: (r[k] or 0) for k in ("turns", "total_score", "total_darts", "s180", "s140",
+                                                      "s100", "co_attempts", "co_hits")} for r in rows}
+
+    def delete_last_x01_turn(self, match_id: str) -> dict | None:
+        """Undo the most recently stored X01 turn of a match, with its dart positions. A turn that
+        won a leg takes the leg out as well, and a match that this turn finished is open again.
+        Returns {"player", "leg", "turn", "was_checkout"}, None when no turn is stored."""
+        log.debug("DB write: delete_last_x01_turn match_id=%s", match_id)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, player, leg, turn, is_checkout FROM turns WHERE match_id = ?"
+                " ORDER BY id DESC LIMIT 1", (match_id,)).fetchone()
+            if not row:
+                return None
+            self._conn.execute(
+                "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'X01'"
+                " AND player = ? AND leg = ? AND turn = ?",
+                (match_id, row["player"], row["leg"], row["turn"]))
+            self._conn.execute("DELETE FROM turns WHERE id = ?", (row["id"],))
+            if row["is_checkout"]:
+                self._conn.execute("DELETE FROM legs WHERE match_id = ? AND leg = ?", (match_id, row["leg"]))
+                self._conn.execute("UPDATE matches SET winner = NULL, ended_at = NULL WHERE match_id = ?",
+                                   (match_id,))
+            self._conn.commit()
+        self._match_changed(match_id)
+        return {"player": row["player"], "leg": row["leg"], "turn": row["turn"],
+                "was_checkout": bool(row["is_checkout"])}
+
     def record_leg_win(self, match_id: str, leg: int, winner: str | None):
         """Record which player won a leg (winner=None if unknown/abandoned)."""
         log.debug("DB write: record_leg_win match_id=%s leg=%s winner=%s",
@@ -2977,6 +3026,13 @@ class StatsTracker:
             if self._match_id:
                 self._db.open_match(self._match_id, self._game_mode, pts_start)
 
+        elif ev == "x01-resync":
+            # A match played in Breakfast went back to before a turn (undo, correction): what was
+            # collected for the turn in progress is dropped, and a stored turn is taken out again.
+            self._buf = None
+            if game.get("undoStored") and self._match_id:
+                self._undo_last_stored_turn()
+
         elif ev == "dart1-thrown" and self._is_x01():
             dv  = int(game.get("dartValue") or 0)
             rem = int(game.get("pointsLeft") or 0)
@@ -3072,6 +3128,16 @@ class StatsTracker:
         if number == len(darts) + 1:
             darts.append((field, value, darts[-1][2] - value))
             self._buf["positions"].append(_position(game))
+
+    def _undo_last_stored_turn(self):
+        """Take the last stored turn out of the database and bring the counters back in line with it."""
+        removed = self._db.delete_last_x01_turn(self._match_id)
+        if not removed:
+            return
+        if removed["was_checkout"]:
+            self._leg = removed["leg"]
+        self._turn_per_player = self._db.x01_turn_counts(self._match_id, self._leg)
+        self._session_stats = self._db.x01_session_accumulators(self._match_id)
 
     def _is_x01(self) -> bool:
         return "01" in self._game_mode or self._game_mode == "Random Checkout"

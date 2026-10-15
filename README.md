@@ -136,7 +136,11 @@ dartboard.
 
 ### Games and drills
 
-- **X01**: played on the board as usual; Breakfast adds the scoreboard, checkout suggestions and voice calls.
+- **X01**: played in Autodarts as usual, with Breakfast adding the scoreboard, checkout suggestions and voice calls, or
+  started in Breakfast, which then counts the darts from the board. Choose the base score, double or master in and
+  out, the legs to win and any number of players; a bull-off or a draw decides who starts, and the first thrower moves
+  one place on with every leg. The match is stored like any other X01 match, and undo, the Next button and corrections
+  of a dart work as in Elimination.
 - **Elimination**: any number of players, each with a number of lives. Every turn has to beat the total of
   the previous turn, otherwise the player loses a life; the last player with lives left wins. Turns can be
   corrected and undone, and a dart the board did not detect can be entered by hand and the Next button ends a turn without pulling the darts. An optional hint on the TV view marks the fields on the board that still beat the

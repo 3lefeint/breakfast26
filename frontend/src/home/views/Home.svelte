@@ -6,7 +6,8 @@
   import { t } from '../../lib/i18n.js';
 
   const SECTIONS = [
-    { title: t('Multiplayer'), columns: 3, cards: [
+    { title: t('Multiplayer'), columns: 4, cards: [
+      { href: '#x01', icon: 'x01', label: t('X01') },
       { href: '#elimination', icon: 'elimination', label: t('Elimination'), sub: t('Beat the last score') },
       { href: '#target-battle', icon: 'target-battle', label: t('Target Battle'), sub: t('All throw at one number') },
       { href: '#killer', icon: 'killer', label: t('Killer'), sub: t('Last one standing') },

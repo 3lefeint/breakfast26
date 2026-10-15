@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- X01 mode scored by Breakfast: start a match in Breakfast with base score, in mode and out mode (straight, double, master), legs to win and any number of players; a bull-off or a draw decides who starts; stored as a regular X01 match (#48).
+
 ## [1.3.0] - 2026-10-14
 
 ### Added

@@ -101,6 +101,20 @@ class GameState:
         player["throw2_points"] = 0
         player["throw3_points"] = 0
 
+    def _sync_players(self, data, new_leg=False):
+        """A match played in Breakfast names all its players at its start (`game.players`, in the order of the
+        scores), so they are there before they throw: the table shows them and the calls know them. A new leg
+        sets everybody's score again and clears what is left of their last turn."""
+        names = (data.get("game") or {}).get("players")
+        if not isinstance(names, list):
+            return
+        scores = data.get("remainingScores") or {}
+        for idx, name in enumerate(names):
+            player = self._ensure_player(idx, name)
+            if new_leg:
+                self._clear_turn(player)
+            player["remaining"] = _to_int(scores.get(f"player{idx + 1}"), player["remaining"])
+
     def _extract_player(self, data):
         player_name = _safe_player_name(data.get("player"))
         raw_idx = data.get("playerIndex")
@@ -143,7 +157,9 @@ class GameState:
             self._turn_had_per_dart_events = False
             self._last_dart_player_index = None
             self._apply_remaining_scores(data)
+            self._sync_players(data)
             self.active_player_name = _safe_player_name(data.get("player"))
+            self.active_player_index = _to_int(data.get("playerIndex"), None)
             return {"type": "match_started", "mode": self.game_mode}
 
         if event == "match-ended":
@@ -153,6 +169,7 @@ class GameState:
         if event == "game-started":
             self._turn_had_per_dart_events = False
             self._apply_remaining_scores(data)
+            self._sync_players(data, new_leg=True)
             player_index, player_name, _ = self._extract_player(data)
             if player_index is not None:
                 self.active_player_index = player_index
@@ -160,6 +177,28 @@ class GameState:
             # Emitted per leg except the first (the translator suppresses it
             # when the leg start coincides with match start).
             return {"type": "game_started", "mode": self.game_mode}
+
+        if event == "x01-resync":
+            # A match played in Breakfast went back to before a turn (undo, correction): the scores,
+            # the player who is up, the legs and the turn in progress are set again from the event.
+            self.match_started = True
+            self._apply_remaining_scores(data)
+            game = data.get("game", {})
+            legs_won = game.get("legsWon") or {}
+            self.current_leg = _to_int(game.get("leg"), self.current_leg)
+            names = {i: n for i, n in enumerate(game.get("players") or [])}
+            for idx, name in names.items():
+                player = self._ensure_player(idx, name)
+                self._clear_turn(player)
+                player["remaining"] = _to_int((data.get("remainingScores") or {}).get(f"player{idx + 1}"), player["remaining"])
+                player["legs_won"] = _to_int(legs_won.get(name), 0)
+            player_index, player_name, _ = self._extract_player(data)
+            if player_index is not None:
+                self.active_player_index = player_index
+                self.active_player_name = player_name
+            self._turn_had_per_dart_events = False
+            self._last_dart_player_index = None
+            return None
 
         if event in ("bulling-start", "bulling-end", "lobby", "board"):
             return None
@@ -303,6 +342,10 @@ class GameState:
             player["turn_score"] = _to_int(game.get("dartsThrownValue"), player["turn_score"])
             player["is_bust"] = _str_to_bool(game.get("busted"))
             player["turn_active"] = False
+            if _str_to_bool(game.get("newTurn")):
+                # The player who is up now has nothing of a turn yet: what the event says about the turn
+                # that ended (its total, the bust) does not belong on their card.
+                self._clear_turn(player)
             self._turn_had_per_dart_events = False
             return {"type": "turn_end", "mode": self.game_mode}
 

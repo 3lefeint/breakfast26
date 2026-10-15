@@ -9,12 +9,17 @@
   import { getCheckout } from '../../lib/checkout.js';
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
+  import { ruleChips } from '../../lib/x01.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
   const ABANDONED_MATCH_THRESHOLD_S = 900;
 
-  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [] } = $props();
+  // `own`: the snapshot of a match played in Breakfast. Its controls go to /api/x01/*, not to the
+  // Autodarts match, and there is no next leg or board reset (the legs follow from the darts).
+  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [], own = null } = $props();
+  let ownMatch = $derived(!!(own && own.active && own.phase === 'playing'));
+  let canControl = $derived(ownMatch || hasCloudControl);
 
   let cur = $derived(game.current || {});
   let isX01 = $derived(game.game_mode && (game.game_mode.includes('01') || game.game_mode === 'Random Checkout'));
@@ -30,7 +35,7 @@
   let isBogey = $derived(isX01 && rem >= 2 && rem <= 170 && !checkoutHint);
 
   let legLabel = $derived(game.current_leg > 1 ? t('Leg {n}', { n: game.current_leg }) : null);
-  let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null, game.special, legLabel].filter(Boolean).join(' · '));
+  let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null, game.special, legLabel, ...(ownMatch ? ruleChips(own) : [])].filter(Boolean).join(' · '));
 
   let rows = $derived.by(() => {
     const players = game.players || {};
@@ -46,7 +51,7 @@
   let selectedDartNum = $state(1);
   let correctField = $state('');
   let boardOpen = $state(false);
-  let canCorrect = $derived(hasCloudControl && game.match_started);
+  let canCorrect = $derived(canControl && game.match_started);
 
   function openCorrect(n) {
     if (!canCorrect || cur[`throw${n}_raw`] == null) return;
@@ -54,13 +59,19 @@
     boardOpen = true;
   }
 
+  const OWN_ACTIONS = { undo: 'undo', 'next-player': 'next' };
   async function ctrl(action) {
-    await api('POST', `/api/control/${action}`);
+    await api('POST', ownMatch ? `/api/x01/${OWN_ACTIONS[action]}` : `/api/control/${action}`);
+  }
+  async function cancelMatch() {
+    if (!confirm(t('Cancel the current game?'))) return;
+    await api('POST', '/api/x01/stop');
+    window.location.href = '/';
   }
   async function correctThrowSubmit() {
     const field = correctField.trim();
     if (!field) return;
-    await api('POST', '/api/control/correct-throw', { dart: selectedDartNum, field: field.toUpperCase() });
+    await api('POST', correctEndpoint, { dart: selectedDartNum, field: field.toUpperCase() });
     correctField = '';
   }
   async function forceClearMatch() {
@@ -72,8 +83,10 @@
     return [pts === 0 ? 'miss' : '', isBust ? 'bust' : ''].filter(Boolean).join(' ');
   }
 
+  let correctEndpoint = $derived(ownMatch ? '/api/x01/correct-dart' : '/api/control/correct-throw');
+
   let showAbandonedWarning = $derived(
-    $health.matchActive && $health.secondsSinceActivity != null && $health.secondsSinceActivity > ABANDONED_MATCH_THRESHOLD_S
+    !ownMatch && $health.matchActive && $health.secondsSinceActivity != null && $health.secondsSinceActivity > ABANDONED_MATCH_THRESHOLD_S
   );
   let abandonedText = $derived.by(() => {
     if (!showAbandonedWarning) return '';
@@ -122,7 +135,7 @@
     <div class="players-section">
       <table>
         <thead>
-          <tr><th>{t('Player')}</th><th class="num-cell">{t('Remaining')}</th><th class="num-cell">{t('Legs')}</th><th class="num-cell">{t('Avg')}</th><th class="num-cell">CO%</th></tr>
+          <tr><th>{t('Player')}</th><th class="num-cell">{t('Remaining')}</th><th class="num-cell">{t('Legs')}</th><th class="num-cell">{t('Avg')}</th></tr>
         </thead>
         <tbody>
           {#each rows as r (r.idx)}
@@ -132,7 +145,6 @@
               <td class="num-cell">{r.score}</td>
               <td class="num-cell muted">{r.legs_won}</td>
               <td class="num-cell muted">{ps.avg3 != null ? ps.avg3.toFixed(1) : '—'}</td>
-              <td class="num-cell muted">{ps.co_attempts ? ps.co_pct + '%' : '—'}</td>
             </tr>
           {/each}
         </tbody>
@@ -140,24 +152,28 @@
 
       <div class="section-title">{t('Control')}</div>
       <div class="control-bar">
-        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('undo')}>{t('↩ Undo')}</button>
-        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-player')}>{t('⏭ Next Player')}</button>
-        <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
-        <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}>{t('⟳ Reset Board')}</button>
+        <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('undo')}>{t('↩ Undo')}</button>
+        <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('next-player')}>{t('⏭ Next Player')}</button>
+        {#if ownMatch}
+          <button class="btn-ctrl danger" onclick={cancelMatch}>{t('✕ Cancel')}</button>
+        {:else}
+          <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
+          <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}>{t('⟳ Reset Board')}</button>
+        {/if}
       </div>
       <div class="throw-correct-row">
         <span class="lbl">{t('Correct:')}</span>
         <div class="dart-num-group">
           {#each [1, 2, 3] as n}
-            <button class="btn-dart-num" class:sel={selectedDartNum === n} disabled={!hasCloudControl || !game.match_started} onclick={() => (selectedDartNum = n)}>D{n}</button>
+            <button class="btn-dart-num" class:sel={selectedDartNum === n} disabled={!canControl || !game.match_started} onclick={() => (selectedDartNum = n)}>D{n}</button>
           {/each}
         </div>
-        <input class="field-input" placeholder="T20" maxlength="4" disabled={!hasCloudControl || !game.match_started}
+        <input class="field-input" placeholder="T20" maxlength="4" disabled={!canControl || !game.match_started}
                bind:value={correctField}
                oninput={(e) => { correctField = e.target.value.toUpperCase(); }}
                onkeydown={(e) => e.key === 'Enter' && correctThrowSubmit()}>
-        <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={correctThrowSubmit}>{t('✓ Apply')}</button>
-        <button class="btn-correct" disabled={!hasCloudControl || !game.match_started} onclick={() => (boardOpen = true)}>{t('🎯 Board')}</button>
+        <button class="btn-correct" disabled={!canControl || !game.match_started} onclick={correctThrowSubmit}>{t('✓ Apply')}</button>
+        <button class="btn-correct" disabled={!canControl || !game.match_started} onclick={() => (boardOpen = true)}>{t('🎯 Board')}</button>
       </div>
     </div>
   </div>
@@ -165,7 +181,7 @@
 </div>
 
 {#if boardOpen}
-  <DartCorrectModal dartIndex={selectedDartNum - 1} endpoint="/api/control/correct-throw" onClose={() => (boardOpen = false)} />
+  <DartCorrectModal dartIndex={selectedDartNum - 1} endpoint={correctEndpoint} onClose={() => (boardOpen = false)} />
 {/if}
 
 <style>
@@ -258,12 +274,11 @@
   }
   .abandoned-warning .btn-ctrl { flex: none; min-width: 0; }
 
-  /* On phone-width viewports, drop the lower-priority Avg/CO%
-     columns — Player/Remaining/Legs stay since those are what you'd
+  /* On phone-width viewports, drop the lower-priority Avg
+     column — Player/Remaining/Legs stay since those are what you'd
      actually glance at /tv for on a phone. */
   @media (max-width: 480px) {
-    .players-section th:nth-child(4), .players-section td:nth-child(4),
-    .players-section th:nth-child(5), .players-section td:nth-child(5) {
+    .players-section th:nth-child(4), .players-section td:nth-child(4) {
       display: none;
     }
     .x01-layout { flex-direction: column; }

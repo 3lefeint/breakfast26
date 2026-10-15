@@ -169,3 +169,27 @@ class TestBoardDartsFromBoardStream:
         _handle_board_message({"numThrows": 1, "throws": throws}, state, None, None, None, prev_count=0)
         _handle_board_message({"numThrows": 0, "throws": []}, state, None, None, None, prev_count=1)
         assert state.board_darts.snapshot() == []
+
+
+class TestX01Routing:
+    """A match played in Breakfast sets `match_started` like an Autodarts match, so it is asked before that."""
+
+    def test_an_active_x01_match_gets_the_board_even_with_a_match_started(self):
+        state = GameState()
+        state.match_started = True
+        mqtt_pub, audio = FakeMqttPub(), FakeAudio()
+        x01 = FakeElimCtrl(active=True)
+        elim = FakeElimCtrl(active=True)
+        new_count = _handle_board_message(
+            {"numThrows": 1, "throws": [_throw(20, 3)]}, state, mqtt_pub, elim, audio, prev_count=0, x01_ctrl=x01)
+        assert new_count == 1
+        assert x01.board_state_calls == [(1, [_throw(20, 3)])]
+        assert elim.board_state_calls == []
+
+    def test_an_inactive_x01_controller_leaves_the_board_to_the_others(self):
+        state = GameState()
+        mqtt_pub, audio = FakeMqttPub(), FakeAudio()
+        x01, elim = FakeElimCtrl(active=False), FakeElimCtrl(active=True)
+        _handle_board_message(
+            {"numThrows": 1, "throws": [_throw(20, 3)]}, state, mqtt_pub, elim, audio, prev_count=0, x01_ctrl=x01)
+        assert x01.board_state_calls == [] and elim.board_state_calls == [(1, [_throw(20, 3)])]

@@ -18,6 +18,7 @@ from breakfast.field_training import FieldTrainingController
 from breakfast.checkout_training import CheckoutTrainingController
 from breakfast.target_battle import TargetBattleController
 from breakfast.killer import KillerController
+from breakfast.x01_game import X01Controller
 from breakfast.autodarts_client import AutodartsCloudClient
 from breakfast.dev_demo import DemoRunner
 
@@ -33,7 +34,7 @@ def _dart_value(throw):
 
 
 def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl=None,
-                          killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None):
+                          killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None):
     """Process one board-WS state message. Returns the new prev_count.
 
     Split out from _start_board_ws()'s on_message closure so this logic is
@@ -57,6 +58,11 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
     if state.board_darts.update(throws if count else []):
         from breakfast.web import server as web
         web.push()
+
+    # A match played in Breakfast sets `match_started` like an Autodarts match, so it is asked first.
+    if x01_ctrl and x01_ctrl.active:
+        x01_ctrl.on_board_state(count, throws)
+        return count
 
     if state.match_started:
         return count
@@ -93,7 +99,7 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
 
 
 def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None,
-                    tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None):
+                    tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None):
     """Background thread: local board WebSocket for Elimination, Target Battle, Killer and freeplay."""
     prev_count = 0
 
@@ -106,7 +112,8 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
         if msg.get("type") != "state":
             return
         prev_count = _handle_board_message(
-            msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl, killer_ctrl, ft_ctrl, bb_ctrl, co_ctrl)
+            msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl, killer_ctrl, ft_ctrl, bb_ctrl, co_ctrl,
+            x01_ctrl)
 
     def set_connected(connected):
         if state.board_darts.set_connected(connected):
@@ -205,10 +212,14 @@ def run_direct(email, password, board_id, record_file=None,
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
     )
+    # The events of a match played in Breakfast go through the same function as those of an Autodarts match,
+    # see on_event() below.
+    x01_ctrl = X01Controller(lambda data: process_event(data), stats_db=stats_db_instance, audio=audio,
+                             on_change=web.push)
     _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio, tb_ctrl=tb_ctrl,
-                    killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl)
+                    killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl, x01_ctrl=x01_ctrl)
 
-    def on_event(data):
+    def process_event(data):
         if recorder:
             recorder.write(data)
         if log_events:
@@ -218,7 +229,7 @@ def run_direct(email, password, board_id, record_file=None,
                 pl = pl.get("name", "")
             log.info("Event: %s  player=%s", ev, pl)
         evt = state.update(data)
-        if caller:
+        if caller and not data.get("silent"):      # a corrected turn of a match played here makes no calls
             caller.on_event(evt, state.snapshot())
         if stats_tracker:
             stats_tracker.process(data)
@@ -232,6 +243,13 @@ def run_direct(email, password, board_id, record_file=None,
             except Exception as e:
                 log.error("MQTT publish error: %s", e)
         web.push()
+
+    def on_event(data):
+        """The events of an external match (the cloud, the demo). They are ignored while a match is played
+        in Breakfast: that one has priority."""
+        if x01_ctrl.match_active:
+            return
+        process_event(data)
 
     # Without an account (a first start of the standalone build) there is no cloud client: only
     # the web UI runs until the account is entered in Settings and the app is restarted.
@@ -253,7 +271,8 @@ def run_direct(email, password, board_id, record_file=None,
     web.wire(state, elim_ctrl, cloud_client=client,
              stats_tracker=stats_tracker, mqtt_pub=mqtt_pub,
              config_path=config_path, audio_engine=audio,
-             board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl, killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl)
+             board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl, killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl,
+             x01_ctrl=x01_ctrl)
     if web_port:
         web.start(web_port)
 

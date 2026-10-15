@@ -6,6 +6,7 @@
   import { elimination } from '../lib/stores/elimination.js';
   import { targetBattle } from '../lib/stores/targetBattle.js';
   import { killer } from '../lib/stores/killer.js';
+  import { x01Own } from '../lib/stores/x01Own.js';
   import { fieldTraining } from '../lib/stores/fieldTraining.js';
   import { blackBelt } from '../lib/stores/blackBelt.js';
   import { checkoutTraining } from '../lib/stores/checkoutTraining.js';
@@ -17,6 +18,8 @@
   import Aurora from '../lib/components/Aurora.svelte';
   import AchievementBanner from './views/AchievementBanner.svelte';
   import X01View from './views/X01View.svelte';
+  import X01BullOffTv from './views/X01BullOffTv.svelte';
+  import X01FinishedTv from './views/X01FinishedTv.svelte';
   import IdleView from './views/IdleView.svelte';
   import EliminationTv from './views/EliminationTv.svelte';
   import EliminationFinishedTv from './views/EliminationFinishedTv.svelte';
@@ -55,6 +58,7 @@
     if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return t('Field Training');
     if ($blackBelt && ($blackBelt.state === 'finished' || $blackBelt.active)) return t('Black Belt');
     if ($checkoutTraining && ($checkoutTraining.state === 'finished' || $checkoutTraining.active)) return t('Checkout Training');
+    if ($x01Own && ($x01Own.state === 'finished' || ($x01Own.active && !game.match_started))) return t('X01');
     if (!game.match_started) return game.board_status ? `${t('Board')}: ${game.board_status}` : '—';
     const legLabel = game.current_leg > 1 ? ` · ${t('Leg {n}', { n: game.current_leg })}` : '';
     return [game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null].filter(Boolean).join(' · ') + legLabel;
@@ -73,6 +77,9 @@
     if ($blackBelt && $blackBelt.active) return 'bb-live';
     if ($checkoutTraining && $checkoutTraining.state === 'finished') return 'co-finished';
     if ($checkoutTraining && $checkoutTraining.active) return 'co-live';
+    if ($x01Own && $x01Own.state === 'finished') return 'x01own-finished';
+    // The bull-off, and the moment between its end and the start of the match.
+    if ($x01Own && $x01Own.active && (!game.match_started || $x01Own.phase === 'bull_off')) return 'x01own-bulloff';
     if (game.match_started) return 'x01';
     return 'idle';
   });
@@ -130,8 +137,14 @@
   {/if}
 {:else if view === 'x01'}
   <div id="active">
-    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_darts ?? []} />
+    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_darts ?? []} own={$x01Own} />
   </div>
+{:else if view === 'x01own-bulloff'}
+  <div id="activeElim">
+    <X01BullOffTv x={$x01Own} />
+  </div>
+{:else if view === 'x01own-finished'}
+  <X01FinishedTv x={$x01Own} {sessionStats} />
 {:else if view === 'elim-live'}
   <div id="activeElim">
     <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_darts ?? []} online={$online} />

@@ -51,6 +51,7 @@ _game_state = None
 _elim_ctrl = None
 _tb_ctrl = None
 _killer_ctrl = None
+_x01_ctrl = None
 _ft_ctrl = None
 _co_ctrl = None
 _bb_ctrl = None
@@ -78,14 +79,15 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online, _elim_beat_hint
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
     _killer_ctrl = killer_ctrl
+    _x01_ctrl = x01_ctrl
     _ft_ctrl = ft_ctrl
     _co_ctrl = co_ctrl
     _bb_ctrl = bb_ctrl
@@ -122,6 +124,12 @@ def _build_payload() -> dict:
         killer_snap = {"active": False}
     else:
         killer_snap = None
+    if _x01_ctrl and _x01_ctrl.game:
+        x01_snap = _x01_ctrl.game.snapshot()
+    elif _x01_ctrl:
+        x01_snap = {"active": False}
+    else:
+        x01_snap = None
     if _ft_ctrl and _ft_ctrl.game:
         ft_snap = _ft_ctrl.game.snapshot()
     elif _ft_ctrl:
@@ -149,6 +157,7 @@ def _build_payload() -> dict:
         "elimination_beat_hint": _elim_beat_hint,
         "target_battle": tb_snap,
         "killer": killer_snap,
+        "x01": x01_snap,
         "field_training": ft_snap,
         "black_belt": bb_snap,
         "checkout_training": co_snap,
@@ -507,6 +516,17 @@ async def control_correct_throw(body: CorrectThrowBody):
 
 # ── REST: elimination ─────────────────────────────────────────────────────────
 
+def _x01_guard():
+    """An X01 match played in Breakfast blocks the other games while it runs; a finished one is closed
+    (it would still hold the board stream). Returns an error to send back, else None."""
+    if not _x01_ctrl or not _x01_ctrl.game:
+        return None
+    if _x01_ctrl.active:
+        return {"error": "an X01 match is running, cancel it first"}
+    _x01_ctrl.stop()
+    return None
+
+
 class StartBody(BaseModel):
     players: list[str]
     lives: int = 3
@@ -552,6 +572,8 @@ async def elim_start(body: StartBody):
         return {"error": "no elimination controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
     if _tb_ctrl and _tb_ctrl.active:
         return {"error": "a Target Battle is running, cancel it first"}
     if _killer_ctrl and _killer_ctrl.active:
@@ -657,6 +679,8 @@ async def tb_start(body: TargetBattleStartBody):
         return {"error": "no target battle controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
     if _elim_ctrl and _elim_ctrl.active:
         return {"error": "an Elimination game is running, cancel it first"}
     if _killer_ctrl and _killer_ctrl.active:
@@ -742,6 +766,8 @@ async def killer_start(body: KillerStartBody):
         return {"error": "no killer controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
     if _elim_ctrl and _elim_ctrl.active:
         return {"error": "an Elimination game is running, cancel it first"}
     if _tb_ctrl and _tb_ctrl.active:
@@ -817,6 +843,95 @@ async def killer_correct_last_dart(body: CorrectDartBody):
     return {"ok": True}
 
 
+# ── REST: X01 played in Breakfast ─────────────────────────────────────────────
+
+class X01StartBody(BaseModel):
+    players: list[str]
+    start: int = 501           # the score to count down from
+    in_mode: str = "straight"  # straight, double or master: what the first scoring dart has to be
+    out_mode: str = "double"   # straight, double or master: what the finishing dart has to be
+    legs: int = 1              # legs to win
+    bull_off: bool = True      # the closest dart at the bull throws first, else the order is drawn
+
+
+@app.post("/api/x01/start")
+async def x01_start(body: X01StartBody):
+    log.debug("X01 start requested: players=%s start=%s in=%s out=%s legs=%s",
+              body.players, body.start, body.in_mode, body.out_mode, body.legs)
+    if not _x01_ctrl:
+        return {"error": "no X01 controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    for ctrl, message in ((_elim_ctrl, "an Elimination game is running, cancel it first"),
+                          (_tb_ctrl, "a Target Battle is running, cancel it first"),
+                          (_killer_ctrl, "a Killer game is running, cancel it first"),
+                          (_ft_ctrl, "a Field Training run is open, cancel it first"),
+                          (_bb_ctrl, "a Black Belt run is open, cancel it first"),
+                          (_co_ctrl, "a Checkout Training run is open, cancel it first")):
+        if ctrl and ctrl.active:
+            return {"error": message}
+    players = [p.strip() for p in body.players if p.strip()]
+    try:
+        _x01_ctrl.start(players, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
+                        legs=body.legs, bull_off=body.bull_off)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/x01/stop")
+async def x01_stop():
+    log.debug("X01 stop requested")
+    if _x01_ctrl:
+        _x01_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/x01/undo")
+async def x01_undo():
+    log.debug("X01 undo requested")
+    if not (_x01_ctrl and _x01_ctrl.game):
+        return {"error": "no active or finished match"}
+    if not _x01_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/x01/next")
+async def x01_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_x01_ctrl and _x01_ctrl.game):
+        return {"error": "no active match"}
+    if not _x01_ctrl.next_turn():
+        return {"error": "no turn to end"}
+    return {"ok": True}
+
+
+@app.post("/api/x01/correct-dart")
+async def x01_correct_dart(body: CorrectDartBody):
+    """Correct a dart of the turn in progress."""
+    log.debug("X01 correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _x01_ctrl and _x01_ctrl.game:
+        _x01_ctrl.game.correct_current_dart(body.dart - 1, body.field)
+    _move_board_dart(_board_index(_x01_ctrl, body.dart - 1), body.field)
+    return {"ok": True}
+
+
+@app.post("/api/x01/correct-last-dart")
+async def x01_correct_last_dart(body: CorrectDartBody):
+    """Correct a dart of the last finished turn, also after it ended the match."""
+    log.debug("X01 correct-last-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if not (_x01_ctrl and _x01_ctrl.game):
+        return {"error": "no active or finished match"}
+    if not _x01_ctrl.game.correct_last_dart(body.dart - 1, body.field):
+        return {"error": "no turn to correct"}
+    return {"ok": True}
+
+
 # ── REST: field training ──────────────────────────────────────────────────────
 
 class FieldTrainingStartBody(BaseModel):
@@ -833,6 +948,8 @@ async def ft_start(body: FieldTrainingStartBody):
         return {"error": "no field training controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
     if _elim_ctrl and _elim_ctrl.active:
         return {"error": "an Elimination game is running, cancel it first"}
     if _tb_ctrl and _tb_ctrl.active:
@@ -914,6 +1031,8 @@ async def bb_start(body: BlackBeltStartBody):
         return {"error": "no black belt controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
     if _elim_ctrl and _elim_ctrl.active:
         return {"error": "an Elimination game is running, cancel it first"}
     if _tb_ctrl and _tb_ctrl.active:
@@ -1699,6 +1818,8 @@ async def co_start(body: CheckoutTrainingStartBody):
         return {"error": "no checkout training controller"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
     for ctrl, message in ((_elim_ctrl, "an Elimination game is running, cancel it first"),
                           (_tb_ctrl, "a Target Battle is running, cancel it first"),
                           (_killer_ctrl, "a Killer game is running, cancel it first"),
