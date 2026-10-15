@@ -351,8 +351,8 @@ class GameState:
 
         if event in ("game-won", "match-won"):
             scope = "game" if event == "game-won" else "match"
-            if player is not None:
-                player["remaining"] = 0
+            if player is not None and not game.get("decidedBy"):
+                player["remaining"] = 0          # a finish; a leg decided by the bull-off keeps what is left
             # Track legs won — winner from event (direct mode) or fall back to current player
             winner_name = game.get("winner") or (player_name if player is not None else None)
             if winner_name:

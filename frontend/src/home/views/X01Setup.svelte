@@ -7,7 +7,7 @@
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
-  import { START_SCORES, MODES, MAX_LEGS } from '../../lib/x01.js';
+  import { START_SCORES, MODES, MAX_LEGS, MAX_ROUNDS_CHOICES } from '../../lib/x01.js';
 
   let gamePlayers = $state([]);
   let startScore = $state(501);
@@ -15,6 +15,7 @@
   let outMode = $state('double');
   let legs = $state(1);
   let bullOff = $state(true);
+  let maxRounds = $state(null);
 
   const MODE_LABEL = { straight: () => t('Straight'), double: () => t('Double'), master: () => t('Master') };
 
@@ -32,7 +33,7 @@
   async function start() {
     if (gamePlayers.length < 1) { alert(t('Select at least 1 player.')); return; }
     const res = await apiJson('POST', '/api/x01/start', {
-      players: gamePlayers, start: startScore, in_mode: inMode, out_mode: outMode, legs, bull_off: bullOff && gamePlayers.length > 1,
+      players: gamePlayers, start: startScore, in_mode: inMode, out_mode: outMode, legs, bull_off: bullOff && gamePlayers.length > 1, max_rounds: maxRounds,
     });
     if (res.error) { alert(t(res.error)); return; }
     window.location.href = '/tv';
@@ -66,6 +67,15 @@
         <div class="seg">
           {#each MODES as m (m)}
             <button type="button" class="seg-btn" class:active={outMode === m} onclick={() => (outMode = m)}>{MODE_LABEL[m]()}</button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="option-row">
+        <span class="label">{t('Max Rounds')}</span>
+        <div class="seg">
+          {#each MAX_ROUNDS_CHOICES as n (n)}
+            <button type="button" class="seg-btn" class:active={maxRounds === n} onclick={() => (maxRounds = n)}>{n ?? t('No limit')}</button>
           {/each}
         </div>
       </div>

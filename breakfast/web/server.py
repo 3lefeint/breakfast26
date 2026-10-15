@@ -858,6 +858,7 @@ class X01StartBody(BaseModel):
     out_mode: str = "double"   # straight, double or master: what the finishing dart has to be
     legs: int = 1              # legs to win
     bull_off: bool = True      # the closest dart at the bull throws first, else the order is drawn
+    max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
 
 
 @app.post("/api/x01/start")
@@ -881,7 +882,7 @@ async def x01_start(body: X01StartBody):
     players = [p.strip() for p in body.players if p.strip()]
     try:
         _x01_ctrl.start(players, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
-                        legs=body.legs, bull_off=body.bull_off)
+                        legs=body.legs, bull_off=body.bull_off, max_rounds=body.max_rounds)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}
@@ -955,6 +956,7 @@ class TournamentStartBody(BaseModel):
     out_mode: str = "double"
     legs_by_round: list[int] | None = None     # legs to win per round, first round first; default one leg each
     bull_off: bool = True      # a bull-off decides who throws first in the first leg of a match, else it is drawn
+    max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
 
 
 @app.post("/api/tournament/draw")
@@ -992,7 +994,8 @@ async def tournament_start(body: TournamentStartBody):
     seats = [s.strip() if isinstance(s, str) and s.strip() else None for s in body.seats]
     try:
         _tournament_ctrl.start(seats, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
-                               legs_by_round=body.legs_by_round, bull_off=body.bull_off)
+                               legs_by_round=body.legs_by_round, bull_off=body.bull_off,
+                               max_rounds=body.max_rounds)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}

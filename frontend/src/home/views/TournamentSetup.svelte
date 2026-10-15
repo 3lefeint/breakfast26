@@ -7,7 +7,7 @@
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
-  import { START_SCORES, MODES, MAX_LEGS } from '../../lib/x01.js';
+  import { START_SCORES, MODES, MAX_LEGS, MAX_ROUNDS_CHOICES } from '../../lib/x01.js';
   import { roundName, roundsFor, previewSnap, drawSeats, startTournament } from '../../lib/tournament.js';
   import TournamentBracket from '../../lib/components/TournamentBracket.svelte';
 
@@ -17,6 +17,7 @@
   let inMode = $state('straight');
   let outMode = $state('double');
   let bullOff = $state(true);
+  let maxRounds = $state(null);
   let legsByRound = $state([1]);
   let seats = $state(null);
   let picked = $state(null);
@@ -73,7 +74,8 @@
   async function start() {
     if (!valid) return;
     const ok = await startTournament({
-      seats, start: startScore, in_mode: inMode, out_mode: outMode, bull_off: bullOff, legs_by_round: legsByRound,
+      seats, start: startScore, in_mode: inMode, out_mode: outMode, bull_off: bullOff, max_rounds: maxRounds,
+      legs_by_round: legsByRound,
     });
     if (ok) window.location.href = '/tv';
   }
@@ -106,6 +108,15 @@
         <div class="seg">
           {#each MODES as m (m)}
             <button type="button" class="seg-btn" class:active={outMode === m} onclick={() => (outMode = m)}>{MODE_LABEL[m]()}</button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="option-row">
+        <span class="label">{t('Max Rounds')}</span>
+        <div class="seg">
+          {#each MAX_ROUNDS_CHOICES as n (n)}
+            <button type="button" class="seg-btn" class:active={maxRounds === n} onclick={() => (maxRounds = n)}>{n ?? t('No limit')}</button>
           {/each}
         </div>
       </div>

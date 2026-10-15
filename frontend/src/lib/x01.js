@@ -4,6 +4,8 @@ import { t } from './i18n.js';
 export const START_SCORES = [101, 201, 301, 501, 701, 1001];
 export const MODES = ['straight', 'double', 'master'];
 export const MAX_LEGS = 25;
+// The choices for the max rounds: no limit, or the rounds after which a bull-off decides the leg.
+export const MAX_ROUNDS_CHOICES = [null, 15, 25, 50];
 
 // Start the match that just finished once more: same players, same rules.
 export async function rematch(x) {
@@ -14,6 +16,7 @@ export async function rematch(x) {
     out_mode: x.setup.out_mode,
     legs: x.setup.legs,
     bull_off: x.setup.bull_off,
+    max_rounds: x.setup.max_rounds,
   });
   if (res.error) alert(t(res.error));
   return !res.error;
@@ -40,5 +43,6 @@ export function ruleChips(x) {
     ...(rules.in_mode && rules.in_mode !== 'straight' ? [inLabel(rules.in_mode)] : []),
     outLabel(rules.out_mode),
     rules.legs > 1 ? t('First to {n} legs', { n: rules.legs }) : t('One leg'),
+    ...(rules.max_rounds ? [t('Max Rounds: {n}', { n: rules.max_rounds })] : []),
   ];
 }

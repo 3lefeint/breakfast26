@@ -563,3 +563,172 @@ class TestCalls:
     def test_a_leg_win_is_called_as_a_gameshot_and_the_next_leg_as_game_on(self):
         calls = self.run([hit(20, 2)], start=40, legs=2)
         assert "gameshot" in calls and calls[-1] == "gameon"
+
+
+class TestMaxRounds:
+    """After the max rounds without a checkout a bull-off decides the leg: the closest dart wins."""
+
+    def two(self, rounds=2, **kw):
+        kw.setdefault("start", 301)
+        kw.setdefault("legs", 1)
+        return Match(("ana", "bo"), max_rounds=rounds, **kw)
+
+    def rounds(self, m, n):
+        for _ in range(n):
+            play(m.game, hit(1, 1))
+            play(m.game, hit(1, 1))
+
+    def test_the_bull_off_starts_when_everybody_threw_the_max_rounds(self):
+        m = self.two()
+        self.rounds(m, 1)
+        assert m.game.snapshot()["phase"] == "playing" and m.game.snapshot()["round"] == 2
+        play(m.game, hit(1, 1))
+        assert m.game.snapshot()["phase"] == "playing"          # ana of round 2 is done, bo is not
+        play(m.game, hit(1, 1))
+        snap = m.game.snapshot()
+        assert snap["phase"] == "bull_off" and snap["tiebreak"] and snap["current_player"] == "ana"
+
+    def test_the_closest_dart_wins_the_leg_and_the_match(self):
+        m = self.two()
+        self.rounds(m, 2)
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        snap = m.game.snapshot()
+        assert snap["state"] == "finished" and snap["winner"] == "bo"
+        assert m.names()[-1] == "match-won" and m.events[-1]["game"]["decidedBy"] == "bull_off"
+        row = m.db._conn.execute("SELECT winner, decided FROM legs").fetchone()
+        assert (row["winner"], row["decided"]) == ("bo", "bull_off")
+        assert m.db._conn.execute("SELECT winner, ended_at FROM matches").fetchone()["winner"] == "bo"
+
+    def test_the_score_of_the_winner_is_not_set_to_zero(self):
+        m = self.two()
+        self.rounds(m, 2)
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        assert m.state.players[0]["remaining"] == 301 - 2 and m.state.players[0]["legs_won"] == 1
+
+    def test_players_tied_for_the_closest_throw_again(self):
+        m = self.two()
+        self.rounds(m, 2)
+        play(m.game, MISS)
+        play(m.game, MISS)
+        snap = m.game.snapshot()
+        assert snap["phase"] == "bull_off" and snap["tiebreak"] and snap["state"] == "playing"
+        play(m.game, hit(5, 1, x=0.3, y=0.0))
+        play(m.game, hit(5, 1, x=0.2, y=0.0))
+        assert m.game.snapshot()["winner"] == "bo"
+
+    def test_with_more_legs_the_next_leg_starts_after_the_bull_off(self):
+        m = self.two(legs=2)
+        self.rounds(m, 2)
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        snap = m.game.snapshot()
+        assert snap["state"] == "playing" and snap["phase"] == "playing" and snap["leg"] == 2
+        assert snap["current_player"] == "bo" and [p["remaining"] for p in snap["players"]] == [301, 301]
+        assert m.names()[-1] == "game-started" and m.state.current_leg == 2
+        assert m.game.snapshot()["round"] == 1
+        assert m.db.legs_won_by_player(m.game.match_id) == {"ana": 1}
+
+    def test_the_next_leg_counts_its_rounds_again(self):
+        m = self.two(legs=2)
+        self.rounds(m, 2)
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        self.rounds(m, 1)
+        assert m.game.snapshot()["phase"] == "playing"
+        self.rounds(m, 1)
+        assert m.game.snapshot()["tiebreak"]
+
+    def test_a_checkout_before_the_max_rounds_wins_as_usual(self):
+        m = self.two(start=40)
+        play(m.game, hit(20, 2))
+        assert m.game.snapshot()["state"] == "finished"
+        assert m.db._conn.execute("SELECT decided FROM legs").fetchone()["decided"] is None
+
+    def test_a_single_player_has_no_max_rounds(self):
+        m = Match(("ana",), max_rounds=1, start=301)
+        play(m.game, hit(1, 1))
+        play(m.game, hit(1, 1))
+        assert m.game.snapshot()["phase"] == "playing" and m.game.max_rounds is None
+
+    @pytest.mark.parametrize("n", [0, 1000])
+    def test_max_rounds_have_to_be_sensible(self, n):
+        with pytest.raises(ValueError):
+            X01Game(["ana", "bo"], lambda e: None, max_rounds=n)
+
+    def test_the_rule_is_in_the_snapshot(self):
+        assert self.two(rounds=15).game.snapshot()["rules"]["max_rounds"] == 15
+        assert Match().game.snapshot()["rules"]["max_rounds"] is None
+
+    def test_undo_of_the_last_bull_off_throw_takes_the_leg_back(self):
+        m = self.two(legs=2)
+        self.rounds(m, 2)
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        assert m.db.legs_won_by_player(m.game.match_id) == {"ana": 1}
+        assert m.game.undo()
+        snap = m.game.snapshot()
+        assert snap["phase"] == "bull_off" and snap["tiebreak"] and snap["leg"] == 1 and snap["current_player"] == "bo"
+        assert m.db.legs_won_by_player(m.game.match_id) == {} and m.state.current_leg == 1
+        play(m.game, hit(25, 1, x=0.01, y=0.0))
+        assert m.game.snapshot()["winner"] is None and m.game.snapshot()["leg"] == 2
+        assert m.db.legs_won_by_player(m.game.match_id) == {"bo": 1}
+
+    def test_undo_of_a_match_decided_by_the_bull_off_opens_it_again(self):
+        m = self.two()
+        self.rounds(m, 2)
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        assert m.game.undo()
+        assert m.game.snapshot()["state"] == "playing" and m.game.snapshot()["tiebreak"]
+        row = m.db._conn.execute("SELECT winner, ended_at FROM matches").fetchone()
+        assert row["winner"] is None and row["ended_at"] is None
+        assert m.db._conn.execute("SELECT COUNT(*) FROM legs").fetchone()[0] == 0
+
+    def test_a_finish_that_was_misread_can_be_corrected_when_the_bull_off_has_begun(self):
+        m = self.two(rounds=1, start=40)
+        play(m.game, hit(1, 1))
+        play(m.game, hit(20, 1))                                  # bo threw the D20 that finishes, read as a single
+        assert m.game.snapshot()["tiebreak"]
+        assert m.game.correct_last_dart(0, "D20")
+        snap = m.game.snapshot()
+        assert snap["state"] == "finished" and snap["winner"] == "bo" and not snap["tiebreak"]
+        assert m.db._conn.execute("SELECT decided FROM legs").fetchone()["decided"] is None
+        assert m.turns()[-1]["is_checkout"] == 1
+
+    def test_a_correction_that_is_no_finish_goes_back_into_the_bull_off(self):
+        m = self.two(rounds=1, start=40)
+        play(m.game, hit(1, 1))
+        play(m.game, hit(20, 1))
+        assert m.game.correct_last_dart(0, "S19")
+        snap = m.game.snapshot()
+        assert snap["phase"] == "bull_off" and snap["tiebreak"] and snap["current_player"] == "ana"
+        assert [t["score"] for t in m.turns()] == [1, 19]
+
+    def test_after_a_bull_off_throw_the_last_turn_is_not_corrected_directly(self):
+        m = self.two(rounds=1, start=40)
+        play(m.game, hit(1, 1))
+        play(m.game, hit(20, 1))
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        assert not m.game.correct_last_dart(0, "D20")           # undo first
+
+    def test_undo_in_the_bull_off_goes_back_to_the_last_turn(self):
+        m = self.two(rounds=1, start=40)
+        play(m.game, hit(1, 1))
+        play(m.game, hit(20, 1))
+        assert m.game.undo()
+        snap = m.game.snapshot()
+        assert snap["phase"] == "playing" and not snap["tiebreak"] and snap["current_player"] == "bo"
+        play(m.game, hit(20, 2))
+        assert m.game.snapshot()["winner"] == "bo"
+
+    def test_a_leg_decided_by_the_bull_off_is_no_best_leg(self):
+        m = self.two()
+        self.rounds(m, 2)
+        play(m.game, hit(25, 1, x=0.05, y=0.0))
+        play(m.game, hit(5, 1, x=0.5, y=0.0))
+        assert m.db.player_performance_summary("ana")["best_leg_darts"] is None
+        m2 = Match(("cy",), start=40)
+        play(m2.game, hit(20, 2))
+        assert m2.db.player_performance_summary("cy")["best_leg_darts"] == 1

@@ -289,6 +289,21 @@ class TestBullOff:
         assert s.game.phase == "playing" and not s.game.bull_off
 
 
+class TestMaxRounds:
+    def test_a_match_decided_by_the_bull_off_after_the_max_rounds_moves_the_tournament_on(self):
+        s = Setup()
+        s.start(["a", "b"], max_rounds=1, bull_off=False, start=301)
+        assert s.game.max_rounds == 1
+        play(s.game, hit(1, 1))
+        play(s.game, hit(1, 1))
+        assert s.game.snapshot()["tiebreak"]
+        first = s.game.snapshot()["current_player"]
+        play(s.game, hit(25, 1, x=0.05, y=0.0))
+        play(s.game, hit(5, 1, x=0.5, y=0.0))
+        snap = s.t.snapshot()
+        assert snap["phase"] == "pending" and snap["pending"]["winner"] == first and snap["config"]["max_rounds"] == 1
+
+
 class TestAbortAndRestart:
     def test_abort_ends_it_keeps_the_played_matches_and_discards_the_running_one(self):
         s = Setup()

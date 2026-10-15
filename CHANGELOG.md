@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Max rounds for X01 and tournaments (no limit, 15, 25 or 50): a leg that nobody has checked out after that many rounds is decided by a bull-off, the closest dart wins; such a leg counts as a leg win but stays out of the best-leg statistics (#48, #45).
 - X01 tournaments: single elimination with byes, legs to win per round, a bull-off or a draw for who throws first, a bracket drawn at random with seats that can be moved by hand, the next match starting by itself after a result; the bracket is stored in `stats.db` and its matches carry the tournament (#45).
 - X01 mode scored by Breakfast: start a match in Breakfast with base score, in mode and out mode (straight, double, master), legs to win and any number of players; a bull-off or a draw decides who starts; stored as a regular X01 match (#48).
 

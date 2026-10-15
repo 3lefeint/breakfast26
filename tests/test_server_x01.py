@@ -42,7 +42,8 @@ def test_a_match_can_be_started_and_shows_up_in_the_state(client):
     assert c.post("/api/x01/start", json=START).json() == {"ok": True}
     snap = server._build_payload()["x01"]
     assert snap["active"] and sorted(snap["order"]) == ["ana", "bo"] and snap["phase"] == "playing"   # drawn
-    assert snap["rules"] == {"start": 501, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": False}
+    assert snap["rules"] == {"start": 501, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": False,
+                             "max_rounds": None}
     assert [p["remaining"] for p in snap["players"]] == [501, 501]
     assert server._build_payload()["game"]["match_started"]
 
@@ -51,7 +52,7 @@ def test_the_options_reach_the_game(client):
     c, x01, *_ = client
     c.post("/api/x01/start", json={**START, "start": 301, "in_mode": "double", "out_mode": "master", "legs": 3})
     assert server._build_payload()["x01"]["setup"] == {
-        "start": 301, "in_mode": "double", "out_mode": "master", "legs": 3, "bull_off": False}
+        "start": 301, "in_mode": "double", "out_mode": "master", "legs": 3, "bull_off": False, "max_rounds": None}
 
 
 def test_names_are_trimmed_and_empty_ones_dropped(client):
@@ -131,3 +132,20 @@ def test_stop_ends_the_match_for_the_screens(client):
     c.post("/api/x01/stop")
     assert x01.game is None and not state.match_started
     assert server._build_payload()["x01"] == {"active": False}
+
+
+def test_the_max_rounds_reach_the_game(client):
+    c, x01, *_ = client
+    c.post("/api/x01/start", json={**START, "max_rounds": 25})
+    assert server._build_payload()["x01"]["setup"]["max_rounds"] == 25
+
+
+def test_the_max_rounds_default_to_no_limit(client):
+    c, x01, *_ = client
+    c.post("/api/x01/start", json=START)
+    assert server._build_payload()["x01"]["setup"]["max_rounds"] is None
+
+
+def test_max_rounds_that_make_no_sense_come_back_as_an_error(client):
+    c, *_ = client
+    assert "max rounds" in c.post("/api/x01/start", json={**START, "max_rounds": 0}).json()["error"]

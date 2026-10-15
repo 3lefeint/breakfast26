@@ -77,7 +77,7 @@ def validate_seats(seats):
     return names
 
 
-def validate_rules(start, in_mode, out_mode, legs_by_round, rounds):
+def validate_rules(start, in_mode, out_mode, legs_by_round, rounds, max_rounds=None):
     if not x01_game.MIN_START <= int(start) <= x01_game.MAX_START:
         raise ValueError(f"the start score has to be between {x01_game.MIN_START} and {x01_game.MAX_START}")
     if in_mode not in x01_game.IN_MODES or out_mode not in x01_game.OUT_MODES:
@@ -86,6 +86,8 @@ def validate_rules(start, in_mode, out_mode, legs_by_round, rounds):
         raise ValueError(f"the legs to win are needed for {rounds} rounds")
     if any(not 1 <= int(n) <= x01_game.MAX_LEGS for n in legs_by_round):
         raise ValueError(f"legs to win have to be between 1 and {x01_game.MAX_LEGS}")
+    if max_rounds is not None and not 1 <= int(max_rounds) <= x01_game.MAX_ROUNDS:
+        raise ValueError(f"max rounds have to be between 1 and {x01_game.MAX_ROUNDS}")
 
 
 class Bracket:
@@ -213,20 +215,23 @@ class TournamentController:
 
     # ── playing it ───────────────────────────────────────────────────────────
 
-    def start(self, seats, start=501, in_mode="straight", out_mode="double", legs_by_round=None, bull_off=True):
+    def start(self, seats, start=501, in_mode="straight", out_mode="double", legs_by_round=None, bull_off=True,
+              max_rounds=None):
         """Start a tournament with these seats (None is a bye). *bull_off*: a bull-off decides who throws first in the
-        first leg of every match, else it is drawn. Raises ValueError for a setup that cannot be played."""
+        first leg of every match, else it is drawn. *max_rounds*: after this many rounds without a checkout a bull-off
+        decides the leg, None is no limit. Raises ValueError for a setup that cannot be played."""
         with self._lock:
             if self.running:
                 raise ValueError("a tournament is already running")
             names = validate_seats(seats)
             rounds = round_count(len(seats))
             legs_by_round = list(legs_by_round) if legs_by_round is not None else [1] * rounds
-            validate_rules(start, in_mode, out_mode, legs_by_round, rounds)
+            validate_rules(start, in_mode, out_mode, legs_by_round, rounds, max_rounds)
             bracket = Bracket(seats, legs_by_round)
             self.t = {"id": uuid.uuid4().hex, "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                       "config": {"start": int(start), "in_mode": in_mode, "out_mode": out_mode,
                                  "legs_by_round": [int(n) for n in legs_by_round], "bull_off": bool(bull_off),
+                                 "max_rounds": int(max_rounds) if max_rounds is not None else None,
                                  "players": names},
                       "bracket": bracket, "status": "running"}
             self.phase, self.current, self.pending = "idle", None, None
@@ -250,7 +255,7 @@ class TournamentController:
             cfg = self.t["config"]
             self.current, self.pending, self.phase = (r, i), None, "match"
         game = self.x01.start([match["a"], match["b"]], start=cfg["start"], in_mode=cfg["in_mode"],
-                              out_mode=cfg["out_mode"], legs=cfg["legs_by_round"][r], bull_off=cfg.get("bull_off", True),
+                              out_mode=cfg["out_mode"], legs=cfg["legs_by_round"][r], bull_off=cfg.get("bull_off", True), max_rounds=cfg.get("max_rounds"),
                               tournament_id=self.t["id"], on_end=self._on_match_end)
         with self._lock:
             match["match_id"] = game.match_id

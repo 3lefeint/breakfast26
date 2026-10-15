@@ -32,6 +32,7 @@ IN_MODES = ("straight", "double", "master")
 OUT_MODES = ("straight", "double", "master")
 MIN_START, MAX_START = 2, 1501
 MAX_LEGS = 25
+MAX_ROUNDS = 999
 
 # The opening calls follow the match start by this long, like in the other games, so the screen has time to
 # come up and its audio page to connect.
@@ -85,11 +86,13 @@ class X01Game(TurnGame):
 
     def __init__(self, players, emit, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
                  audio=None, on_change=None, stats_db=None, rng=None, match_id=None, start_delay=None,
-                 tournament_id=None, on_end=None):
+                 tournament_id=None, on_end=None, max_rounds=None):
         """*emit*: where the events of the match go (the same function the events of an Autodarts match go to).
         *stats_db* only says that statistics are kept, so that undo takes a stored turn out again.
         *tournament_id*: the tournament this match belongs to, stored with the match. *on_end*: called with the
-        winner when the match is won, and with None when an undo or a correction opens it again."""
+        winner when the match is won, and with None when an undo or a correction opens it again.
+        *max_rounds*: when nobody has checked out after this many rounds (everybody threw that many turns) a
+        bull-off decides the leg, the closest dart wins; None is no limit. It needs two players."""
         players = [str(p).strip() for p in players if str(p).strip()]
         if not players:
             raise ValueError("need at least 1 player")
@@ -101,6 +104,8 @@ class X01Game(TurnGame):
             raise ValueError("in and out mode have to be straight, double or master")
         if not 1 <= int(legs) <= MAX_LEGS:
             raise ValueError(f"legs to win have to be between 1 and {MAX_LEGS}")
+        if max_rounds is not None and not 1 <= int(max_rounds) <= MAX_ROUNDS:
+            raise ValueError(f"max rounds have to be between 1 and {MAX_ROUNDS}")
         super().__init__(None, "", audio=audio, on_change=on_change, stats_db=stats_db, match_id=match_id)
         self._emit_to = emit
         self.tournament_id = tournament_id
@@ -111,6 +116,9 @@ class X01Game(TurnGame):
         self.start = int(start)
         self.in_mode, self.out_mode, self.legs = in_mode, out_mode, int(legs)
         self.bull_off = bool(bull_off) and len(players) > 1
+        self.max_rounds = int(max_rounds) if max_rounds is not None and len(players) > 1 else None
+        self.turns_in_leg = 0            # the turns played in this leg, for the max rounds
+        self.tiebreak = False            # the bull-off that decides a leg after the max rounds is on
         self.order = list(players)
         if not self.bull_off:
             self._rng.shuffle(self.order)
@@ -148,7 +156,8 @@ class X01Game(TurnGame):
         return copy.deepcopy({
             "phase": self.phase, "order": self.order, "bo": self._bo, "current": self.current, "scores": self.scores,
             "opened": self.opened, "legs_won": self.legs_won, "leg": self.leg, "leg_start": self.leg_start,
-            "winner": self.winner, "state": self.state, "match_started": self._match_started})
+            "winner": self.winner, "state": self.state, "match_started": self._match_started,
+            "turns_in_leg": self.turns_in_leg, "tiebreak": self.tiebreak})
 
     def _load_state(self, snap):
         snap = copy.deepcopy(snap)
@@ -156,6 +165,7 @@ class X01Game(TurnGame):
         self.scores, self.opened, self.legs_won = snap["scores"], snap["opened"], snap["legs_won"]
         self.leg, self.leg_start, self.winner, self.state = snap["leg"], snap["leg_start"], snap["winner"], snap["state"]
         self._match_started = snap["match_started"]
+        self.turns_in_leg, self.tiebreak = snap["turns_in_leg"], snap["tiebreak"]
 
     def _evaluate(self, st, throws):
         """What the darts of a turn do from the state `st` at its start. Returns the darts that count up to the one
@@ -232,12 +242,13 @@ class X01Game(TurnGame):
                              "players": list(self.order),
                              **({"tournamentId": self.tournament_id} if self.tournament_id else {})}})
 
-    def _emit_resync(self, st, undo_stored):
-        """Tell the program that the match is back at the state `st`; `undo_stored`: the turn that was stored is gone."""
+    def _emit_resync(self, st, undo_stored, undo_leg=False):
+        """Tell the program that the match is back at the state `st`; `undo_stored`: the turn that was stored is gone,
+        `undo_leg`: the leg that the bull-off decided is gone."""
         player = st["current"]
         self._emit({**self._common(player, st["scores"]), "event": "x01-resync",
                     "game": {"leg": st["leg"], "legsWon": dict(st["legs_won"]), "players": list(st["order"]),
-                             "undoStored": bool(undo_stored)}})
+                             "undoStored": bool(undo_stored), "undoLeg": bool(undo_leg)}})
 
     def _sync_events(self, res):
         """Tell what the darts of the turn in progress did, as far as it has not been told. When a dart was
@@ -369,9 +380,11 @@ class X01Game(TurnGame):
             self.scores = {p: self.start for p in self.order}
             self.opened = {p: self.in_mode == "straight" for p in self.order}
             self.current = self.order[self.leg_start]
+            self.turns_in_leg = 0
             new_leg = True
         else:
             self.current = self.order[(self.order.index(player) + 1) % len(self.order)]
+            self.turns_in_leg += 1
             new_leg = False
         self._turn_start = self._state_of()
         self._emit({**self._common(self.current), "event": "darts-pulled",
@@ -382,6 +395,49 @@ class X01Game(TurnGame):
             self._emit({**self._common(self.current), "event": "game-started",
                         "game": {"mode": "X01", "pointsStart": str(self.start), "special": None,
                                  "players": list(self.order)}})
+        elif self.max_rounds and self.turns_in_leg >= self.max_rounds * len(self.order):
+            self._begin_tiebreak()
+        self._changed()
+
+    # ── the bull-off that decides a leg after the max rounds ─────────────────
+
+    def _begin_tiebreak(self):
+        """Nobody checked out within the max rounds: everybody throws one dart at the bull, the closest wins the leg.
+        Players tied for the closest throw again."""
+        self.tiebreak, self.phase = True, "bull_off"
+        self._bo = {"final": [], "todo": [list(self.order)], "dist": {}, "shown": {}}
+        self._one_dart_taken = False
+        self.current = self._bo_thrower()
+        self._turn_start = self._state_of()
+        self._bull_off_calls(self.current, tie=False, done=False)
+
+    def _decide_leg(self, winner):
+        """The bull-off after the max rounds is decided: the winner takes the leg (and the match, with the legs to win)
+        and the next leg starts. The darts are pulled already, so there is no turn to end."""
+        match_won = self.legs_won[winner] + 1 >= self.legs
+        self.tiebreak, self.phase = False, "playing"
+        self.legs_won[winner] += 1
+        self._emit({**self._common(winner), "event": "match-won" if match_won else "game-won",
+                    "game": {"mode": "X01", "dartsThrownValue": "0", "leg": self.leg, "winner": winner,
+                             "decidedBy": "bull_off"}})
+        if self._history:
+            self._history[-1]["leg_recorded"] = True        # an undo of the last throw takes the leg back
+        if match_won:
+            self.winner, self.state = winner, "finished"
+            self._turn_start = self._state_of()
+            self._changed()
+            self._notify_end(winner)
+            return
+        self.leg += 1
+        self.leg_start = (self.leg_start + 1) % len(self.order)
+        self.scores = {p: self.start for p in self.order}
+        self.opened = {p: self.in_mode == "straight" for p in self.order}
+        self.current = self.order[self.leg_start]
+        self.turns_in_leg = 0
+        self._turn_start = self._state_of()
+        self._emit({**self._common(self.current), "event": "game-started",
+                    "game": {"mode": "X01", "pointsStart": str(self.start), "special": None,
+                             "players": list(self.order)}})
         self._changed()
 
     # ── before the first leg: the bull-off ───────────────────────────────────
@@ -449,11 +505,19 @@ class X01Game(TurnGame):
                     split[-1].append(p)
                 else:
                     split.append([p])
-            self._bo["todo"][0:1] = split
-            self._bo["dist"] = {}
-            tie = any(len(g) > 1 for g in split)
-            while self._bo["todo"] and len(self._bo["todo"][0]) == 1:
-                self._bo["final"].append(self._bo["todo"].pop(0)[0])
+            if self.tiebreak:
+                # Only who is closest matters: the leader wins, tied leaders throw again.
+                if len(split[0]) == 1:
+                    self._decide_leg(split[0][0])
+                    return
+                self._bo = {"final": [], "todo": [split[0]], "dist": {}, "shown": self._bo["shown"]}
+                tie = True
+            else:
+                self._bo["todo"][0:1] = split
+                self._bo["dist"] = {}
+                tie = any(len(g) > 1 for g in split)
+                while self._bo["todo"] and len(self._bo["todo"][0]) == 1:
+                    self._bo["final"].append(self._bo["todo"].pop(0)[0])
         if not self._bo["todo"]:
             self.order = list(self._bo["final"])
             self.phase = "playing"
@@ -534,12 +598,13 @@ class X01Game(TurnGame):
             return False
         was_finished = self.state == "finished"
         recorded = bool(self._history[-1].get("turn_recorded"))
+        leg_recorded = bool(self._history[-1].get("leg_recorded"))
         state_before = self._history[-1]
         if self._em["flushed"]:         # the turn in progress already won a leg: it is stored
             self._emit_resync(self._turn_start, undo_stored=True)
         ok = super().undo()
         if ok and state_before.get("match_started"):
-            self._emit_resync(self._turn_start, undo_stored=recorded)
+            self._emit_resync(self._turn_start, undo_stored=recorded, undo_leg=leg_recorded)
         if ok and was_finished and self.state == "playing":
             self._notify_end(None)
         return ok
@@ -547,7 +612,10 @@ class X01Game(TurnGame):
     def correct_last_dart(self, dart_index, field):
         """Correct a dart of the last finished turn, also after it ended the match: the game goes back to before
         that turn and plays it again with the corrected dart."""
-        if self.phase != "playing" or not self._history or not self._last_turn_throws or dart_index not in (0, 1, 2):
+        # The bull-off after the max rounds has begun but nobody threw yet: the last turn is still the last thing that
+        # happened, so a dart of it can be corrected (it may have been a finish the board misread).
+        if not self._history or self._history[-1]["phase"] != "playing" or not self._last_turn_throws \
+                or dart_index not in (0, 1, 2):
             log.warning("No turn to correct")
             return False
         snap = self._history.pop()
@@ -603,10 +671,12 @@ class X01Game(TurnGame):
             "match_id": self.match_id,
             "leg": self.leg,
             "pull_darts": self.phase == "bull_off" and self._one_dart_taken,      # the throw counted, the darts are on the board
+            "tiebreak": self.tiebreak,
+            "round": self.turns_in_leg // len(self.order) + 1,
             "rules": {"start": self.start, "in_mode": self.in_mode, "out_mode": self.out_mode, "legs": self.legs,
-                      "bull_off": self.bull_off},
+                      "bull_off": self.bull_off, "max_rounds": self.max_rounds},
             "setup": {"start": self.start, "in_mode": self.in_mode, "out_mode": self.out_mode, "legs": self.legs,
-                      "bull_off": self.bull_off},
+                      "bull_off": self.bull_off, "max_rounds": self.max_rounds},
             "order": list(self.order),
             "current_darts": list(self._current_darts),
             "darts": [self.board_dart(t) for t in self._last_throws],
@@ -648,11 +718,11 @@ class X01Controller(TurnGameController):
         self.bots = None
 
     def start(self, players, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
-              tournament_id=None, on_end=None):
+              tournament_id=None, on_end=None, max_rounds=None):
         """Start a match. Raises ValueError for a setup that cannot be played."""
         game = X01Game(players, self.emit, start=start, in_mode=in_mode, out_mode=out_mode, legs=legs,
                        bull_off=bull_off, audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
-                       tournament_id=tournament_id, on_end=on_end)
+                       tournament_id=tournament_id, on_end=on_end, max_rounds=max_rounds)
         with self._lock:
             old, self.game = self.game, game
         if old:

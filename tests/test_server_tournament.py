@@ -145,3 +145,14 @@ def test_the_bull_off_is_on_by_default(client):
     c, x01, tour, *_ = client
     c.post("/api/tournament/start", json=START)
     assert x01.game.phase == "bull_off"
+
+
+def test_the_max_rounds_reach_the_matches(client):
+    c, x01, tour, *_ = client
+    c.post("/api/tournament/start", json={**START, "max_rounds": 15})
+    assert x01.game.max_rounds == 15 and server._build_payload()["tournament"]["config"]["max_rounds"] == 15
+
+
+def test_max_rounds_that_make_no_sense_are_refused(client):
+    c, *_ = client
+    assert "max rounds" in c.post("/api/tournament/start", json={**START, "max_rounds": 0}).json()["error"]

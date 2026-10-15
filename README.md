@@ -139,10 +139,12 @@ dartboard.
 - **X01**: played in Autodarts as usual, with Breakfast adding the scoreboard, checkout suggestions and voice calls, or
   started in Breakfast, which then counts the darts from the board. Choose the base score, double or master in and
   out, the legs to win and any number of players; a bull-off or a draw decides who starts, and the first thrower moves
-  one place on with every leg. The match is stored like any other X01 match, and undo, the Next button and corrections
+  one place on with every leg. With a max rounds limit (15, 25 or 50, off by default) a leg that nobody has checked out
+  after that many rounds is decided by a bull-off, the closest dart wins; such a leg counts as a win but stays out of
+  the best-leg statistics. The match is stored like any other X01 match, and undo, the Next button and corrections
   of a dart work as in Elimination.
 - **X01 tournament**: single elimination in the X01 mode of Breakfast. Pick the players (a new one can be added on the
-  spot), the base score, the in and out mode, a bull-off or a draw for who throws first, and the legs to win per round,
+  spot), the base score, the in and out mode, the max rounds, a bull-off or a draw for who throws first, and the legs to win per round,
   so the final can be longer than the first round. The bracket is drawn at random as soon as there are two players, byes
   included (it is rounded up to the next power of two, a bye moves on without a match), and any two seats can be swapped
   by hand. After a match its result waits half a minute, then the

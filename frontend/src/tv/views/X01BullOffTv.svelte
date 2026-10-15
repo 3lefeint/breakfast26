@@ -21,6 +21,10 @@
   // The dart is on the board until it is pulled: then it is shown, and nothing after that.
   let markers = $derived(x.pull_darts && lastThrow ? [{ n: 1, x: lastThrow.x, y: lastThrow.y }] : []);
   let correcting = $state(false);
+  let correctingLast = $state(null);
+  // The bull-off after the max rounds, before anybody threw: the last turn can still be corrected, it may have been a
+  // finish that the board misread.
+  let lastTurn = $derived(x.tiebreak && !x.pull_darts && !x.players.some((p) => p.bull_off_mm != null) ? (x.last_turn?.darts || []) : []);
 
   async function stop() {
     if (inTournament) {
@@ -48,6 +52,7 @@
     <div class="turn">
       <span class="turn-name">{starting ? t('Match starts …') : cap(x.current_player || '—')}</span>
       {#if !starting}<span class="turn-hint">{x.pull_darts ? t('Pull the darts') : t('Bull-off: one dart at the bull')}</span>{/if}
+      {#if x.tiebreak}<span class="turn-hint">{t('Max Rounds reached: the Bull-Off decides the leg')}</span>{/if}
     </div>
     <div class="rules">
       {#if inTournament}<span class="rule-chip">{roundName(tournament.current.round, tournament.rounds.length)}</span>{/if}
@@ -79,6 +84,16 @@
         </button>
       </div>
 
+      {#if lastTurn.length}
+        <div class="last-turn">
+          <span class="dlabel">{t('Last turn, {name}', { name: cap(x.last_turn.player) })}</span>
+          {#each lastTurn as d, i}
+            <button type="button" class="dart-chip" onclick={() => (correctingLast = i)}>{dartLabel(d)}</button>
+          {/each}
+          <span class="dlabel">{t('tap a dart to correct it')}</span>
+        </div>
+      {/if}
+
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
         {#if x.pull_darts}<button class="btn-end-game" onclick={next}>{t('⏭ Next')}</button>{/if}
@@ -90,6 +105,9 @@
 
 {#if correcting}
   <DartCorrectModal dartIndex={0} onClose={() => (correcting = false)} endpoint="/api/x01/correct-dart" />
+{/if}
+{#if correctingLast != null}
+  <DartCorrectModal dartIndex={correctingLast} onClose={() => (correctingLast = null)} endpoint="/api/x01/correct-last-dart" />
 {/if}
 
 <style>
@@ -124,6 +142,9 @@
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .num { font-weight: 900; color: var(--muted); text-align: right; }
 
+  .last-turn { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .dart-chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.3rem 0.8rem; font-family: inherit; font-weight: 700; color: var(--text); cursor: pointer; font-size: clamp(0.9rem, 1.5vw, 1.4rem); }
+  .dart-chip:hover { border-color: var(--accent); }
   .darts-row { display: grid; grid-template-columns: 1fr; gap: 0.8vw; }
   .dart-box {
     display: flex; flex-direction: column; align-items: center;

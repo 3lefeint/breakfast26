@@ -328,6 +328,7 @@ class StatsDB:
             self._migrate_matches_winner()
             self._migrate_matches_has_bot()
             self._migrate_matches_tournament()
+            self._migrate_legs_decided()
             self._migrate_elimination_turn_details()
             self._migrate_turn_times()
             self._migrate_misread()
@@ -343,6 +344,12 @@ class StatsDB:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
         if "winner" not in cols:
             self._conn.execute("ALTER TABLE matches ADD COLUMN winner TEXT")
+
+    def _migrate_legs_decided(self):
+        """`decided`: how a leg that nobody checked out was decided (`bull_off` after the max rounds), NULL for a checkout."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(legs)")}
+        if "decided" not in cols:
+            self._conn.execute("ALTER TABLE legs ADD COLUMN decided TEXT")
 
     def _migrate_matches_tournament(self):
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
@@ -1787,16 +1794,32 @@ class StatsDB:
         return {"player": row["player"], "leg": row["leg"], "turn": row["turn"],
                 "was_checkout": bool(row["is_checkout"])}
 
-    def record_leg_win(self, match_id: str, leg: int, winner: str | None):
-        """Record which player won a leg (winner=None if unknown/abandoned)."""
-        log.debug("DB write: record_leg_win match_id=%s leg=%s winner=%s",
-                  match_id, leg, winner)
+    def record_leg_win(self, match_id: str, leg: int, winner: str | None, decided: str | None = None):
+        """Record which player won a leg (winner=None if unknown/abandoned). *decided*: `bull_off` for a leg that
+        was decided after the max rounds instead of by a checkout; such a leg is no checkout and is left out of the
+        best-leg statistics."""
+        log.debug("DB write: record_leg_win match_id=%s leg=%s winner=%s decided=%s",
+                  match_id, leg, winner, decided)
         with self._lock:
             self._conn.execute(
-                "INSERT INTO legs (match_id, leg, winner) VALUES (?, ?, ?)",
-                (match_id, leg, winner),
+                "INSERT INTO legs (match_id, leg, winner, decided) VALUES (?, ?, ?, ?)",
+                (match_id, leg, winner, decided),
             )
             self._conn.commit()
+
+    def delete_last_x01_leg(self, match_id: str) -> int | None:
+        """Undo record_leg_win() of the newest leg, when no turn belongs to it (a leg decided after the max rounds). A
+        finished match is open again. Returns the number of the leg, None when there is none."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT leg FROM legs WHERE match_id = ? ORDER BY leg DESC LIMIT 1", (match_id,)).fetchone()
+            if not row:
+                return None
+            self._conn.execute("DELETE FROM legs WHERE match_id = ? AND leg = ?", (match_id, row["leg"]))
+            self._conn.execute("UPDATE matches SET winner = NULL, ended_at = NULL WHERE match_id = ?", (match_id,))
+            self._conn.commit()
+        self._match_changed(match_id)
+        return row["leg"]
 
     def legs_won_by_player(self, match_id: str) -> dict:
         """Return {player_name: legs_won_count} for a match."""
@@ -2390,7 +2413,7 @@ class StatsDB:
                 SELECT MIN(darts) as darts FROM (
                     SELECT SUM(t.darts_count) as darts
                     FROM turns t JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg
-                    WHERE l.winner = ? AND t.player = ?
+                    WHERE l.winner = ? AND t.player = ? AND l.decided IS NULL
                     GROUP BY t.match_id, t.leg
                 )
             """, (player, player)).fetchone()
@@ -2400,7 +2423,7 @@ class StatsDB:
                     FROM turns t
                     JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg
                     JOIN matches m ON m.match_id = t.match_id
-                    WHERE l.winner = ? AND t.player = ? AND m.points_start = 501
+                    WHERE l.winner = ? AND t.player = ? AND m.points_start = 501 AND l.decided IS NULL
                     GROUP BY t.match_id, t.leg
                 )
             """, (player, player)).fetchone()
@@ -2794,7 +2817,7 @@ class StatsDB:
             FROM turns t
             JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg
             JOIN matches m ON m.match_id = t.match_id
-            WHERE l.winner = ? AND t.player = ?
+            WHERE l.winner = ? AND t.player = ? AND l.decided IS NULL
         """
         params = [player, player]
         if points_start is not None:
@@ -2882,7 +2905,7 @@ class StatsDB:
             leg = one(f"""
                 SELECT t.player, SUM(t.darts_count) as darts, m.points_start, m.started_at
                 FROM turns t
-                JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg AND l.winner = t.player
+                JOIN legs l ON l.match_id = t.match_id AND l.leg = t.leg AND l.winner = t.player AND l.decided IS NULL
                 JOIN matches m ON m.match_id = t.match_id
                 LEFT JOIN players p ON p.name = t.player
                 WHERE m.points_start = ? AND {visible}
@@ -3083,6 +3106,11 @@ class StatsTracker:
             self._buf = None
             if game.get("undoStored") and self._match_id:
                 self._undo_last_stored_turn()
+            if game.get("undoLeg") and self._match_id:
+                leg = self._db.delete_last_x01_leg(self._match_id)
+                if leg:
+                    self._leg = leg
+                    self._turn_per_player = self._db.x01_turn_counts(self._match_id, leg)
 
         elif ev == "dart1-thrown" and self._is_x01():
             dv  = int(game.get("dartValue") or 0)
@@ -3135,7 +3163,7 @@ class StatsTracker:
             self._flush_turn()
             winner = game.get("winner")
             if self._match_id:
-                self._db.record_leg_win(self._match_id, self._leg, winner)
+                self._db.record_leg_win(self._match_id, self._leg, winner, game.get("decidedBy"))
             self._leg += 1
             self._turn_per_player = {}
 
@@ -3143,7 +3171,7 @@ class StatsTracker:
             self._flush_turn()
             winner = game.get("winner")
             if self._match_id:
-                self._db.record_leg_win(self._match_id, self._leg, winner)
+                self._db.record_leg_win(self._match_id, self._leg, winner, game.get("decidedBy"))
                 self._db.set_winner(self._match_id, winner)
                 self._db.close_match(self._match_id)
 
