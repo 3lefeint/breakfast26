@@ -15,7 +15,20 @@
   });
 </script>
 
-<PageHeader title={t('Killer')} />
+<PageHeader title={t('Killer')}>
+  {#snippet info()}
+    <p>{t('Everyone gets a number and three lives. A double on your own number makes you a killer, from then on you take one life from an opponent with every double on their number. Last one standing wins.')}</p>
+    <p><strong>{t('Game settings:')}</strong></p>
+    <ul>
+      <li><strong>{t('Bull-Off')}:</strong> {t('Everybody throws one dart at the bull, the closest one starts.')}</li>
+      <li><strong>{t('Throw for the numbers')}:</strong> {t('Everybody throws one dart with the other hand and gets the number it hits, a double makes a killer at once. Off: the numbers are drawn at random.')}</li>
+      <li><strong>{t('Singles')}:</strong> {t('Singles take lives too, not only doubles (triples never do).')}</li>
+      <li><strong>{t('Own goal')}:</strong> {t('A killer who hits their own number loses a life.')}</li>
+      <li><strong>{t('Random order')}:</strong> {t('The order of play is drawn at random instead of following the list.')}</li>
+      <li><strong>{t('Computer opponent')}:</strong> {t('Adds a computer player with a level, its three-dart average, so one person can play a full match.')}</li>
+    </ul>
+  {/snippet}
+</PageHeader>
 
 {#if $killer && $killer.state === 'finished'}
   <KillerFinished />

@@ -55,10 +55,6 @@
 <div class="section">
   <div class="top">
     <div class="left">
-      <p class="rules">
-        {t('Everyone gets a number and three lives. A double on your own number makes you a killer, from then on you take one life from an opponent with every double on their number. Last one standing wins.')}
-      </p>
-
       <Toggle wide bind:checked={bullOff} label={t('Bull-off: everybody throws one dart at the bull, the closest one starts')} />
       <Toggle wide bind:checked={throwNumbers} label={t('Throw for the numbers: everybody throws one dart with the other hand and gets the number it hits (a double makes a killer at once). Off: the numbers are drawn at random')} />
 
@@ -98,7 +94,6 @@
 </div>
 
 <style>
-  .rules { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; line-height: 1.45; }
   .section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
   .section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }

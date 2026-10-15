@@ -18,10 +18,6 @@
 </script>
 
 <div class="section">
-  <div class="hint">
-    {t('Hit the double of every field in order, the bull\'s eye comes last. Each field has three darts of its own; the darts left in your hand after a hit are bonus darts at the next field. Miss a field with them and the ladder starts again. A run has no limit: it ends with the belt, or when you finish it.')}
-  </div>
-
   <div class="section-title sub">{t('Ladder')}</div>
   <div class="seg" role="radiogroup" aria-label={t('Direction')}>
     <button type="button" class="seg-btn" class:active={!backwards} onclick={() => (backwards = false)}>{t('D1 up to D20')}</button>
@@ -42,7 +38,6 @@
   .section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
   .section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .section-title.sub { margin: 1.25rem 0 0.6rem; }
-  .hint { color: var(--muted); font-size: 0.8rem; margin: 0.8rem 0 1.25rem; max-width: 40rem; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; max-height: 220px; overflow-y: auto; }
   .chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
   .chip:hover { border-color: var(--accent); color: var(--accent); }

@@ -15,7 +15,17 @@
   });
 </script>
 
-<PageHeader title={t('Random checkout')} back="#checkout-trainer" />
+<PageHeader title={t('Random checkout')} back="#checkout-trainer">
+  {#snippet info()}
+    <p>{t('Random checkout is a drill for one player. A score you can finish with three darts is drawn and you throw it on the board. Finish it on a double, the bull\'s eye counts. The Stats page shows which scores work and which do not.')}</p>
+    <p><strong>{t('Game settings:')}</strong></p>
+    <ul>
+      <li><strong>{t('Scores')}:</strong> {t('The range the score is drawn from.')}</li>
+      <li><strong>{t('Attempts')}:</strong> {t('Number of scores to throw in a run.')}</li>
+      <li><strong>{t('Standard route')}:</strong> {t('The standard route to the finish is shown while you throw.')}</li>
+    </ul>
+  {/snippet}
+</PageHeader>
 
 {#if $checkoutTraining && $checkoutTraining.state === 'finished'}
   <CheckoutTrainingFinished />

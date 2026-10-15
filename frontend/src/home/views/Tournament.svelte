@@ -26,7 +26,18 @@
   }
 </script>
 
-<PageHeader title={t('Tournament')} />
+<PageHeader title={t('Tournament')}>
+  {#snippet info()}
+    <p>{t('A tournament is a knockout competition in X01: the players are drawn into a bracket, every match is played to a number of legs and the loser is out. The winner of the final wins the tournament. If the number of players does not fit the bracket, some players get a bye and go straight to the next round.')}</p>
+    <p><strong>{t('Game settings:')}</strong></p>
+    <ul>
+      <li>{t('Base Score, In Mode, Out Mode, Max Rounds and Bull-Off work as in X01 and apply to every match.')}</li>
+      <li><strong>{t('Legs per round')}:</strong> {t('Number of legs required to win a match in that round, e.g. more legs in the semi-finals and the final.')}</li>
+      <li><strong>{t('Bracket')}:</strong> {t('The bracket is drawn at random as soon as two players are chosen. Click two seats to swap them, or draw again.')}</li>
+    </ul>
+    <p>{t('The next match starts by itself half a minute after a result; the final waits until you start it.')}</p>
+  {/snippet}
+</PageHeader>
 
 {#if snap && snap.active}
   <div class="section">

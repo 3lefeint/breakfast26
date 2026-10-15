@@ -25,7 +25,17 @@
   });
 </script>
 
-<PageHeader title={t('Elimination')} />
+<PageHeader title={t('Elimination')}>
+  {#snippet info()}
+    <p>{t('Elimination is a game for any number of players. Every player starts with a number of lives. In every turn you have to score more than the turn before; if you do not, you lose a life. The last player with lives left wins.')}</p>
+    <p><strong>{t('Game settings:')}</strong></p>
+    <ul>
+      <li><strong>{t('Lives per player')}:</strong> {t('Number of lives every player starts with.')}</li>
+      <li><strong>{t('Random order')}:</strong> {t('The order of play is drawn at random instead of following the list.')}</li>
+      <li><strong>{t('Computer opponent')}:</strong> {t('Adds a computer player with a level, its three-dart average, so one person can play a full match.')}</li>
+    </ul>
+  {/snippet}
+</PageHeader>
 
 {#if $elimination && $elimination.state === 'finished'}
   <EliminationFinished />

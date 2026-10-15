@@ -14,7 +14,16 @@
   });
 </script>
 
-<PageHeader title={t('Black Belt')} />
+<PageHeader title={t('Black Belt')}>
+  {#snippet info()}
+    <p>{t('Black Belt is a doubles drill for one player. Hit the double of every field in order, the bull\'s eye comes last. You earn the belt by getting through the whole ladder in one go.')}</p>
+    <p><strong>{t('Game settings:')}</strong></p>
+    <ul>
+      <li><strong>{t('Ladder')}:</strong> {t('From D1 up to D20, or from D20 down to D1.')}</li>
+      <li><strong>{t('Darts')}:</strong> {t('Each field has three darts of its own, the darts left in your hand after a hit are bonus darts at the next field. Miss a field with them and the ladder starts again.')}</li>
+    </ul>
+  {/snippet}
+</PageHeader>
 
 {#if $blackBelt && $blackBelt.state === 'finished'}
   <BlackBeltFinished />
