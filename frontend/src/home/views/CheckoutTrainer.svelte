@@ -7,9 +7,9 @@
   import Icon from '../../lib/components/Icon.svelte';
 
   const EXERCISES = [
-    { href: '#checkout-training', icon: 'field-training', label: t('Random checkout'), sub: t('Finish a score with up to three darts') },
-    { href: '#checkout-quiz', icon: 'elimination', label: t('Route quiz'), sub: t('Tap the first dart of a route') },
-    { href: '#setup-shots', icon: 'target-battle', label: t('Setup shots'), sub: t('Leave a rest you can finish') },
+    { href: '#checkout-training', icon: 'field-training', label: t('Random checkout') },
+    { href: '#checkout-quiz', icon: 'elimination', label: t('Route quiz') },
+    { href: '#setup-shots', icon: 'target-battle', label: t('Setup shots') },
   ];
 </script>
 
@@ -20,8 +20,6 @@
     <a class="card" href={card.href} in:fly={{ y: 14, duration: 320, delay: i * 55 }}>
       <span class="icon-tile"><Icon name={card.icon} size={52} stroke={1.5} /></span>
       <span class="label">{card.label}</span>
-      <span class="sub">{card.sub}</span>
-      <span class="arrow"><Icon name="arrow" size={22} /></span>
     </a>
   {/each}
 </div>
@@ -47,9 +45,6 @@
     border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .label { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.01em; }
-  .sub { margin-top: 0.3rem; font-size: 1.1rem; color: color-mix(in srgb, var(--text) 72%, transparent); }
-  .arrow { position: absolute; right: 1.3rem; bottom: 1.15rem; color: var(--text); transition: transform 0.2s; }
-  .card:hover .arrow { transform: translateX(4px); color: var(--accent); }
   @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .card { min-height: 9rem; } .icon-tile { width: 4.5rem; height: 4.5rem; } }
 </style>

@@ -8,14 +8,14 @@
   const SECTIONS = [
     { title: t('Multiplayer'), columns: 4, cards: [
       { href: '#x01', icon: 'x01', label: t('X01') },
-      { href: '#elimination', icon: 'elimination', label: t('Elimination'), sub: t('Beat the last score') },
-      { href: '#target-battle', icon: 'target-battle', label: t('Target Battle'), sub: t('All throw at one number') },
-      { href: '#killer', icon: 'killer', label: t('Killer'), sub: t('Last one standing') },
+      { href: '#elimination', icon: 'elimination', label: t('Elimination') },
+      { href: '#target-battle', icon: 'target-battle', label: t('Target Battle') },
+      { href: '#killer', icon: 'killer', label: t('Killer') },
     ] },
     { title: t('Singleplayer'), columns: 3, cards: [
-      { href: '#field-training', icon: 'field-training', label: t('Field Training'), sub: t('Darts at one field') },
-      { href: '#black-belt', icon: 'black-belt', label: t('Black Belt'), sub: t('The doubles ladder') },
-      { href: '#checkout-trainer', icon: 'checkout', label: t('Checkout Trainer'), sub: t('Learn to finish') },
+      { href: '#field-training', icon: 'field-training', label: t('Field Training') },
+      { href: '#black-belt', icon: 'black-belt', label: t('Black Belt') },
+      { href: '#checkout-trainer', icon: 'checkout', label: t('Checkout Trainer') },
     ] },
   ];
 </script>
@@ -27,8 +27,6 @@
       <a class="card" href={card.href} in:fly={{ y: 14, duration: 320, delay: (s * 3 + i) * 55 }}>
         <span class="icon-tile"><Icon name={card.icon} size={52} stroke={1.5} /></span>
         <span class="label">{card.label}</span>
-        <span class="sub">{card.sub}</span>
-        <span class="arrow"><Icon name="arrow" size={22} /></span>
       </a>
     {/each}
   </div>
@@ -59,9 +57,6 @@
     border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .label { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.01em; }
-  .sub { margin-top: 0.3rem; font-size: 1.2rem; color: color-mix(in srgb, var(--text) 72%, transparent); }
-  .arrow { position: absolute; right: 1.3rem; bottom: 1.15rem; color: var(--text); transition: transform 0.2s; }
-  .card:hover .arrow { transform: translateX(4px); color: var(--accent); }
 
   @media (max-width: 900px) {
     .grid { grid-template-columns: repeat(2, 1fr); }
