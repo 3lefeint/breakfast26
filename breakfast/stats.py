@@ -28,6 +28,13 @@ CREATE TABLE IF NOT EXISTS matches (
     points_start INTEGER,
     players    TEXT
 );
+CREATE TABLE IF NOT EXISTS tournaments (
+    id         TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    ended_at   TEXT,
+    status     TEXT NOT NULL,
+    data       TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS turns (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id         TEXT    NOT NULL,
@@ -320,6 +327,7 @@ class StatsDB:
                 (_now_iso(),))
             self._migrate_matches_winner()
             self._migrate_matches_has_bot()
+            self._migrate_matches_tournament()
             self._migrate_elimination_turn_details()
             self._migrate_turn_times()
             self._migrate_misread()
@@ -335,6 +343,11 @@ class StatsDB:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
         if "winner" not in cols:
             self._conn.execute("ALTER TABLE matches ADD COLUMN winner TEXT")
+
+    def _migrate_matches_tournament(self):
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
+        if "tournament_id" not in cols:
+            self._conn.execute("ALTER TABLE matches ADD COLUMN tournament_id TEXT")
 
     def _migrate_matches_has_bot(self):
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
@@ -434,16 +447,53 @@ class StatsDB:
         except Exception:
             log.exception("Turn listener failed for %s", match_id)
 
-    def open_match(self, match_id: str, game_mode: str, points_start: int):
-        log.debug("DB write: open_match match_id=%s game_mode=%s points_start=%s",
-                  match_id, game_mode, points_start)
+    def open_match(self, match_id: str, game_mode: str, points_start: int, tournament_id: str | None = None):
+        log.debug("DB write: open_match match_id=%s game_mode=%s points_start=%s tournament_id=%s",
+                  match_id, game_mode, points_start, tournament_id)
         with self._lock:
             self._conn.execute(
-                "INSERT OR IGNORE INTO matches (match_id, started_at, game_mode, points_start)"
-                " VALUES (?, ?, ?, ?)",
-                (match_id, _now_iso(), game_mode, points_start),
+                "INSERT OR IGNORE INTO matches (match_id, started_at, game_mode, points_start, tournament_id)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (match_id, _now_iso(), game_mode, points_start, tournament_id),
             )
             self._conn.commit()
+
+    # ── Tournaments ───────────────────────────────────────────────────────────
+
+    def save_tournament(self, tournament_id: str, status: str, data: dict, created_at: str | None = None):
+        """Store a tournament (its settings and bracket as JSON). status: running, finished or aborted; one that is
+        not running keeps the time it ended."""
+        with self._lock:
+            row = self._conn.execute("SELECT ended_at FROM tournaments WHERE id = ?", (tournament_id,)).fetchone()
+            ended = None if status == "running" else ((row["ended_at"] if row else None) or _now_iso())
+            if row:
+                self._conn.execute("UPDATE tournaments SET status = ?, data = ?, ended_at = ? WHERE id = ?",
+                                   (status, json.dumps(data), ended, tournament_id))
+            else:
+                self._conn.execute(
+                    "INSERT INTO tournaments (id, created_at, ended_at, status, data) VALUES (?, ?, ?, ?, ?)",
+                    (tournament_id, created_at or _now_iso(), ended, status, json.dumps(data)))
+            self._conn.commit()
+
+    def running_tournament(self) -> dict | None:
+        """The tournament that is still running (the newest, there is at most one), with its id and times."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM tournaments WHERE status = 'running' ORDER BY created_at DESC LIMIT 1").fetchone()
+        return self._tournament_row(row)
+
+    def list_tournaments(self, limit: int = 20) -> list:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM tournaments ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [self._tournament_row(r) for r in rows]
+
+    @staticmethod
+    def _tournament_row(row) -> dict | None:
+        if not row:
+            return None
+        return {"id": row["id"], "created_at": row["created_at"], "ended_at": row["ended_at"],
+                "status": row["status"], "data": json.loads(row["data"])}
 
     def mark_bot_match(self, match_id: str):
         """Tag a match in which a computer opponent played, so it can be filtered."""
@@ -3019,12 +3069,13 @@ class StatsTracker:
             self._match_id  = event_data.get("id")
             self._game_mode = game.get("mode", "")
             pts_start       = int(game.get("pointsStart") or 0)
+            tournament_id   = game.get("tournamentId")
             self._leg       = 1
             self._turn_per_player = {}
             self._buf       = None
             self._session_stats = {}
             if self._match_id:
-                self._db.open_match(self._match_id, self._game_mode, pts_start)
+                self._db.open_match(self._match_id, self._game_mode, pts_start, tournament_id)
 
         elif ev == "x01-resync":
             # A match played in Breakfast went back to before a turn (undo, correction): what was

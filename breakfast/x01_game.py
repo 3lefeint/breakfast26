@@ -84,9 +84,12 @@ class X01Game(TurnGame):
     TOPIC = "x01_own"
 
     def __init__(self, players, emit, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
-                 audio=None, on_change=None, stats_db=None, rng=None, match_id=None, start_delay=None):
+                 audio=None, on_change=None, stats_db=None, rng=None, match_id=None, start_delay=None,
+                 tournament_id=None, on_end=None):
         """*emit*: where the events of the match go (the same function the events of an Autodarts match go to).
-        *stats_db* only says that statistics are kept, so that undo takes a stored turn out again."""
+        *stats_db* only says that statistics are kept, so that undo takes a stored turn out again.
+        *tournament_id*: the tournament this match belongs to, stored with the match. *on_end*: called with the
+        winner when the match is won, and with None when an undo or a correction opens it again."""
         players = [str(p).strip() for p in players if str(p).strip()]
         if not players:
             raise ValueError("need at least 1 player")
@@ -100,6 +103,8 @@ class X01Game(TurnGame):
             raise ValueError(f"legs to win have to be between 1 and {MAX_LEGS}")
         super().__init__(None, "", audio=audio, on_change=on_change, stats_db=stats_db, match_id=match_id)
         self._emit_to = emit
+        self.tournament_id = tournament_id
+        self._on_end = on_end
         self._rng = rng or random.Random()
         self._start_delay = START_CALLS_DELAY_S if start_delay is None else start_delay
         self._stopped = False
@@ -224,7 +229,8 @@ class X01Game(TurnGame):
         starter = self.order[self.leg_start]
         self._emit({**self._common(starter), "event": "match-started", "id": self.match_id,
                     "game": {"mode": "X01", "pointsStart": str(self.start), "special": None,
-                             "players": list(self.order)}})
+                             "players": list(self.order),
+                             **({"tournamentId": self.tournament_id} if self.tournament_id else {})}})
 
     def _emit_resync(self, st, undo_stored):
         """Tell the program that the match is back at the state `st`; `undo_stored`: the turn that was stored is gone."""
@@ -356,6 +362,7 @@ class X01Game(TurnGame):
                 self.winner, self.state = player, "finished"
                 self._turn_start = self._state_of()
                 self._changed()
+                self._notify_end(player)
                 return
             self.leg += 1
             self.leg_start = (self.leg_start + 1) % len(self.order)
@@ -514,10 +521,18 @@ class X01Game(TurnGame):
     def _forget_stored_turn(self, snap, was_finished):
         """The statistics are taken back by the `x01-resync` event that follows the restore."""
 
+    def _notify_end(self, winner):
+        if self._on_end:
+            try:
+                self._on_end(winner)
+            except Exception:
+                log.exception("X01 end callback failed")
+
     def undo(self):
         """Walk back the most recently completed turn (or bull-off throw). Silent, like in the other games."""
         if not self._history:
             return False
+        was_finished = self.state == "finished"
         recorded = bool(self._history[-1].get("turn_recorded"))
         state_before = self._history[-1]
         if self._em["flushed"]:         # the turn in progress already won a leg: it is stored
@@ -525,6 +540,8 @@ class X01Game(TurnGame):
         ok = super().undo()
         if ok and state_before.get("match_started"):
             self._emit_resync(self._turn_start, undo_stored=recorded)
+        if ok and was_finished and self.state == "playing":
+            self._notify_end(None)
         return ok
 
     def correct_last_dart(self, dart_index, field):
@@ -534,11 +551,14 @@ class X01Game(TurnGame):
             log.warning("No turn to correct")
             return False
         snap = self._history.pop()
+        was_finished = self.state == "finished"
         throws = list(self._last_turn_throws)
         while len(throws) <= dart_index:
             throws.append({"segment": {"number": 0, "multiplier": 0}})
         throws[dart_index] = parse_field(field)
         self._restore(snap)
+        if was_finished:
+            self._notify_end(None)
         self._emit_resync(snap, undo_stored=bool(snap.get("turn_recorded")))
         self._last_throws = throws
         self._current_darts = [self.value_of(t) for t in throws]
@@ -627,10 +647,12 @@ class X01Controller(TurnGameController):
         self._lock = threading.RLock()
         self.bots = None
 
-    def start(self, players, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True):
+    def start(self, players, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
+              tournament_id=None, on_end=None):
         """Start a match. Raises ValueError for a setup that cannot be played."""
         game = X01Game(players, self.emit, start=start, in_mode=in_mode, out_mode=out_mode, legs=legs,
-                       bull_off=bull_off, audio=self.audio, on_change=self._on_change, stats_db=self.stats_db)
+                       bull_off=bull_off, audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
+                       tournament_id=tournament_id, on_end=on_end)
         with self._lock:
             old, self.game = self.game, game
         if old:

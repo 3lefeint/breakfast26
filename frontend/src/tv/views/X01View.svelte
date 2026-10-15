@@ -10,6 +10,7 @@
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
   import { ruleChips } from '../../lib/x01.js';
+  import { abortTournament, roundName } from '../../lib/tournament.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
@@ -17,9 +18,11 @@
 
   // `own`: the snapshot of a match played in Breakfast. Its controls go to /api/x01/*, not to the
   // Autodarts match, and there is no next leg or board reset (the legs follow from the darts).
-  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [], own = null } = $props();
+  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [], own = null, tournament = null } = $props();
   let ownMatch = $derived(!!(own && own.active && own.phase === 'playing'));
   let canControl = $derived(ownMatch || hasCloudControl);
+  let inTournament = $derived(!!(tournament && tournament.active && tournament.current));
+  let roundLabel = $derived(inTournament ? roundName(tournament.current.round, tournament.rounds.length) : null);
 
   let cur = $derived(game.current || {});
   let isX01 = $derived(game.game_mode && (game.game_mode.includes('01') || game.game_mode === 'Random Checkout'));
@@ -35,7 +38,7 @@
   let isBogey = $derived(isX01 && rem >= 2 && rem <= 170 && !checkoutHint);
 
   let legLabel = $derived(game.current_leg > 1 ? t('Leg {n}', { n: game.current_leg }) : null);
-  let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null, game.special, legLabel, ...(ownMatch ? ruleChips(own) : [])].filter(Boolean).join(' · '));
+  let matchMeta = $derived([game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null, roundLabel, game.special, legLabel, ...(ownMatch ? ruleChips(own) : [])].filter(Boolean).join(' · '));
 
   let rows = $derived.by(() => {
     const players = game.players || {};
@@ -64,6 +67,10 @@
     await api('POST', ownMatch ? `/api/x01/${OWN_ACTIONS[action]}` : `/api/control/${action}`);
   }
   async function cancelMatch() {
+    if (inTournament) {
+      if (await abortTournament()) window.location.href = '/#tournament';
+      return;
+    }
     if (!confirm(t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
     window.location.href = '/';
@@ -155,7 +162,7 @@
         <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('undo')}>{t('↩ Undo')}</button>
         <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('next-player')}>{t('⏭ Next Player')}</button>
         {#if ownMatch}
-          <button class="btn-ctrl danger" onclick={cancelMatch}>{t('✕ Cancel')}</button>
+          <button class="btn-ctrl danger" onclick={cancelMatch}>{inTournament ? t('Abort tournament') : t('✕ Cancel')}</button>
         {:else}
           <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
           <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}>{t('⟳ Reset Board')}</button>

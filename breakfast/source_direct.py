@@ -19,6 +19,7 @@ from breakfast.checkout_training import CheckoutTrainingController
 from breakfast.target_battle import TargetBattleController
 from breakfast.killer import KillerController
 from breakfast.x01_game import X01Controller
+from breakfast.tournament import TournamentController
 from breakfast.autodarts_client import AutodartsCloudClient
 from breakfast.dev_demo import DemoRunner
 
@@ -216,6 +217,7 @@ def run_direct(email, password, board_id, record_file=None,
     # see on_event() below.
     x01_ctrl = X01Controller(lambda data: process_event(data), stats_db=stats_db_instance, audio=audio,
                              on_change=web.push)
+    tournament_ctrl = TournamentController(x01_ctrl, stats_db=stats_db_instance, on_change=web.push)
     _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio, tb_ctrl=tb_ctrl,
                     killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl, x01_ctrl=x01_ctrl)
 
@@ -272,7 +274,7 @@ def run_direct(email, password, board_id, record_file=None,
              stats_tracker=stats_tracker, mqtt_pub=mqtt_pub,
              config_path=config_path, audio_engine=audio,
              board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl, killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl,
-             x01_ctrl=x01_ctrl)
+             x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl)
     if web_port:
         web.start(web_port)
 

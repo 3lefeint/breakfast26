@@ -12,7 +12,7 @@ own account and needs no other add-on.
 ## Features
 
 - [Live scoreboard and TV view](#tv-view): full screen on a TV or tablet, with checkout suggestions and a live dartboard
-- [Games and drills](#games-and-drills): X01, Elimination, Target Battle, Killer, Field Training, Black Belt and a Checkout Trainer
+- [Games and drills](#games-and-drills): X01 with tournaments, Elimination, Target Battle, Killer, Field Training, Black Belt and a Checkout Trainer
 - [Voice caller](#voice-caller-and-voice-packs): announces the game, with English and German voice packs and an editor for your own
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
@@ -141,6 +141,13 @@ dartboard.
   out, the legs to win and any number of players; a bull-off or a draw decides who starts, and the first thrower moves
   one place on with every leg. The match is stored like any other X01 match, and undo, the Next button and corrections
   of a dart work as in Elimination.
+- **X01 tournament**: single elimination in the X01 mode of Breakfast. Pick the players (a new one can be added on the
+  spot), the base score, the in and out mode, a bull-off or a draw for who throws first, and the legs to win per round,
+  so the final can be longer than the first round. The bracket is drawn at random as soon as there are two players, byes
+  included (it is rounded up to the next power of two, a bye moves on without a match), and any two seats can be swapped
+  by hand. After a match its result waits half a minute, then the
+  next pairing starts by itself; the TV view shows the whole bracket between the matches. The tournament is stored, so it
+  survives a restart (a match in play does not), and its matches count in the statistics like any X01 match.
 - **Elimination**: any number of players, each with a number of lives. Every turn has to beat the total of
   the previous turn, otherwise the player loses a life; the last player with lives left wins. Turns can be
   corrected and undone, and a dart the board did not detect can be entered by hand and the Next button ends a turn without pulling the darts. An optional hint on the TV view marks the fields on the board that still beat the

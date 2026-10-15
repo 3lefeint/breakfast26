@@ -9,10 +9,12 @@
   import { api } from '../../lib/api.js';
   import { dartLabel } from '../../lib/killer.js';
   import { ruleChips } from '../../lib/x01.js';
+  import { abortTournament, roundName } from '../../lib/tournament.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
-  let { x } = $props();
+  let { x, tournament = null } = $props();
+  let inTournament = $derived(!!(tournament && tournament.active && tournament.current));
 
   let starting = $derived(x.phase !== 'bull_off');
   let lastThrow = $derived(x.last_turn?.darts?.[0] || null);
@@ -21,6 +23,10 @@
   let correcting = $state(false);
 
   async function stop() {
+    if (inTournament) {
+      if (await abortTournament()) window.location.href = '/#tournament';
+      return;
+    }
     if (!confirm(t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
     window.location.href = '/';
@@ -44,6 +50,7 @@
       {#if !starting}<span class="turn-hint">{x.pull_darts ? t('Pull the darts') : t('Bull-off: one dart at the bull')}</span>{/if}
     </div>
     <div class="rules">
+      {#if inTournament}<span class="rule-chip">{roundName(tournament.current.round, tournament.rounds.length)}</span>{/if}
       <span class="rule-chip">{x.rules.start}</span>
       {#each ruleChips(x) as chip}<span class="rule-chip">{chip}</span>{/each}
     </div>
@@ -75,7 +82,7 @@
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
         {#if x.pull_darts}<button class="btn-end-game" onclick={next}>{t('⏭ Next')}</button>{/if}
-        <button class="btn-end-game" onclick={stop}>{t('✕ Cancel')}</button>
+        <button class="btn-end-game" onclick={stop}>{inTournament ? t('Abort tournament') : t('✕ Cancel')}</button>
       </div>
     </div>
   </div>

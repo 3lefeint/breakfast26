@@ -19,6 +19,7 @@
   import SetupShots from './views/SetupShots.svelte';
   import Killer from './views/Killer.svelte';
   import X01 from './views/X01.svelte';
+  import Tournament from './views/Tournament.svelte';
   import Players from './views/Players.svelte';
   import Profile from './views/Profile.svelte';
   import Stats from './views/Stats.svelte';
@@ -95,6 +96,8 @@
           <Killer />
         {:else if $route === 'x01'}
           <X01 />
+        {:else if $route === 'tournament'}
+          <Tournament />
         {:else if $route === 'field-training'}
           <FieldTraining />
         {:else if $route === 'black-belt'}

@@ -25,6 +25,7 @@ from breakfast import config as cfg_mod
 from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
 from breakfast import known_players as kp
+from breakfast import tournament as tournament_mod
 from breakfast import online as online_mod
 from breakfast import frozen, self_update
 from breakfast import voicepack
@@ -52,6 +53,7 @@ _elim_ctrl = None
 _tb_ctrl = None
 _killer_ctrl = None
 _x01_ctrl = None
+_tournament_ctrl = None
 _ft_ctrl = None
 _co_ctrl = None
 _bb_ctrl = None
@@ -79,8 +81,8 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, tournament_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online, _elim_beat_hint
     _game_state = game_state
@@ -88,6 +90,7 @@ def wire(game_state, elim_ctrl,
     _tb_ctrl = tb_ctrl
     _killer_ctrl = killer_ctrl
     _x01_ctrl = x01_ctrl
+    _tournament_ctrl = tournament_ctrl
     _ft_ctrl = ft_ctrl
     _co_ctrl = co_ctrl
     _bb_ctrl = bb_ctrl
@@ -158,6 +161,7 @@ def _build_payload() -> dict:
         "target_battle": tb_snap,
         "killer": killer_snap,
         "x01": x01_snap,
+        "tournament": _tournament_ctrl.snapshot() if _tournament_ctrl else None,
         "field_training": ft_snap,
         "black_belt": bb_snap,
         "checkout_training": co_snap,
@@ -519,6 +523,8 @@ async def control_correct_throw(body: CorrectThrowBody):
 def _x01_guard():
     """An X01 match played in Breakfast blocks the other games while it runs; a finished one is closed
     (it would still hold the board stream). Returns an error to send back, else None."""
+    if _tournament_ctrl and _tournament_ctrl.running:
+        return {"error": "a tournament is running, abort it first"}
     if not _x01_ctrl or not _x01_ctrl.game:
         return None
     if _x01_ctrl.active:
@@ -860,6 +866,8 @@ async def x01_start(body: X01StartBody):
               body.players, body.start, body.in_mode, body.out_mode, body.legs)
     if not _x01_ctrl:
         return {"error": "no X01 controller"}
+    if _tournament_ctrl and _tournament_ctrl.running:
+        return {"error": "a tournament is running, abort it first"}
     if _online and _online.active:
         return {"error": "an online match is open, leave it first"}
     for ctrl, message in ((_elim_ctrl, "an Elimination game is running, cancel it first"),
@@ -882,6 +890,8 @@ async def x01_start(body: X01StartBody):
 @app.post("/api/x01/stop")
 async def x01_stop():
     log.debug("X01 stop requested")
+    if _tournament_ctrl and _tournament_ctrl.running:
+        return {"error": "a tournament is running, abort it first"}
     if _x01_ctrl:
         _x01_ctrl.stop()
     return {"ok": True}
@@ -930,6 +940,96 @@ async def x01_correct_last_dart(body: CorrectDartBody):
     if not _x01_ctrl.game.correct_last_dart(body.dart - 1, body.field):
         return {"error": "no turn to correct"}
     return {"ok": True}
+
+
+# ── REST: X01 tournaments ─────────────────────────────────────────────────────
+
+class TournamentDrawBody(BaseModel):
+    players: list[str]
+
+
+class TournamentStartBody(BaseModel):
+    seats: list[str | None]            # the first round in order, seats 2k and 2k+1 face each other; null is a bye
+    start: int = 501
+    in_mode: str = "straight"
+    out_mode: str = "double"
+    legs_by_round: list[int] | None = None     # legs to win per round, first round first; default one leg each
+    bull_off: bool = True      # a bull-off decides who throws first in the first leg of a match, else it is drawn
+
+
+@app.post("/api/tournament/draw")
+async def tournament_draw(body: TournamentDrawBody):
+    """Random seats for these players, byes included. Nothing is stored: the setup page moves the seats around and
+    starts with the final ones."""
+    players = [p.strip() for p in body.players if p.strip()]
+    try:
+        return {"seats": tournament_mod.draw(players)}
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/tournament/start")
+async def tournament_start(body: TournamentStartBody):
+    log.debug("Tournament start requested: seats=%s start=%s", body.seats, body.start)
+    if not _tournament_ctrl:
+        return {"error": "no tournament controller"}
+    if _tournament_ctrl.running:
+        return {"error": "a tournament is already running"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    for ctrl, message in ((_elim_ctrl, "an Elimination game is running, cancel it first"),
+                          (_tb_ctrl, "a Target Battle is running, cancel it first"),
+                          (_killer_ctrl, "a Killer game is running, cancel it first"),
+                          (_ft_ctrl, "a Field Training run is open, cancel it first"),
+                          (_bb_ctrl, "a Black Belt run is open, cancel it first"),
+                          (_co_ctrl, "a Checkout Training run is open, cancel it first")):
+        if ctrl and ctrl.active:
+            return {"error": message}
+    if _x01_ctrl and _x01_ctrl.game:
+        if _x01_ctrl.active:
+            return {"error": "an X01 match is running, cancel it first"}
+        _x01_ctrl.stop()
+    seats = [s.strip() if isinstance(s, str) and s.strip() else None for s in body.seats]
+    try:
+        _tournament_ctrl.start(seats, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
+                               legs_by_round=body.legs_by_round, bull_off=body.bull_off)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/tournament/next")
+async def tournament_next():
+    """Go on at once: start the next match without waiting, or finish the tournament after the final."""
+    if not (_tournament_ctrl and _tournament_ctrl.next()):
+        return {"error": "nothing to go on with"}
+    return {"ok": True}
+
+
+@app.post("/api/tournament/abort")
+async def tournament_abort():
+    """End the tournament and mark it as aborted; the matches played and their statistics stay."""
+    if not (_tournament_ctrl and _tournament_ctrl.abort()):
+        return {"error": "no tournament is running"}
+    return {"ok": True}
+
+
+@app.post("/api/tournament/close")
+async def tournament_close():
+    """Clear a finished tournament from the screens."""
+    if not (_tournament_ctrl and _tournament_ctrl.close()):
+        return {"error": "no finished tournament"}
+    return {"ok": True}
+
+
+@app.get("/api/tournament/history")
+async def tournament_history():
+    """The tournaments played so far, newest first: when, how it ended, who won, and with whom."""
+    if not _stats_db:
+        return []
+    return [{"id": t["id"], "created_at": t["created_at"], "ended_at": t["ended_at"], "status": t["status"],
+             "winner": t["data"].get("winner"), "players": t["data"]["config"]["players"],
+             "config": t["data"]["config"]} for t in _stats_db.list_tournaments()]
 
 
 # ── REST: field training ──────────────────────────────────────────────────────
