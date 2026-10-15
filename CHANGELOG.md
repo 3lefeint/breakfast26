@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-15
+
 ### Added
 - A small info button after the title of the X01, tournament, Elimination, Target Battle, Killer, Field Training, Black Belt and Random checkout pages shows what the game is and what its settings mean.
 - Max rounds for X01 and tournaments (no limit, 15, 25 or 50): a leg that nobody has checked out after that many rounds is decided by a bull-off, the closest dart wins; such a leg counts as a leg win but stays out of the best-leg statistics (#48, #45).
