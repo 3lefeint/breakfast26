@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Random checkout run on Home: another run with the same setup, a new
   // setup, or undoing the attempt that ended the run.
@@ -9,7 +10,7 @@
   let co = $derived($checkoutTraining);
 
   async function again() {
-    if (await rematch(co)) window.location.href = '/tv';
+    if (await rematch(co)) openTv();
   }
 
   async function undoLast() {

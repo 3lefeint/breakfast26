@@ -45,7 +45,7 @@ Two Breakfast installations on one machine, each with its own `config.toml` and 
    different `[web] port`s and `[stats] db` files.
 3. Start both (`python main.py ...`), open `#elimination` on each, pick **Online**.
 4. On the first: set a password, **Create**. On the second: the same password, the code, **Join**.
-5. Pick the players of each site, **Start** on the first. Both TVs (`/tv`) show the match; a turn
+5. Pick the players of each site, **Start** on the first. Both TV views (`/#tv`) show the match; a turn
    thrown on one board appears live on the other.
 
 To see the pause and rejoin: cut the network of one site for a minute (or close its connection to

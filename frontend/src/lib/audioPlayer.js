@@ -34,6 +34,7 @@ export function createPlayer({
   fetchFn = (...args) => fetch(...args),
   onQueueChange = () => {},
   onError = (msg) => console.warn('[audio] ' + msg),
+  onStateChange = () => {},
 } = {}) {
   let ctx = null;
   let generation = 0; // bumped by stopVoice(), invalidates queued items
@@ -57,6 +58,8 @@ export function createPlayer({
   function ensureContext() {
     if (ctx && ctx.state !== 'closed') return ctx;
     ctx = contextFactory();
+    ctx.onstatechange = () => { try { onStateChange(ctx.state); } catch (_) { /* a failing listener must not stop playback */ } };
+    try { onStateChange(ctx.state); } catch (_) { /* same */ }
     try {
       const keepAlive = ctx.createConstantSource();
       keepAlive.offset.value = KEEP_ALIVE_LEVEL;

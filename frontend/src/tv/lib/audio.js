@@ -1,48 +1,69 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { gameState } from '../../lib/stores/gameState.js';
 import { createPlayer } from '../../lib/audioPlayer.js';
 import { announceAchievement } from '../../lib/stores/achievementQueue.js';
 
-// TV-specific WS connection + voice-call playback. /tv is the audio-role
-// device by default (this is the one meant to be heard next to the board),
-// so its socket carries a `?role=audio` query param and also receives
-// `type: 'sound'` play instructions alongside the normal state payload —
-// unlike Home's plain gameState.connect(), which never needs either.
-// Reuses the shared `gameState` store so the players/elimination derived
-// stores work identically on both apps.
+// The TV view's WS connection + voice-call playback. The TV view is the audio-role device by default
+// (the one meant to be heard next to the board), so while it is shown it holds a socket with a `?role=audio`
+// query param that also receives `type: 'sound'` play instructions alongside the normal state payload.
+// Home's own socket never needs either. Reuses the shared `gameState` store so the derived stores work
+// identically in both views.
 
 export const audioOn = writable(true);
 export const connDot = writable(false);
+// True while the browser keeps the voice calls silent, until the page has been clicked.
+export const locked = writable(true);
 
 let socket = null;
-let currentRole = null;
-const player = createPlayer();
+let wanted = false;
+let retry = null;
+const player = createPlayer({ onStateChange: (state) => locked.set(state !== 'running') });
 
 function handleSound(inst) {
-  let on;
-  audioOn.subscribe((v) => (on = v))();
-  if (on) player.handle(inst);
+  // A call that arrives while the browser blocks the sound is dropped; played after the unlock it would
+  // come too late, and several of them would sound at once.
+  if (get(locked) || !get(audioOn)) return;
+  player.handle(inst);
 }
 
 function handleSoundBatch(msg) {
   for (const item of msg.items) handleSound({ ...item, v: msg.v });
 }
 
-export function connect() {
-  let on;
-  audioOn.subscribe((v) => (on = v))();
-  currentRole = on;
+function open() {
+  if (!wanted || (socket && socket.readyState <= 1)) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(`${proto}//${location.host}/ws${on ? '?role=audio' : ''}`);
-  socket.onopen = () => connDot.set(true);
-  socket.onclose = () => { connDot.set(false); setTimeout(connect, 2000); };
-  socket.onmessage = (e) => {
+  const ws = new WebSocket(`${proto}//${location.host}/ws${get(audioOn) ? '?role=audio' : ''}`);
+  socket = ws;
+  ws.onopen = () => connDot.set(true);
+  ws.onclose = () => {
+    if (socket !== ws) return;
+    connDot.set(false);
+    if (wanted) retry = setTimeout(open, 2000);
+  };
+  ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'sound') { handleSound(msg); return; }
     if (msg.type === 'sound_batch') { handleSoundBatch(msg); return; }
     if (msg.type === 'achievement') { announceAchievement(msg); return; }
     gameState.set(msg);
   };
+}
+
+// The TV view plays the voice calls: it holds its own socket with the audio role while it is shown.
+export function startAudio() {
+  wanted = true;
+  open();
+}
+
+export function stopAudio() {
+  wanted = false;
+  clearTimeout(retry);
+  player.stopAll();
+  const ws = socket;
+  socket = null;
+  try { ws?.close(); } catch (_) {}
+  connDot.set(false);
 }
 
 export function toggleAudio() {

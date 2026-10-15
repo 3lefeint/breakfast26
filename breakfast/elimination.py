@@ -8,7 +8,7 @@ from .turn_game import TurnGame, TurnGameController, dart_positions, parse_field
 
 log = logging.getLogger(__name__)
 
-# Give the browser time to redirect to /tv and reconnect its WebSocket with
+# Give the browser time to go to the TV view and reconnect its WebSocket with
 # role=audio before the opening calls fire — a fresh game (the frontend's
 # elimStart()/startRematch() redirect) POSTs, then immediately navigates,
 # so the old page's audio-role connection is already gone and the new one

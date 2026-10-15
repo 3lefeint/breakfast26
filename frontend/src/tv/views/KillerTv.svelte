@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Killer. The board is the stage: the field of every player's number is colored in the player's
@@ -42,7 +43,7 @@
   async function stop() {
     if (!confirm(t('Cancel the current game?'))) return;
     await api('POST', '/api/killer/stop');
-    window.location.href = '/';
+    navigate('home');
   }
 
   // Ends the turn by hand, like pulling the darts.

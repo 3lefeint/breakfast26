@@ -1351,7 +1351,7 @@ BY_ID = {a.id: a for a in ACHIEVEMENTS}
 
 # ── Engine ───────────────────────────────────────────────────────────────────
 
-# How long one unlock banner stays on /tv (the animation in AchievementBanner.svelte) and a short
+# How long one unlock banner stays on the TV view (the animation in AchievementBanner.svelte) and a short
 # pause after it, so that two sounds never run into each other.
 BANNER_SECONDS = 5.2
 UNLOCK_SPACING = BANNER_SECONDS + 0.3

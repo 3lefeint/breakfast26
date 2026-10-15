@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Killer game on Home: placements, a rematch with the same players and
@@ -17,7 +18,7 @@
   let correctingIndex = $state(null);
 
   async function again() {
-    if (await rematch(k)) window.location.href = '/tv';
+    if (await rematch(k)) openTv();
   }
 
   async function undoWin() {

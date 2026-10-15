@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Home's Tournament page: the setup and the tournaments played so far, or, while one is on, its bracket
   // with the controls. The matches themselves are played on /tv.
@@ -46,7 +47,7 @@
     {/if}
     <TournamentBracket {snap} />
     <div class="actions">
-      <a class="btn btn-start" href="/tv">{t('Open TV')}</a>
+      <a class="btn btn-start" href="#tv" onclick={openTv}>{t('Open TV')}</a>
       {#if snap.phase === 'idle'}
         <button class="btn ghost" onclick={nextMatch}>{t('Start next match')}</button>
       {/if}

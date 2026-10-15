@@ -9,8 +9,12 @@
 - X01 mode scored by Breakfast: start a match in Breakfast with base score, in mode and out mode (straight, double, master), legs to win and any number of players; a bull-off or a draw decides who starts; stored as a regular X01 match (#48).
 
 ### Changed
+- The TV view is the route `/#tv` of the main page; the separate `/tv` page is gone.
 - The cards on the Play page and the Checkout Trainer page show no description line and no arrow, only the icon and the name.
 - The setup pages of X01, tournaments, Elimination, Target Battle and Killer list the options and the player choice on the left and the players on the right; every setup page can add a new player.
+
+### Fixed
+- Voice calls stay silent after a game start until the sound is toggled: the TV view is now part of the page you start the game on (`/#tv`), so the click that starts a game also unlocks the sound; a directly opened TV view shows a "Tap for sound" note (#56).
 
 ## [1.3.0] - 2026-10-14
 

@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished X01 match on the TV: the winner marked with the crown, the legs won and
   // the average of each player, and the darts of the last turn. A dart tapped here is corrected and
@@ -24,7 +25,7 @@
 
   async function done() {
     await stopGame();
-    window.location.href = '/#x01';
+    navigate('x01');
   }
 </script>
 

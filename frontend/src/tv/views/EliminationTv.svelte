@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Ports tv.html's #activeElim: two-column layout (player card | scrollable
   // turn-queue list). Dart boxes are tap-to-correct, unlike Home's
@@ -55,7 +56,7 @@
   async function stop() {
     if (!confirm(online ? t('Leave the online match?') : t('Cancel the current game?'))) return;
     await api('POST', '/api/elimination/stop');
-    window.location.href = '/';
+    navigate('home');
   }
 
   // Ends the turn by hand, like pulling the darts.

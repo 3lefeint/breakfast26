@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Killer setup: players (order = play order, or random) and the two options. Every player gets a
   // random number when the game starts. Local state until Start is pressed.
@@ -48,7 +49,7 @@
       players: order, own_goal: ownGoal, singles, bull_off: bullOff, throw_numbers: throwNumbers, bots,
     });
     if (res.error) { alert(t(res.error)); return; }
-    window.location.href = '/tv';
+    openTv();
   }
 </script>
 

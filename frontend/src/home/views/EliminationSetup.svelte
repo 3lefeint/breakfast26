@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #elimSetup: lives counter, reorderable game-player
   // list, known-player chips to add/remove, start button. Local-only state
@@ -49,7 +50,7 @@
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     const res = await apiJson('POST', '/api/elimination/start', { players: order, lives: livesCount, bots });
     if (res.error) { alert(t(res.error)); return; }
-    window.location.href = '/tv';
+    openTv();
   }
 </script>
 

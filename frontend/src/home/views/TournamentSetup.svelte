@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Tournament setup: the rules (base score, in and out mode, who throws first, legs to win per round), the
   // players, and the bracket itself. The players are drawn into the bracket as soon as there are two; a draw
@@ -71,7 +72,7 @@
       seats, start: startScore, in_mode: inMode, out_mode: outMode, bull_off: bullOff, max_rounds: maxRounds,
       legs_by_round: legsByRound,
     });
-    if (ok) window.location.href = '/tv';
+    if (ok) openTv();
   }
 </script>
 

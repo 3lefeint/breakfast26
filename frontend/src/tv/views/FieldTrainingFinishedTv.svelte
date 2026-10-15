@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Field Training run on the TV.
   import { rematch, stopRun, undoTurn } from '../../lib/fieldTraining.js';
@@ -13,7 +14,7 @@
 
   async function done() {
     await stopRun();
-    window.location.href = '/#field-training';
+    navigate('field-training');
   }
 </script>
 

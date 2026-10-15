@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // X01 setup: the rules (base score, in and out mode, max rounds, legs to win, bull-off) and the players. The
   // order of the players means nothing: the bull-off or the draw decides who throws first. The left column has a
@@ -39,7 +40,7 @@
       players: gamePlayers, start: startScore, in_mode: inMode, out_mode: outMode, legs, bull_off: bullOff && gamePlayers.length > 1, max_rounds: maxRounds,
     });
     if (res.error) { alert(t(res.error)); return; }
-    window.location.href = '/tv';
+    openTv();
   }
 </script>
 

@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The bull-off before an X01 match: everybody throws one dart at the bull, the closest throws first,
   // the others follow by distance, players tied throw again. One dart counts as it lands and stays
@@ -28,12 +29,12 @@
 
   async function stop() {
     if (inTournament) {
-      if (await abortTournament()) window.location.href = '/#tournament';
+      if (await abortTournament()) navigate('tournament');
       return;
     }
     if (!confirm(t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
-    window.location.href = '/';
+    navigate('home');
   }
 
   // Goes on without pulling the darts, like the Next button of the games.

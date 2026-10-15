@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Field Training run on Home: another run with the same setup, a new
   // setup, or undoing the turn that ended the run.
@@ -9,7 +10,7 @@
   let ft = $derived($fieldTraining);
 
   async function again() {
-    if (await rematch(ft)) window.location.href = '/tv';
+    if (await rematch(ft)) openTv();
   }
 
   async function undoLast() {

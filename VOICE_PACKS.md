@@ -103,7 +103,7 @@ missing, that specific call is skipped — everything else keeps working.
 
 Not spoken and not part of a voice, so these sounds live in their own folder,
 `<audio dir>/achievements/`, searched after your own set and the voice pack.
-They play with the unlock banner on `/tv` when the match is over, once per
+They play with the unlock banner on the TV view when the match is over, once per
 earned achievement.
 
 | Key(s) | When it plays | Required? |
@@ -175,7 +175,7 @@ The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
 | Key(s) | When it plays | Required? |
 |---|---|---|
 | `matchon` | The game starts | Recommended |
-| `wheel` | A round with a random target starts and the wheel turns on `/tv`. A sound you supply (put `wheel.mp3` into your sound directory), the generation plan does not make it | Optional |
+| `wheel` | A round with a random target starts and the wheel turns on the TV view. A sound you supply (put `wheel.mp3` into your sound directory), the generation plan does not make it | Optional |
 | `target_is` + `{n}` (the target) | The wheel has landed, 4.5 seconds after the round started; right away with a fixed target order | Recommended |
 | `<player name>` + `filler_after_name` | A player is up: after the target at the start of a round, and for every next player | Recommended |
 | `{n}` (the points of the turn, 0 and up) | After the third dart, or when the darts are pulled with fewer | Recommended |

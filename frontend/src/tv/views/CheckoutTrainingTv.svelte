@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Random checkout. The board fills most of the height with the darts of the attempt in
@@ -31,13 +32,13 @@
   async function finish() {
     if (!confirm(co.results.length ? t('End the run now and keep the attempts so far?') : t('Cancel the run?'))) return;
     await finishRun();
-    if (!co.results.length) window.location.href = '/';
+    if (!co.results.length) navigate('home');
   }
 
   async function stop() {
     if (!confirm(t('Cancel the run without keeping it?'))) return;
     await stopRun();
-    window.location.href = '/';
+    navigate('home');
   }
 
   // Ends the turn by hand, like pulling the darts.

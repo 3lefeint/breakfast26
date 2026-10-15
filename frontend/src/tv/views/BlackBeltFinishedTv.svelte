@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Black Belt run on the TV.
   import { rematch, stopRun, undoTurn } from '../../lib/blackBelt.js';
@@ -14,7 +15,7 @@
 
   async function done() {
     await stopRun();
-    window.location.href = '/#black-belt';
+    navigate('black-belt');
   }
 </script>
 

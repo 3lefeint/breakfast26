@@ -4,6 +4,7 @@
   import { connect, wsStatus, gameState } from '../lib/stores/gameState.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
   import { route } from '../lib/router.js';
+  import TvApp from '../tv/App.svelte';
   import Aurora from '../lib/components/Aurora.svelte';
   import Sidebar from './shell/Sidebar.svelte';
   import TopBar from './shell/TopBar.svelte';
@@ -76,56 +77,60 @@
   }
 </script>
 
-<Aurora />
+{#if $route === 'tv'}
+  <TvApp />
+{:else}
+  <Aurora />
 
-{#if showDevCelebration}
-  <DevUnlockCelebration />
+  {#if showDevCelebration}
+    <DevUnlockCelebration />
+  {/if}
+
+  <div class="shell">
+    <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel} />
+    <Sidebar route={$route} {boardAddress} version={$health.version} {onVersionTap} />
+
+    <main>
+        <div class="page">
+          {#if $route === 'elimination'}
+            <Elimination />
+          {:else if $route === 'target-battle'}
+            <TargetBattle />
+          {:else if $route === 'killer'}
+            <Killer />
+          {:else if $route === 'x01'}
+            <X01 />
+          {:else if $route === 'tournament'}
+            <Tournament />
+          {:else if $route === 'field-training'}
+            <FieldTraining />
+          {:else if $route === 'black-belt'}
+            <BlackBelt />
+          {:else if $route === 'checkout-trainer'}
+            <CheckoutTrainer />
+          {:else if $route === 'checkout-training'}
+            <CheckoutTraining />
+          {:else if $route === 'checkout-quiz'}
+            <CheckoutQuiz />
+          {:else if $route === 'setup-shots'}
+            <SetupShots />
+          {:else if $route === 'players'}
+            <Players />
+          {:else if $route.startsWith('profile/')}
+            <Profile name={decodeURIComponent($route.slice('profile/'.length))} />
+          {:else if $route === 'stats'}
+            <Stats />
+          {:else if $route === 'settings'}
+            <Settings />
+          {:else if $route === 'about'}
+            <About />
+          {:else}
+            <Home />
+          {/if}
+        </div>
+    </main>
+  </div>
 {/if}
-
-<div class="shell">
-  <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel} />
-  <Sidebar route={$route} {boardAddress} version={$health.version} {onVersionTap} />
-
-  <main>
-      <div class="page">
-        {#if $route === 'elimination'}
-          <Elimination />
-        {:else if $route === 'target-battle'}
-          <TargetBattle />
-        {:else if $route === 'killer'}
-          <Killer />
-        {:else if $route === 'x01'}
-          <X01 />
-        {:else if $route === 'tournament'}
-          <Tournament />
-        {:else if $route === 'field-training'}
-          <FieldTraining />
-        {:else if $route === 'black-belt'}
-          <BlackBelt />
-        {:else if $route === 'checkout-trainer'}
-          <CheckoutTrainer />
-        {:else if $route === 'checkout-training'}
-          <CheckoutTraining />
-        {:else if $route === 'checkout-quiz'}
-          <CheckoutQuiz />
-        {:else if $route === 'setup-shots'}
-          <SetupShots />
-        {:else if $route === 'players'}
-          <Players />
-        {:else if $route.startsWith('profile/')}
-          <Profile name={decodeURIComponent($route.slice('profile/'.length))} />
-        {:else if $route === 'stats'}
-          <Stats />
-        {:else if $route === 'settings'}
-          <Settings />
-        {:else if $route === 'about'}
-          <About />
-        {:else}
-          <Home />
-        {/if}
-      </div>
-  </main>
-</div>
 
 <style>
   /* html/body's height/background/reset come from lib/theme.css (shared with TV/Audio). The top bar

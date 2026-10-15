@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The tournament on the TV between the matches: the whole bracket with the match that is next outlined,
   // and below it what happens now: a result that waits (the next match starts by itself, or at once; an
@@ -27,12 +28,12 @@
   }
 
   async function abort() {
-    if (await abortTournament()) window.location.href = '/#tournament';
+    if (await abortTournament()) navigate('tournament');
   }
 
   async function done() {
     await closeTournament();
-    window.location.href = '/#tournament';
+    navigate('tournament');
   }
 </script>
 

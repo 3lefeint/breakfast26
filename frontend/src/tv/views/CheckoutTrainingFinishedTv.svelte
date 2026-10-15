@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Random checkout run on the TV.
   import { rematch, stopRun, undoAttempt } from '../../lib/checkoutTraining.js';
@@ -13,7 +14,7 @@
 
   async function done() {
     await stopRun();
-    window.location.href = '/#checkout-trainer';
+    navigate('checkout-trainer');
   }
 </script>
 

@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on Home: placements and scores, a rematch with the same
@@ -14,7 +15,7 @@
   let solo = $derived((tb?.players || []).length === 1);
 
   async function again() {
-    if (await rematch(tb)) window.location.href = '/tv';
+    if (await rematch(tb)) openTv();
   }
 
   async function undoWin() {

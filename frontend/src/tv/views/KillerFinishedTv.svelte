@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Killer game on the TV: the placements with their numbers, the winner
@@ -24,7 +25,7 @@
 
   async function done() {
     await stopGame();
-    window.location.href = '/#killer';
+    navigate('killer');
   }
 </script>
 

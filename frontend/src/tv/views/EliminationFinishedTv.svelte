@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Ports tv.html's #elimFinished + #rematchModal — same default-order
   // rematch logic as Home's EliminationFinished.svelte, plus the
@@ -76,17 +77,17 @@
 
   async function newGame() {
     await api('POST', '/api/elimination/stop');
-    window.location.href = '/#elimination';
+    navigate('elimination');
   }
   let onlineError = $state('');
   async function onlineRematch() {
     const res = await apiJson('POST', '/api/online/rematch');
     onlineError = res.error ? t(res.error) : '';
-    if (!res.error) window.location.href = '/#elimination';   // the lobby is on Home
+    if (!res.error) navigate('elimination');   // the lobby is on Home
   }
   async function finishDone() {
     await api('POST', '/api/elimination/stop');
-    window.location.href = '/#elimination';
+    navigate('elimination');
   }
   async function undoWin() {
     // Resumes the match server-side and un-records the win from

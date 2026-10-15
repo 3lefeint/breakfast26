@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import { onMount } from 'svelte';
   import { gameState } from '../lib/stores/gameState.js';
@@ -14,8 +15,8 @@
   import { checkoutTraining } from '../lib/stores/checkoutTraining.js';
   import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
-  import { connect, toggleAudio, audioOn, connDot, primeAutoplay } from './lib/audio.js';
-  import { health, startHealthPolling } from '../lib/stores/health.js';
+  import { startAudio, stopAudio, toggleAudio, audioOn, connDot, locked, primeAutoplay } from './lib/audio.js';
+  import { health } from '../lib/stores/health.js';
   import AppHeader from '../lib/components/AppHeader.svelte';
   import Aurora from '../lib/components/Aurora.svelte';
   import AchievementBanner from './views/AchievementBanner.svelte';
@@ -37,17 +38,25 @@
   import CheckoutTrainingTv from './views/CheckoutTrainingTv.svelte';
   import CheckoutTrainingFinishedTv from './views/CheckoutTrainingFinishedTv.svelte';
 
+  // The TV view is a route of the Home app: it takes over the whole window while it is shown, and its socket with
+  // the audio role is open only for that time.
   onMount(() => {
-    connect();
-    startHealthPolling();
+    startAudio();
     primeAutoplay();
+    document.documentElement.classList.add('tv-mode');
+    document.body.classList.add('tv-mode');
+    return () => {
+      stopAudio();
+      document.documentElement.classList.remove('tv-mode');
+      document.body.classList.remove('tv-mode');
+    };
   });
 
   // After a rematch every site goes back to the lobby on Home, where it picks its own players.
   let lastPhase = null;
   $effect(() => {
     const phase = $online?.phase ?? null;
-    if (lastPhase === 'ended' && phase === 'lobby') window.location.href = '/#elimination';
+    if (lastPhase === 'ended' && phase === 'lobby') navigate('elimination');
     lastPhase = phase;
   });
 
@@ -126,12 +135,17 @@
   let headerGlow = $derived(boardStatusColor === 'grey' ? null : boardStatusColor);
 </script>
 
+<svelte:window onpointerdown={() => $locked && primeAutoplay()} />
+
 <Aurora />
 
 <AchievementBanner />
 
 <AppHeader title={matchMeta} glowColor={headerGlow}>
   {#snippet right()}
+    {#if $audioOn && $locked}
+      <button type="button" class="tap-note" onclick={primeAutoplay}>{t('Tap for sound')}</button>
+    {/if}
     <button type="button" class="sound-btn" title={t('Play voice calls on this device')} onclick={toggleAudio}>
       {$audioOn ? '🔊' : '🔇'}
     </button>
@@ -212,15 +226,17 @@
      so the flex-column page layout has to target #app instead of body,
      otherwise flex:1 on #idle/#active/etc. has no effect and the footer
      ends up sitting right after the content instead of at the bottom. */
-  :global(html), :global(body) { overflow: hidden; }
+  :global(html.tv-mode), :global(body.tv-mode) { overflow: hidden; }
   /* On phone-width viewports, clipping (overflow: hidden) loses
      content that doesn't fit a wide-TV layout — allow vertical scrolling
      instead so nothing is simply unreachable. */
   @media (max-width: 480px) {
-    :global(html), :global(body) { overflow-y: auto; }
+    :global(html.tv-mode), :global(body.tv-mode) { overflow-y: auto; }
   }
-  :global(#app) { min-height: 100vh; display: flex; flex-direction: column; }
+  :global(body.tv-mode #app) { min-height: 100vh; display: flex; flex-direction: column; }
   .sound-btn { cursor: pointer; user-select: none; font-size: 1.1rem; background: none; border: none; color: inherit; font-family: inherit; padding: 0; }
+  .tap-note { cursor: pointer; font-family: inherit; font-size: 0.8rem; color: var(--muted); background: var(--glass); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.15rem 0.7rem; margin-right: 0.6rem; }
+  .tap-note:hover { color: var(--accent); border-color: var(--accent); }
   #idle {
     flex: 1; display: flex; align-items: center; justify-content: center;
     font-size: 2rem; color: var(--muted); font-weight: 300; letter-spacing: 0.05em;

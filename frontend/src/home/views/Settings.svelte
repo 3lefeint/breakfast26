@@ -580,7 +580,7 @@
         <label for="sWebBeatHint">{t('Elimination: mark the fields that beat the target')}</label>
         <input type="checkbox" id="sWebBeatHint" bind:checked={cfg.web.elimination_beat_hint}>
       </div>
-      <p class="note">{t('On /tv the board marks every field that is still enough to beat the target. It can also be switched during a match with the Hint button.')}</p>
+      <p class="note">{t('On the TV view the board marks every field that is still enough to beat the target. It can also be switched during a match with the Hint button.')}</p>
     </div>
 
     <div class="settings-section look">
@@ -791,7 +791,7 @@
 
     <div class="settings-section">
       <div class="settings-section-title">{t('Simulate a match')}</div>
-      <p class="note">{t('Plays out a full X01 leg or Elimination match at runtime, live on /tv — no physical board needed. Refuses to start while a real match is already in progress.')}</p>
+      <p class="note">{t('Plays out a full X01 leg or Elimination match at runtime, live on the TV view — no physical board needed. Refuses to start while a real match is already in progress.')}</p>
       <button type="button" class="btn btn-add" style="width:100%" onclick={() => startDemo('x01')} disabled={devDemo?.running}>{t('▶ Simulate X01 leg')}</button>
       <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={() => startDemo('elimination')} disabled={devDemo?.running}>{t('▶ Simulate Elimination match')}</button>
       <div class="voicepack-progress">{devDemo?.running ? t('Running… ({mode})', { mode: devDemo.mode }) : ''}</div>

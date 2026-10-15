@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Target Battle setup: players (order = play order, or random), number of rounds, how the target
   // of each round is chosen (random, or a fixed order), the scoring profile and the tiebreak.
@@ -75,7 +76,7 @@
       players: order, rounds, scoring, tiebreak, targets: fixedOrder ? targets : null,
     });
     if (res.error) { alert(t(res.error)); return; }
-    window.location.href = '/tv';
+    openTv();
   }
 </script>
 

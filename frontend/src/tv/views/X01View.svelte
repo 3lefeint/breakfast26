@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Ports tv.html's #active X01 display and migrates index.html's
   // Scoreboard-tab controls here (Undo/Next Player/Next Leg/Reset Board,
@@ -68,12 +69,12 @@
   }
   async function cancelMatch() {
     if (inTournament) {
-      if (await abortTournament()) window.location.href = '/#tournament';
+      if (await abortTournament()) navigate('tournament');
       return;
     }
     if (!confirm(t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
-    window.location.href = '/';
+    navigate('home');
   }
   async function correctThrowSubmit() {
     const field = correctField.trim();

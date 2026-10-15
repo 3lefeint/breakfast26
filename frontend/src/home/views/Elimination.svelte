@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Home's Elimination tab only handles Setup and the Finished/rematch
   // screen — the live view is /tv's job (and does it better: full-width
@@ -20,7 +21,7 @@
 
   $effect(() => {
     if ($elimination && $elimination.active && $elimination.state !== 'finished') {
-      window.location.href = '/tv';
+      openTv();
     }
   });
 </script>

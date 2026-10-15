@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #elimFinished + #rematchModal. Default rematch
   // order: first-eliminated player starts first, winner starts last
@@ -74,7 +75,7 @@
   async function startRematch() {
     if (rematchPlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
     await api('POST', '/api/elimination/start', { players: rematchPlayers, lives: rematchLives });
-    window.location.href = '/tv';
+    openTv();
   }
 
   async function newGame() {

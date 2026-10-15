@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Target Battle. The board is the stage: it fills most of the height, with every dart of
@@ -83,7 +84,7 @@
   async function stop() {
     if (!confirm(t('Cancel the current game?'))) return;
     await stopGame();
-    window.location.href = '/';
+    navigate('home');
   }
 
   // Ends the turn by hand, like pulling the darts.

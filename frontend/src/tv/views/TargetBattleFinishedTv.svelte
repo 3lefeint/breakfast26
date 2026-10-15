@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on the TV: the placements with their scores, the winners
@@ -25,7 +26,7 @@
 
   async function done() {
     await stopGame();
-    window.location.href = '/#target-battle';
+    navigate('target-battle');
   }
 </script>
 

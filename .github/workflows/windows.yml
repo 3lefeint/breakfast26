@@ -83,7 +83,7 @@ jobs:
           }
           if (-not $health) { throw "Breakfast did not answer" }
           if ($health.version -ne $version) { throw "wrong version $($health.version)" }
-          foreach ($path in "/", "/tv", "/audio", "/api/changelog", "/api/voicepack/packs") {
+          foreach ($path in "/", "/audio", "/api/changelog", "/api/voicepack/packs") {
             $r = Invoke-WebRequest "http://127.0.0.1:8080$path" -UseBasicParsing
             if ($r.StatusCode -ne 200) { throw "$path answered $($r.StatusCode)" }
           }

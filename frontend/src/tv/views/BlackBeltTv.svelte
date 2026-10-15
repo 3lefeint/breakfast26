@@ -1,4 +1,5 @@
 <script>
+  import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Black Belt. The board shows the darts of the turn with the double that is up lit; beside
@@ -27,13 +28,13 @@
   async function finish() {
     if (!confirm(bb.thrown ? t('End the run now and keep the darts thrown?') : t('Cancel the run?'))) return;
     await finishRun();
-    if (!bb.thrown) window.location.href = '/';
+    if (!bb.thrown) navigate('home');
   }
 
   async function stop() {
     if (!confirm(t('Cancel the run without keeping it?'))) return;
     await stopRun();
-    window.location.href = '/';
+    navigate('home');
   }
 
   // Ends the turn by hand, like pulling the darts.

@@ -1,6 +1,6 @@
 """Runtime-triggered game simulations, gated behind the `[dev] enabled`
 config flag — lets someone developing away from a physical board watch a
-full X01 leg or Elimination match play out on /tv, triggered from the
+full X01 leg or Elimination match play out on the TV view, triggered from the
 Settings "Dev" tab instead of needing a separate CLI mode/restart.
 
 X01: replays the bundled `data/sessions/test.jsonl` fixture (a real
@@ -116,7 +116,7 @@ class DemoRunner:
                 # real match-started fired (its first line is already
                 # game-started) — state.py only sets game_mode/points_start/
                 # match_started from an actual match-started event, so
-                # without one /tv would never leave "waiting for match" even
+                # without one the TV view would never leave "waiting for match" even
                 # though dart-by-dart processing runs fine underneath.
                 # game-started already carries the same game/remainingScores
                 # shape match-started needs, so synthesize one from it.

@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Home's Field Training page only handles the setup and the finished screen. The live view is
   // /tv's job; starting a run navigates there, and landing here while a run is already open (back
@@ -10,7 +11,7 @@
 
   $effect(() => {
     if ($fieldTraining && $fieldTraining.active && $fieldTraining.state !== 'finished') {
-      window.location.href = '/tv';
+      openTv();
     }
   });
 </script>

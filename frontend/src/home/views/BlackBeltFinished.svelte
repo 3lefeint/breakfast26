@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Black Belt run on Home: another run with the same setup, a new setup,
   // or undoing the last turn.
@@ -9,7 +10,7 @@
   let bb = $derived($blackBelt);
 
   async function again() {
-    if (await rematch(bb)) window.location.href = '/tv';
+    if (await rematch(bb)) openTv();
   }
 
   async function undoLast() {

@@ -114,7 +114,7 @@ Open `http://<host>:8080` from any device on your network. **Play** sets up and 
 **Players** lists the players with their profiles and achievements and merges a player that was created twice (for example after a name change) into another one, **Stats** shows the statistics, and
 **Settings** edits everything in `config.toml` without touching the file. Settings also holds the voice-pack
 editor, the update check and the look of the interface: language, theme, accent color and an animated
-background. `/tv` and `/audio` are separate pages, described below.
+background. The TV view (`/#tv`) and the `/audio` page are described below.
 
 <table>
 <tr>
@@ -125,7 +125,7 @@ background. `/tv` and `/audio` are separate pages, described below.
 
 ### TV view
 
-Open `http://<host>:8080/tv` on a display near the board. It shows whichever game is running. For X01 that
+Press **Open TV** in the top bar (or open `http://<host>:8080/#tv`) on a display near the board. Starting a game opens it by itself. It shows whichever game is running. For X01 that
 is the scoreboard with the remaining score, the suggested checkout (with a "Bogey" badge for scores that
 cannot be checked out) and the live average, 180s and checkout rate next to each player. With the local
 board connection, a dartboard shows where each dart of the current turn landed.

@@ -43,7 +43,6 @@ _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 # the old hand-written templates entirely.
 _DIST_DIR             = os.path.join(os.path.dirname(__file__), "dist")
 _DIST_INDEX_PATH      = os.path.join(_DIST_DIR, "index.html")
-_DIST_TV_HTML_PATH    = os.path.join(_DIST_DIR, "tv.html")
 _DIST_AUDIO_HTML_PATH = os.path.join(_DIST_DIR, "audio.html")
 
 # ── Shared state (injected via wire()) ───────────────────────────────────────
@@ -238,12 +237,6 @@ if os.path.isdir(os.path.join(_DIST_DIR, "assets")):
 @app.get("/", response_class=HTMLResponse)
 async def index():
     with open(_DIST_INDEX_PATH, encoding="utf-8") as f:
-        return HTMLResponse(f.read())
-
-
-@app.get("/tv", response_class=HTMLResponse)
-async def tv():
-    with open(_DIST_TV_HTML_PATH, encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
 

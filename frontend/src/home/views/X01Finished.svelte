@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished X01 match on Home: the legs won, the average, a rematch with the same
   // players and rules, a new setup, correcting a dart of the last turn or undoing it. A match won by
@@ -19,7 +20,7 @@
   let correctingIndex = $state(null);
 
   async function again() {
-    if (await rematch(x)) window.location.href = '/tv';
+    if (await rematch(x)) openTv();
   }
 
   async function undoWin() {

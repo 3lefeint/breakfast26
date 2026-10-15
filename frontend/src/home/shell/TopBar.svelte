@@ -1,4 +1,5 @@
 <script>
+  import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The bar above the pages of the Home app: the connections (board, MQTT, Autodarts, and the live
   // connection to this app while it is down), a button that opens the TV view and a shortcut to
@@ -23,7 +24,7 @@
       <span class="status" title={t('MQTT')}><span class="dot" class:ok={mqttOk}></span><span class="label">{t('MQTT')}</span></span>
       <span class="status" title={t('Autodarts')}><span class="dot" class:ok={autodartsOk}></span><span class="label">{t('Autodarts')}</span></span>
     </span>
-    <a class="btn tv" href="/tv"><Icon name="tv" size={20} /><span>{t('Open TV')}</span></a>
+    <a class="btn tv" href="#tv" onclick={openTv}><Icon name="tv" size={20} /><span>{t('Open TV')}</span></a>
     <a class="btn icon" href="#settings" aria-label={t('Settings')} title={t('Settings')}><Icon name="settings" size={20} /></a>
   </div>
 </header>
