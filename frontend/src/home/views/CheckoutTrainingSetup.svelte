@@ -3,6 +3,7 @@
   // Random checkout setup: one player, the range of scores, the number of attempts and whether the
   // standard route is shown while throwing.
   import { players } from '../../lib/stores/players.js';
+  import NewPlayer from '../../lib/components/NewPlayer.svelte';
   import { cap } from '../../lib/util.js';
   import { RANGES, rangeLabel, startRun } from '../../lib/checkoutTraining.js';
 
@@ -20,18 +21,10 @@
     if (!player) { alert(t('Select a player.')); return; }
     if (await startRun({ player, low: range.low, high: range.high, attempts, show_route: showRoute })) window.location.href = '/tv';
   }
+  import Toggle from '../../lib/components/Toggle.svelte';
 </script>
 
 <div class="section">
-  <div class="section-title">{t('Setup')}</div>
-
-  <div class="section-title sub">{t('Player')}</div>
-  <div class="chips">
-    {#each $players.known as name (name)}
-      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
-    {/each}
-  </div>
-
   <div class="section-title sub">{t('Scores')}</div>
   <div class="chips" role="radiogroup" aria-label={t('Scores')}>
     {#each RANGES as r (r.id)}
@@ -51,10 +44,15 @@
     </div>
   </div>
 
-  <label class="check">
-    <input type="checkbox" bind:checked={showRoute} />
-    <span>{t('Show the standard route while throwing')}</span>
-  </label>
+  <Toggle wide bind:checked={showRoute} label={t('Show the standard route while throwing')} />
+
+  <div class="section-title sub">{t('Player')}</div>
+  <div class="chips">
+    {#each $players.known as name (name)}
+      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
+    {/each}
+  </div>
+  <NewPlayer onadded={(name) => (player = name)} />
 
   <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
@@ -71,11 +69,10 @@
   .option-row { display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0 0; flex-wrap: wrap; }
   .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 5rem; }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
-  .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 3rem; text-align: center; }
-  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; min-width: 2rem; height: 2rem; padding: 0 0.4rem; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; }
+  .counter-val { font-size: 1.15rem; font-weight: 700; min-width: 3rem; text-align: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; min-width: 1.5rem; height: 1.5rem; padding: 0 0.3rem; cursor: pointer; font-size: 0.95rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
-  .check { display: flex; align-items: center; gap: 0.6rem; margin: 1.25rem 0 1.25rem; font-size: 0.9rem; cursor: pointer; }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
-  .btn-start { background: #166534; color: #fff; }
+  .btn-start { background: #166534; color: #fff; margin-top: 1.2rem; }
 </style>

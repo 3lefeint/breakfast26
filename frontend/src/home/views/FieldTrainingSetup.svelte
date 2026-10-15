@@ -4,6 +4,7 @@
   // The darts follow the field until they are changed: 100 at a number, 50 at the bull. A run
   // with fewer darts than that is saved as practice.
   import { players } from '../../lib/stores/players.js';
+  import NewPlayer from '../../lib/components/NewPlayer.svelte';
   import { cap } from '../../lib/util.js';
   import { BULL, fieldLabel, standardDarts, startRun } from '../../lib/fieldTraining.js';
 
@@ -22,18 +23,10 @@
     if (!Number.isInteger(darts) || darts < 1) { alert(t('The number of darts has to be at least 1.')); return; }
     if (await startRun({ player, field, darts })) window.location.href = '/tv';
   }
+  import Toggle from '../../lib/components/Toggle.svelte';
 </script>
 
 <div class="section">
-  <div class="section-title">{t('Setup')}</div>
-
-  <div class="section-title sub">{t('Player')}</div>
-  <div class="chips">
-    {#each $players.known as name (name)}
-      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
-    {/each}
-  </div>
-
   <div class="section-title sub">{t('Field')}</div>
   <div class="fields" role="radiogroup" aria-label={t('Field')}>
     {#each Array.from({ length: 20 }, (_, i) => i + 1) as n}
@@ -64,6 +57,14 @@
     {/if}
   </div>
 
+  <div class="section-title sub">{t('Player')}</div>
+  <div class="chips">
+    {#each $players.known as name (name)}
+      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
+    {/each}
+  </div>
+  <NewPlayer onadded={(name) => (player = name)} />
+
   <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
 
@@ -84,10 +85,10 @@
   .option-row { display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0 0; flex-wrap: wrap; }
   .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 5rem; }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
-  .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 3rem; text-align: center; }
-  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; min-width: 2rem; height: 2rem; padding: 0 0.4rem; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; }
+  .counter-val { font-size: 1.15rem; font-weight: 700; min-width: 3rem; text-align: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; min-width: 1.5rem; height: 1.5rem; padding: 0 0.3rem; cursor: pointer; font-size: 0.95rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
-  .btn-start { background: #166534; color: #fff; }
+  .btn-start { background: #166534; color: #fff; margin-top: 1.2rem; }
 </style>

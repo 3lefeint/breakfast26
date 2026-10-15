@@ -6,13 +6,14 @@
   // like any. Local state until Start is pressed.
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
+  import Toggle from '../../lib/components/Toggle.svelte';
+  import NewPlayer from '../../lib/components/NewPlayer.svelte';
   import { cap } from '../../lib/util.js';
   import { START_SCORES, MODES, MAX_LEGS, MAX_ROUNDS_CHOICES } from '../../lib/x01.js';
   import { roundName, roundsFor, previewSnap, drawSeats, startTournament } from '../../lib/tournament.js';
   import TournamentBracket from '../../lib/components/TournamentBracket.svelte';
 
   let gamePlayers = $state([]);
-  let newName = $state('');
   let startScore = $state(501);
   let inMode = $state('straight');
   let outMode = $state('double');
@@ -47,14 +48,7 @@
   }
   function removeFromGame(i) { gamePlayers.splice(i, 1); redraw(); }
 
-  async function addPlayer() {
-    const name = newName.trim();
-    if (!name) return;
-    const res = await apiJson('POST', '/api/players', { name });
-    if (res.error) { alert(t(res.error)); return; }
-    newName = '';
-    if (!gamePlayers.includes(name)) { gamePlayers.push(name); redraw(); }
-  }
+  function added(name) { if (!gamePlayers.includes(name)) { gamePlayers.push(name); redraw(); } }
 
   function setScore(e) {
     const n = parseInt(e.target.value, 10);
@@ -121,13 +115,7 @@
         </div>
       </div>
 
-      <div class="option-row">
-        <span class="label">{t('Bull-Off')}</span>
-        <label class="switch">
-          <input type="checkbox" bind:checked={bullOff}>
-          <span class="slider"></span>
-        </label>
-      </div>
+      <Toggle bind:checked={bullOff} label={t('Bull-Off')} />
 
       <div class="section-title">{t('Choose Players')}</div>
       <div class="known-chips">
@@ -135,10 +123,7 @@
           <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
         {/each}
       </div>
-      <div class="add-row">
-        <input class="text-input" placeholder={t('New player')} bind:value={newName} onkeydown={(e) => e.key === 'Enter' && addPlayer()}>
-        <button class="btn-small" onclick={addPlayer}>{t('Add player')}</button>
-      </div>
+      <NewPlayer onadded={added} />
     </div>
 
     <!-- The same word in both languages; t('Players') is taken by the navigation. -->
@@ -201,28 +186,17 @@
   .counter-val { font-size: 1.15rem; font-weight: 700; min-width: 1.4rem; text-align: center; }
   .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; width: 1.5rem; height: 1.5rem; cursor: pointer; font-size: 0.95rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
-  .switch { position: relative; display: inline-block; width: 2.8rem; height: 1.5rem; cursor: pointer; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .slider { position: absolute; inset: 0; border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-border); transition: background 0.15s, border-color 0.15s; }
-  .slider::before { content: ''; position: absolute; width: 1.05rem; height: 1.05rem; left: 0.2rem; top: 50%; transform: translateY(-50%); border-radius: 50%; background: var(--muted); transition: transform 0.15s, background 0.15s; }
-  .switch input:checked + .slider { background: var(--accent-soft); border-color: var(--accent); }
-  .switch input:checked + .slider::before { transform: translate(1.3rem, -50%); background: var(--accent); }
-  .switch input:focus-visible + .slider { outline: 2px solid var(--accent); outline-offset: 2px; }
   .seg { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
   .seg-btn { background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 20px; padding: 0.3rem 0.9rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   .seg-btn:hover { border-color: var(--accent); color: var(--text); }
   .seg-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
-  .score-input, .text-input { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 12px; color: var(--text); padding: 0.3rem 0.6rem; font-family: inherit; }
+  .score-input { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 12px; color: var(--text); padding: 0.3rem 0.6rem; font-family: inherit; }
   .score-input { width: 5rem; text-align: center; }
-  .text-input { flex: 1; min-width: 0; }
   @media (max-width: 640px) { .option-row .label { min-width: 0; width: 100%; } }
   .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: flex-start; height: 8.5rem; overflow-y: auto; margin-bottom: 0.8rem; }
   .chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-  .add-row { display: flex; gap: 0.5rem; max-width: 34rem; }
-  .btn-small { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 12px; padding: 0.3rem 0.9rem; font-family: inherit; cursor: pointer; }
-  .btn-small:hover { border-color: var(--accent); }
   .game-players { list-style: none; margin: 0; padding: 0; flex: 1 1 0; min-height: 0; overflow-y: auto; }
   .game-players li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border); }
   .game-players li:last-child { border: none; }

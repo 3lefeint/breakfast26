@@ -3,6 +3,7 @@
   // Black Belt setup: one player and the direction of the ladder. There is no limit, a run ends
   // with the belt or when it is finished.
   import { players } from '../../lib/stores/players.js';
+  import NewPlayer from '../../lib/components/NewPlayer.svelte';
   import { cap } from '../../lib/util.js';
   import { startRun } from '../../lib/blackBelt.js';
 
@@ -13,16 +14,12 @@
     if (!player) { alert(t('Select a player.')); return; }
     if (await startRun({ player, backwards })) window.location.href = '/tv';
   }
+  import Toggle from '../../lib/components/Toggle.svelte';
 </script>
 
 <div class="section">
-  <div class="section-title">{t('Setup')}</div>
-
-  <div class="section-title sub">{t('Player')}</div>
-  <div class="chips">
-    {#each $players.known as name (name)}
-      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
-    {/each}
+  <div class="hint">
+    {t('Hit the double of every field in order, the bull\'s eye comes last. Each field has three darts of its own; the darts left in your hand after a hit are bonus darts at the next field. Miss a field with them and the ladder starts again. A run has no limit: it ends with the belt, or when you finish it.')}
   </div>
 
   <div class="section-title sub">{t('Ladder')}</div>
@@ -30,9 +27,13 @@
     <button type="button" class="seg-btn" class:active={!backwards} onclick={() => (backwards = false)}>{t('D1 up to D20')}</button>
     <button type="button" class="seg-btn" class:active={backwards} onclick={() => (backwards = true)}>{t('D20 down to D1')}</button>
   </div>
-  <div class="hint">
-    {t('Hit the double of every field in order, the bull\'s eye comes last. Each field has three darts of its own; the darts left in your hand after a hit are bonus darts at the next field. Miss a field with them and the ladder starts again. A run has no limit: it ends with the belt, or when you finish it.')}
+  <div class="section-title sub">{t('Player')}</div>
+  <div class="chips">
+    {#each $players.known as name (name)}
+      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
+    {/each}
   </div>
+  <NewPlayer onadded={(name) => (player = name)} />
 
   <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
@@ -52,5 +53,5 @@
   .seg-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
-  .btn-start { background: #166534; color: #fff; }
+  .btn-start { background: #166534; color: #fff; margin-top: 1.2rem; }
 </style>

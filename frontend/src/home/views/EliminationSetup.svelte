@@ -6,6 +6,8 @@
   // original vanilla-JS globals.
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
+  import Toggle from '../../lib/components/Toggle.svelte';
+  import NewPlayer from '../../lib/components/NewPlayer.svelte';
   import { cap } from '../../lib/util.js';
   import BotAdder from '../../lib/components/BotAdder.svelte';
 
@@ -19,6 +21,7 @@
     if (idx >= 0) gamePlayers.splice(idx, 1);
     else gamePlayers.push(name);
   }
+  function added(name) { if (!gamePlayers.includes(name)) gamePlayers.push(name); }
   function removeFromGame(i) {
     delete bots[gamePlayers[i]];
     gamePlayers.splice(i, 1);
@@ -51,29 +54,32 @@
 </script>
 
 <div class="elim-section">
-  <div class="elim-section-title">{t('Setup')}</div>
+  <div class="top">
+    <div class="left">
+      <div class="option-row">
+        <span class="label">{t('Lives per player')}</span>
+        <div class="counter">
+          <button class="btn-counter" onclick={() => changeLives(-1)}>−</button>
+          <span class="counter-val">{livesCount}</span>
+          <button class="btn-counter" onclick={() => changeLives(+1)}>+</button>
+        </div>
+      </div>
 
-  <div class="lives-row">
-    <span class="label">{t('Lives per player')}</span>
-    <div class="counter">
-      <button class="btn-counter" onclick={() => changeLives(-1)}>−</button>
-      <span class="counter-val">{livesCount}</span>
-      <button class="btn-counter" onclick={() => changeLives(+1)}>+</button>
-    </div>
-  </div>
+      <Toggle bind:checked={randomOrder} label={t('Random order')} />
 
-  <div class="elim-columns">
-    <div class="elim-column">
-      <div class="elim-section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
+      <div class="elim-section-title">{t('Choose Players')}</div>
       <div class="known-chips">
         {#each $players.known as name (name)}
           <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
         {/each}
       </div>
+      <NewPlayer onadded={added} />
+      <BotAdder bind:gamePlayers bind:bots />
     </div>
 
-    <div class="elim-column">
-      <div class="elim-section-title">{t('Game players')} <span class="hint">{t('(order = play order)')}</span></div>
+    <!-- The same word in both languages; t('Players') is taken by the navigation. -->
+    <div class="right">
+      <div class="elim-section-title">Players</div>
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
@@ -87,12 +93,6 @@
     </div>
   </div>
 
-  <BotAdder bind:gamePlayers bind:bots />
-
-  <label class="random-order-row">
-    <input type="checkbox" bind:checked={randomOrder}>
-    <span>{t('Random order')}</span>
-  </label>
 
   <button class="btn btn-start" onclick={start}>{t('▶ Start')}</button>
 </div>
@@ -104,32 +104,19 @@
   }
   .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }
-  .lives-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
-  .lives-row .label { font-size: 0.9rem; color: var(--muted); }
+  .option-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.8rem; }
+  .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 8rem; }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
-  .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
-  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+  .counter-val { font-size: 1.15rem; font-weight: 700; min-width: 1.4rem; text-align: center; }
+  .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; min-width: 1.5rem; height: 1.5rem; padding: 0 0.3rem; cursor: pointer; font-size: 0.95rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
   .btn-counter:hover { border-color: var(--accent); }
-  /* Known-players chips and the game-players list each get their own
-     fixed column instead of stacking in one flow — otherwise every chip
-     tap that grows the game-players list pushes the chip grid (and the
-     very next chip you're about to tap) down by that same amount. Chips
-     column comes first so it also reads naturally top-first when stacked
-     on narrow viewports: pick from the pool, then see picks accumulate
-     below, instead of the list's append point moving under your thumb.
-     Each column also gets a *fixed* (not max-) height + its own scroll —
-     a plain grid still stretches both columns' row to match whichever is
-     tallest, so content below the grid (Random order/Start) would keep
-     shifting with every tap right up until a max-height's ceiling was
-     reached, which realistic player counts never hit. A fixed height
-     from the very first item means the columns never resize at all,
-     regardless of how many players are known or selected. */
-  .elim-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1rem; align-items: start; }
-  .elim-column .elim-section-title { margin-bottom: 0.75rem; }
-  @media (max-width: 640px) {
-    .elim-columns { grid-template-columns: 1fr; gap: 1.5rem; }
-  }
-  .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: flex-start; height: 260px; overflow-y: auto; }
+  /* The left column has a fixed height, the list of players on the right fills it and scrolls: nothing moves
+     when players are added. */
+  .top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.5rem; align-items: stretch; margin-bottom: 1.2rem; }
+  .right { display: flex; flex-direction: column; min-height: 0; }
+  .right .elim-section-title { margin-bottom: 0.5rem; }
+  @media (max-width: 900px) { .top { grid-template-columns: 1fr; } .game-players { max-height: 14rem; flex: none; } }
+  .known-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: flex-start; height: 8.5rem; overflow-y: auto; }
   .chip {
     background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
     border-radius: 20px; padding: 0.3rem 0.7rem; font-family: inherit;
@@ -137,7 +124,7 @@
   }
   .chip:hover { border-color: var(--accent); color: var(--accent); }
   .chip.in-game { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-  .game-players { list-style: none; margin-bottom: 1rem; padding: 0; height: 260px; overflow-y: auto; }
+  .game-players { list-style: none; margin: 0; padding: 0; flex: 1 1 0; min-height: 0; overflow-y: auto; }
   .game-players li {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.4rem 0; border-bottom: 1px solid var(--glass-border);
@@ -148,8 +135,6 @@
   .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
   .btn-icon.remove:hover { border-color: var(--red); color: var(--red); }
-  .random-order-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; cursor: pointer; font-size: 0.9rem; color: var(--muted); }
-  .random-order-row input { accent-color: var(--accent); }
   .btn { border: none; border-radius: 8px; padding: 0.65rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: default; }

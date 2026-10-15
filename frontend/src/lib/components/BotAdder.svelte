@@ -48,7 +48,7 @@
 </div>
 
 <style>
-  .bot-adder { margin-bottom: 1rem; }
+  .bot-adder { margin: 1.4rem 0 1rem; }
   .title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.5rem; }
   .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
   label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.7rem; color: var(--muted); }

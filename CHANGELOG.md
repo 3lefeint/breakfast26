@@ -9,6 +9,7 @@
 
 ### Changed
 - The cards on the Play page and the Checkout Trainer page show no description line and no arrow, only the icon and the name.
+- The setup pages of X01, tournaments, Elimination, Target Battle and Killer list the options and the player choice on the left and the players on the right; every setup page can add a new player.
 
 ## [1.3.0] - 2026-10-14
 
