@@ -4,6 +4,9 @@ import { t } from './i18n.js';
 export const START_SCORES = [101, 201, 301, 501, 701, 1001];
 export const MODES = ['straight', 'double', 'master'];
 export const MAX_LEGS = 25;
+// The stages of a computer opponent in X01, weakest first, numbered 1 to 5.
+export const BOT_STAGE_COUNT = 5;
+export const botStageName = (stage) => [t('Beginner'), t('Casual'), t('Advanced'), t('Club player'), t('Pro')][stage - 1];
 // The choices for the max rounds: no limit, or the rounds after which a bull-off decides the leg.
 export const MAX_ROUNDS_CHOICES = [null, 15, 25, 50];
 
@@ -17,6 +20,7 @@ export async function rematch(x) {
     legs: x.setup.legs,
     bull_off: x.setup.bull_off,
     max_rounds: x.setup.max_rounds,
+    bots: Object.fromEntries(x.players.filter((p) => p.bot).map((p) => [p.name, p.bot])),
   });
   if (res.error) alert(t(res.error));
   return !res.error;

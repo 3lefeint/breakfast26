@@ -24,6 +24,7 @@ import logging
 import random
 import threading
 
+from .bot import X01_SCATTER_MM, aim_x01, darts_x01, x01_turn_over
 from .turn_game import TurnGame, TurnGameController, parse_field
 
 log = logging.getLogger(__name__)
@@ -86,13 +87,15 @@ class X01Game(TurnGame):
 
     def __init__(self, players, emit, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
                  audio=None, on_change=None, stats_db=None, rng=None, match_id=None, start_delay=None,
-                 tournament_id=None, on_end=None, max_rounds=None):
+                 tournament_id=None, on_end=None, max_rounds=None, bots=None):
         """*emit*: where the events of the match go (the same function the events of an Autodarts match go to).
         *stats_db* only says that statistics are kept, so that undo takes a stored turn out again.
         *tournament_id*: the tournament this match belongs to, stored with the match. *on_end*: called with the
         winner when the match is won, and with None when an undo or a correction opens it again.
         *max_rounds*: when nobody has checked out after this many rounds (everybody threw that many turns) a
-        bull-off decides the leg, the closest dart wins; None is no limit. It needs two players."""
+        bull-off decides the leg, the closest dart wins; None is no limit. It needs two players.
+        *bots*: {name: level} of the players the computer plays; the events mark them so that the statistics leave
+        them out."""
         players = [str(p).strip() for p in players if str(p).strip()]
         if not players:
             raise ValueError("need at least 1 player")
@@ -113,6 +116,7 @@ class X01Game(TurnGame):
         self._rng = rng or random.Random()
         self._start_delay = START_CALLS_DELAY_S if start_delay is None else start_delay
         self._stopped = False
+        self.bot_levels = {p: lv for p, lv in (bots or {}).items() if p in players}
         self.start = int(start)
         self.in_mode, self.out_mode, self.legs = in_mode, out_mode, int(legs)
         self.bull_off = bool(bull_off) and len(players) > 1
@@ -211,7 +215,7 @@ class X01Game(TurnGame):
         return {f"player{i + 1}": str(scores[p]) for i, p in enumerate(self.order)}
 
     def _common(self, player, scores=None):
-        return {"player": player, "playerIndex": str(self.order.index(player)), "playerIsBot": "False",
+        return {"player": player, "playerIndex": str(self.order.index(player)), "playerIsBot": str(player in self.bot_levels),
                 "remainingScores": self._scores_for(scores or self.scores)}
 
     def _view_scores(self, res):
@@ -240,7 +244,8 @@ class X01Game(TurnGame):
         self._emit({**self._common(starter), "event": "match-started", "id": self.match_id,
                     "game": {"mode": "X01", "pointsStart": str(self.start), "special": None,
                              "players": list(self.order),
-                             **({"tournamentId": self.tournament_id} if self.tournament_id else {})}})
+                             **({"tournamentId": self.tournament_id} if self.tournament_id else {}),
+                             **({"bots": sorted(self.bot_levels)} if self.bot_levels else {})}})
 
     def _emit_resync(self, st, undo_stored, undo_leg=False):
         """Tell the program that the match is back at the state `st`; `undo_stored`: the turn that was stored is gone,
@@ -557,7 +562,11 @@ class X01Game(TurnGame):
 
     def announce_start(self):
         """The game is assigned to its controller: with a bull-off the first thrower is called, else the match
-        starts."""
+        starts. Without a delay the match starts before the screens are told, so that a bot that is first has
+        a match to throw in."""
+        if self.phase == "playing" and not self._start_delay:
+            self._start_match()
+            return
         self._changed()
         if self.phase == "bull_off":
             if self.audio:
@@ -686,6 +695,7 @@ class X01Game(TurnGame):
                     "remaining": scores[p],
                     "legs_won": self.legs_won[p],
                     "current": p == cp,
+                    "bot": self.bot_levels.get(p),
                     "bull_off_mm": round(self._bo["shown"][p] * 170) if p in self._bo["shown"] else None,
                     "placed": p in self._bo["final"],
                 }
@@ -715,15 +725,17 @@ class X01Controller(TurnGameController):
         self.game = None
         self._on_change = on_change
         self._lock = threading.RLock()
-        self.bots = None
+        self._init_bots(aim_x01, darts_x01, over=x01_turn_over, scatter=X01_SCATTER_MM)
 
     def start(self, players, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
-              tournament_id=None, on_end=None, max_rounds=None):
-        """Start a match. Raises ValueError for a setup that cannot be played."""
+              tournament_id=None, on_end=None, max_rounds=None, bots=None):
+        """Start a match. *bots*: {name: level} of the players the computer plays. Raises ValueError for a setup
+        that cannot be played."""
         game = X01Game(players, self.emit, start=start, in_mode=in_mode, out_mode=out_mode, legs=legs,
                        bull_off=bull_off, audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
-                       tournament_id=tournament_id, on_end=on_end, max_rounds=max_rounds)
+                       tournament_id=tournament_id, on_end=on_end, max_rounds=max_rounds, bots=bots)
         with self._lock:
+            self.bots.set_bots(game.bot_levels)
             old, self.game = self.game, game
         if old:
             old.stopped()
@@ -738,6 +750,7 @@ class X01Controller(TurnGameController):
     def stop(self):
         with self._lock:
             game, self.game = self.game, None
+            self.bots.clear()
         if game:
             game.stopped()
         if self._on_change:

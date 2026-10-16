@@ -20,6 +20,7 @@ from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
 from breakfast import achievement_sounds as ach_sounds
+from breakfast.bot import X01_LEVELS
 from breakfast import achievements as ach_mod
 from breakfast import config as cfg_mod
 from breakfast import changelog as changelog_mod
@@ -532,17 +533,18 @@ class StartBody(BaseModel):
     bots: dict[str, int] = {}   # name -> level of the players the computer plays, see bot.LEVELS
 
 
-def _check_bots(players, bots):
+def _check_bots(players, bots, levels=None):
     """The bots of a game start as {name: level}, or an error text. A bot is one of the players,
-    has a level that exists, is not a known player and does not play alone (except in dev mode,
-    to watch bots play each other)."""
+    has a level that exists (on the scale *levels*, `bot.LEVELS` unless the game has its own), is not a
+    known player and does not play alone (except in dev mode, to watch bots play each other)."""
     from breakfast.bot import LEVELS
+    levels = levels or LEVELS
     bots = {k.strip(): v for k, v in bots.items() if k.strip()}
     if not bots:
         return {}, None
     if any(name not in players for name in bots):
         return None, "a bot has to be one of the players"
-    if any(level not in LEVELS for level in bots.values()):
+    if any(level not in levels for level in bots.values()):
         return None, "unknown bot level"
     known = {n.lower() for n in kp.load(_stats_db)}
     if any(name.lower() in known for name in bots):
@@ -852,6 +854,7 @@ class X01StartBody(BaseModel):
     legs: int = 1              # legs to win
     bull_off: bool = True      # the closest dart at the bull throws first, else the order is drawn
     max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
+    bots: dict[str, int] = {}   # name -> stage 1 to 5 of the players the computer plays, see bot.X01_LEVELS
 
 
 @app.post("/api/x01/start")
@@ -873,9 +876,12 @@ async def x01_start(body: X01StartBody):
         if ctrl and ctrl.active:
             return {"error": message}
     players = [p.strip() for p in body.players if p.strip()]
+    bots, error = _check_bots(players, body.bots, X01_LEVELS)
+    if error:
+        return {"error": error}
     try:
         _x01_ctrl.start(players, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
-                        legs=body.legs, bull_off=body.bull_off, max_rounds=body.max_rounds)
+                        legs=body.legs, bull_off=body.bull_off, max_rounds=body.max_rounds, bots=bots)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}
@@ -950,6 +956,7 @@ class TournamentStartBody(BaseModel):
     legs_by_round: list[int] | None = None     # legs to win per round, first round first; default one leg each
     bull_off: bool = True      # a bull-off decides who throws first in the first leg of a match, else it is drawn
     max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
+    bots: dict[str, int] = {}   # name -> stage 1 to 5 of the seats the computer plays, see bot.X01_LEVELS
 
 
 @app.post("/api/tournament/draw")
@@ -985,10 +992,13 @@ async def tournament_start(body: TournamentStartBody):
             return {"error": "an X01 match is running, cancel it first"}
         _x01_ctrl.stop()
     seats = [s.strip() if isinstance(s, str) and s.strip() else None for s in body.seats]
+    bots, error = _check_bots([s for s in seats if s], body.bots, X01_LEVELS)
+    if error:
+        return {"error": error}
     try:
         _tournament_ctrl.start(seats, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
                                legs_by_round=body.legs_by_round, bull_off=body.bull_off,
-                               max_rounds=body.max_rounds)
+                               max_rounds=body.max_rounds, bots=bots)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}

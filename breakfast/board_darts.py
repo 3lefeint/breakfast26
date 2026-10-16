@@ -41,6 +41,7 @@ class BoardDarts:
         self._darts = []       # one entry per dart on the board
         self._overrides = {}   # dart index -> dart set by a correction
         self._shown = []
+        self._bot = False      # the darts shown are a bot's: they show without a board stream
 
     def set_connected(self, connected) -> bool:
         """Returns True if the connection state changed."""
@@ -53,9 +54,11 @@ class BoardDarts:
             self._shown = self._merge()
             return True
 
-    def update(self, throws) -> bool:
-        """Takes the board's `throws` list. Returns True if what is shown changed."""
+    def update(self, throws, bot=False) -> bool:
+        """Takes the board's `throws` list. Returns True if what is shown changed. *bot*: the darts are thrown by
+        the computer and show also while the board stream is not connected."""
         with self._lock:
+            self._bot = bool(bot and throws)
             self._darts = [_dart(t) for t in throws]
             self._overrides = {i: d for i, d in self._overrides.items() if i < len(self._darts)}
             return self._refresh()
@@ -74,7 +77,7 @@ class BoardDarts:
     def snapshot(self):
         """List of {n, field, points, x, y}, or None while the board stream is not connected."""
         with self._lock:
-            return list(self._shown) if self._connected else None
+            return list(self._shown) if self._connected or self._bot else None
 
     def _merge(self):
         return [{"n": i + 1, **self._overrides.get(i, d)} for i, d in enumerate(self._darts)]

@@ -56,7 +56,8 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
     count = data.get("numThrows", 0)
     throws = data.get("throws") or []
 
-    if state.board_darts.update(throws if count else []):
+    # While a bot throws, the board shows its darts and the real, empty board must not wipe them.
+    if not getattr(getattr(x01_ctrl, "bots", None), "playing", False) and state.board_darts.update(throws if count else []):
         from breakfast.web import server as web
         web.push()
 
@@ -217,6 +218,10 @@ def run_direct(email, password, board_id, record_file=None,
     # see on_event() below.
     x01_ctrl = X01Controller(lambda data: process_event(data), stats_db=stats_db_instance, audio=audio,
                              on_change=web.push)
+    def show_bot_darts(throws):
+        if state.board_darts.update(throws, bot=True):
+            web.push()
+    x01_ctrl.bots.on_darts = show_bot_darts
     tournament_ctrl = TournamentController(x01_ctrl, stats_db=stats_db_instance, on_change=web.push)
     _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio, tb_ctrl=tb_ctrl,
                     killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl, x01_ctrl=x01_ctrl)

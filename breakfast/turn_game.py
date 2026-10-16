@@ -337,11 +337,13 @@ class TurnGameController:
     def active(self):
         return self.game is not None and self.game.state == "playing"
 
-    def _init_bots(self, aim, darts):
+    def _init_bots(self, aim, darts, over=None, scatter=None):
         """Let the computer play in this controller's games: *aim* says what a bot throws at, *darts*
-        how many darts of a visit count. A bot plays whenever the game changes and it is up."""
+        how many darts of a visit count, *over* when the turn ends before its darts are used up, *scatter* the
+        scatter table when the game has its own scale of levels. A bot
+        plays whenever the game changes and it is up."""
         from .bot import BotRunner      # bot.py builds on this module
-        self.bots = BotRunner(self, aim, darts)
+        self.bots = BotRunner(self, aim, darts, over=over, scatter=scatter)
         inner = self._on_change
 
         def changed():

@@ -3077,6 +3077,8 @@ class StatsTracker:
         self._turn_per_player: dict[str, int] = {}
         self._buf: dict | None = None
         self._session_stats: dict[str, dict] = {}
+        self._bots: set[str] = set()        # the players of the match the computer plays: they leave no turns
+        self._turn_log: list[dict] = []     # the turns flushed in this match, to take the right one out on an undo
 
     @property
     def session_stats(self) -> dict:
@@ -3097,15 +3099,19 @@ class StatsTracker:
             self._turn_per_player = {}
             self._buf       = None
             self._session_stats = {}
+            self._bots      = set(game.get("bots") or [])
+            self._turn_log  = []
             if self._match_id:
                 self._db.open_match(self._match_id, self._game_mode, pts_start, tournament_id)
+                if self._bots:
+                    self._db.mark_bot_match(self._match_id)
 
         elif ev == "x01-resync":
             # A match played in Breakfast went back to before a turn (undo, correction): what was
             # collected for the turn in progress is dropped, and a stored turn is taken out again.
             self._buf = None
             if game.get("undoStored") and self._match_id:
-                self._undo_last_stored_turn()
+                self._undo_last_turn()
             if game.get("undoLeg") and self._match_id:
                 leg = self._db.delete_last_x01_leg(self._match_id)
                 if leg:
@@ -3163,7 +3169,7 @@ class StatsTracker:
             self._flush_turn()
             winner = game.get("winner")
             if self._match_id:
-                self._db.record_leg_win(self._match_id, self._leg, winner, game.get("decidedBy"))
+                self._db.record_leg_win(self._match_id, self._leg, self._human(winner), game.get("decidedBy"))
             self._leg += 1
             self._turn_per_player = {}
 
@@ -3171,8 +3177,8 @@ class StatsTracker:
             self._flush_turn()
             winner = game.get("winner")
             if self._match_id:
-                self._db.record_leg_win(self._match_id, self._leg, winner, game.get("decidedBy"))
-                self._db.set_winner(self._match_id, winner)
+                self._db.record_leg_win(self._match_id, self._leg, self._human(winner), game.get("decidedBy"))
+                self._db.set_winner(self._match_id, self._human(winner))
                 self._db.close_match(self._match_id)
 
     # ── internal ─────────────────────────────────────────────────────────────
@@ -3208,6 +3214,28 @@ class StatsTracker:
             darts.append((field, value, darts[-1][2] - value))
             self._buf["positions"].append(_position(game))
 
+    def _human(self, player):
+        """The player, or None for one the computer plays: a win of a bot is stored as no winner."""
+        return None if player in self._bots else player
+
+    def _undo_last_turn(self):
+        """Take back the last turn that was flushed. A turn of a bot was never stored; if it won a leg, only that leg
+        goes."""
+        last = self._turn_log.pop() if self._turn_log else None
+        if last is None or last["stored"]:
+            self._undo_last_stored_turn()
+        else:
+            mine = self._session_stats.get(last["player"])
+            if mine:        # a bot keeps live stats in memory only
+                mine["turns"] -= 1
+                mine["total_darts"] -= last["darts"]
+                mine["total_score"] -= last["score"]
+        if last is not None and not last["stored"] and last["checkout"]:
+            leg = self._db.delete_last_x01_leg(self._match_id)
+            if leg:
+                self._leg = leg
+                self._turn_per_player = self._db.x01_turn_counts(self._match_id, leg)
+
     def _undo_last_stored_turn(self):
         """Take the last stored turn out of the database and bring the counters back in line with it."""
         removed = self._db.delete_last_x01_turn(self._match_id)
@@ -3216,7 +3244,8 @@ class StatsTracker:
         if removed["was_checkout"]:
             self._leg = removed["leg"]
         self._turn_per_player = self._db.x01_turn_counts(self._match_id, self._leg)
-        self._session_stats = self._db.x01_session_accumulators(self._match_id)
+        bots = {p: v for p, v in self._session_stats.items() if p in self._bots}
+        self._session_stats = {**self._db.x01_session_accumulators(self._match_id), **bots}
 
     def _is_x01(self) -> bool:
         return "01" in self._game_mode or self._game_mode == "Random Checkout"
@@ -3236,22 +3265,25 @@ class StatsTracker:
         total       = sum(v for _, v, _ in darts)
         score       = 0 if is_bust else total
         is_checkout = (not is_bust) and buf["remaining_before"] == total
+        is_bot = player in self._bots
+        self._turn_log.append({"stored": not is_bot, "checkout": is_checkout, "player": player,
+                               "darts": len(darts), "score": score})
 
-        turn_n = self._turn_per_player.get(player, 0) + 1
-        self._turn_per_player[player] = turn_n
-
-        self._db.insert_turn(
-            match_id=self._match_id,
-            player=player,
-            leg=buf["leg"],
-            turn=turn_n,
-            remaining_before=buf["remaining_before"],
-            score=score,
-            is_bust=is_bust,
-            is_checkout=is_checkout,
-            darts=darts,
-            positions=buf.get("positions"),
-        )
+        if not is_bot:
+            turn_n = self._turn_per_player.get(player, 0) + 1
+            self._turn_per_player[player] = turn_n
+            self._db.insert_turn(
+                match_id=self._match_id,
+                player=player,
+                leg=buf["leg"],
+                turn=turn_n,
+                remaining_before=buf["remaining_before"],
+                score=score,
+                is_bust=is_bust,
+                is_checkout=is_checkout,
+                darts=darts,
+                positions=buf.get("positions"),
+            )
 
         s = self._session_stats.setdefault(player, {
             "turns": 0, "total_score": 0, "total_darts": 0,

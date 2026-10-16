@@ -9,12 +9,14 @@
   import { apiJson } from '../../lib/api.js';
   import Toggle from '../../lib/components/Toggle.svelte';
   import NewPlayer from '../../lib/components/NewPlayer.svelte';
+  import BotAdder from '../../lib/components/BotAdder.svelte';
   import { cap } from '../../lib/util.js';
-  import { START_SCORES, MODES, MAX_LEGS, MAX_ROUNDS_CHOICES } from '../../lib/x01.js';
+  import { START_SCORES, MODES, MAX_LEGS, MAX_ROUNDS_CHOICES, botStageName } from '../../lib/x01.js';
   import { roundName, roundsFor, previewSnap, drawSeats, startTournament } from '../../lib/tournament.js';
   import TournamentBracket from '../../lib/components/TournamentBracket.svelte';
 
   let gamePlayers = $state([]);
+  let bots = $state({});
   let startScore = $state(501);
   let inMode = $state('straight');
   let outMode = $state('double');
@@ -47,7 +49,11 @@
     else gamePlayers.push(name);
     redraw();
   }
-  function removeFromGame(i) { gamePlayers.splice(i, 1); redraw(); }
+  function removeFromGame(i) {
+    delete bots[gamePlayers[i]];
+    gamePlayers.splice(i, 1);
+    redraw();
+  }
 
   function added(name) { if (!gamePlayers.includes(name)) { gamePlayers.push(name); redraw(); } }
 
@@ -70,7 +76,7 @@
     if (!valid) return;
     const ok = await startTournament({
       seats, start: startScore, in_mode: inMode, out_mode: outMode, bull_off: bullOff, max_rounds: maxRounds,
-      legs_by_round: legsByRound,
+      legs_by_round: legsByRound, bots,
     });
     if (ok) openTv();
   }
@@ -125,6 +131,7 @@
         {/each}
       </div>
       <NewPlayer onadded={added} />
+      <BotAdder bind:gamePlayers bind:bots onadded={redraw} stageName={botStageName} />
     </div>
 
     <!-- The same word in both languages; t('Players') is taken by the navigation. -->
@@ -133,7 +140,7 @@
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
-            <span class="player-name-text">{cap(name)}</span>
+            <span class="player-name-text">{cap(name)}{#if bots[name]} <span class="bot-tag">{t('Computer')} {botStageName(bots[name])}</span>{/if}</span>
             <button class="btn-icon remove" onclick={() => removeFromGame(i)}>×</button>
           </li>
         {/each}
@@ -178,6 +185,7 @@
   .right { display: flex; flex-direction: column; min-height: 0; }
   .right .section-title { margin-bottom: 0.5rem; }
   @media (max-width: 900px) { .top { grid-template-columns: 1fr; } .game-players { max-height: 14rem; flex: none; } }
+  .bot-tag { color: var(--muted); font-size: 0.75rem; margin-left: 0.4rem; }
   .option-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
   .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 8rem; }
   .legs { display: flex; flex-wrap: wrap; gap: 0.6rem 1.8rem; margin-bottom: 1.2rem; }

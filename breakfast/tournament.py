@@ -216,10 +216,11 @@ class TournamentController:
     # ── playing it ───────────────────────────────────────────────────────────
 
     def start(self, seats, start=501, in_mode="straight", out_mode="double", legs_by_round=None, bull_off=True,
-              max_rounds=None):
+              max_rounds=None, bots=None):
         """Start a tournament with these seats (None is a bye). *bull_off*: a bull-off decides who throws first in the
         first leg of every match, else it is drawn. *max_rounds*: after this many rounds without a checkout a bull-off
-        decides the leg, None is no limit. Raises ValueError for a setup that cannot be played."""
+        decides the leg, None is no limit. *bots*: {name: level} of the seats the computer plays. Raises ValueError for a
+        setup that cannot be played."""
         with self._lock:
             if self.running:
                 raise ValueError("a tournament is already running")
@@ -232,7 +233,7 @@ class TournamentController:
                       "config": {"start": int(start), "in_mode": in_mode, "out_mode": out_mode,
                                  "legs_by_round": [int(n) for n in legs_by_round], "bull_off": bool(bull_off),
                                  "max_rounds": int(max_rounds) if max_rounds is not None else None,
-                                 "players": names},
+                                 "players": names, "bots": {p: lv for p, lv in (bots or {}).items() if p in names}},
                       "bracket": bracket, "status": "running"}
             self.phase, self.current, self.pending = "idle", None, None
             self._persist()
@@ -256,7 +257,7 @@ class TournamentController:
             self.current, self.pending, self.phase = (r, i), None, "match"
         game = self.x01.start([match["a"], match["b"]], start=cfg["start"], in_mode=cfg["in_mode"],
                               out_mode=cfg["out_mode"], legs=cfg["legs_by_round"][r], bull_off=cfg.get("bull_off", True), max_rounds=cfg.get("max_rounds"),
-                              tournament_id=self.t["id"], on_end=self._on_match_end)
+                              tournament_id=self.t["id"], on_end=self._on_match_end, bots=cfg.get("bots"))
         with self._lock:
             match["match_id"] = game.match_id
             self._persist()

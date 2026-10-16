@@ -4,14 +4,17 @@
   // name. `bots` maps the name of every computer player in `gamePlayers` to its level.
   import { players } from '../stores/players.js';
 
-  let { gamePlayers = $bindable(), bots = $bindable(), max = 20 } = $props();
+  // `stageName`: a game's own scale of stages 1 to `stageCount` (weakest first) with their names; without it the
+  // levels are the 3-dart averages 10 to 110.
+  let { gamePlayers = $bindable(), bots = $bindable(), max = 20, onadded = null, stageName = null, stageCount = 5 } = $props();
 
-  const LEVELS = Array.from({ length: 11 }, (_, i) => 10 + i * 10);
-  let level = $state(60);
+  const LEVELS = $derived(stageName ? Array.from({ length: stageCount }, (_, i) => i + 1) : Array.from({ length: 11 }, (_, i) => 10 + i * 10));
+  const label = (l) => (stageName ? stageName(l) : `${l}+`);
+  let level = $state(stageName ? 2 : 60);
   let name = $state('');
 
   function uniqueName() {
-    const base = name.trim() || `${t('Bot')} ${level}`;
+    const base = name.trim() || `${t('Bot')} ${stageName ? label(level) : level}`;
     const taken = (n) => gamePlayers.some((p) => p.toLowerCase() === n.toLowerCase());
     let candidate = base;
     for (let i = 2; taken(candidate); i++) candidate = `${base} ${i}`;
@@ -24,6 +27,7 @@
     gamePlayers.push(botName);
     bots[botName] = level;
     name = '';
+    onadded?.();
   }
 
   const clash = $derived($players.known.some((p) => p.toLowerCase() === name.trim().toLowerCase()) && name.trim() !== '');
@@ -33,14 +37,14 @@
   <div class="title">{t('Computer opponent')}</div>
   <div class="row">
     <label>
-      <span>{t('Level (3-dart average)')}</span>
+      <span>{stageName ? t('Skill') : t('Level (3-dart average)')}</span>
       <select bind:value={level}>
-        {#each LEVELS as l (l)}<option value={l}>{l}+</option>{/each}
+        {#each LEVELS as l (l)}<option value={l}>{label(l)}</option>{/each}
       </select>
     </label>
     <label>
       <span>{t('Name')}</span>
-      <input type="text" bind:value={name} placeholder={`${t('Bot')} ${level}`} maxlength="24">
+      <input type="text" bind:value={name} placeholder={`${t('Bot')} ${stageName ? label(level) : level}`} maxlength="24">
     </label>
     <button type="button" class="add" onclick={add} disabled={clash || gamePlayers.length >= max}>{t('+ Add')}</button>
   </div>

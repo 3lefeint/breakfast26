@@ -1,18 +1,20 @@
-"""A computer opponent for the turn games (Elimination, Killer).
+"""A computer opponent for the turn games (Elimination, Killer, X01).
 
 A bot throws like the board reports: its darts reach the game through the same
 `on_board_state(count, throws)` as the darts of a real board, so the TV view, the voice calls,
 undo and corrections work unchanged. This module holds the throw model (`Thrower`), what a bot
-aims at in each game (`aim_elimination`, `aim_killer`), the filter that keeps bots out of the
+aims at in each game (`aim_elimination`, `aim_killer`, `aim_x01`), the filter that keeps bots out of the
 stats (`StatsWithoutBots`) and the runner that plays a bot's turn with pauses (`BotRunner`).
 """
 
+import functools
 import logging
 import math
 import random
 import threading
 import time
 
+from . import checkout_routes as cr
 from .dartboard import DOUBLE_OUT_MM, SEGMENT_ORDER, field_at, field_centers
 from .turn_game import dart_value, parse_field
 
@@ -27,6 +29,11 @@ SCATTER_MM = {
     10: 207.3, 20: 117.0, 30: 63.0, 40: 31.7, 50: 21.3, 60: 16.6,
     70: 13.7, 80: 11.6, 90: 9.9, 100: 8.3, 110: 7.1,
 }
+
+# X01 has its own scale of five stages (beginner to pro), defined by how precisely a bot throws at the triple 20 in a
+# fixed test (about 90 % of the darts on the board for stage 1, all of them from stage 3): the scatter in millimetres.
+X01_SCATTER_MM = {1: 45.0, 2: 28.0, 3: 20.0, 4: 13.0, 5: 9.0}
+X01_LEVELS = tuple(X01_SCATTER_MM)
 
 # A dart that lands far outside the board is drawn at most this far out (units of the double ring).
 _MAX_RADIUS = 1.3
@@ -47,11 +54,13 @@ def _throw_at(x_mm, y_mm):
 class Thrower:
     """Throws darts at a target with the scatter of one level."""
 
-    def __init__(self, level, rng=None):
-        if level not in SCATTER_MM:
+    def __init__(self, level, rng=None, scatter=None):
+        """*scatter*: the table of the scale the level is on, `SCATTER_MM` unless a game has its own."""
+        scatter = scatter or SCATTER_MM
+        if level not in scatter:
             raise ValueError(f"unknown bot level {level}")
         self.level = level
-        self.sigma = SCATTER_MM[level]
+        self.sigma = scatter[level]
         self.rng = rng or random.Random()
 
     def throw(self, field):
@@ -103,6 +112,142 @@ def aim_killer(game, player, rng):
     rivals = [p for p in game.active if p != player]
     rivals.sort(key=lambda p: (p in game.killers, game.lives[p]), reverse=True)
     return f"{kind}{game.numbers[rivals[0]]}"
+
+
+_BY_VALUE = {}
+for _field in cr._FIELDS:
+    _BY_VALUE.setdefault(cr._VALUES[_field], []).append(_field)
+
+# Fields a bot throws at when it cannot finish and the triple 20 would leave a bad rest.
+_SETUP_FIELDS = tuple(f"S{n}" for n in range(20, 0, -1)) + ("T20", "T19", "T18")
+# The rests a bot likes to leave for a double, the best first.
+_LEAVES = (32, 40, 16, 24, 36, 8, 20, 12, 28, 4, 18, 10, 6, 2, 50)
+
+
+def _out_ok(out_mode, field):
+    """Whether a dart on *field* may finish a leg."""
+    if out_mode == "straight":
+        return True
+    return cr.is_double(field) or (out_mode == "master" and field[0] == "T")
+
+
+def _difficulty(field):
+    if field == cr.BULL:
+        return 3
+    if field == cr.OUTER_BULL:
+        return 2
+    kind, number = field[0], int(field[1:])
+    if kind == "S":
+        return 0
+    if kind == "T":
+        return 1 if number >= 18 else 2
+    return 1
+
+
+def _routes(rem, darts, out_mode):
+    """Every way to finish *rem* with at most *darts* darts under this out mode."""
+    found = []
+    least = 1 if out_mode == "straight" else 2
+
+    def walk(rest, left, path):
+        if rest > left * 60:
+            return
+        for field in _BY_VALUE.get(rest, ()):
+            if _out_ok(out_mode, field):
+                found.append(tuple(path) + (field,))
+        if left > 1:
+            for field in cr._FIELDS:
+                after = rest - cr._VALUES[field]
+                if after >= least:
+                    walk(after, left - 1, path + [field])
+
+    walk(rem, darts, [])
+    return found
+
+
+@functools.lru_cache(maxsize=None)
+def finish_route(rem, darts, out_mode):
+    """The fields a bot throws to finish *rem* with at most *darts* darts, None when it cannot. With a double out
+    it follows the checkout chart; otherwise (or when the chart route needs more darts than are left) it takes the
+    shortest route and, among those, the one that is easiest to hit."""
+    if out_mode == "double":
+        standard = cr.STANDARD.get(rem)
+        if standard and len(standard) <= darts:
+            return standard
+    for n in range(1, darts + 1):
+        found = _routes(rem, n, out_mode)
+        if found:
+            return min(found, key=lambda route: (sum(_difficulty(f) for f in route), -cr.points(route[0])))
+    return None
+
+
+def _leave_rank(after, darts_left, out_mode):
+    """How good a rest is to leave, the lower the better: first a rest that the darts still left in the turn can
+    finish, then one that the next turn can, by the number of darts; among equals the rests players like."""
+    like = _LEAVES.index(after) if after in _LEAVES else len(_LEAVES)
+    route = finish_route(after, darts_left, out_mode) if darts_left else None
+    if route:
+        return (0, len(route), like)
+    route = finish_route(after, 3, out_mode)
+    return (1, len(route) if route else 4, like)
+
+
+def _setup_target(rem, darts, out_mode):
+    """A rest that cannot be finished yet: the field that leaves the best rest, the triple 20 when it ties.
+    Never a dart that busts or, with a double or master out, leaves 1."""
+    least = 1 if out_mode == "straight" else 2
+    best = None
+    for field in _SETUP_FIELDS:
+        value = cr._VALUES[field]
+        after = rem - value
+        if after < least:
+            continue
+        key = (_leave_rank(after, darts - 1, out_mode), -value)
+        if best is None or key < best[0]:
+            best = (key, field)
+    return best[1] if best else "S1"
+
+
+def _opening_target(rem, in_mode, out_mode):
+    """A double (or triple, with a master in) to start scoring with, one that does not bust."""
+    least = 1 if out_mode == "straight" else 2
+    kinds = ("D",) if in_mode == "double" else ("T", "D")
+    for number in range(20, 0, -1):
+        for kind in kinds:
+            field = f"{kind}{number}"
+            after = rem - cr._VALUES[field]
+            if after >= least or (after == 0 and _out_ok(out_mode, field)):
+                return field
+    return "D1"
+
+
+def x01_target(rem, darts, opened, in_mode, out_mode):
+    """What a bot throws at with *rem* left, *darts* darts left in the turn and the in mode satisfied or not."""
+    if not opened:
+        return _opening_target(rem, in_mode, out_mode)
+    route = finish_route(rem, darts, out_mode)
+    return route[0] if route else _setup_target(rem, darts, out_mode)
+
+
+def aim_x01(game, player, rng):
+    """The bull in a bull-off; in the leg the triple 20 until the rest can be finished, then the route of the
+    checkout chart."""
+    if game.phase == "bull_off":
+        return cr.BULL
+    result = game._result
+    rem = result["remaining"] if result else game.scores[player]
+    opened = result["opened"] if result else game.opened[player]
+    return x01_target(rem, 3 - len(game._last_throws), opened, game.in_mode, game.out_mode)
+
+
+def darts_x01(game):
+    """In a bull-off only the first dart of a visit counts."""
+    return 1 if game.phase == "bull_off" else 3
+
+
+def x01_turn_over(game):
+    """A bust or a finish ends the turn, the darts left are not thrown."""
+    return game._result is not None and game._result["status"] != "open"
 
 
 def darts_elimination(game):
@@ -174,10 +319,15 @@ class BotRunner:
     DART_PAUSE = (0.8, 1.8)
     TAKEOUT_PAUSE = (1.2, 2.2)
 
-    def __init__(self, controller, aim, darts, rng=None, sleep=time.sleep, spawn=None):
+    def __init__(self, controller, aim, darts, rng=None, sleep=time.sleep, spawn=None, over=None, scatter=None):
+        """*over*: tells whether the turn of a game is over before its darts are thrown (a bust or a finish).
+        *scatter*: the scatter table of the scale the levels of the game are on."""
+        self._scatter = scatter
         self._ctrl = controller
         self._aim = aim
         self._darts = darts
+        self._over = over
+        self.on_darts = None        # called with the darts on the board whenever a bot's darts change, to show them
         self._rng = rng or random.Random()
         self._sleep = sleep
         self._spawn = spawn or self._spawn_thread
@@ -193,6 +343,10 @@ class BotRunner:
     @staticmethod
     def _spawn_thread(fn):
         threading.Thread(target=fn, daemon=True, name="bot-turn").start()
+
+    def _show(self, throws):
+        if self.on_darts:
+            self.on_darts(list(throws))
 
     def _pause(self, span):
         self._sleep(self._rng.uniform(*span))
@@ -217,7 +371,7 @@ class BotRunner:
         throws = []
         try:
             self._pause(self.FIRST_DART_PAUSE)
-            thrower = Thrower(self.levels[player], self._rng)
+            thrower = Thrower(self.levels[player], self._rng, self._scatter)
             with self._ctrl._lock:
                 count = self._darts(game) if self._due(game) and game.current_player == player else 0
             for i in range(count):
@@ -225,15 +379,17 @@ class BotRunner:
                     self._pause(self.DART_PAUSE)
                 with self._ctrl._lock:
                     if self._ctrl.game is not game or game.state != "playing" \
-                            or game.current_player != player:
+                            or game.current_player != player or (self._over and self._over(game)):
                         break
                     throws.append(thrower.throw(self._aim(game, player, self._rng)))
                     game.on_board_state(i + 1, list(throws))
+                    self._show(throws)
             if throws:
                 self._pause(self.TAKEOUT_PAUSE)
                 with self._ctrl._lock:
                     if self._ctrl.game is game:
                         game.on_board_state(0, [])
+                    self._show([])
         except Exception:
             log.exception("Bot turn failed")
         finally:

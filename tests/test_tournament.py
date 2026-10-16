@@ -156,6 +156,17 @@ class Setup:
 
 
 class TestPlaying:
+    def test_a_bot_of_the_bracket_plays_every_match_it_is_in(self):
+        s = Setup()
+        s.x01.bots._spawn = lambda fn: None          # no bot plays during this test
+        s.start(["a", "bot", "c", "d"], bots={"bot": 3, "gone": 1})
+        assert s.t.t["config"]["bots"] == {"bot": 3}
+        assert s.game.bot_levels == {"bot": 3} and s.x01.bots.levels == {"bot": 3}
+        s.win("a")
+        assert s.t.next()
+        assert sorted(s.game.order) == ["c", "d"]
+        assert s.game.bot_levels == {} and s.x01.bots.levels == {}
+
     def test_the_first_pairing_starts_and_carries_the_tournament(self):
         s = Setup()
         tid = s.start(["a", "b", "c", "d"], legs_by_round=[1, 2])

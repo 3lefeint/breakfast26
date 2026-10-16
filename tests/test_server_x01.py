@@ -149,3 +149,32 @@ def test_the_max_rounds_default_to_no_limit(client):
 def test_max_rounds_that_make_no_sense_come_back_as_an_error(client):
     c, *_ = client
     assert "max rounds" in c.post("/api/x01/start", json={**START, "max_rounds": 0}).json()["error"]
+
+
+def test_a_bot_can_play_an_x01_match(client):
+    c, x01, *_ = client
+    x01.bots._spawn = lambda fn: None          # no bot plays during this test
+    body = {**START, "players": ["ana", "Bot 3"], "bots": {"Bot 3": 3}}
+    assert c.post("/api/x01/start", json=body).json() == {"ok": True}
+    assert x01.bots.levels == {"Bot 3": 3}
+    assert {p["name"]: p["bot"] for p in server._build_payload()["x01"]["players"]} == {"ana": None, "Bot 3": 3}
+
+
+@pytest.mark.parametrize("bots, error", [
+    ({"Bot 3": 65}, "unknown bot level"),
+    ({"Somebody": 3}, "a bot has to be one of the players"),
+    ({"ana": 3}, "a bot cannot have the name of a player"),
+])
+def test_an_x01_bot_that_does_not_fit_is_refused(client, bots, error):
+    c, x01, *_ = client
+    c.post("/api/x01/stop")
+    server._stats_db.upsert_player("ana")
+    body = {**START, "players": ["ana", "Bot 3"], "bots": bots}
+    assert c.post("/api/x01/start", json=body).json() == {"error": error}
+    assert not x01.match_active
+
+
+def test_the_computer_cannot_play_x01_alone(client):
+    c, *_ = client
+    body = {**START, "players": ["Bot 1", "Bot 3"], "bots": {"Bot 1": 1, "Bot 3": 3}}
+    assert c.post("/api/x01/start", json=body).json() == {"error": "at least one player has to be human"}
