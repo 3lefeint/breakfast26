@@ -17,6 +17,7 @@ own account and needs no other add-on.
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
 - [Online Elimination](#online-elimination): play one Elimination match together with players at other locations
+- [Usage reports](#usage-reports): optional anonymous usage and error reports, off by default
 - [MQTT output](#mqtt) for LED strips and Home Assistant, optional
 - [Installation](#installation) on Windows, with Docker or from source, with [self-update](#updates)
 - [Settings](#web-ui) in the browser, English or German interface
@@ -103,7 +104,7 @@ board_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 port = 8080
 ```
 
-The other sections (`[audio]`, `[mqtt]`, `[stats]`, `[online]`, `[logging]` and more) are described in
+The other sections (`[audio]`, `[mqtt]`, `[stats]`, `[online]`, `[telemetry]`, `[logging]` and more) are described in
 `config.toml.example`. MQTT and statistics can be switched off (`[mqtt] enabled = false`, `[stats] db = "none"`).
 
 ## Using Breakfast
@@ -243,6 +244,15 @@ installation. One site hosts the match and receives a join code; the others join
 password. Each site adds its own players, and the host sets the lives and the order.
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off.
+
+### Usage reports
+
+Breakfast can report errors and basic usage anonymously, to help find problems on setups other than the
+developer's. It is off by default; switch it on under Settings → **Usage reports**. A report holds the
+version, the platform, the game modes played with their duration, and the errors that occur (type and code
+location), sent under a random installation ID. It never holds player names, scores, IP addresses or error
+messages. **Show what is sent** lists the queued and the recently sent reports. The reports go to the relay
+(`[telemetry] url`, by default `[online] relay_url`, see [relay/README.md](relay/README.md)).
 
 ### MQTT
 

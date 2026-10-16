@@ -36,6 +36,23 @@ npm run deploy
 Use the `wss://` address wrangler prints as `relay_url`. The free plan is enough for a few
 players: a match only costs a few small messages per turn.
 
+## Usage reports
+
+`POST /telemetry` takes the anonymous usage and error reports of Breakfast installations (`[telemetry]`
+in their config, off by default) and stores them in a D1 database. Every batch is checked strictly
+(fixed fields per event type, 16 KB, 50 events) and limited per address and per installation; the address
+itself is never stored. Set it up once:
+
+```bash
+npx wrangler d1 create breakfast-telemetry     # put the printed database_id into wrangler.jsonc
+npx wrangler d1 migrations apply breakfast-telemetry --remote
+npm run deploy
+```
+
+Without the `DB` binding the route answers 503 and the rest of the relay is not affected. Read the reports with
+`npx wrangler d1 execute breakfast-telemetry --remote --command "SELECT type, COUNT(*) FROM events GROUP BY type"`;
+locally, `migrations apply ... --local` and `npm run dev` give a database to try it against.
+
 ## Try it by hand
 
 Two Breakfast installations on one machine, each with its own `config.toml` and database:

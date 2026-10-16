@@ -64,6 +64,14 @@ port = 8080
 # relay_url = "wss://breakfast-relay.example.workers.dev"
 # site_name = "Home"        # how this installation shows up to the others
 
+# ── Usage reports ────────────────────────────────────────────────────────────
+# Anonymous usage and error reports, off by default: version, platform, game modes with their duration and the
+# errors that occur, under a random installation ID. No player names, scores, addresses or error messages.
+# Settings → Usage reports shows exactly what is queued and what was sent.
+# [telemetry]
+# enabled = false
+# url = "https://breakfast-relay.example.workers.dev"   # default: the [online] relay_url
+
 # ── Statistics (SQLite) ───────────────────────────────────────────────────────
 # Per-turn data is stored here; lifetime and session stats are derived from it.
 # Use "none" to disable stats collection entirely.

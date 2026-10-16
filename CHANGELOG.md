@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Optional anonymous usage and error reports, off by default: Settings → Usage reports switches them on and shows what is queued and sent; the relay stores them in a D1 database after a strict check (#58).
 - A computer opponent for X01 matches and tournaments: add it on the setup page with one of five stages from beginner to pro, defined by how precisely it throws at the triple 20; it throws at the triple 20, follows the checkout chart once it can finish, respects the in and out mode, and leaves no turns, results or achievements (#47).
 
 ## [1.4.0] - 2026-10-15

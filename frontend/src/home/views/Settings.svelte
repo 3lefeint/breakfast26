@@ -34,6 +34,7 @@
     },
     record: { file: '' },
     online: { relay_url: '', site_name: '' },
+    telemetry: { enabled: false, url: '' },
     // Read-only — not part of the editable form/save flow, set directly in
     // config.toml. Only gates whether the Dev tab below is shown at all.
     dev: { enabled: false },
@@ -234,6 +235,17 @@
     }
   }
 
+  // What usage reporting would send and what it sent lately, for the "Show what is sent" panel.
+  let reportPreview = $state(null);
+  async function toggleReportPreview() {
+    if (reportPreview) { reportPreview = null; return; }
+    try {
+      reportPreview = await fetch('/api/telemetry').then((r) => r.json());
+    } catch (e) {
+      console.error('loadReportPreview failed:', e);
+    }
+  }
+
   async function loadConfig() {
     try {
       const loaded = await fetch('/api/config').then((r) => r.json());
@@ -341,6 +353,7 @@
     addIfChanged('record', 'file', cfg.record.file);
     addIfChanged('online', 'relay_url', cfg.online.relay_url);
     addIfChanged('online', 'site_name', cfg.online.site_name);
+    addIfChanged('telemetry', 'url', cfg.telemetry.url);
     addIfChanged('mqtt', 'port', cfg.mqtt.port, (v) => parseInt(v, 10));
     addIfChanged('caller', 'checkout_limit', cfg.caller.checkout_limit, (v) => parseInt(v, 10));
     addIfChanged('caller', 'ambient_volume', cfg.caller.ambient_volume, (v) => parseFloat(v));
@@ -354,6 +367,7 @@
     // Checkboxes — always included.
     (updates.logging ??= {}).events = cfg.logging.events;
     (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
+    (updates.telemetry ??= {}).enabled = cfg.telemetry.enabled;
     (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
     (updates.web ??= {}).elimination_beat_hint = cfg.web.elimination_beat_hint;
     (updates.web ??= {}).aurora_animation = cfg.web.aurora_animation;
@@ -640,6 +654,24 @@
     </div>
 
     <div class="settings-section">
+      <div class="settings-section-title">{t('Usage reports')} <span class="badge runtime">{t('applies instantly')}</span></div>
+      <div class="settings-row">
+        <label for="sTelemetryOn">{t('Send anonymous usage and error reports')}</label>
+        <input type="checkbox" id="sTelemetryOn" bind:checked={cfg.telemetry.enabled}>
+      </div>
+      <div class="settings-row"><label for="sTelemetryUrl">{t('Report address')}</label><input type="text" id="sTelemetryUrl" placeholder={t('Same as the relay address')} bind:value={cfg.telemetry.url}></div>
+      <p class="note">{t('Off by default. Sends the version, the platform, the game modes played with their duration and the errors that occur, under a random installation ID. No player names, scores or addresses.')}</p>
+      <button type="button" class="btn btn-add" onclick={toggleReportPreview}>{reportPreview ? t('Hide') : t('Show what is sent')}</button>
+      {#if reportPreview}
+        <p class="note">{t('Installation ID')}: {reportPreview.install_id || t('Not created yet')}</p>
+        <p class="note">{t('Waiting to be sent')}</p>
+        <pre class="report-preview">{reportPreview.queued.length ? JSON.stringify(reportPreview.queued, null, 1) : t('Nothing')}</pre>
+        <p class="note">{t('Sent lately')}</p>
+        <pre class="report-preview">{reportPreview.sent.length ? JSON.stringify(reportPreview.sent, null, 1) : t('Nothing')}</pre>
+      {/if}
+    </div>
+
+    <div class="settings-section">
       <div class="settings-section-title">{t('Statistics')} <span class="badge restart">{t('restart to apply')}</span></div>
       <div class="settings-row"><label for="sStatsDb">{t('Database file')}</label><input type="text" id="sStatsDb" placeholder={t('stats.db')} bind:value={cfg.stats.db}></div>
       <div class="settings-row"><label for="sStatsTimezone">{t('Time zone')}</label><input type="text" id="sStatsTimezone" placeholder={t('UTC')} bind:value={cfg.stats.timezone} oninput={() => (timezoneSuggested = false)}></div>
@@ -880,6 +912,7 @@
     border-radius: 10px; color: var(--text); padding: 0.45rem 0.75rem; font-size: 0.9rem; font-family: inherit;
   }
   .note { font-size: 0.75rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .report-preview { font-size: 0.7rem; max-height: 12rem; overflow: auto; margin: 0 0 0.5rem; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0, 0, 0, 0.25); white-space: pre-wrap; word-break: break-all; }
   .note.update-error { color: var(--red); }
   .settings-banner {
     padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid;

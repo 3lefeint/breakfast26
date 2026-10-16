@@ -5,14 +5,18 @@
 import { DurableObject } from "cloudflare:workers";
 import { Deps, MatchCore, MatchState, Out } from "./core";
 import { CLOSE, LIMITS, PROTOCOL_VERSION } from "./protocol";
+import { TELEMETRY_LIMITS, TELEMETRY_VERSION, validateTelemetry } from "./telemetry";
 
 export interface Env {
   MATCH: DurableObjectNamespace;
   LIMITER: DurableObjectNamespace;
+  DB?: D1Database;
 }
 
 const CREATE_LIMIT = { limit: 10, windowMs: 60_000 };
 const JOIN_LIMIT = { limit: 30, windowMs: 60_000 };
+const TELEMETRY_IP_LIMIT = { limit: 240, windowMs: 3_600_000 };
+const TELEMETRY_INSTALL_LIMIT = { limit: 120, windowMs: 3_600_000 };
 
 const deps: Deps = {
   now: () => Date.now(),
@@ -28,9 +32,9 @@ function randomCode(): string {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-async function limited(env: Env, request: Request, purpose: string, cfg: { limit: number; windowMs: number }): Promise<boolean> {
-  const ip = request.headers.get("cf-connecting-ip") ?? "local";
-  const stub = env.LIMITER.get(env.LIMITER.idFromName(`${purpose}:${ip}`));
+async function limited(env: Env, request: Request, purpose: string, cfg: { limit: number; windowMs: number }, key?: string): Promise<boolean> {
+  const who = key ?? request.headers.get("cf-connecting-ip") ?? "local";
+  const stub = env.LIMITER.get(env.LIMITER.idFromName(`${purpose}:${who}`));
   const res = await stub.fetch(`https://limiter/hit?limit=${cfg.limit}&window=${cfg.windowMs}`);
   return res.status === 429;
 }
@@ -59,6 +63,8 @@ export default {
       return json({ error: "could not reserve a code" }, 503);
     }
 
+    if (request.method === "POST" && url.pathname === "/telemetry") return telemetry(request, env);
+
     const ws = url.pathname.match(/^\/ws\/([A-Z0-9]{6})$/);
     if (request.method === "GET" && ws) {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("expected a websocket", { status: 426 });
@@ -69,6 +75,28 @@ export default {
     return new Response("not found", { status: 404 });
   },
 };
+
+// The usage reports: nothing is stored that failed the strict check, and the address is never stored.
+async function telemetry(request: Request, env: Env): Promise<Response> {
+  if (!env.DB) return json({ error: "reports are not set up here" }, 503);
+  if (await limited(env, request, "telemetry", TELEMETRY_IP_LIMIT)) return json({ error: "too many requests" }, 429);
+  const raw = await request.text();
+  if (raw.length > TELEMETRY_LIMITS.BODY_BYTES) return json({ error: "too large" }, 413);
+  let body: unknown;
+  try { body = JSON.parse(raw); } catch { return json({ error: "not JSON" }, 400); }
+  const version = (body as { protocol_version?: unknown } | null)?.protocol_version;
+  if (version !== TELEMETRY_VERSION) return json({ error: `protocol version ${String(version)} is not supported` }, 426);
+  const checked = validateTelemetry(body);
+  if ("error" in checked) return json({ error: checked.error }, 400);
+  const { batch } = checked;
+  if (await limited(env, request, "telemetry-install", TELEMETRY_INSTALL_LIMIT, batch.installId)) return json({ error: "too many requests" }, 429);
+  const insert = env.DB.prepare("INSERT INTO events (install_id, version, platform, type, ts, data) VALUES (?, ?, ?, ?, ?, ?)");
+  await env.DB.batch(batch.events.map((e) => {
+    const { type, ts, ...data } = e;
+    return insert.bind(batch.installId, batch.version, batch.platform, type, ts, JSON.stringify(data));
+  }));
+  return json({ stored: batch.events.length });
+}
 
 export class MatchRoom extends DurableObject<Env> {
   private core: MatchCore | null = null;

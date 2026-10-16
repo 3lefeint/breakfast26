@@ -28,6 +28,7 @@ from breakfast import joke as joke_mod
 from breakfast import known_players as kp
 from breakfast import tournament as tournament_mod
 from breakfast import online as online_mod
+from breakfast import telemetry as telemetry_mod
 from breakfast import frozen, self_update
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
@@ -381,6 +382,26 @@ async def get_language():
     language = raw.get("web", {}).get("language", "en")
     return {"language": language if language in SUPPORTED_LANGUAGES else "en",
             "supported": list(SUPPORTED_LANGUAGES)}
+
+
+@app.get("/api/telemetry")
+async def get_telemetry():
+    """What usage reporting would send and what it sent lately; disabled and empty before it is started."""
+    t = telemetry_mod.get()
+    if t is None:
+        return {"enabled": False, "endpoint": None, "install_id": None, "version": None, "platform": None,
+                "queued": [], "sent": []}
+    return t.preview()
+
+
+@app.post("/api/telemetry/client-error")
+async def post_telemetry_client_error(body: dict):
+    """An uncaught error of the web page: its name and where it happened, nothing else is taken over."""
+    t = telemetry_mod.get()
+    name = body.get("name")
+    if t is not None and isinstance(name, str):
+        t.error(name, "frontend", body.get("frames"), source="frontend")
+    return {"ok": True}
 
 
 @app.get("/api/joke")
@@ -1539,6 +1560,10 @@ async def get_config():
             "relay_url": raw.get("online", {}).get("relay_url"),
             "site_name": raw.get("online", {}).get("site_name"),
         },
+        "telemetry": {
+            "enabled": raw.get("telemetry", {}).get("enabled") is True,
+            "url": raw.get("telemetry", {}).get("url"),
+        },
         "runtime_fields": list(cfg_mod.RUNTIME_FIELDS),
         # Read-only — not part of the editable Settings form. True when
         # either `[dev] enabled = true` in config.toml, or the version-tap
@@ -1592,6 +1617,9 @@ async def patch_config(body: dict):
     if "elimination_beat_hint" in updates.get("web", {}):
         _elim_beat_hint = updates["web"]["elimination_beat_hint"] is True
         push()
+
+    if "telemetry" in updates and telemetry_mod.get():
+        telemetry_mod.get().settings_changed()
 
     log.info("Config saved: keys=%s restart_required=%s", changed_keys, changed_non_runtime)
     return {"saved": True, "restart_required": changed_non_runtime}

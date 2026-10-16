@@ -6,6 +6,7 @@ import sys
 from breakfast import __release_date__, __version__
 from breakfast import config as cfg_mod
 from breakfast import frozen
+from breakfast import telemetry
 from breakfast.source_replay import run_replay
 from breakfast.source_direct import run_direct
 
@@ -214,6 +215,7 @@ def main():
     # ── Step 5: configure logging ────────────────────────────────────────────
     _setup_logging(args.log_level, getattr(args, "log_file", None))
     _log_startup_banner()
+    telemetry.start(cfg_path)
 
     # [caller] section is passed through as a dict; --no-caller overrides
     caller_cfg = dict(cfg.get("caller") or {})

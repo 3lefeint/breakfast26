@@ -12,6 +12,7 @@ import threading
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from breakfast import telemetry
 from breakfast.dartboard import field_centers
 from breakfast.checkout_routes import standard_route as checkout_route
 from breakfast.field_training import rating as field_training_rating, scaled_points, standard_darts
@@ -464,6 +465,7 @@ class StatsDB:
                 (match_id, _now_iso(), game_mode, points_start, tournament_id),
             )
             self._conn.commit()
+        telemetry.record_match_opened(match_id, game_mode)
 
     # ── Tournaments ───────────────────────────────────────────────────────────
 
@@ -528,6 +530,7 @@ class StatsDB:
                 (_now_iso(), json.dumps(players), match_id),
             )
             self._conn.commit()
+        telemetry.record_match_closed(match_id, len(players))
         self._match_changed(match_id)
 
     def set_winner(self, match_id: str, winner: str | None):
