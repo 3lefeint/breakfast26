@@ -1,0 +1,9 @@
+// Lets the user that owns the board host switch between the dart detection and Autodarts without a password: start, stop and restart of
+// these two units only. Copy to /etc/polkit-1/rules.d/ (as root). Put the name of the user that should be allowed in place of BOARD_USER.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "BOARD_USER" &&
+        (action.lookup("unit") == "autodarts.service" || action.lookup("unit") == "breakfast-detect.service")) {
+        return polkit.Result.YES;
+    }
+});

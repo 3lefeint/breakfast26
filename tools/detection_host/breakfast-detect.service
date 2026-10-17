@@ -1,0 +1,25 @@
+# The dart detection stack as a service of the board host, in place of Autodarts (both want the three cameras, only one can have them).
+#
+#   Starting this unit stops autodarts.service first (Conflicts=), starting autodarts.service stops this one: that switch is also
+#   the fall-back to Autodarts when the detection does not work:  systemctl start autodarts
+#   Back to the detection:                                          systemctl start breakfast-detect
+#   Detection on boot instead of Autodarts:                        systemctl disable autodarts; systemctl enable breakfast-detect
+#
+# Install (as root, once; see tools/detection_host/README.md): copy this file to /etc/systemd/system/, the script to
+# /usr/local/bin/, edit /etc/default/breakfast-detect (DETECT_DIR), `systemctl daemon-reload`.
+[Unit]
+Description=Breakfast dart detection (cameras of the board)
+Requires=docker.service
+After=docker.service network-online.target autodarts.service
+Conflicts=autodarts.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/breakfast-detect
+ExecStart=/usr/local/bin/breakfast-detect-host.sh start
+ExecStop=/usr/local/bin/breakfast-detect-host.sh stop
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

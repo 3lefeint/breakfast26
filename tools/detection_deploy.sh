@@ -4,6 +4,7 @@
 #   DETECT_HOST=user@board-host tools/detection_deploy.sh prepare # build here, copy the image and the files there (starts nothing)
 #   DETECT_HOST=user@board-host CAM_PATHS='<name> <name> <name>' tools/detection_deploy.sh up   # start the stack there (Autodarts must be stopped)
 #   DETECT_HOST=user@board-host tools/detection_deploy.sh down
+#   DETECT_HOST=user@board-host tools/detection_deploy.sh host-files  # copy the service files to the host (installs nothing, see tools/detection_host/README.md)
 #   DETECT_HOST=user@board-host tools/detection_deploy.sh logs
 #
 # The image is built on this machine and copied over (docker save | docker load), so the board host needs no build tools and no
@@ -41,11 +42,16 @@ case "${1:-}" in
   down)
     ssh "$HOST" "cd $DIR && docker compose -f $COMPOSE down"
     ;;
+  host-files)
+    ssh "$HOST" "mkdir -p $DIR/host"
+    scp -q tools/detection_host/* "$HOST:$DIR/host/"
+    echo "copied to $DIR/host on the host: installing them needs root, see $DIR/host/README.md"
+    ;;
   logs)
     ssh "$HOST" "cd $DIR && docker compose -f $COMPOSE logs --tail 80 -f"
     ;;
   *)
-    echo "usage: $0 prepare|up|down|logs" >&2
+    echo "usage: $0 prepare|up|down|logs|host-files" >&2
     exit 2
     ;;
 esac

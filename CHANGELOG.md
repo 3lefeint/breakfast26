@@ -26,6 +26,7 @@
 - The dart detection compares the picture of the empty board with the one taken when the model was made and warns on the Board page and in the top bar when a camera has moved by 2 px or more; a button takes the current empty board as the new reference.
 - The Board page has a Settings section for the tracker of the dart detection (still time, movement threshold, when a dart counts as uncertain, the recount of missed darts) with ranges; a change is kept and wins over `config.toml`, a button goes back to it. Old sessions of event pictures are removed at the start (the newest 10 and at most 2 GB are kept).
 - The Board page can fix the exposure and the white balance of the cameras of the dart detection (0 keeps the camera's automatic) and shows the brightness of each picture.
+- Service files for running the dart detection on the board host in place of Autodarts: starting one stops the other (the way back to Autodarts), the cameras are found by USB port at every start, and the user of the host may switch without a password.
 
 ### Changed
 - Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)
