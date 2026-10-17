@@ -6,6 +6,7 @@
 - Optional anonymous usage and error reports, off by default: Settings → Usage reports switches them on and shows what is queued and sent; the relay stores them in a D1 database after a strict check (#58).
 - A computer opponent for X01 matches and tournaments: add it on the setup page with one of five stages from beginner to pro, defined by how precisely it throws at the triple 20; it throws at the triple 20, follows the checkout chart once it can finish, respects the in and out mode, and leaves no turns, results or achievements (#47).
 - The correction dialog is the dartboard only: pressing it stores the spot instead of the center of the field, with a magnifier above the finger, and such a dart counts in the position statistics; the field buttons of the dialog and the Correct row of the X01 controls are gone, and the dialog has an opaque background (#59).
+- Warm-up: a round over every segment of the board for one player, the big singles, the bull, the small singles, the bull, the doubles, the bull, the triples and the bull's eye in order, each field thrown at until it is hit, over all stations or only the ones that are switched on (the bull comes between them), with a setup page, a live view that lights the part of the field that is up, a result with the darts per station, the slowest fields and a comparison with earlier runs over the same stations, a card on Home and a Warm-up chip in the Stats (#33)
 
 ### Fixed
 - An empty dart box on the TV view opens the correction dialog in every X01 match, to enter a dart the board did not see (#59).

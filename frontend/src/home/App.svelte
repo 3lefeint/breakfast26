@@ -14,6 +14,7 @@
   import TargetBattle from './views/TargetBattle.svelte';
   import FieldTraining from './views/FieldTraining.svelte';
   import BlackBelt from './views/BlackBelt.svelte';
+  import WarmUp from './views/WarmUp.svelte';
   import CheckoutTrainer from './views/CheckoutTrainer.svelte';
   import CheckoutTraining from './views/CheckoutTraining.svelte';
   import CheckoutQuiz from './views/CheckoutQuiz.svelte';
@@ -106,6 +107,8 @@
             <FieldTraining />
           {:else if $route === 'black-belt'}
             <BlackBelt />
+          {:else if $route === 'warm-up'}
+            <WarmUp />
           {:else if $route === 'checkout-trainer'}
             <CheckoutTrainer />
           {:else if $route === 'checkout-training'}

@@ -8,6 +8,7 @@
   import StatsKiller from './stats/StatsKiller.svelte';
   import StatsFieldTraining from './stats/StatsFieldTraining.svelte';
   import StatsBlackBelt from './stats/StatsBlackBelt.svelte';
+  import StatsWarmUp from './stats/StatsWarmUp.svelte';
   import StatsCheckoutTraining from './stats/StatsCheckoutTraining.svelte';
 
   const MODES = [
@@ -17,6 +18,7 @@
     { id: 'killer', label: t('Killer') },
     { id: 'field_training', label: t('Training') },
     { id: 'black_belt', label: t('Black Belt') },
+    { id: 'warm_up', label: t('Warm-up') },
     { id: 'checkout_training', label: t('Checkout') },
   ];
 
@@ -56,6 +58,8 @@
   <StatsFieldTraining />
 {:else if mode === 'black_belt'}
   <StatsBlackBelt />
+{:else if mode === 'warm_up'}
+  <StatsWarmUp />
 {:else if mode === 'checkout_training'}
   <StatsCheckoutTraining />
 {:else}

@@ -74,6 +74,16 @@ class TestHandleBoardMessage:
         assert tb_ctrl.board_state_calls == [(1, [_throw(20, 3)])]
         assert mqtt_pub.freeplay_calls == [] and audio.calls == []
 
+    def test_an_active_warm_up_routes_to_its_controller_not_freeplay(self):
+        state = GameState()
+        mqtt_pub, audio = FakeMqttPub(), FakeAudio()
+        wu_ctrl = FakeElimCtrl(active=True)
+        _handle_board_message(
+            {"numThrows": 1, "throws": [_throw(20, 3)]}, state, mqtt_pub, FakeElimCtrl(), audio,
+            prev_count=0, wu_ctrl=wu_ctrl)
+        assert wu_ctrl.board_state_calls == [(1, [_throw(20, 3)])]
+        assert mqtt_pub.freeplay_calls == [] and audio.calls == []
+
     def test_a_running_elimination_wins_over_target_battle(self):
         state = GameState()
         elim_ctrl, tb_ctrl = FakeElimCtrl(active=True), FakeElimCtrl(active=True)

@@ -15,6 +15,7 @@
     ] },
     { title: t('Singleplayer'), columns: 3, cards: [
       { href: '#field-training', icon: 'field-training', label: t('Field Training') },
+      { href: '#warm-up', icon: 'warm-up', label: t('Warm-up') },
       { href: '#black-belt', icon: 'black-belt', label: t('Black Belt') },
       { href: '#checkout-trainer', icon: 'checkout', label: t('Checkout Trainer') },
     ] },

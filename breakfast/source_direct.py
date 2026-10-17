@@ -14,6 +14,7 @@ from breakfast.output_console import print_state
 from breakfast.mqtt_output import MqttPublisher, NullMqttPublisher
 from breakfast.elimination import EliminationController
 from breakfast.black_belt import BlackBeltController
+from breakfast.warm_up import WarmUpController
 from breakfast.field_training import FieldTrainingController
 from breakfast.checkout_training import CheckoutTrainingController
 from breakfast.target_battle import TargetBattleController
@@ -35,7 +36,7 @@ def _dart_value(throw):
 
 
 def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl=None,
-                          killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None):
+                          killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, wu_ctrl=None):
     """Process one board-WS state message. Returns the new prev_count.
 
     Split out from _start_board_ws()'s on_message closure so this logic is
@@ -80,6 +81,8 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
             ft_ctrl.on_board_state(count, throws)
         elif bb_ctrl and bb_ctrl.active:
             bb_ctrl.on_board_state(count, throws)
+        elif wu_ctrl and wu_ctrl.active:
+            wu_ctrl.on_board_state(count, throws)
         elif co_ctrl and co_ctrl.active:
             co_ctrl.on_board_state(count, throws)
         else:
@@ -101,7 +104,8 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
 
 
 def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None,
-                    tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None):
+                    tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None,
+                    wu_ctrl=None):
     """Background thread: local board WebSocket for Elimination, Target Battle, Killer and freeplay."""
     prev_count = 0
 
@@ -115,7 +119,7 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
             return
         prev_count = _handle_board_message(
             msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl, killer_ctrl, ft_ctrl, bb_ctrl, co_ctrl,
-            x01_ctrl)
+            x01_ctrl, wu_ctrl=wu_ctrl)
 
     def set_connected(connected):
         if state.board_darts.set_connected(connected):
@@ -210,6 +214,10 @@ def run_direct(email, password, board_id, record_file=None,
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
     )
+    wu_ctrl = WarmUpController(
+        mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
+        audio=audio, on_change=web.push,
+    )
     co_ctrl = CheckoutTrainingController(
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
@@ -224,7 +232,8 @@ def run_direct(email, password, board_id, record_file=None,
     x01_ctrl.bots.on_darts = show_bot_darts
     tournament_ctrl = TournamentController(x01_ctrl, stats_db=stats_db_instance, on_change=web.push)
     _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio, tb_ctrl=tb_ctrl,
-                    killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl, x01_ctrl=x01_ctrl)
+                    killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl, x01_ctrl=x01_ctrl,
+                    wu_ctrl=wu_ctrl)
 
     def process_event(data):
         if recorder:
@@ -289,7 +298,7 @@ def run_direct(email, password, board_id, record_file=None,
              stats_tracker=stats_tracker, mqtt_pub=mqtt_pub,
              config_path=config_path, audio_engine=audio,
              board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl, killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl,
-             x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl)
+             x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl, wu_ctrl=wu_ctrl)
     if web_port:
         web.start(web_port)
 

@@ -9,7 +9,7 @@
 
   let { route, boardAddress = null, version = '', onVersionTap = () => {} } = $props();
 
-  const PLAY_ROUTES = ['', 'home', 'elimination', 'target-battle', 'killer', 'x01', 'tournament', 'field-training', 'black-belt', 'checkout-trainer', 'checkout-training', 'checkout-quiz', 'setup-shots'];
+  const PLAY_ROUTES = ['', 'home', 'elimination', 'target-battle', 'killer', 'x01', 'tournament', 'field-training', 'black-belt', 'warm-up', 'checkout-trainer', 'checkout-training', 'checkout-quiz', 'setup-shots'];
 
   let items = $derived([
     { id: 'play', label: t('Play'), icon: 'play', href: '#home', active: PLAY_ROUTES.includes(route) },

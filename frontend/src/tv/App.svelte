@@ -12,6 +12,7 @@
   import { roundName } from '../lib/tournament.js';
   import { fieldTraining } from '../lib/stores/fieldTraining.js';
   import { blackBelt } from '../lib/stores/blackBelt.js';
+  import { warmUp } from '../lib/stores/warmUp.js';
   import { checkoutTraining } from '../lib/stores/checkoutTraining.js';
   import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
@@ -35,6 +36,8 @@
   import FieldTrainingFinishedTv from './views/FieldTrainingFinishedTv.svelte';
   import BlackBeltTv from './views/BlackBeltTv.svelte';
   import BlackBeltFinishedTv from './views/BlackBeltFinishedTv.svelte';
+  import WarmUpTv from './views/WarmUpTv.svelte';
+  import WarmUpFinishedTv from './views/WarmUpFinishedTv.svelte';
   import CheckoutTrainingTv from './views/CheckoutTrainingTv.svelte';
   import CheckoutTrainingFinishedTv from './views/CheckoutTrainingFinishedTv.svelte';
 
@@ -69,6 +72,7 @@
     if ($killer && ($killer.state === 'finished' || $killer.active)) return t('Killer');
     if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return t('Field Training');
     if ($blackBelt && ($blackBelt.state === 'finished' || $blackBelt.active)) return t('Black Belt');
+    if ($warmUp && ($warmUp.state === 'finished' || $warmUp.active)) return t('Warm-up');
     if ($checkoutTraining && ($checkoutTraining.state === 'finished' || $checkoutTraining.active)) return t('Checkout Training');
     if ($tournament && $tournament.active) {
       const round = $tournament.current ? roundName($tournament.current.round, $tournament.rounds.length) : '';
@@ -91,6 +95,8 @@
     if ($fieldTraining && $fieldTraining.active) return 'ft-live';
     if ($blackBelt && $blackBelt.state === 'finished') return 'bb-finished';
     if ($blackBelt && $blackBelt.active) return 'bb-live';
+    if ($warmUp && $warmUp.state === 'finished') return 'wu-finished';
+    if ($warmUp && $warmUp.active) return 'wu-live';
     if ($checkoutTraining && $checkoutTraining.state === 'finished') return 'co-finished';
     if ($checkoutTraining && $checkoutTraining.active) return 'co-live';
     // Between the matches of a tournament its bracket is shown; during a match the match itself.
@@ -202,6 +208,12 @@
   </div>
 {:else if view === 'bb-finished'}
   <BlackBeltFinishedTv bb={$blackBelt} />
+{:else if view === 'wu-live'}
+  <div id="activeElim">
+    <WarmUpTv wu={$warmUp} />
+  </div>
+{:else if view === 'wu-finished'}
+  <WarmUpFinishedTv wu={$warmUp} />
 {:else if view === 'co-live'}
   <div id="activeElim">
     <CheckoutTrainingTv co={$checkoutTraining} />

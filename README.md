@@ -12,7 +12,7 @@ own account and needs no other add-on.
 ## Features
 
 - [Live scoreboard and TV view](#tv-view): full screen on a TV or tablet, with checkout suggestions and a live dartboard
-- [Games and drills](#games-and-drills): X01 with tournaments, Elimination, Target Battle, Killer, Field Training, Black Belt and a Checkout Trainer
+- [Games and drills](#games-and-drills): X01 with tournaments, Elimination, Target Battle, Killer, Field Training, a Warm-up, Black Belt and a Checkout Trainer
 - [Voice caller](#voice-caller-and-voice-packs): announces the game, with English and German voice packs and an editor for your own
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
@@ -171,6 +171,13 @@ dartboard (a magnifier shows it); the dart is stored where you let go.
   leaderboard entries or achievements.
 - **Field Training**: one player throws a fixed number of darts at a single field, a number or the bull. The
   result shows the points, the hit rate and a rating.
+- **Warm-up**: a round over every segment of the board for one player. Throw at each field until it is hit: the
+  big singles from 1 to 20, the bull, the small singles from 1 to 20, the bull, the doubles from 1 to 20, the
+  bull, the triples from 1 to 20 and the bull's eye. Switch on only the stations you want, for example the big
+  singles and the triples, or leave them all; the order stays, the bull comes between the stations. There is no limit of darts per field, and after a hit the next field
+  is up, also for the darts left in the turn. The board lights the part of the field that is up, the result
+  shows the darts per station and the fields that took the most, and compares the run with your earlier ones
+  over the same stations.
 - **Black Belt**: a doubles drill for one player. Hit D1 to D20 and finally the bull's eye, in order (or from
   D20 down to D1). If a field is not hit with its darts, you start again from the beginning. You earn the
   belt by getting through the whole ladder in one go.
@@ -189,7 +196,7 @@ dartboard (a magnifier shows it); the dart is stored where you let go.
 <tr>
 <td width="33%"><img src="media/tv-field-training.webp" alt="The result of a Field Training run"><br><sub>Field Training</sub></td>
 <td width="33%"><img src="media/tv-black-belt.webp" alt="The result of a Black Belt run"><br><sub>Black Belt</sub></td>
-<td width="33%"></td>
+<td width="33%"><img src="media/tv-warm-up.webp" alt="The Warm-up on the TV view"><br><sub>Warm-up</sub></td>
 </tr>
 </table>
 

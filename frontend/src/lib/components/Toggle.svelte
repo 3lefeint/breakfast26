@@ -1,13 +1,14 @@
 <script>
   // An on/off switch with its label, as the settings of the setup pages use it. `wide` is for a label that is
   // a sentence: it takes the width it needs instead of the fixed label column.
-  let { checked = $bindable(false), label, wide = false } = $props();
+  // `onchange` is called with the new value when the user switches it, for a page that has to react to it.
+  let { checked = $bindable(false), label, wide = false, onchange = null } = $props();
 </script>
 
 <label class="option-row">
   <span class="label" class:wide>{label}</span>
   <span class="switch">
-    <input type="checkbox" bind:checked>
+    <input type="checkbox" bind:checked onchange={(e) => onchange?.(e.currentTarget.checked)}>
     <span class="slider"></span>
   </span>
 </label>

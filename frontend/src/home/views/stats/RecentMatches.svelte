@@ -7,6 +7,7 @@
   import { SCORING_SHORT } from '../../../lib/targetBattle.js';
   import { fieldLabel, RATING_LABELS, percent } from '../../../lib/fieldTraining.js';
   import { rangeLabel, fieldName } from '../../../lib/checkoutTraining.js';
+  import { KINDS, modeLabel } from '../../../lib/warmUp.js';
 
   let { mode } = $props();
 
@@ -59,6 +60,7 @@
       return `${t('Checkout Training')}${m.range ? ' · ' + rangeLabel(m.range[0], m.range[1]) : ''} · ${t('{n} attempts', { n: m.points_start })}`;
     }
     if (m.game_mode === 'Black Belt') return `${t('Black Belt')} · ${m.backwards ? t('D20 down to D1') : t('D1 up to D20')}`;
+    if (m.game_mode === 'Warm-up') return m.kinds?.length && m.kinds.length < KINDS.length ? `${t('Warm-up')} · ${modeLabel(m.kinds)}` : t('Warm-up');
     if (m.game_mode === 'Field Training') {
       return `${t('Field Training')} · ${m.field != null ? fieldLabel(m.field) : '?'} · ${t('{n} darts', { n: m.points_start })}`;
     }
@@ -154,6 +156,23 @@
                     <td class="num-cell">{matchDetails[m.match_id].restarts}</td>
                     <td class="num-cell">{matchDetails[m.match_id].darts}</td>
                     <td class="num-cell">{matchDetails[m.match_id].belt ? t('Belt') : ''}</td>
+                  </tr>
+                </tbody>
+              </table>
+            {:else if mode === 'warm_up'}
+              <table class="players-table stats-table detail">
+                <thead>
+                  <tr>
+                    <th>{t('Player')}</th><th class="num-cell">{t('Fields')}</th><th class="num-cell">{t('Darts')}</th>
+                    <th class="num-cell"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{cap(matchDetails[m.match_id].player)}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].fields}/{matchDetails[m.match_id].total}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].darts}</td>
+                    <td class="num-cell">{matchDetails[m.match_id].complete ? t('Complete') : ''}</td>
                   </tr>
                 </tbody>
               </table>

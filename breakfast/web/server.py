@@ -58,6 +58,7 @@ _tournament_ctrl = None
 _ft_ctrl = None
 _co_ctrl = None
 _bb_ctrl = None
+_wu_ctrl = None
 _online = None
 _cloud_client = None
 _stats_tracker = None
@@ -82,8 +83,9 @@ _audio_clients: set[WebSocket] = set()
 def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
-         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, tournament_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
+         tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, tournament_ctrl=None,
+         wu_ctrl=None):
+    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online, _elim_beat_hint
     _game_state = game_state
@@ -95,6 +97,7 @@ def wire(game_state, elim_ctrl,
     _ft_ctrl = ft_ctrl
     _co_ctrl = co_ctrl
     _bb_ctrl = bb_ctrl
+    _wu_ctrl = wu_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
@@ -146,6 +149,12 @@ def _build_payload() -> dict:
         bb_snap = {"active": False}
     else:
         bb_snap = None
+    if _wu_ctrl and _wu_ctrl.game:
+        wu_snap = _wu_ctrl.game.snapshot()
+    elif _wu_ctrl:
+        wu_snap = {"active": False}
+    else:
+        wu_snap = None
     if _co_ctrl and _co_ctrl.game:
         co_snap = _co_ctrl.game.snapshot()
     elif _co_ctrl:
@@ -166,6 +175,7 @@ def _build_payload() -> dict:
         "tournament": _tournament_ctrl.snapshot() if _tournament_ctrl else None,
         "field_training": ft_snap,
         "black_belt": bb_snap,
+        "warm_up": wu_snap,
         "checkout_training": co_snap,
         "known_players": known_players,
         "hidden_players": _stats_db.hidden_players() if _stats_db else [],
@@ -190,7 +200,7 @@ def _board_view_darts():
     if _game_state and _game_state.cloud_darts is not None:         # a match played in Autodarts: its darts are all there is
         return list(_game_state.cloud_darts)
     darts = (_game_state.board_darts.snapshot() if _game_state else None) or []
-    for ctrl in (_x01_ctrl, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl):
+    for ctrl in (_x01_ctrl, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl):
         game = ctrl.game if ctrl else None
         manual = game.manual_darts() if game and hasattr(game, "manual_darts") else []
         for index, dart in manual:
@@ -631,6 +641,8 @@ async def elim_start(body: StartBody):
         return {"error": "a Field Training run is open, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, cancel it first"}
+    if _wu_ctrl and _wu_ctrl.active:
+        return {"error": "a Warm-up run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
         return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
@@ -738,6 +750,8 @@ async def tb_start(body: TargetBattleStartBody):
         return {"error": "a Field Training run is open, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, cancel it first"}
+    if _wu_ctrl and _wu_ctrl.active:
+        return {"error": "a Warm-up run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
         return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
@@ -825,6 +839,8 @@ async def killer_start(body: KillerStartBody):
         return {"error": "a Field Training run is open, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, cancel it first"}
+    if _wu_ctrl and _wu_ctrl.active:
+        return {"error": "a Warm-up run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
         return {"error": "a Checkout Training run is open, cancel it first"}
     players = [p.strip() for p in body.players if p.strip()]
@@ -920,6 +936,7 @@ async def x01_start(body: X01StartBody):
                           (_killer_ctrl, "a Killer game is running, cancel it first"),
                           (_ft_ctrl, "a Field Training run is open, cancel it first"),
                           (_bb_ctrl, "a Black Belt run is open, cancel it first"),
+                          (_wu_ctrl, "a Warm-up run is open, cancel it first"),
                           (_co_ctrl, "a Checkout Training run is open, cancel it first")):
         if ctrl and ctrl.active:
             return {"error": message}
@@ -1032,6 +1049,7 @@ async def tournament_start(body: TournamentStartBody):
                           (_killer_ctrl, "a Killer game is running, cancel it first"),
                           (_ft_ctrl, "a Field Training run is open, cancel it first"),
                           (_bb_ctrl, "a Black Belt run is open, cancel it first"),
+                          (_wu_ctrl, "a Warm-up run is open, cancel it first"),
                           (_co_ctrl, "a Checkout Training run is open, cancel it first")):
         if ctrl and ctrl.active:
             return {"error": message}
@@ -1112,6 +1130,8 @@ async def ft_start(body: FieldTrainingStartBody):
         return {"error": "a Killer game is running, cancel it first"}
     if _bb_ctrl and _bb_ctrl.active:
         return {"error": "a Black Belt run is open, cancel it first"}
+    if _wu_ctrl and _wu_ctrl.active:
+        return {"error": "a Warm-up run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
         return {"error": "a Checkout Training run is open, cancel it first"}
     try:
@@ -1197,6 +1217,8 @@ async def bb_start(body: BlackBeltStartBody):
         return {"error": "a Field Training run is open, cancel it first"}
     if _co_ctrl and _co_ctrl.active:
         return {"error": "a Checkout Training run is open, cancel it first"}
+    if _wu_ctrl and _wu_ctrl.active:
+        return {"error": "a Warm-up run is open, cancel it first"}
     try:
         _bb_ctrl.start(body.player, backwards=body.backwards)
     except ValueError as e:
@@ -1251,6 +1273,87 @@ async def bb_correct_dart(body: CorrectDartBody):
     if _bb_ctrl and _bb_ctrl.game:
         _bb_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
     _move_board_dart(_board_index(_bb_ctrl, body.dart - 1), body.field, body.point)
+    return {"ok": True}
+
+
+# ── REST: warm-up ───────────────────────────────────────────────────
+
+class WarmUpStartBody(BaseModel):
+    player: str
+    stations: list[str] | None = None    # the kinds of field to go over (big, bull, small, double, eye, triple), none: all
+
+
+@app.post("/api/warm-up/start")
+async def wu_start(body: WarmUpStartBody):
+    log.debug("Warm-up start requested: player=%s stations=%s", body.player, body.stations)
+    if not _wu_ctrl:
+        return {"error": "no warm-up controller"}
+    if _online and _online.active:
+        return {"error": "an online match is open, leave it first"}
+    if (error := _x01_guard()):
+        return error
+    for ctrl, message in ((_elim_ctrl, "an Elimination game is running, cancel it first"),
+                          (_tb_ctrl, "a Target Battle is running, cancel it first"),
+                          (_killer_ctrl, "a Killer game is running, cancel it first"),
+                          (_ft_ctrl, "a Field Training run is open, cancel it first"),
+                          (_bb_ctrl, "a Black Belt run is open, cancel it first"),
+                          (_co_ctrl, "a Checkout Training run is open, cancel it first")):
+        if ctrl and ctrl.active:
+            return {"error": message}
+    try:
+        _wu_ctrl.start(body.player, body.stations)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True}
+
+
+@app.post("/api/warm-up/stop")
+async def wu_stop():
+    log.debug("Warm-up stop requested")
+    if _wu_ctrl:
+        _wu_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/warm-up/finish")
+async def wu_finish():
+    """End the run and keep what was thrown; a run without a dart is dropped."""
+    log.debug("Warm-up finish requested")
+    if not _wu_ctrl:
+        return {"error": "no warm-up controller"}
+    if not _wu_ctrl.finish_early():
+        _wu_ctrl.stop()
+    return {"ok": True}
+
+
+@app.post("/api/warm-up/undo")
+async def wu_undo():
+    log.debug("Warm-up undo requested")
+    if not (_wu_ctrl and _wu_ctrl.game):
+        return {"error": "no active or finished run"}
+    if not _wu_ctrl.game.undo():
+        return {"error": "nothing to undo"}
+    return {"ok": True}
+
+
+@app.post("/api/warm-up/next")
+async def wu_next():
+    """End the turn by hand, like pulling the darts from the board."""
+    if not (_wu_ctrl and _wu_ctrl.game):
+        return {"error": "no active game"}
+    if not _wu_ctrl.next_turn():
+        return {"error": "no turn to end"}
+    return {"ok": True}
+
+
+@app.post("/api/warm-up/correct-dart")
+async def wu_correct_dart(body: CorrectDartBody):
+    log.debug("Warm-up correct-dart requested: dart=%s field=%s", body.dart, body.field)
+    if body.dart not in (1, 2, 3):
+        return {"error": "dart must be 1, 2, or 3"}
+    if _wu_ctrl and _wu_ctrl.game:
+        _wu_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_wu_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -1378,7 +1481,7 @@ async def achievements_player(name: str):
 
 
 @app.get("/api/stats/matches")
-async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training|black_belt|checkout_training)$")):
+async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training|black_belt|warm_up|checkout_training)$")):
     if not _stats_db:
         return []
     return _stats_db.recent_matches(mode=mode)
@@ -1443,6 +1546,13 @@ async def stats_black_belt_overview():
     if not _stats_db:
         return {"players": []}
     return _stats_db.black_belt_overview()
+
+
+@app.get("/api/stats/warm-up/overview")
+async def stats_warm_up_overview():
+    if not _stats_db:
+        return {"players": []}
+    return _stats_db.warm_up_overview()
 
 
 @app.get("/api/stats/match/{match_id}")
@@ -1985,7 +2095,8 @@ async def co_start(body: CheckoutTrainingStartBody):
                           (_tb_ctrl, "a Target Battle is running, cancel it first"),
                           (_killer_ctrl, "a Killer game is running, cancel it first"),
                           (_ft_ctrl, "a Field Training run is open, cancel it first"),
-                          (_bb_ctrl, "a Black Belt run is open, cancel it first")):
+                          (_bb_ctrl, "a Black Belt run is open, cancel it first"),
+                          (_wu_ctrl, "a Warm-up run is open, cancel it first")):
         if ctrl and ctrl.active:
             return {"error": message}
     if body.range is not None and body.range not in CHECKOUT_RANGES:
@@ -2366,7 +2477,7 @@ async def set_player_color(name: str, body: ColorBody):
 
 def _a_game_is_running() -> bool:
     """A match is being played, in any mode: names are in use in memory then."""
-    ctrls = (_elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl)
+    ctrls = (_elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl)
     return any(c and c.active for c in ctrls) or bool(_game_state and _game_state.match_started)
 
 

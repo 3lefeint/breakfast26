@@ -168,6 +168,22 @@ CREATE TABLE IF NOT EXISTS black_belt_darts (
     restart  INTEGER NOT NULL DEFAULT 0,
     created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS warm_up_games (
+    match_id TEXT PRIMARY KEY,
+    player   TEXT NOT NULL,
+    kinds    TEXT NOT NULL DEFAULT '',
+    complete INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS warm_up_darts (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL,
+    player   TEXT NOT NULL,
+    turn_no  INTEGER NOT NULL,
+    dart_no  INTEGER NOT NULL,
+    step     INTEGER NOT NULL,
+    hit      INTEGER NOT NULL,
+    created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS killer_games (
     match_id TEXT PRIMARY KEY,
     own_goal INTEGER NOT NULL DEFAULT 0,
@@ -204,6 +220,7 @@ CREATE INDEX IF NOT EXISTS idx_killer_turns_match  ON killer_turns  (match_id);
 CREATE INDEX IF NOT EXISTS idx_field_training_turns_match ON field_training_turns (match_id);
 CREATE INDEX IF NOT EXISTS idx_checkout_training_turns_match ON checkout_training_turns (match_id);
 CREATE INDEX IF NOT EXISTS idx_black_belt_darts_match ON black_belt_darts (match_id);
+CREATE INDEX IF NOT EXISTS idx_warm_up_darts_match ON warm_up_darts (match_id);
 CREATE INDEX IF NOT EXISTS idx_killer_events_match ON killer_events (match_id);
 CREATE TABLE IF NOT EXISTS dart_positions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,7 +266,7 @@ _TURN_TABLES = {"all": ("turns", "elimination_turns"), "x01": ("turns",), "elimi
 
 
 # The games that are not X01. Everything else in `matches` is an X01 variant.
-_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer', 'Field Training', 'Black Belt', 'Checkout Training')"
+_OTHER_MODES_SQL = "('Elimination', 'Target Battle', 'Killer', 'Field Training', 'Black Belt', 'Checkout Training', 'Warm-up')"
 
 # A match counts as "solo" (practice, no opponent) when exactly one distinct
 # player ever appears in its `turns` rows — Elimination is excluded here
@@ -334,6 +351,7 @@ class StatsDB:
             self._migrate_elimination_turn_details()
             self._migrate_turn_times()
             self._migrate_misread()
+            self._migrate_warm_up_kinds()
             self._migrate_player_color()
             self._migrate_backfill_x01_winner()
             self._migrate_drop_in_roster()
@@ -386,6 +404,12 @@ class StatsDB:
         if "misread" not in cols:
             self._conn.execute("ALTER TABLE dart_positions ADD COLUMN misread INTEGER NOT NULL DEFAULT 0")
             self._conn.execute("UPDATE dart_positions SET misread = corrected WHERE game_mode = 'Elimination'")
+
+    def _migrate_warm_up_kinds(self):
+        """A Warm-up run keeps the kinds of field it went over. A run from before is one over all of them (an empty list)."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(warm_up_games)")}
+        if "kinds" not in cols:
+            self._conn.execute("ALTER TABLE warm_up_games ADD COLUMN kinds TEXT NOT NULL DEFAULT ''")
 
     def _migrate_player_color(self):
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(players)")}
@@ -521,8 +545,9 @@ class StatsDB:
                     " UNION SELECT DISTINCT player FROM killer_turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM field_training_turns WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM black_belt_darts WHERE match_id = ?"
+                    " UNION SELECT DISTINCT player FROM warm_up_darts WHERE match_id = ?"
                     " UNION SELECT DISTINCT player FROM checkout_training_turns WHERE match_id = ?",
-                    (match_id, match_id, match_id, match_id, match_id, match_id, match_id),
+                    (match_id, match_id, match_id, match_id, match_id, match_id, match_id, match_id),
                 ).fetchall()
             ]
             log.debug("DB write: close_match match_id=%s players=%s", match_id, players)
@@ -776,6 +801,120 @@ class StatsDB:
                 "restarts": sum(r["restarts"] for r in runs),
             })
         players.sort(key=lambda p: (-len(p["runs"]), p["player"]))
+        return {"players": players}
+
+    # ── Warm-up ───────────────────────────────────────────────────────────────
+
+    def record_warm_up_setup(self, match_id: str, player: str, kinds):
+        """The run a match is: who goes over which kinds of field (the order of the series, joined by commas)."""
+        with self._lock:
+            self._ensure_player(player)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO warm_up_games (match_id, player, kinds, complete) VALUES (?, ?, ?, 0)",
+                (match_id, player, ",".join(kinds)))
+            self._conn.commit()
+
+    def set_warm_up_complete(self, match_id: str, complete: bool):
+        log.debug("DB write: set_warm_up_complete match_id=%s complete=%s", match_id, complete)
+        with self._lock:
+            self._conn.execute("UPDATE warm_up_games SET complete = ? WHERE match_id = ?", (int(complete), match_id))
+            self._conn.commit()
+
+    def insert_warm_up_turn(self, match_id, player, records, positions=None):
+        """One finished turn. records: per dart {"step", "hit"}. positions: one {"field", "x", "y"} (or None) per dart."""
+        log.debug("DB write: insert_warm_up_turn match_id=%s player=%s darts=%d", match_id, player, len(records))
+        with self._lock:
+            self._ensure_player(player)
+            turn = (self._conn.execute(
+                "SELECT COALESCE(MAX(turn_no), 0) FROM warm_up_darts WHERE match_id = ?",
+                (match_id,)).fetchone()[0]) + 1
+            for number, r in enumerate(records, start=1):
+                self._conn.execute(
+                    "INSERT INTO warm_up_darts (match_id, player, turn_no, dart_no, step, hit, created_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (match_id, player, turn, number, r["step"], int(r["hit"]), _now_iso()))
+            self._insert_positions(match_id, "Warm-up", player, 1, turn,
+                                   [((p or {}).get("field"), p) for p in positions or []])
+            self._conn.commit()
+
+    def delete_last_warm_up_turn(self, match_id: str, player: str):
+        """Undo insert_warm_up_turn() for the most recent turn."""
+        log.debug("DB write: delete_last_warm_up_turn match_id=%s player=%s", match_id, player)
+        with self._lock:
+            turn = self._conn.execute(
+                "SELECT MAX(turn_no) FROM warm_up_darts WHERE match_id = ?", (match_id,)).fetchone()[0]
+            if turn:
+                self._conn.execute("DELETE FROM warm_up_darts WHERE match_id = ? AND turn_no = ?", (match_id, turn))
+                self._conn.execute(
+                    "DELETE FROM dart_positions WHERE match_id = ? AND game_mode = 'Warm-up'"
+                    " AND player = ? AND turn = ?", (match_id, player, turn))
+                self._conn.commit()
+        self._match_changed(match_id)
+
+    def _warm_up_runs(self, where="", params=()):
+        """Every finished run with the darts it took per field, oldest first. `where` narrows the games (alias g)."""
+        from .warm_up import KINDS, STEPS, fields_for, slowest, station_totals
+        with self._lock:
+            games = self._conn.execute(
+                "SELECT g.match_id, g.player, g.kinds, g.complete, m.started_at FROM warm_up_games g"
+                " JOIN matches m ON m.match_id = g.match_id WHERE m.ended_at IS NOT NULL" + where +
+                " ORDER BY m.started_at, g.match_id", params).fetchall()
+            runs = []
+            for g in games:
+                kinds = [k for k in g["kinds"].split(",") if k] or list(KINDS)
+                per_step, hit = [0] * len(STEPS), [False] * len(STEPS)
+                for r in self._conn.execute(
+                        "SELECT step, COUNT(*) AS n, SUM(hit) AS hits FROM warm_up_darts WHERE match_id = ?"
+                        " GROUP BY step", (g["match_id"],)):
+                    if 0 <= r["step"] < len(per_step):
+                        per_step[r["step"]], hit[r["step"]] = r["n"], bool(r["hits"])
+                fields = fields_for(kinds)
+                aligned = [per_step[i] for i, _, _, _ in fields]
+                runs.append({"match_id": g["match_id"], "player": g["player"], "kinds": kinds,
+                             "complete": bool(g["complete"]), "date": g["started_at"], "darts": sum(per_step),
+                             "fields": sum(hit), "total": len(fields), "stations": station_totals(fields, aligned),
+                             "slowest": slowest(fields, aligned), "per_field": per_step})
+        return runs
+
+    def match_warm_up_stats(self, match_id: str) -> dict:
+        """One Warm-up run: who, which kinds of field, whether every field was hit, the darts in total, per station
+        and per field."""
+        runs = self._warm_up_runs(" AND g.match_id = ?", (match_id,))
+        return runs[0] if runs else {}
+
+    def warm_up_overview(self) -> dict:
+        """Per player and per set of stations (the key is the kinds joined by commas): every run (oldest first), the
+        complete ones, the fewest and the average darts of those and the five fields that needed the most darts on
+        average. Runs over different stations are never mixed. Hidden players are left out."""
+        from .warm_up import KINDS, STEPS
+        hidden = set(self.hidden_players())
+        all_key = ",".join(KINDS)
+        by_player = {}
+        for r in self._warm_up_runs():
+            if r["player"] not in hidden:
+                by_player.setdefault(r["player"], {}).setdefault(",".join(r["kinds"]), []).append(r)
+        players = []
+        for name, by_mode in by_player.items():
+            modes = []
+            for key, runs in by_mode.items():
+                complete = [r for r in runs if r["complete"]]
+                slow = []
+                if complete:
+                    averages = [sum(r["per_field"][i] for r in complete) / len(complete) for i in range(len(STEPS))]
+                    ranked = sorted(((a, -i) for i, a in enumerate(averages) if a > 1), reverse=True)[:5]
+                    slow = [{"kind": STEPS[-i][0], "number": STEPS[-i][1], "average": round(a, 1)} for a, i in ranked]
+                modes.append({
+                    "key": key, "kinds": key.split(","),
+                    "runs": [{k: r[k] for k in ("match_id", "date", "complete", "darts", "fields", "total", "stations")}
+                             for r in runs],
+                    "complete_runs": len(complete),
+                    "fewest_darts": min((r["darts"] for r in complete), default=None),
+                    "average_darts": round(sum(r["darts"] for r in complete) / len(complete), 1) if complete else None,
+                    "slowest": slow,
+                })
+            modes.sort(key=lambda m: (m["key"] != all_key, -len(m["runs"]), m["key"]))
+            players.append({"player": name, "run_count": sum(len(m["runs"]) for m in modes), "modes": modes})
+        players.sort(key=lambda p: (-p["run_count"], p["player"]))
         return {"players": players}
 
     # ── Field Training ────────────────────────────────────────────────────────
@@ -1862,6 +2001,9 @@ class StatsDB:
             self._conn.execute("DELETE FROM black_belt_games WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM black_belt_darts WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Black Belt'", (player,))
+            self._conn.execute("DELETE FROM warm_up_games WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM warm_up_darts WHERE player = ?", (player,))
+            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Warm-up'", (player,))
             self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
             self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
             self._conn.commit()
@@ -1872,12 +2014,13 @@ class StatsDB:
     # Tables with a plain `player` column that only needs the new name.
     _MERGE_TABLES = ("turns", "elimination_turns", "target_battle_turns", "field_training_games",
                      "field_training_turns", "checkout_training_games", "checkout_training_turns",
-                     "black_belt_games", "black_belt_darts", "killer_turns", "dart_positions")
+                     "black_belt_games", "black_belt_darts", "warm_up_games", "warm_up_darts", "killer_turns",
+                     "dart_positions")
     # Tables with a row per player and match, one row for each player of a match.
     _MERGE_RESULT_TABLES = ("elimination_results", "target_battle_results", "killer_results")
     _MATCH_TABLES = ("turns", "elimination_turns", "elimination_results", "target_battle_turns",
                      "target_battle_results", "killer_turns", "killer_results", "field_training_games",
-                     "checkout_training_games", "black_belt_games")
+                     "checkout_training_games", "black_belt_games", "warm_up_games")
 
     def _matches_of(self, player):
         sql = " UNION ".join(f"SELECT match_id FROM {t} WHERE player = ?" for t in self._MATCH_TABLES)
@@ -2005,8 +2148,9 @@ class StatsDB:
                 " UNION SELECT player FROM killer_turns WHERE match_id = ?"
                 " UNION SELECT player FROM killer_results WHERE match_id = ?"
                 " UNION SELECT player FROM field_training_games WHERE match_id = ?"
-                " UNION SELECT player FROM black_belt_games WHERE match_id = ?",
-                (match_id,) * 9).fetchall()
+                " UNION SELECT player FROM black_belt_games WHERE match_id = ?"
+                " UNION SELECT player FROM warm_up_games WHERE match_id = ?",
+                (match_id,) * 10).fetchall()
         return sorted(r[0] for r in rows)
 
     def player_final_matches(self, player: str, since: str) -> list:
@@ -2146,7 +2290,8 @@ class StatsDB:
                 " UNION SELECT player, match_id FROM killer_turns"
                 " UNION SELECT player, match_id FROM killer_results"
                 " UNION SELECT player, match_id FROM field_training_games WHERE counts = 1"
-                " UNION SELECT player, match_id FROM black_belt_games) p"
+                " UNION SELECT player, match_id FROM black_belt_games"
+                " UNION SELECT player, match_id FROM warm_up_games) p"
                 " JOIN matches m ON m.match_id = p.match_id"
                 " WHERE m.ended_at IS NOT NULL AND m.started_at >= ?"
                 " AND p.player NOT IN (SELECT name FROM players WHERE hidden = 1)",
@@ -2213,6 +2358,7 @@ class StatsDB:
             "killer": " AND game_mode = 'Killer'",
             "field_training": " AND game_mode = 'Field Training'",
             "black_belt": " AND game_mode = 'Black Belt'",
+            "warm_up": " AND game_mode = 'Warm-up'",
             "checkout_training": " AND game_mode = 'Checkout Training'",
         }.get(mode, "")
         with self._lock:
@@ -2226,6 +2372,7 @@ class StatsDB:
                 "    OR EXISTS (SELECT 1 FROM field_training_turns"
                 "               WHERE field_training_turns.match_id = matches.match_id)"
                 "    OR EXISTS (SELECT 1 FROM black_belt_darts WHERE black_belt_darts.match_id = matches.match_id)"
+                "    OR EXISTS (SELECT 1 FROM warm_up_darts WHERE warm_up_darts.match_id = matches.match_id)"
                 "    OR EXISTS (SELECT 1 FROM checkout_training_turns"
                 "               WHERE checkout_training_turns.match_id = matches.match_id))"
                 + mode_sql +
@@ -2247,6 +2394,7 @@ class StatsDB:
             scoring = None
             field = None
             backwards = None
+            kinds = None
             checkout_range = None
             if r["game_mode"] == "Field Training":
                 with self._lock:
@@ -2263,6 +2411,11 @@ class StatsDB:
                     setup = self._conn.execute(
                         "SELECT backwards FROM black_belt_games WHERE match_id = ?", (mid,)).fetchone()
                 backwards = bool(setup["backwards"]) if setup else False
+            if r["game_mode"] == "Warm-up":
+                with self._lock:
+                    setup = self._conn.execute(
+                        "SELECT kinds FROM warm_up_games WHERE match_id = ?", (mid,)).fetchone()
+                kinds = [k for k in (setup["kinds"] if setup else "").split(",") if k]
             if r["game_mode"] == "Target Battle":
                 with self._lock:
                     setup = self._conn.execute(
@@ -2273,6 +2426,7 @@ class StatsDB:
                 "scoring":     scoring,
                 "field":       field,
                 "backwards":   backwards,
+                "kinds":       kinds,
                 "range":       checkout_range,
                 "started_at":  r["started_at"],
                 "ended_at":    r["ended_at"],
@@ -2332,6 +2486,8 @@ class StatsDB:
             return self.match_field_training_stats(match_id)
         if mode_row and mode_row["game_mode"] == "Black Belt":
             return self.match_black_belt_stats(match_id)
+        if mode_row and mode_row["game_mode"] == "Warm-up":
+            return self.match_warm_up_stats(match_id)
         if mode_row and mode_row["game_mode"] == "Checkout Training":
             return self.match_checkout_training_stats(match_id)
         with self._lock:

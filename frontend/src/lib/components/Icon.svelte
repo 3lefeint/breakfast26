@@ -10,6 +10,7 @@
     killer: '<path d="M21 3 9 15M3 3l12 12"/><path d="M21 3h-4.5M21 3v4.5M3 3h4.5M3 3v4.5"/><path d="M5 15h4v4M19 15h-4v4"/>',
     'field-training': '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.6"/>',
     checkout: '<circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.5l3 3.2 6-7"/>',
+    'warm-up': '<path d="M12 3c.5 3.5 4.2 5.2 4.2 9.3a4.2 4.2 0 0 1-8.4 0c0-1.7.8-2.9 1.7-3.8.4 1.3 1.1 1.8 1.8 1.8C11.3 8.1 11.3 5.6 12 3z"/><path d="M10.2 21h3.6"/>',
     'black-belt': '<path d="M2 8.5c3 0 5 .3 7 .8v6.4c-2-.5-4-.8-7-.8z"/><path d="M22 8.5c-3 0-5 .3-7 .8v6.4c2-.5 4-.8 7-.8z"/><rect x="9" y="7" width="6" height="10" rx="1.8"/><path d="M10.3 17 8.6 21.5l2.4-.5 1-2M13.7 17l1.7 4.5-2.4-.5-1-2"/>',
     // Navigation
     play: '<circle cx="12" cy="12" r="9.5"/><path d="M12 12l4.2-4.2"/><path d="M7.5 7.5l.9.9M12 5.2v1.3M16.5 7.5l-.9.9M5.2 12h1.3"/>',
