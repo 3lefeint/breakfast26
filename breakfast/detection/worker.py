@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from breakfast.detection import calibration, detector, drift, labels
+from breakfast.detection import calibration, detector, drift, labels, tuning
 from breakfast.detection.cameras import CameraGroup
 from breakfast.detection.clips import ClipRecorder
 from breakfast.detection.geometry import BoardModel
@@ -42,10 +42,16 @@ class Worker:
         self.model = BoardModel.from_file(self.model_path)
         names = {f.name for f in fields(Settings)}
         self.settings = Settings(**{k: v for k, v in cfg.get("tracker", {}).items() if k in names})
+        self.settings_path = self.base / "tracker_settings.json"
+        tuning.apply(self.settings, tuning.load(self.settings_path))        # what was set on the Board page wins over config.toml
         self.tracker = BoardTracker(self.model, self.settings)
-        self.cams = CameraGroup(cfg.get("devices") or DEFAULT_DEVICES, cfg.get("width", 800), cfg.get("height", 600),
-                                cfg.get("fps", 30)).start()
+        self.cams = CameraGroup(cfg.get("devices") or DEFAULT_DEVICES, cfg.get("width", 800), cfg.get("height", 600), cfg.get("fps", 30))
+        self._push_controls()
+        self.cams.start()
         self.session = self.base / "events" / datetime.now().strftime("session-%Y%m%d-%H%M%S")
+        removed = tuning.clean_sessions(self.base / "events", keep=cfg.get("keep_sessions", 10), max_gb=cfg.get("events_max_gb", 2.0), current=self.session)
+        if removed:
+            log.info("removed %d old sessions of event pictures", len(removed))
         clips = cfg.get("clips", {})
         self.clips = ClipRecorder(self.base / "clips", rate=clips.get("rate", 5.0), pre_s=clips.get("pre_s", 1.5),
                                   post_s=clips.get("post_s", 1.5), max_gb=clips.get("max_gb", 5.0)) if clips.get("enabled", True) else None
@@ -110,6 +116,28 @@ class Worker:
                 self.note(f"Drift: the empty board looks different from the reference picture ({moved}). A camera or the board may have moved.")
         except Exception:
             log.exception("drift check failed")
+
+    def _push_controls(self):
+        self.cams.set_controls(self.settings.exposure, self.settings.white_balance)
+
+    def change_settings(self, changes):
+        """Set tracker settings from the Board page and keep them. Returns {applied, refused}."""
+        done, refused = tuning.apply(self.settings, changes)
+        if done:
+            tuning.save(self.settings_path, {**tuning.load(self.settings_path), **done})
+            self._push_controls()
+            self.note("Settings changed: " + ", ".join(f"{k} = {v}" for k, v in done.items()))
+        return {"applied": done, "refused": refused}
+
+    def reset_settings(self):
+        """Back to the values of config.toml (or the built-in ones)."""
+        names = {f.name for f in fields(Settings)}
+        base = {k: v for k, v in self.cfg.get("tracker", {}).items() if k in names}
+        for key in tuning.TUNABLE:
+            setattr(self.settings, key, base.get(key, tuning._default(key)))
+        self.settings_path.unlink(missing_ok=True)
+        self._push_controls()
+        self.note("Settings are back to the values of config.toml.")
 
     def take_reference(self):
         """The empty board as it is now is the reference of the drift check. False if the board is not known to be empty."""
@@ -413,6 +441,8 @@ def serve(worker, port):
                 self._send(200, PAGE.encode(), "text/html; charset=utf-8")
             elif path == "/status.json":
                 self._send(200, json.dumps(worker.status(), default=str).encode(), "application/json")
+            elif path == "/api/settings":
+                self._send(200, json.dumps(tuning.describe(worker.settings)).encode(), "application/json")
             elif path == "/api/labels":
                 self._send(200, json.dumps(labels.summary_of(worker.base / "labels.jsonl")).encode(), "application/json")
             elif path == "/api/model":
@@ -436,6 +466,12 @@ def serve(worker, port):
             if self.path == "/api/model/revert":
                 ok = worker.revert_model()
                 return self._send(200 if ok else 404, json.dumps({"ok": ok}).encode(), "application/json")
+            if self.path == "/api/settings":
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0) or b"{}")
+                return self._send(200, json.dumps(worker.change_settings(body if isinstance(body, dict) else {})).encode(), "application/json")
+            if self.path == "/api/settings/reset":
+                worker.reset_settings()
+                return self._send(200, json.dumps(tuning.describe(worker.settings)).encode(), "application/json")
             if self.path == "/api/drift/accept":
                 ok = worker.take_reference()
                 return self._send(200 if ok else 409, b'{"ok":true}' if ok else b'{"ok":false}', "application/json")

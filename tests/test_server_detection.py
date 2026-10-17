@@ -1,4 +1,5 @@
 import json
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -11,6 +12,7 @@ from breakfast.web import server
 from tests.test_target_battle import FakeMqttPub
 
 CALLS = []
+EMPTY_BOARD_REFUSED = False
 
 
 class FakeWorker(BaseHTTPRequestHandler):
@@ -21,6 +23,10 @@ class FakeWorker(BaseHTTPRequestHandler):
         CALLS.append(("GET", self.path))
         if self.path == "/api/model":
             body, ctype = json.dumps({"size": [800, 600], "ref": {"0": [[1, 2]] * 4}, "radii": {"170": 170.0}, "can_revert": True}).encode(), "application/json"
+        elif self.path == "/api/labels":
+            body, ctype = json.dumps({"looked_at": 4, "wrong": 1}).encode(), "application/json"
+        elif self.path == "/api/settings":
+            body, ctype = json.dumps([{"key": "settle_s", "value": 0.35}]).encode(), "application/json"
         elif self.path == "/status.json":
             body, ctype = json.dumps({"board": {"status": "ready", "count": 1}, "events": []}).encode(), "application/json"
         else:
@@ -39,6 +45,18 @@ class FakeWorker(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"size": [800, 600], "points": {}}).encode())
+            return
+        if self.path == "/api/drift/accept":
+            self.send_response(409 if EMPTY_BOARD_REFUSED else 200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+            return
+        if self.path in ("/api/settings", "/api/settings/reset"):
+            CALLS.append(("BODY", body))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"applied": {"settle_s": 0.5}, "refused": {}} if self.path == "/api/settings" else [{"key": "settle_s", "value": 0.35}]).encode())
             return
         self.send_response(200)
         self.end_headers()
@@ -147,4 +165,45 @@ def test_the_manual_adjustment_goes_through_to_the_worker(worker_port):
     assert c.post("/api/detection/model/save").json() == {"ok": True}
     assert c.post("/api/detection/model/revert").json() == {"ok": True}
     assert {("POST", "/api/model/move"), ("POST", "/api/model/discard"), ("POST", "/api/model/save"), ("POST", "/api/model/revert"), ("POST", "/api/model/auto")} <= set(CALLS)
+    server.wire(None, None)
+
+
+def test_the_numbers_of_the_corrections_come_from_the_worker(worker_port):
+    wire(worker_port)
+    c = TestClient(server.app)
+    assert c.get("/api/detection/labels").json() == {"looked_at": 4, "wrong": 1}
+    server.wire(None, None)
+    wire(None)
+    assert c.get("/api/detection/labels").json()["error"]
+    server.wire(None, None)
+
+
+def test_a_correction_with_a_spot_passes_the_spot_to_the_label(worker_port):
+    import time
+    wire(worker_port)
+    server._move_board_dart(0, "T20", {"x": 0.04, "y": 0.6})
+    time.sleep(0.5)
+    assert ("POST", "/api/label?index=0&field=T20&x=0.04&y=0.6") in CALLS
+    server.wire(None, None)
+
+
+def test_the_settings_are_read_changed_and_reset_through_the_worker(worker_port):
+    wire(worker_port)
+    c = TestClient(server.app)
+    assert c.get("/api/detection/settings").json() == {"settings": [{"key": "settle_s", "value": 0.35}]}
+    assert c.post("/api/detection/settings", json={"settle_s": 0.5}).json() == {"applied": {"settle_s": 0.5}, "refused": {}}
+    assert ("BODY", b'{"settle_s": 0.5}') in CALLS or any(k == "BODY" and b"settle_s" in v for k, v in CALLS)
+    assert c.post("/api/detection/settings/reset").json() == {"settings": [{"key": "settle_s", "value": 0.35}]}
+    server.wire(None, None)
+    wire(None)
+    assert c.get("/api/detection/settings").json()["error"] and c.post("/api/detection/settings", json={}).json()["error"]
+    server.wire(None, None)
+
+
+def test_the_reference_of_the_drift_check_is_taken_only_on_an_empty_board(worker_port, monkeypatch):
+    wire(worker_port)
+    c = TestClient(server.app)
+    assert c.post("/api/detection/drift/accept").json() == {"ok": True}
+    monkeypatch.setattr(sys.modules[__name__], "EMPTY_BOARD_REFUSED", True)
+    assert c.post("/api/detection/drift/accept").json() == {"error": "The board is not empty."}
     server.wire(None, None)

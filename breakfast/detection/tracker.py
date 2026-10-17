@@ -40,6 +40,8 @@ class Settings:
     recount_looks: int = 2          # settled looks in a row that must show it at the same place
     recount_window_px: tuple = (40, 150, 20)    # around a counted dart's tip: pixels to each side, up and down that a dart already accounts for
     max_darts: int = 3              # a recount never goes beyond this many darts on the board
+    exposure: int = 0               # camera exposure time (100 microseconds), 0 = the camera's automatic (the cameras apply it, not the tracker)
+    white_balance: int = 0          # camera white balance (Kelvin), 0 = the camera's automatic
 
 
 @dataclass
