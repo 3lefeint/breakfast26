@@ -6,10 +6,12 @@
   import { onMount } from 'svelte';
   import { apiJson } from '../../lib/api.js';
   import PageHeader from '../../lib/components/PageHeader.svelte';
+  import ModelAdjust from './ModelAdjust.svelte';
 
   let status = $state(null);
   let tick = $state(Date.now());
   let busy = $state(false);
+  let adjusting = $state(false);
 
   async function load() {
     try {
@@ -55,10 +57,19 @@
       <span class="darts">{t('Darts on the board')}: <b>{board.count}</b> {#if board.throws.length}<span class="muted">({board.throws.join(', ')})</span>{/if}</span>
       <span class="spacer"></span>
       <button class="btn" disabled={busy} onclick={() => post('/api/detection/reset')}>{t('Empty board = now')}</button>
-      <button class="btn" disabled={busy || status.busy} onclick={() => post('/api/detection/calibrate', t('The calibration needs an empty board and takes about a minute. Start?'))}>
-        {status.busy ? t('Calibrating…') : t('Calibrate (empty board)')}
-      </button>
+      <button class="btn" disabled={status.busy} onclick={() => (adjusting = !adjusting)}>{adjusting ? t('Back to the pictures') : t('Adjust by hand')}</button>
     </div>
+    {#if status.busy && !adjusting}
+      <div class="progress" role="progressbar" aria-valuenow={Math.round((status.progress?.fraction ?? 0) * 100)} aria-valuemin="0" aria-valuemax="100">
+        <span class="spinner" aria-hidden="true"></span>
+        <div class="track"><div class="fill" style="width: {Math.round((status.progress?.fraction ?? 0) * 100)}%"></div></div>
+        <span class="pct">{Math.round((status.progress?.fraction ?? 0) * 100)} %</span>
+        <span class="muted">{status.progress?.text ?? ''}</span>
+      </div>
+    {/if}
+    {#if adjusting}
+      <ModelAdjust onclose={() => (adjusting = false)} />
+    {:else}
     <div class="cams">
       {#each cams as c, i (i)}
         <figure>
@@ -67,14 +78,16 @@
         </figure>
       {/each}
     </div>
+    {/if}
   </div>
 
+  {#if !adjusting}
   <div class="two">
     <div class="section">
       <div class="section-title">{t('Events')}</div>
       <table>
         <tbody>
-          {#each status.events.slice(0, 12) as e (e.n)}
+          {#each status.events.slice(0, 12) as e, i (i)}
             <tr class={`k-${e.kind}`}><td class="mono">{e.t}</td><td>{e.kind}</td><td>{e.count}</td><td>{e.field ?? ''}</td></tr>
           {/each}
         </tbody>
@@ -82,11 +95,12 @@
     </div>
     <div class="section">
       <div class="section-title">{t('Notes')}</div>
-      {#each status.notes as n (n.t + n.text)}<p class="note"><span class="mono">{n.t}</span> {n.text}</p>{/each}
+      {#each status.notes as n, i (i)}<p class="note"><span class="mono">{n.t}</span> {n.text}</p>{/each}
       <div class="section-title" style="margin-top:1rem">{t('Load')}</div>
       <p class="note">{status.load.looks_per_s} / s · {status.load.feed_ms} ms</p>
     </div>
   </div>
+  {/if}
 {/if}
 
 <style>
@@ -102,6 +116,12 @@
   .btn { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; padding: 0.45rem 1rem; font: inherit; cursor: pointer; }
   .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .btn:disabled { opacity: 0.5; cursor: default; }
+  .progress { display: flex; align-items: center; gap: 0.8rem; margin: -0.2rem 0 1rem; }
+  .progress .track { flex: 1; height: 10px; border-radius: 5px; background: var(--glass); border: 1px solid var(--glass-border); overflow: hidden; }
+  .progress .fill { height: 100%; background: var(--accent); transition: width 0.4s; }
+  .progress .pct { font-variant-numeric: tabular-nums; min-width: 3rem; text-align: right; }
+  .spinner { width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid var(--glass-border); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .cams { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem; }
   @media (max-width: 900px) { .cams { grid-template-columns: 1fr; } }
   figure { margin: 0; }

@@ -53,6 +53,10 @@ class Worker:
         self.seq = 0
         self.lock = threading.Lock()
         self.busy = None                # name of a long job (calibration)
+        self.progress = None            # {fraction, text} of that job
+        self.points = None              # the 17 points per camera of the adjustment page, {camera: {id: [x, y]}}
+        self.edited = {}                # camera -> ids of the points that were moved by hand
+        self.dirty = False              # the points hold an automatic fit that has not been saved yet
         self.notes = []                 # results of jobs, newest last
         self.stop = threading.Event()
         self.feed_ms = 0.0              # moving average of the time one set of pictures takes in the tracker
@@ -122,15 +126,108 @@ class Worker:
             self.out.put(state_message(self.tracker, "Dart confirmed"))
         return True
 
+    # ------------------------------------------------------------------ manual adjustment (the 17 points per camera)
+
+    def _signature(self):
+        """What identifies the model in use: the points of the page belong to it (after a restart they are only taken back if it is the same)."""
+        return json.dumps({"H": {str(c): [round(v, 3) for v in self.model.H[c].flatten()] for c in self.model.cams},
+                           "radii": {str(k): round(v, 3) for k, v in sorted(self.model.radii.items())}})
+
+    def _save_points(self):
+        try:
+            self.base.mkdir(parents=True, exist_ok=True)
+            (self.base / "calib_points.json").write_text(json.dumps({"sig": self._signature(), "points": {str(c): p for c, p in self.points.items()},
+                                                                     "edited": self.edited}))
+        except OSError as e:
+            log.warning("calibration points not written: %s", e)
+
+    def _reset_points(self):
+        """The points of the page are where the model in use puts them (nothing moved by hand)."""
+        self.points = calibration.model_points(self.model)
+        self.edited = {str(c): [] for c in self.model.cams}
+        self.dirty = False
+        self._save_points()
+
+    def _ensure_points(self):
+        if self.points is not None:
+            return
+        try:
+            d = json.loads((self.base / "calib_points.json").read_text())
+            if d["sig"] == self._signature():
+                self.points = {int(c): p for c, p in d["points"].items()}
+                self.edited = d["edited"]
+                return
+        except (OSError, ValueError, KeyError):
+            pass
+        self._reset_points()
+
+    def adjustment(self):
+        """What the adjustment page needs: the 17 points of every camera, which of them were moved by hand, the model fitted to them
+        (a homography per camera, the ring radii) and how well it fits."""
+        self._ensure_points()
+        fitted, report = calibration.fit_points(self.points, self.model)
+        return {"size": list(self.model.size), "targets": calibration.targets(),
+                "points": {str(c): p for c, p in self.points.items()}, "edited": self.edited,
+                "H": {str(c): fitted.H[c].tolist() for c in fitted.cams}, "radii": {str(k): v for k, v in fitted.radii.items()},
+                "report": report, "dirty": self.dirty, "can_revert": self.model_path.with_suffix(".prev.json").exists()}
+
+    def move_point(self, cam, pid, xy):
+        self._ensure_points()
+        if cam not in self.points or pid not in self.points[cam]:
+            return None
+        w, h = self.model.size
+        self.points[cam][pid] = [round(min(max(float(xy[0]), 0.0), w), 2), round(min(max(float(xy[1]), 0.0), h), 2)]
+        if pid not in self.edited[str(cam)]:
+            self.edited[str(cam)].append(pid)
+        self._save_points()
+        return self.adjustment()
+
+    def discard_points(self):
+        self._reset_points()
+        return self.adjustment()
+
+    def save_points_as_model(self):
+        """Fit the model to the points and use it. The previous model is kept as `.prev.json`; the next still picture is the empty board."""
+        self._ensure_points()
+        fitted, report = calibration.fit_points(self.points, self.model)
+        calibration.save(fitted, self.model_path, {"source": "manual adjustment", **report})
+        self._use_model(fitted)
+        self.dirty = False
+        self._save_points()                                  # the points stay where they are, now as the points of the model in use
+        self.note("Model adjusted by hand and saved; the next still picture is taken as the empty board.")
+
+    def apply_model(self, new, text):
+        calibration.save(new, self.model_path, {"source": "manual adjustment"})
+        self._use_model(new)
+        self.note(text)
+
+    def _use_model(self, new):
+        self.model = new
+        self.tracker.model = new
+        self.tracker._small_mask = {c: cv2.resize(m, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST) > 0 for c, m in new.masks.items()}
+        self.tracker.reset()
+
+    def revert_model(self):
+        old = calibration.revert(self.model_path)
+        if old is None:
+            return False
+        self._use_model(old)
+        self._reset_points()
+        self.note("The previous model is back; the next still picture is taken as the empty board.")
+        return True
+
     def note(self, text):
         with self.lock:
             self.notes.append({"t": datetime.now().strftime("%H:%M:%S"), "text": text})
             del self.notes[:-12]
 
-    def calibrate(self):
+    def calibrate(self, preview=False):
+        """Fit the model on the pictures of the empty board. With `preview` the result only moves the points of the adjustment page (to be
+        looked at, corrected and saved there); otherwise the model is saved and used at once."""
         if self.busy:
             return
         self.busy = "calibration"
+        self.progress = {"fraction": 0.0, "text": "starting"}
 
         def job():
             try:
@@ -139,21 +236,28 @@ class Worker:
                     self.note("Calibration: not every camera has a picture.")
                     return
                 self.note("Calibration started (takes about a minute; the board must be empty).")
-                new, report = calibration.calibrate(self.model, frames)
+                new, report = calibration.calibrate(self.model, frames, lambda f, text: setattr(self, "progress", {"fraction": round(f, 3), "text": text}))
                 if new is None:
                     self.note("Calibration refused: " + report["refused"])
                     return
-                calibration.save(new, self.model_path, report)
-                self.model = new
-                self.tracker.model = new
-                self.tracker._small_mask = {c: cv2.resize(m, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST) > 0 for c, m in new.masks.items()}
-                self.tracker.reset()
-                self.note("Calibration done and saved: " + json.dumps(report))
+                if preview:
+                    self._ensure_points()
+                    self.points = calibration.model_points(new)
+                    self.edited = {str(c): [] for c in new.cams}
+                    self.dirty = True
+                    self._save_points()
+                    self.note("The automatic fit moved the points; look at them, correct what is off and save. " + json.dumps(report))
+                else:
+                    calibration.save(new, self.model_path, report)
+                    self._use_model(new)
+                    self._reset_points()
+                    self.note("Calibration done and saved: " + json.dumps(report))
             except Exception as e:
                 log.exception("calibration failed")
                 self.note(f"Calibration failed: {e}")
             finally:
                 self.busy = None
+                self.progress = None
 
         threading.Thread(target=job, daemon=True).start()
 
@@ -163,7 +267,7 @@ class Worker:
         with self.lock:
             events, notes = list(self.events), list(self.notes)
         return {"cameras": self.cams.status(), "board": {"status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count, "moving": self.tracker.moving,
-                "throws": [t["segment"]["name"] for t in self.tracker.throws]}, "busy": self.busy, "events": events[::-1],
+                "throws": [t["segment"]["name"] for t in self.tracker.throws]}, "busy": self.busy, "progress": self.progress, "events": events[::-1],
                 "notes": notes[::-1], "settings": self.settings.__dict__, "load": {"feed_ms": round(self.feed_ms, 1), "looks_per_s": round(self.rate, 1)},
                 "clips": self.clips.count if self.clips else None, "model": {"radii": {str(k): round(v, 2) for k, v in self.model.radii.items()}}}
 
@@ -227,7 +331,7 @@ button{padding:.4rem .9rem;margin:.2rem;border-radius:8px;border:1px solid #666;
 table{border-collapse:collapse;font-size:.85rem}td,th{border-bottom:1px solid #333;padding:.2rem .6rem;text-align:left}
 .k-dart{color:#7ddc7d}.k-unclear{color:#f5c542}.k-takeout,.k-removed{color:#6cb6ff}pre{white-space:pre-wrap;font-size:.8rem}</style>
 <h2>Dart detection</h2>
-<div><button onclick="post('reset')">Empty board = now</button><button onclick="post('calibrate')">Calibrate (empty board)</button>
+<div><button onclick="post('reset')">Empty board = now</button>
 <span id=st></span></div>
 <div id=cams></div><h3>Events</h3><table id=ev></table><h3>Notes</h3><pre id=nt></pre><h3>Cameras and settings</h3><pre id=cm></pre>
 <script>
@@ -235,7 +339,7 @@ const cams=document.getElementById('cams');for(let i=0;i<3;i++){const im=documen
 async function post(p){await fetch('/api/'+p,{method:'POST'});tick()}
 async function tick(){
  const s=await (await fetch('/status.json')).json();
- document.getElementById('st').textContent=' board: '+s.board.status+' | darts: '+s.board.count+' ['+s.board.throws.join(', ')+'] '+(s.board.moving?'| moving':'')+(s.busy?' | '+s.busy+'…':'');
+ document.getElementById('st').textContent=' board: '+s.board.status+' | darts: '+s.board.count+' ['+s.board.throws.join(', ')+'] '+(s.board.moving?'| moving':'')+(s.busy?' | '+s.busy+' '+Math.round(((s.progress||{}).fraction||0)*100)+' % '+((s.progress||{}).text||''):'');
  document.getElementById('ev').innerHTML='<tr><th>#<th>time<th>kind<th>darts<th>field<th>info</tr>'+s.events.map(e=>`<tr class=k-${e.kind}><td>${e.n}<td>${e.t}<td>${e.kind}<td>${e.count}<td>${e.field??''}<td>${JSON.stringify(e.info).slice(0,160)}</tr>`).join('');
  document.getElementById('nt').textContent=s.notes.map(n=>n.t+' '+n.text).join('\\n');
  document.getElementById('cm').textContent=JSON.stringify({cameras:s.cameras,settings:s.settings,model:s.model},null,1);
@@ -264,6 +368,8 @@ def serve(worker, port):
                 self._send(200, PAGE.encode(), "text/html; charset=utf-8")
             elif path == "/status.json":
                 self._send(200, json.dumps(worker.status(), default=str).encode(), "application/json")
+            elif path == "/api/model":
+                self._send(200, json.dumps(worker.adjustment()).encode(), "application/json")
             elif path.startswith("/frame/") and path.endswith(".jpg"):
                 data = worker.jpeg(int(path[7:-4]), overlay="raw" not in self.path)
                 self._send(200 if data else 404, data or b"", "image/jpeg")
@@ -271,10 +377,24 @@ def serve(worker, port):
                 self._send(404, b"", "text/plain")
 
         def do_POST(self):
+            if self.path == "/api/model/move":
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0) or b"{}")
+                state = worker.move_point(int(body["cam"]), str(body["id"]), body["xy"])
+                return self._send(200 if state else 404, json.dumps(state or {"ok": False}).encode(), "application/json")
+            if self.path == "/api/model/discard":
+                return self._send(200, json.dumps(worker.discard_points()).encode(), "application/json")
+            if self.path == "/api/model/save":
+                worker.save_points_as_model()
+                return self._send(200, b'{"ok":true}', "application/json")
+            if self.path == "/api/model/revert":
+                ok = worker.revert_model()
+                return self._send(200 if ok else 404, json.dumps({"ok": ok}).encode(), "application/json")
             if self.path == "/api/reset":
                 worker.reset()
             elif self.path == "/api/calibrate":
                 worker.calibrate()
+            elif self.path == "/api/model/auto":
+                worker.calibrate(preview=True)
             elif self.path.startswith("/api/label") or self.path.startswith("/api/confirm"):
                 from urllib.parse import parse_qs, urlparse
                 q = parse_qs(urlparse(self.path).query)
