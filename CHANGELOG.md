@@ -23,6 +23,7 @@
 - The Board page lists what the corrections and confirmations say about the dart detection: darts looked at, wrong ones, how many of them were marked uncertain, the distance to the pressed spot, the kinds of mistakes and the share of wrong darts by distance to the nearest wire.
 - The dart detection counts a dart that the picture shows against the empty board but the count missed, once two cameras put it at the same place in two settled looks in a row; it is marked as uncertain (never more than three darts).
 - A counted dart of the dart detection records how long the board moved before it, how long it was still and how long the look took.
+- The dart detection compares the picture of the empty board with the one taken when the model was made and warns on the Board page and in the top bar when a camera has moved by 2 px or more; a button takes the current empty board as the new reference.
 
 ### Changed
 - Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)
