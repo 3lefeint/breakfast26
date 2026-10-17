@@ -372,6 +372,14 @@ class TestTurnDarts:
         client._process_x01(self._state([]))
         assert seen[-1] == []
 
+    def test_pulling_the_darts_starts_a_new_turn(self):
+        events = []
+        client = AutodartsCloudClient(email="e", password="p", board_id="b", on_event=events.append)
+        client._process_x01(self._state([self._throw("S20", 20, 1, 0.0, 0.5)], remaining=481))
+        client._process_x01(self._state([], remaining=481))
+        pulled = [e for e in events if e["event"] == "darts-pulled"]
+        assert len(pulled) == 1 and pulled[0]["game"]["newTurn"] == "True"
+
     def test_a_failing_listener_does_not_stop_the_match(self):
         def boom(throws):
             raise RuntimeError("nope")

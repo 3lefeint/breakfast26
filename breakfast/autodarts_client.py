@@ -728,6 +728,7 @@ class AutodartsCloudClient:
                     "dartsThrown": str(self._prev_throws_count),
                     "dartsThrownValue": last_pts,
                     "busted": bust_flag,
+                    "newTurn": "True",
                 },
             })
             self._reset_turn_state()

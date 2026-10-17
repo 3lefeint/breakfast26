@@ -26,6 +26,17 @@ def ev_busted(player="alice", player_index=0, points_left=501):
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 class TestGameState:
+    def test_the_darts_of_a_turn_are_gone_from_the_card_once_they_are_pulled(self):
+        gs = GameState()
+        gs.update(ev_match_started())
+        gs.update(ev_dart1(value=60, points_left=441))
+        assert gs.snapshot()["current"]["throw1_raw"] == "T20"
+        gs.update({"event": "darts-pulled", "player": "alice", "playerIndex": 0, "playerIsBot": False,
+                   "game": {"pointsLeft": "441", "dartsThrown": "1", "dartsThrownValue": "60", "busted": "False",
+                            "newTurn": "True"}})
+        cur = gs.snapshot()["current"]
+        assert cur["throw1_raw"] is None and cur["turn_score"] == 0 and cur["remaining"] == 441
+
     def test_match_started(self):
         gs = GameState()
         result = gs.update(ev_match_started())
