@@ -1,0 +1,27 @@
+# Own dart detection, next to nothing else: Breakfast reads the three board cameras itself (Autodarts must be stopped, it holds them).
+# A separate stack: its own container name, port and data folder, so a Breakfast that already runs on the host is not touched.
+#
+#   docker build -t breakfast-detect:poc .
+#   docker compose -f docker-compose.detection.yml up -d
+#
+# ./data-detect needs a config.toml with `[cameras] enabled = true` and detection/calib_model.json (see config.toml.example).
+# The devices are the capture nodes of the three cameras (found by USB port); inside the container they are /dev/cam0 to /dev/cam2.
+name: breakfast-detect
+services:
+  breakfast-detect:
+    image: breakfast-detect:poc
+    container_name: breakfast-detect
+    restart: "no"
+    command: ["direct"]
+    ports:
+      - "18080:8080"      # Breakfast
+      - "8770:8770"       # diagnostics page of the detection
+    volumes:
+      - ./data-detect:/app/data
+    devices:                                  # CAM0 to CAM2: set by tools/detection_deploy.sh from the USB ports (a ":" in a
+      - ${CAM0:?set CAM0}:/dev/cam0       # by-path name does not work in this syntax)
+      - ${CAM1:?set CAM1}:/dev/cam1
+      - ${CAM2:?set CAM2}:/dev/cam2
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8

@@ -1,0 +1,288 @@
+"""The detection process. Reads the cameras, follows the board and sends state messages (the shape of the board manager's
+`state` messages) through a queue to Breakfast. It also serves a small diagnostics page (live pictures with the board model,
+the last events, buttons for the baseline and the automatic calibration) and keeps the pictures of every event for later analysis.
+"""
+import json
+import logging
+import queue as queue_mod
+import threading
+import time
+from dataclasses import fields
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import cv2
+
+from breakfast.detection import calibration
+from breakfast.detection.cameras import CameraGroup
+from breakfast.detection.clips import ClipRecorder
+from breakfast.detection.geometry import BoardModel
+from breakfast.detection.tracker import BoardTracker, Settings
+
+log = logging.getLogger("breakfast.detection")
+DEFAULT_DEVICES = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]     # the names the compose files give the cameras inside the container
+MODEL_WAIT_S = 2.0                      # how often a missing board model is looked for again
+KEEP_BUNDLES = 600                      # event folders kept per session
+
+
+def state_message(tracker, event_name):
+    return {"type": "state", "data": {
+        "connected": True, "running": True, "event": event_name,
+        "status": "Takeout" if tracker.count >= 3 else "Throw",
+        "numThrows": tracker.count, "throws": list(tracker.throws)}}
+
+
+class Worker:
+    def __init__(self, cfg, out):
+        self.cfg = cfg
+        self.out = out
+        self.base = Path(cfg.get("dir", "detection"))
+        self.model_path = model_path(cfg)
+        self.model = BoardModel.from_file(self.model_path)
+        names = {f.name for f in fields(Settings)}
+        self.settings = Settings(**{k: v for k, v in cfg.get("tracker", {}).items() if k in names})
+        self.tracker = BoardTracker(self.model, self.settings)
+        self.cams = CameraGroup(cfg.get("devices") or DEFAULT_DEVICES, cfg.get("width", 800), cfg.get("height", 600),
+                                cfg.get("fps", 30)).start()
+        self.session = self.base / "events" / datetime.now().strftime("session-%Y%m%d-%H%M%S")
+        clips = cfg.get("clips", {})
+        self.clips = ClipRecorder(self.base / "clips", rate=clips.get("rate", 5.0), pre_s=clips.get("pre_s", 1.5),
+                                  post_s=clips.get("post_s", 1.5), max_gb=clips.get("max_gb", 5.0)) if clips.get("enabled", True) else None
+        self.events = []                # the last events for the page
+        self.seq = 0
+        self.lock = threading.Lock()
+        self.busy = None                # name of a long job (calibration)
+        self.notes = []                 # results of jobs, newest last
+        self.stop = threading.Event()
+        self.feed_ms = 0.0              # moving average of the time one set of pictures takes in the tracker
+        self.rate = 0.0                 # sets of pictures looked at per second
+
+    # ------------------------------------------------------------------ events
+
+    def handle(self, ev):
+        names = {"dart": "Throw detected", "removed": "Takeout in progress", "takeout": "Takeout finished", "baseline": None, "unclear": None}
+        entry = {"n": self.seq, "kind": ev.kind, "t": datetime.now().strftime("%H:%M:%S"), "count": ev.count,
+                 "field": (ev.throw or {}).get("segment", {}).get("name"), "info": _short(ev.info)}
+        self.seq += 1
+        with self.lock:
+            self.events.append(entry)
+            del self.events[:-40]
+        log.info("%s: %s", ev.kind, json.dumps(entry["info"] if ev.kind != "dart" else {k: entry["info"].get(k) for k in ("field", "sigma", "margin", "cams")}))
+        self._save_bundle(ev, entry)
+        if self.clips:
+            self.clips.note_event(time.monotonic(), {k: entry[k] for k in ("kind", "count", "field")})
+        name = names.get(ev.kind)
+        if name:
+            self.out.put(state_message(self.tracker, name))
+
+    def _save_bundle(self, ev, entry):
+        try:
+            d = self.session / f"{entry['n']:04d}-{ev.kind}"
+            d.mkdir(parents=True, exist_ok=True)
+            for tag, frames in (("before", ev.before), ("after", ev.after)):
+                for c, f in (frames or {}).items():
+                    cv2.imwrite(str(d / f"{tag}_cam{c}.jpg"), f, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            (d / "info.json").write_text(json.dumps({"event": entry, "throw": ev.throw, "tracker_count": ev.count}, default=str, indent=1))
+            dirs = sorted(self.session.iterdir())
+            for old in dirs[:-KEEP_BUNDLES]:
+                for f in old.iterdir():
+                    f.unlink()
+                old.rmdir()
+        except OSError as e:
+            log.warning("could not save the pictures of an event: %s", e)
+
+    # ------------------------------------------------------------------ jobs of the page
+
+    def reset(self):
+        self.tracker.reset()
+        self.note("The next still picture is taken as the empty board.")
+
+    def note(self, text):
+        with self.lock:
+            self.notes.append({"t": datetime.now().strftime("%H:%M:%S"), "text": text})
+            del self.notes[:-12]
+
+    def calibrate(self):
+        if self.busy:
+            return
+        self.busy = "calibration"
+
+        def job():
+            try:
+                frames = self.cams.latest_frames()
+                if len(frames) < len(self.model.cams):
+                    self.note("Calibration: not every camera has a picture.")
+                    return
+                self.note("Calibration started (takes about a minute; the board must be empty).")
+                new, report = calibration.calibrate(self.model, frames)
+                if new is None:
+                    self.note("Calibration refused: " + report["refused"])
+                    return
+                calibration.save(new, self.model_path, report)
+                self.model = new
+                self.tracker.model = new
+                self.tracker._small_mask = {c: cv2.resize(m, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST) > 0 for c, m in new.masks.items()}
+                self.tracker.reset()
+                self.note("Calibration done and saved: " + json.dumps(report))
+            except Exception as e:
+                log.exception("calibration failed")
+                self.note(f"Calibration failed: {e}")
+            finally:
+                self.busy = None
+
+        threading.Thread(target=job, daemon=True).start()
+
+    # ------------------------------------------------------------------ main loop
+
+    def status(self):
+        with self.lock:
+            events, notes = list(self.events), list(self.notes)
+        return {"cameras": self.cams.status(), "board": {"status": self.tracker.status, "count": self.tracker.count, "moving": self.tracker.moving,
+                "throws": [t["segment"]["name"] for t in self.tracker.throws]}, "busy": self.busy, "events": events[::-1],
+                "notes": notes[::-1], "settings": self.settings.__dict__, "load": {"feed_ms": round(self.feed_ms, 1), "looks_per_s": round(self.rate, 1)},
+                "clips": self.clips.count if self.clips else None, "model": {"radii": {str(k): round(v, 2) for k, v in self.model.radii.items()}}}
+
+    def jpeg(self, cam, overlay=True):
+        frames = self.cams.latest_frames()
+        f = frames.get(cam)
+        if f is None:
+            return None
+        if overlay:
+            f = self.model.draw(cam, f)
+        ok, buf = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        return buf.tobytes() if ok else None
+
+    def run(self):
+        threading.Thread(target=self._heartbeat, daemon=True).start()
+        port = self.cfg.get("diag_port", 8770)
+        if port:
+            serve(self, port)
+        log.info("detection worker running: %d cameras, model %s", len(self.cams.cams), self.model_path)
+        interval = 1.0 / float(self.cfg.get("max_rate", 10))     # the board is still for most of the time: 10 looks per second are plenty
+        last, count, t0 = 0.0, 0, time.monotonic()
+        while not self.stop.is_set():
+            frames = self.cams.frames()
+            now = time.monotonic()
+            if frames is None or now - last < interval:
+                time.sleep(0.005)
+                continue
+            last = now
+            for ev in self.tracker.feed(now, frames):
+                self.handle(ev)
+            if self.clips:
+                self.clips.offer(now, frames, self.tracker.moving, {"count": self.tracker.count, "status": self.tracker.status})
+            took = (time.monotonic() - now) * 1000.0
+            self.feed_ms = took if self.feed_ms == 0 else 0.95 * self.feed_ms + 0.05 * took
+            count += 1
+            if time.monotonic() - t0 >= 2.0:
+                self.rate, count, t0 = count / (time.monotonic() - t0), 0, time.monotonic()
+
+    def _heartbeat(self):
+        while not self.stop.is_set():
+            ok = all(c["error"] is None and c["age_s"] is not None and c["age_s"] < 2.0 for c in self.cams.status())
+            self.out.put({"type": "worker", "ok": ok})
+            if ok:
+                self.out.put(state_message(self.tracker, "Heartbeat"))
+            self.stop.wait(2.0)
+
+
+def _short(info):
+    out = {}
+    for k, v in (info or {}).items():
+        out[k] = round(v, 2) if isinstance(v, float) else v
+    return out
+
+
+# ---------------------------------------------------------------------- diagnostics page
+
+PAGE = """<!doctype html><meta charset=utf-8><title>Detection</title>
+<style>body{font-family:system-ui;background:#17171f;color:#eee;margin:1rem}img{width:32%;border:1px solid #444}
+button{padding:.4rem .9rem;margin:.2rem;border-radius:8px;border:1px solid #666;background:#2a2a35;color:#eee;cursor:pointer}
+table{border-collapse:collapse;font-size:.85rem}td,th{border-bottom:1px solid #333;padding:.2rem .6rem;text-align:left}
+.k-dart{color:#7ddc7d}.k-unclear{color:#f5c542}.k-takeout,.k-removed{color:#6cb6ff}pre{white-space:pre-wrap;font-size:.8rem}</style>
+<h2>Dart detection</h2>
+<div><button onclick="post('reset')">Empty board = now</button><button onclick="post('calibrate')">Calibrate (empty board)</button>
+<span id=st></span></div>
+<div id=cams></div><h3>Events</h3><table id=ev></table><h3>Notes</h3><pre id=nt></pre><h3>Cameras and settings</h3><pre id=cm></pre>
+<script>
+const cams=document.getElementById('cams');for(let i=0;i<3;i++){const im=document.createElement('img');im.id='c'+i;cams.appendChild(im)}
+async function post(p){await fetch('/api/'+p,{method:'POST'});tick()}
+async function tick(){
+ const s=await (await fetch('/status.json')).json();
+ document.getElementById('st').textContent=' board: '+s.board.status+' | darts: '+s.board.count+' ['+s.board.throws.join(', ')+'] '+(s.board.moving?'| moving':'')+(s.busy?' | '+s.busy+'…':'');
+ document.getElementById('ev').innerHTML='<tr><th>#<th>time<th>kind<th>darts<th>field<th>info</tr>'+s.events.map(e=>`<tr class=k-${e.kind}><td>${e.n}<td>${e.t}<td>${e.kind}<td>${e.count}<td>${e.field??''}<td>${JSON.stringify(e.info).slice(0,160)}</tr>`).join('');
+ document.getElementById('nt').textContent=s.notes.map(n=>n.t+' '+n.text).join('\\n');
+ document.getElementById('cm').textContent=JSON.stringify({cameras:s.cameras,settings:s.settings,model:s.model},null,1);
+ for(let i=0;i<3;i++)document.getElementById('c'+i).src='/frame/'+i+'.jpg?'+Date.now();
+}
+tick();setInterval(tick,1500);
+</script>"""
+
+
+def serve(worker, port):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, body, ctype):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            if path == "/":
+                self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+            elif path == "/status.json":
+                self._send(200, json.dumps(worker.status(), default=str).encode(), "application/json")
+            elif path.startswith("/frame/") and path.endswith(".jpg"):
+                data = worker.jpeg(int(path[7:-4]), overlay="raw" not in self.path)
+                self._send(200 if data else 404, data or b"", "image/jpeg")
+            else:
+                self._send(404, b"", "text/plain")
+
+        def do_POST(self):
+            if self.path == "/api/reset":
+                worker.reset()
+            elif self.path == "/api/calibrate":
+                worker.calibrate()
+            else:
+                return self._send(404, b"", "text/plain")
+            self._send(200, b'{"ok":true}', "application/json")
+
+    srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True, name="detection diagnostics").start()
+    log.info("detection diagnostics page on port %d", port)
+
+
+def model_path(cfg):
+    return Path(cfg.get("model", Path(cfg.get("dir", "detection")) / "calib_model.json"))
+
+
+def wait_for_model(cfg, out, stop=None):
+    """Returns once the board model can be read. Without one the detection cannot follow the board: the worker stays alive, tells
+    Breakfast `no_model` and looks again every few seconds, instead of ending and being started over and over."""
+    path, told = model_path(cfg), False
+    while stop is None or not stop.is_set():
+        try:
+            BoardModel.from_file(path)
+            return True
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not told:
+                log.warning("no usable board model at %s (%s: %s): the dart detection waits for it", path, type(e).__name__, e)
+                told = True
+        out.put({"type": "worker", "ok": False, "status": "no_model", "count": 0, "cameras": []})
+        time.sleep(MODEL_WAIT_S) if stop is None else stop.wait(MODEL_WAIT_S)
+    return False
+
+
+def run(cfg, out):
+    """Entry point of the worker process."""
+    cv2.setNumThreads(int(cfg.get("cv_threads", 2)))
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    wait_for_model(cfg, out)
+    Worker(cfg, out).run()
