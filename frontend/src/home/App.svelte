@@ -34,6 +34,7 @@
   import About from './views/About.svelte';
   import VoiceChannels from './views/VoiceChannels.svelte';
   import Admin from './views/Admin.svelte';
+  import Board from './views/Board.svelte';
 
   let boardAddress = $state(null);
 
@@ -50,6 +51,8 @@
 
   // The board stream is connected while the board sends its darts (null otherwise).
   let boardConnected = $derived($gameState.board_darts != null);
+  // The state of the own dart detection's cameras for the top bar (null while it is off).
+  let cameras = $derived($gameState.detection?.enabled ? ($gameState.detection.ok ? ($gameState.detection.status === 'blocked' ? 'warn' : 'ok') : 'bad') : null);
 
   let connLabel = $derived(
     $wsStatus === 'connected' ? t('Connected') : $wsStatus === 'reconnecting' ? t('Reconnecting…') : t('connecting…')
@@ -175,7 +178,7 @@
 <ConfirmDialog />
 
 {#if $route === 'tv'}
-  <TvApp {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel} />
+  <TvApp {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} {cameras} wsConnected={$wsStatus === 'connected'} {connLabel} />
 {:else}
   <Aurora />
 
@@ -184,9 +187,9 @@
   {/if}
 
   <div class="shell">
-    <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel}
+    <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} {cameras} wsConnected={$wsStatus === 'connected'} {connLabel}
             updateAvailable={!!$gameState.update?.available} />
-    <Sidebar route={$route} {boardAddress} version={$health.version} build={$health.build} {onVersionTap} />
+    <Sidebar route={$route} {boardAddress} ownDetection={!!$gameState.detection?.enabled} version={$health.version} build={$health.build} {onVersionTap} />
 
     <main>
         <div class="page">
@@ -228,6 +231,8 @@
             <VoiceChannels />
           {:else if $route === 'about'}
             <About />
+          {:else if $route === 'board'}
+            <Board />
           {:else}
             <Home />
           {/if}

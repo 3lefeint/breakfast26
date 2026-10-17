@@ -1,6 +1,7 @@
 """FastAPI web server — real-time browser UI for Breakfast."""
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -106,6 +107,7 @@ _scene_engine = None
 _board_manager_url: str | None = None
 _streamdeck = None
 _web_port = 8080
+_detection_port: int | None = None      # port of the diagnostics server of the own dart detection (worker process), None when it is off
 _voicepack_status = {"running": False, "done": 0, "skipped": 0, "total": 0, "error": None}
 _dev_demo = None
 _elim_beat_hint = False   # `[web] elimination_beat_hint`, kept here because every push sends it
@@ -121,10 +123,11 @@ def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
          tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, tournament_ctrl=None,
-         wu_ctrl=None, resume_offers=None, scene_engine=None):
-    global _scene_engine, _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
-           _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online, _locations, _circle, _shared, _elim_beat_hint, _streamdeck
+         wu_ctrl=None, resume_offers=None, scene_engine=None, detection_port: int | None = None):
+    global _detection_port, _scene_engine, _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
+            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
+            _dev_demo, _online, _locations, _circle, _shared, _elim_beat_hint, _streamdeck
+    _detection_port = detection_port
     _scene_engine = scene_engine
     _game_state = game_state
     _elim_ctrl = elim_ctrl
@@ -247,6 +250,7 @@ def _build_payload() -> dict:
         "game": game_snap,
         "board_darts": _game_state.board_darts.snapshot() if _game_state else None,
         "board_view": _board_view_darts(),
+        "detection": _game_state.detection if _game_state else None,
         "elimination": elim_snap,
         "elimination_beat_hint": _elim_beat_hint,
         "target_battle": tb_snap,
@@ -316,6 +320,10 @@ def _board_index(ctrl, dart_index: int):
 
 def _move_board_dart(index: int | None, field: str, point: dict | None = None):
     """Show a corrected dart at the point it was tapped at, or at the center of its new field."""
+    if index is not None and _detection_port:               # the own dart detection learns what it got wrong (a free label)
+        from urllib.parse import quote
+        where = f"&x={point['x']}&y={point['y']}" if point else ""
+        threading.Thread(target=_detection_call, args=("POST", f"/api/label?index={index}&field={quote(field)}{where}"), daemon=True).start()
     if index is not None and _game_state and _game_state.board_darts.override(index, field, point):
         push()
 
@@ -712,6 +720,9 @@ def _run_local_with(handler, body, what):
 def run_control(action: str) -> dict:
     """Run a board control by name: the routes below and the Stream Deck keys both come here. A game that Breakfast
     runs itself takes undo, next player and cancel; otherwise they go to the board's match."""
+    if action == "reset_board" and _detection_port:        # the own detection is the board: a reset means a new empty-board picture
+        code, _, _ = _detection_call("POST", "/api/reset")
+        return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
     if action == "fun_mode":
         return _toggle_fun_mode()
     if action.startswith("correct_dart:"):
@@ -760,6 +771,66 @@ async def control_next_player():
 @app.post("/api/control/next-game")
 async def control_next_game():
     return run_control("next_game")
+
+
+def _detection_call(method, path, timeout=10):
+    """Ask the worker of the own dart detection (its diagnostics server on this machine). Returns (status, body, content type)."""
+    import urllib.request
+    req = urllib.request.Request(f"http://127.0.0.1:{_detection_port}{path}", method=method, data=b"" if method == "POST" else None)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read(), r.headers.get("Content-Type", "application/octet-stream")
+    except Exception as e:
+        log.warning("detection worker not reachable: %s", e)
+        return 503, b"", "text/plain"
+
+
+@app.get("/api/detection/status")
+async def detection_status():
+    """What the worker of the own dart detection reports: cameras, board state, the last events, notes. {enabled: false} without it."""
+    if not _detection_port:
+        return {"enabled": False}
+    code, body, _ = await asyncio.to_thread(_detection_call, "GET", "/status.json")
+    if code != 200:
+        why = ((_game_state.detection if _game_state else None) or {}).get("status")       # `no_model`: the worker waits for a board model
+        return {"enabled": True, "reachable": False, **({"status": why} if why else {})}
+    return {"enabled": True, "reachable": True, **json.loads(body)}
+
+
+@app.get("/api/detection/frame/{cam}")
+async def detection_frame(cam: int, raw: bool = False):
+    """The latest picture of a camera with the board model drawn in (raw: without)."""
+    if not _detection_port:
+        return Response(status_code=404)
+    code, body, ctype = await asyncio.to_thread(_detection_call, "GET", f"/frame/{cam}.jpg" + ("?raw=1" if raw else ""))
+    return Response(content=body, status_code=code, media_type=ctype, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/detection/reset")
+async def detection_reset():
+    """The next still picture is taken as the empty board (the dart count starts again at 0)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/reset")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/confirm")
+async def detection_confirm(index: int):
+    """The player confirms an uncertain dart of the turn (0-based): the mark goes, the confirmation is stored as a label."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", f"/api/confirm?index={int(index)}")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/calibrate")
+async def detection_calibrate():
+    """Fit the board model on the pictures of the empty board (takes about a minute; the board must be empty)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/calibrate")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
 
 
 @app.post("/api/control/reset-board")
@@ -3252,6 +3323,7 @@ _API_GROUPS = [
     ("Control and state", "The state of the game and the board, control actions and the settings in `config.toml`.",
      ("/api/control", "/api/state", "/api/health", "/api/config", "/api/board-address", "/api/web-port", "/api/delete-guard")),
     ("Stream Deck", "The keys of a Stream Deck at the board: layout, pictures, previews.", ("/api/streamdeck",)),
+    ("Dart detection", "The dart detection from the board cameras: status, board model, settings, labels, frames.", ("/api/detection",)),
     ("Admin", "The admin area, the dev tools, usage reports and updates.", ("/api/admin", "/api/dev", "/api/telemetry", "/api/updates")),
     ("UI", "Appearance, language and the pages themselves.", ("/api/appearance", "/api/language", "/api/joke", "/api/changelog", "/audio", "/")),
 ]

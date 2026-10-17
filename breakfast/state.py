@@ -36,6 +36,7 @@ class GameState:
         # Lives outside reset(): it follows the local board stream, not the match.
         self.board_darts = BoardDarts()
         self.cloud_darts = None     # the darts of the turn of a match played in Autodarts, with their positions; None without one
+        self.detection = None       # status of the own dart detection (None while the board manager is the source)
         self.reset()
 
     def reset(self):

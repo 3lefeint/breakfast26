@@ -4,11 +4,11 @@
   // version (five taps in a row unlock the Dev tab) and the link to the About page. The panel is as
   // tall as the page, its content stays in view. On narrow screens it becomes a bar along the bottom
   // edge. Board opens the board manager of the installation and is disabled when none is configured; Autodarts
-  // opens its web app in a new tab.
+  // opens its web app in a new tab. With the own dart detection Board is a page of this app and the Autodarts link is left out.
   import Icon from '../../lib/components/Icon.svelte';
   import { adminRelay } from '../../lib/admin.js';
 
-  let { route, boardAddress = null, version = '', build = null, onVersionTap = () => {} } = $props();
+  let { route, boardAddress = null, ownDetection = false, version = '', build = null, onVersionTap = () => {} } = $props();
 
   // A test build copied without .git names its branch under the version: the name without a leading feature/ or fix/,
   // cut by the CSS, the full name and the commit on hover.
@@ -20,8 +20,10 @@
     { id: 'play', label: t('Play'), icon: 'play', href: '#home', active: PLAY_ROUTES.includes(route) },
     { id: 'players', label: t('Players'), icon: 'players', href: '#players', active: route === 'players' || route.startsWith('profile/') },
     { id: 'stats', label: t('Stats'), icon: 'stats', href: '#stats', active: route === 'stats' },
-    { id: 'board', label: t('Board'), icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
-    { id: 'autodarts', label: 'Autodarts', icon: 'external', href: 'https://play.autodarts.com/', external: true },
+    ownDetection
+      ? { id: 'board', label: t('Board'), icon: 'board', href: '#board', active: route === 'board' }
+      : { id: 'board', label: t('Board'), icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
+    ...(ownDetection ? [] : [{ id: 'autodarts', label: 'Autodarts', icon: 'external', href: 'https://play.autodarts.com/', external: true }]),
     // Only in a browser that knows a relay for the admin: the page itself is reached by its address (#admin).
     ...($adminRelay ? [{ id: 'admin', label: t('Admin'), icon: 'lock', href: '#admin', active: route === 'admin' }] : []),
   ]);

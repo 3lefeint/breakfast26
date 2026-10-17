@@ -65,7 +65,7 @@
     lastPhase = phase;
   });
 
-  let { boardConnected = false, mqttOk = null, autodartsOk = false, wsConnected = true, connLabel = '' } = $props();
+  let { boardConnected = false, mqttOk = null, autodartsOk = false, cameras = null, wsConnected = true, connLabel = '' } = $props();
 
   let game = $derived($gameState.game || {});
   let sessionStats = $derived($gameState.session_stats || {});
@@ -164,7 +164,7 @@
 
 <SceneOverlay />
 
-<TopBar tv {boardConnected} {mqttOk} {autodartsOk} {wsConnected} {connLabel} title={matchMeta} glowColor={headerGlow}>
+<TopBar tv {boardConnected} {mqttOk} {autodartsOk} {cameras} {wsConnected} {connLabel} title={matchMeta} glowColor={headerGlow}>
   {#snippet titleExtra()}
     {#if view === 'tb-live' && !$targetBattle.tiebreak}
       <span class="dots" aria-hidden="true">

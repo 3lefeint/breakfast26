@@ -192,3 +192,12 @@ def test_clips_are_recorded_during_movement_and_replay_to_the_same_events(tmp_pa
     events, _ = replay_clip(m, clips[0])
     assert [e.kind for e in events if e.kind == "dart"] == ["dart"]
     assert [e.kind for e in live if e.kind == "dart"] == ["dart"]
+
+
+def test_a_dart_next_to_a_wire_is_marked_uncertain_and_one_in_the_middle_is_not():
+    for point, uncertain in (((0, 130), False), ((0, 99.4), True)):         # the middle of the single, 0.4 mm over the inner edge of the triple
+        tr = BoardTracker(model(), Settings())
+        events, t = run(tr, [scene() for _ in range(20)])
+        events, t = run(tr, [scene([point]) for _ in range(14)], start=t)
+        dart = [e for e in events if e.kind == "dart"][0]
+        assert dart.throw["detection"]["uncertain"] is uncertain, dart.throw["detection"]

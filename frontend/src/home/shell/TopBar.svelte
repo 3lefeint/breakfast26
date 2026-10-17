@@ -9,7 +9,7 @@
   import Icon from '../../lib/components/Icon.svelte';
   import logo from '../../lib/assets/logo.png';
 
-  let { boardConnected = false, mqttOk = null, autodartsOk = false, wsConnected = true, connLabel = '', tv = false, title = '', glowColor = null, updateAvailable = false, right: rightSlot, titleExtra } = $props();
+  let { boardConnected = false, mqttOk = null, autodartsOk = false, cameras = null, wsConnected = true, connLabel = '', tv = false, title = '', glowColor = null, updateAvailable = false, right: rightSlot, titleExtra } = $props();
 </script>
 
 <header class="topbar" class:glow-green={glowColor === 'green'} class:glow-yellow={glowColor === 'yellow'} class:glow-red={glowColor === 'red'}>
@@ -27,7 +27,11 @@
       {#if mqttOk !== null}
         <span class="status" title={t('MQTT')}><span class="dot" class:ok={mqttOk}></span><span class="label">{t('MQTT')}</span></span>
       {/if}
-      <span class="status" title={t('Autodarts')}><span class="dot" class:ok={autodartsOk}></span><span class="label">{t('Autodarts')}</span></span>
+      {#if cameras}
+        <span class="status" title={t('Cameras')}><span class="dot" class:ok={cameras === 'ok'} class:warn={cameras === 'warn'}></span><span class="label">{t('Cameras')}</span></span>
+      {:else}
+        <span class="status" title={t('Autodarts')}><span class="dot" class:ok={autodartsOk}></span><span class="label">{t('Autodarts')}</span></span>
+      {/if}
     </span>
     {@render rightSlot?.()}
     {#if !tv}
@@ -60,6 +64,7 @@
   .status { display: flex; align-items: center; gap: 0.55rem; font-size: 0.9rem; color: var(--text); }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); box-shadow: 0 0 10px var(--red); transition: background 0.3s; }
   .dot.ok { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .dot.warn { background: var(--yellow, #e0a73a); box-shadow: 0 0 10px var(--yellow, #e0a73a); }
   .btn {
     display: inline-flex; align-items: center; gap: 0.55rem; height: 2.75rem; padding: 0 1.1rem;
     border: 1px solid var(--glass-border); border-radius: 10px; color: var(--text); text-decoration: none;
