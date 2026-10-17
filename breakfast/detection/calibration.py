@@ -82,16 +82,25 @@ def _search_h(gray, ref, radii, scales):
     return ref, score(emap, homography_from(ref), radii)
 
 
-def fit(frames, ref0, radii0):
+def fit(frames, ref0, radii0, progress=None):
     """frames: camera -> BGR picture of the empty board; ref0: camera -> 4 reference points (pixels). Returns the reference points
-    and the radii after the fit."""
+    and the radii after the fit. `progress(fraction, text)` is called as it goes (the first part, the search of several starts per
+    camera, counts for 60 %, the three fine scales for the rest)."""
+    report = progress or (lambda fraction, text: None)
     ref = {c: np.array(ref0[c], float).reshape(4, 2) for c in ref0}
     radii = dict(radii0)
+    total = len(ref) * len(STARTS)
+    done = 0
     for c in ref:                                                   # per camera: best of several starts, so a start a few
         gray = cv2.cvtColor(frames[c], cv2.COLOR_BGR2GRAY)          # wires away does not end on the wrong wire
-        results = [_search_h(gray, ref[c] + [dx, dy], radii, SCALES[:2]) for dx, dy in STARTS]
+        results = []
+        for dx, dy in STARTS:
+            report(0.6 * done / total, f"camera {c + 1}: first search {done % len(STARTS) + 1} of {len(STARTS)}")
+            results.append(_search_h(gray, ref[c] + [dx, dy], radii, SCALES[:2]))
+            done += 1
         ref[c] = max(results, key=lambda r: r[1])[0]
-    for sigma, step0, step1 in SCALES:
+    for k, (sigma, step0, step1) in enumerate(SCALES):
+        report(0.6 + 0.4 * k / len(SCALES), f"fine adjustment {k + 1} of {len(SCALES)}")
         emaps = {c: edge_map(cv2.cvtColor(frames[c], cv2.COLOR_BGR2GRAY), sigma) for c in frames}
         step = step0
         while step >= step1:
@@ -122,10 +131,90 @@ def reference_points(model):
     return {c: [model.to_pixel(c, *board_pt(R_OUT, a)) for a in ANGLES] for c in model.cams}
 
 
-def calibrate(model, frames):
+RING_IDS = (162.0, 107.0, 99.0)             # fitted radii; the outer double ring (170) stays the reference
+POINT_RINGS = (170.0, 162.0, 107.0, 99.0)
+
+
+def targets():
+    """The 17 points per camera: the center and the crossings of the four sector wires (20|1, 6|10, 3|19, 11|14) with the four outer rings."""
+    out = [{"id": "center", "r": 0.0, "a": 0}]
+    for r in POINT_RINGS:
+        for a in ANGLES:
+            out.append({"id": f"{r:g}@{a}", "r": r, "a": a})
+    return out
+
+
+def model_points(model):
+    """Where a model puts the 17 points in every camera's picture: {camera: {id: [x, y]}} in pixels."""
+    pts = {}
+    for c in model.cams:
+        pts[c] = {}
+        for t in targets():
+            x, y = model.to_pixel(c, *board_pt(model.radii.get(t["r"], t["r"]), t["a"])) if t["id"] != "center" else model.to_pixel(c, 0.0, 0.0)
+            pts[c][t["id"]] = [round(float(x), 2), round(float(y), 2)]
+    return pts
+
+
+def _project(Hm, r, deg):
+    v = Hm @ np.array([r * math.sin(math.radians(deg)), r * math.cos(math.radians(deg)), 1.0])
+    return v[:2] / v[2]
+
+
+def fit_points(points, model):
+    """The board model that fits the clicked points best: one homography per camera and one effective radius per ring (shared by all
+    cameras), least squares on the pixel error (Levenberg-Marquardt), started from `model`. `points`: {camera: {id: [x, y]}}.
+    Returns (new model, report with rms and max error per camera, the radii and warnings about unusual radii)."""
+    tg = {t["id"]: t for t in targets()}
+    cams = list(model.cams)
+    data = {c: [(tg[i]["r"], tg[i]["a"], xy) for i, xy in points[c].items() if xy and i in tg] for c in cams}
+    H0 = {c: model.H[c] / model.H[c][2, 2] for c in cams}
+
+    def unpack(x):
+        H = {c: np.append(x[8 * k:8 * k + 8], 1.0).reshape(3, 3) for k, c in enumerate(cams)}
+        radii = dict(zip(RING_IDS, x[8 * len(cams):8 * len(cams) + len(RING_IDS)]))
+        radii[170.0] = 170.0
+        return H, radii
+
+    def residual(x):
+        H, radii = unpack(x)
+        out = []
+        for c in cams:
+            for r, a, xy in data[c]:
+                out.extend(_project(H[c], radii.get(r, r), a) - np.array(xy))
+        return np.array(out)
+
+    x = np.concatenate([np.concatenate([H0[c].flatten()[:8] for c in cams]), [model.radii.get(r, r) for r in RING_IDS]])
+    lam = 1e-2
+    cost = float(residual(x) @ residual(x))
+    for _ in range(80):
+        r0 = residual(x)
+        J = np.empty((len(r0), len(x)))
+        for j in range(len(x)):
+            d = np.zeros(len(x)); d[j] = 1e-6 * max(1.0, abs(x[j]))
+            J[:, j] = (residual(x + d) - r0) / d[j]
+        A = J.T @ J
+        step = np.linalg.solve(A + lam * np.diag(np.diag(A) + 1e-9), -J.T @ r0)
+        c2 = float(residual(x + step) @ residual(x + step))
+        if c2 < cost:
+            x, cost, lam = x + step, c2, lam * 0.5
+            if np.max(np.abs(step)) < 1e-9:
+                break
+        else:
+            lam *= 4
+    H, radii = unpack(x)
+    report = {"radii_mm": {f"{r:g}": round(float(v), 2) for r, v in sorted(radii.items())}, "rms_px": {}, "max_px": {}}
+    for c in cams:
+        e = [float(np.linalg.norm(_project(H[c], radii.get(r, r), a) - np.array(xy))) for r, a, xy in data[c]]
+        report["rms_px"][str(c)] = round(float(np.sqrt(np.mean(np.square(e)))), 2) if e else None
+        report["max_px"][str(c)] = round(max(e), 2) if e else None
+    report["unusual"] = [f"ring {r:g} mm is {radii[r] - r:+.1f} mm from the standard size" for r in RING_IDS if abs(radii[r] - r) > 6.0]
+    return BoardModel(H, radii, model.size), report
+
+
+def calibrate(model, frames, progress=None):
     """Fit the model on the empty-board pictures. Returns (new model, report) or (None, report) if the fit moved too far."""
     ref0 = reference_points(model)
-    ref, radii = fit(frames, ref0, model.radii)
+    ref, radii = fit(frames, ref0, model.radii, progress)
     moves = {c: float(np.max(np.linalg.norm(np.array(ref[c]) - np.array(ref0[c]), axis=1))) for c in ref}
     scores = {}
     for c in ref:
@@ -139,6 +228,16 @@ def calibrate(model, frames):
         return None, report
     new = BoardModel({c: homography_from(ref[c]) for c in ref}, radii, model.size)
     return new, report
+
+
+def revert(path):
+    """Take the model that `save` kept as `.prev.json` back. Returns the model, or None if there is none."""
+    path = Path(path)
+    prev = path.with_suffix(".prev.json")
+    if not prev.exists():
+        return None
+    shutil.copy2(prev, path)
+    return BoardModel.from_file(path)
 
 
 def save(model, path, report=None):

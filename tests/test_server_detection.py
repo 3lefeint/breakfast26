@@ -19,7 +19,9 @@ class FakeWorker(BaseHTTPRequestHandler):
 
     def do_GET(self):
         CALLS.append(("GET", self.path))
-        if self.path == "/status.json":
+        if self.path == "/api/model":
+            body, ctype = json.dumps({"size": [800, 600], "ref": {"0": [[1, 2]] * 4}, "radii": {"170": 170.0}, "can_revert": True}).encode(), "application/json"
+        elif self.path == "/status.json":
             body, ctype = json.dumps({"board": {"status": "ready", "count": 1}, "events": []}).encode(), "application/json"
         else:
             body, ctype = b"\xff\xd8jpeg", "image/jpeg"
@@ -30,6 +32,14 @@ class FakeWorker(BaseHTTPRequestHandler):
 
     def do_POST(self):
         CALLS.append(("POST", self.path))
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0)
+        if self.path in ("/api/model/move", "/api/model/discard"):
+            CALLS.append(("BODY", body))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"size": [800, 600], "points": {}}).encode())
+            return
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"{}")
@@ -69,8 +79,7 @@ def test_status_frame_and_buttons_go_to_the_worker(worker_port):
     frame = c.get("/api/detection/frame/1")
     assert frame.status_code == 200 and frame.headers["content-type"] == "image/jpeg" and frame.content.startswith(b"\xff\xd8")
     assert c.post("/api/detection/reset").json() == {"ok": True}
-    assert c.post("/api/detection/calibrate").json() == {"ok": True}
-    assert ("POST", "/api/reset") in CALLS and ("POST", "/api/calibrate") in CALLS and ("GET", "/frame/1.jpg") in CALLS
+    assert ("POST", "/api/reset") in CALLS and ("GET", "/frame/1.jpg") in CALLS
     assert c.get("/api/state").json()["detection"]["status"] == "ready"
     server.wire(None, None)
 
@@ -124,3 +133,18 @@ def test_uncertain_darts_are_flagged_on_the_board_darts():
     bd.update([{"segment": seg, "coords": {"x": 0.0, "y": 0.6}, "detection": {"uncertain": True}}, {"segment": seg, "coords": {"x": 0.1, "y": 0.6}}])
     shown = bd.snapshot()
     assert shown[0].get("uncertain") is True and "uncertain" not in shown[1]
+
+
+def test_the_manual_adjustment_goes_through_to_the_worker(worker_port):
+    wire(worker_port)
+    c = TestClient(server.app)
+    model = c.get("/api/detection/model").json()
+    assert model["size"] == [800, 600] and model["can_revert"]
+    assert c.post("/api/detection/model/move", json={"cam": 0, "id": "162@99", "xy": [1, 2]}).json()["size"] == [800, 600]
+    assert any(k == "BODY" and b'"162@99"' in v for k, v in CALLS)
+    assert c.post("/api/detection/model/discard").json()["size"] == [800, 600]
+    assert c.post("/api/detection/model/auto").json() == {"ok": True}
+    assert c.post("/api/detection/model/save").json() == {"ok": True}
+    assert c.post("/api/detection/model/revert").json() == {"ok": True}
+    assert {("POST", "/api/model/move"), ("POST", "/api/model/discard"), ("POST", "/api/model/save"), ("POST", "/api/model/revert"), ("POST", "/api/model/auto")} <= set(CALLS)
+    server.wire(None, None)

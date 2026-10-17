@@ -773,13 +773,18 @@ async def control_next_game():
     return run_control("next_game")
 
 
-def _detection_call(method, path, timeout=10):
+def _detection_call(method, path, timeout=10, data=None):
     """Ask the worker of the own dart detection (its diagnostics server on this machine). Returns (status, body, content type)."""
+    import urllib.error
     import urllib.request
-    req = urllib.request.Request(f"http://127.0.0.1:{_detection_port}{path}", method=method, data=b"" if method == "POST" else None)
+    req = urllib.request.Request(f"http://127.0.0.1:{_detection_port}{path}", method=method,
+                                 data=(data if data is not None else b"") if method == "POST" else None,
+                                 headers={"Content-Type": "application/json"} if data is not None else {})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, r.read(), r.headers.get("Content-Type", "application/octet-stream")
+    except urllib.error.HTTPError as e:                    # an answer with a status (the worker refused): pass it on
+        return e.code, e.read(), e.headers.get("Content-Type", "application/json")
     except Exception as e:
         log.warning("detection worker not reachable: %s", e)
         return 503, b"", "text/plain"
@@ -815,21 +820,66 @@ async def detection_reset():
     return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
 
 
+@app.get("/api/detection/model")
+async def detection_model():
+    """The board model as reference points for the page of the manual adjustment (pixels per camera, the radii)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "GET", "/api/model")
+    return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/model/move")
+async def detection_model_move(request: Request):
+    """Move one of the 17 points of a camera: {"cam": 0, "id": "162@99", "xy": [x, y]}. The model is fitted again and returned."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "POST", "/api/model/move", 30, await request.body())
+    return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/model/discard")
+async def detection_model_discard():
+    """Put all points back where the model in use has them."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "POST", "/api/model/discard", 30)
+    return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/model/auto")
+async def detection_model_auto():
+    """Fit the model on the empty board automatically and move the points of the adjustment page to the result (nothing is saved)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/model/auto")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/model/save")
+async def detection_model_save():
+    """Fit the model to the points and use it (the previous one is kept)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/model/save", 60)
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/model/revert")
+async def detection_model_revert():
+    """Take the board model back that was in use before the last save."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/model/revert")
+    return {"ok": True} if code == 200 else {"error": "There is no previous model."}
+
+
 @app.post("/api/detection/confirm")
 async def detection_confirm(index: int):
     """The player confirms an uncertain dart of the turn (0-based): the mark goes, the confirmation is stored as a label."""
     if not _detection_port:
         return {"error": "dart detection is off"}
     code, _, _ = await asyncio.to_thread(_detection_call, "POST", f"/api/confirm?index={int(index)}")
-    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
-
-
-@app.post("/api/detection/calibrate")
-async def detection_calibrate():
-    """Fit the board model on the pictures of the empty board (takes about a minute; the board must be empty)."""
-    if not _detection_port:
-        return {"error": "dart detection is off"}
-    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/calibrate")
     return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
 
 

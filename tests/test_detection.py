@@ -201,3 +201,38 @@ def test_a_dart_next_to_a_wire_is_marked_uncertain_and_one_in_the_middle_is_not(
         events, t = run(tr, [scene([point]) for _ in range(14)], start=t)
         dart = [e for e in events if e.kind == "dart"][0]
         assert dart.throw["detection"]["uncertain"] is uncertain, dart.throw["detection"]
+
+
+def test_the_calibration_reports_its_progress():
+    from breakfast.detection import calibration
+    m = model()
+    frames = {c: scene()[c] for c in range(3)}
+    steps = []
+    calibration.fit(frames, calibration.reference_points(m), m.radii, lambda f, text: steps.append((f, text)))
+    fractions = [f for f, _ in steps]
+    assert fractions == sorted(fractions) and fractions[0] == 0.0 and 0.6 <= fractions[-1] < 1.0
+    assert "camera 1" in steps[0][1] and "fine adjustment" in steps[-1][1]
+
+
+def test_the_17_points_fit_back_to_the_same_model_and_follow_a_moved_point():
+    from breakfast.detection import calibration
+    m = model()
+    pts = calibration.model_points(m)
+    assert len(pts[0]) == 17 and "center" in pts[0] and "99@189" in pts[2]
+    same, report = calibration.fit_points(pts, m)
+    assert max(report["rms_px"].values()) < 0.05 and abs(same.to_pixel(1, 30, 40)[0] - m.to_pixel(1, 30, 40)[0]) < 0.2
+    pts[0]["162@99"] = [pts[0]["162@99"][0] + 5, pts[0]["162@99"][1]]           # one point pulled 5 px away: the fit stays close to all the others
+    moved, report = calibration.fit_points(pts, m)
+    assert 0.1 < report["rms_px"]["0"] < 3.0 and max(report["rms_px"][c] for c in ("1", "2")) < 0.3
+
+
+def test_the_previous_model_can_be_taken_back(tmp_path):
+    from breakfast.detection import calibration
+    m = model()
+    path = tmp_path / "calib_model.json"
+    calibration.save(m, path)
+    assert calibration.revert(path) is None
+    other = calibration.BoardModel({c: m.H[c] @ __import__('numpy').array([[1, 0, 10], [0, 1, 0], [0, 0, 1]]) for c in m.cams}, m.radii, m.size)
+    calibration.save(other, path)
+    back = calibration.revert(path)
+    assert abs(back.to_pixel(0, 0, 0)[0] - m.to_pixel(0, 0, 0)[0]) < 0.5
