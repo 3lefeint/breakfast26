@@ -820,6 +820,15 @@ async def detection_reset():
     return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
 
 
+@app.get("/api/detection/labels")
+async def detection_labels():
+    """The numbers of the corrections and confirmations the player gave to the own dart detection."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "GET", "/api/labels")
+    return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
+
+
 @app.get("/api/detection/model")
 async def detection_model():
     """The board model as reference points for the page of the manual adjustment (pixels per camera, the radii)."""

@@ -12,6 +12,7 @@
   let tick = $state(Date.now());
   let busy = $state(false);
   let adjusting = $state(false);
+  let labels = $state(null);          // the numbers of the corrections and confirmations
 
   async function load() {
     try {
@@ -21,11 +22,22 @@
     }
     tick = Date.now();
   }
+  async function loadLabels() {
+    try {
+      const res = await fetch('/api/detection/labels').then((r) => r.json());
+      labels = res.error ? null : res;
+    } catch (_) {
+      labels = null;
+    }
+  }
   onMount(() => {
     load();
+    loadLabels();
     const id = setInterval(load, 1200);
-    return () => clearInterval(id);
+    const slow = setInterval(loadLabels, 15000);
+    return () => { clearInterval(id); clearInterval(slow); };
   });
+  const KINDS = { ring: () => t('Other ring'), neighbour: () => t('Next number'), bull: () => t('Bull'), miss: () => t('Miss or phantom'), other: () => t('Something else') };
 
   async function post(path, confirmText) {
     if (confirmText && !confirm(confirmText)) return;
@@ -99,6 +111,33 @@
       <div class="section-title" style="margin-top:1rem">{t('Load')}</div>
       <p class="note">{status.load.looks_per_s} / s · {status.load.feed_ms} ms</p>
     </div>
+  </div>
+  <div class="section">
+    <div class="section-title">{t('Corrections')}</div>
+    {#if !labels || !labels.looked_at}
+      <p class="note muted">{t('No corrections yet. Every tap on a dart to correct or confirm it is counted here.')}</p>
+    {:else}
+      <p class="note">
+        {t('Looked at')}: <b>{labels.looked_at}</b> · {t('right')}: <b>{labels.right}</b> · {t('wrong')}: <b>{labels.wrong}</b>
+        {#if labels.wrong_share != null}({Math.round(labels.wrong_share * 100)} %){/if}
+        · {t('Wrong ones that were marked uncertain')}: <b>{labels.wrong_and_flagged}</b> / {labels.wrong}
+      </p>
+      {#if labels.offset_mm}
+        <p class="note">{t('Distance to the spot that was pressed (mm)')}: {t('mean')} <b>{labels.offset_mm.mean}</b> · {t('median')} <b>{labels.offset_mm.median}</b> · 90 % <b>{labels.offset_mm.p90}</b> · max <b>{labels.offset_mm.max}</b> ({labels.offset_mm.n})
+          {#if labels.bias_mm}· {t('shift')} x {labels.bias_mm.x}, y {labels.bias_mm.y}{/if}</p>
+      {/if}
+      {#if Object.keys(labels.mistakes).length}
+        <p class="note">{t('Mistakes')}: {#each Object.entries(labels.mistakes) as [k, n], i (k)}{i ? ' · ' : ''}{(KINDS[k] ?? (() => k))()} <b>{n}</b>{/each}</p>
+      {/if}
+      <table>
+        <thead><tr><td class="muted">{t('Distance to the nearest wire')}</td><td class="muted">{t('Looked at')}</td><td class="muted">{t('wrong')}</td></tr></thead>
+        <tbody>
+          {#each labels.by_margin as m (m.from_mm)}
+            <tr><td>{m.from_mm}{m.to_mm != null ? ` – ${m.to_mm}` : '+'} mm</td><td>{m.looked_at}</td><td>{m.wrong}</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
   </div>
   {/if}
 {/if}

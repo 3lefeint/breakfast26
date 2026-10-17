@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from breakfast.detection import calibration
+from breakfast.detection import calibration, labels
 from breakfast.detection.cameras import CameraGroup
 from breakfast.detection.clips import ClipRecorder
 from breakfast.detection.geometry import BoardModel
@@ -104,7 +104,7 @@ class Worker:
         self.tracker.reset()
         self.note("The next still picture is taken as the empty board.")
 
-    def label(self, index, field, confirm=False):
+    def label(self, index, field, confirm=False, point=None):
         """What the player said about a dart of the turn (a correction in Breakfast, or a tap on "this one is right"): stored with the
         detected field and the pictures it came from, a free label for measuring the detection. A confirmation clears the
         uncertain mark and sends the state again."""
@@ -113,7 +113,10 @@ class Worker:
             return False
         th = throws[index]
         row = {"t": datetime.now().isoformat(timespec="seconds"), "index": index, "detected": th["segment"]["name"],
-               "corrected": field, "confirmed": bool(confirm), "detection": th.get("detection")}
+               "corrected": field, "confirmed": bool(confirm), "detection": th.get("detection"),
+               "detected_at": th.get("coords")}
+        if point:
+            row["corrected_at"] = point          # where the player tapped on the board, board units: the detection error in mm
         try:
             self.base.mkdir(parents=True, exist_ok=True)
             with open(self.base / "labels.jsonl", "a") as f:
@@ -368,6 +371,8 @@ def serve(worker, port):
                 self._send(200, PAGE.encode(), "text/html; charset=utf-8")
             elif path == "/status.json":
                 self._send(200, json.dumps(worker.status(), default=str).encode(), "application/json")
+            elif path == "/api/labels":
+                self._send(200, json.dumps(labels.summary_of(worker.base / "labels.jsonl")).encode(), "application/json")
             elif path == "/api/model":
                 self._send(200, json.dumps(worker.adjustment()).encode(), "application/json")
             elif path.startswith("/frame/") and path.endswith(".jpg"):
@@ -402,7 +407,8 @@ def serve(worker, port):
                 if self.path.startswith("/api/confirm"):
                     ok = worker.label(index, worker.tracker.throws[index]["segment"]["name"] if 0 <= index < len(worker.tracker.throws) else "", confirm=True)
                 else:
-                    ok = worker.label(index, q.get("field", [""])[0])
+                    point = {"x": float(q["x"][0]), "y": float(q["y"][0])} if "x" in q and "y" in q else None
+                    ok = worker.label(index, q.get("field", [""])[0], point=point)
                 return self._send(200 if ok else 404, b'{"ok":true}' if ok else b'{"ok":false}', "application/json")
             else:
                 return self._send(404, b"", "text/plain")
