@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from breakfast.detection import calibration, labels
+from breakfast.detection import calibration, detector, drift, labels
 from breakfast.detection.cameras import CameraGroup
 from breakfast.detection.clips import ClipRecorder
 from breakfast.detection.geometry import BoardModel
@@ -58,6 +58,8 @@ class Worker:
         self.edited = {}                # camera -> ids of the points that were moved by hand
         self.dirty = False              # the points hold an automatic fit that has not been saved yet
         self.notes = []                 # results of jobs, newest last
+        self.drift = None               # the last drift check: {level, cams, t}, see drift.py
+        self._reference_due = False     # the next picture of the empty board becomes the reference of the drift check (the model changed)
         self.stop = threading.Event()
         self.feed_ms = 0.0              # moving average of the time one set of pictures takes in the tracker
         self.rate = 0.0                 # sets of pictures looked at per second
@@ -74,6 +76,8 @@ class Worker:
             del self.events[:-40]
         log.info("%s: %s", ev.kind, json.dumps(entry["info"] if ev.kind != "dart" else {k: entry["info"].get(k) for k in ("field", "sigma", "margin", "cams")}))
         self._save_bundle(ev, entry)
+        if ev.kind in ("baseline", "takeout") and ev.after:
+            self._check_drift(ev.after)
         if ev.throw is not None:
             ev.throw["detection"]["bundle"] = f"{entry['n']:04d}-{ev.kind}"       # which stored pictures belong to this dart
         if self.clips:
@@ -81,6 +85,42 @@ class Worker:
         name = names.get(ev.kind)
         if name:
             self.out.put(state_message(self.tracker, name))
+
+    def _check_drift(self, frames):
+        """The board is empty: has a camera moved since the model was made? The first empty picture after a new model (or without any
+        reference yet) becomes the reference."""
+        try:
+            prepared = {c: detector.prepare(f) for c, f in frames.items()}
+            folder = self.base / "reference"
+            ref = None if self._reference_due else drift.load_reference(folder, self.model.cams)
+            now = datetime.now().strftime("%H:%M:%S")
+            if ref is None:
+                drift.save_reference(folder, prepared)
+                self._reference_due = False
+                self.drift = {"level": "ok", "cams": {}, "t": now, "reference": now}
+                self.note("The empty board is the reference picture of the drift check now.")
+                return
+            result = drift.measure(self.model, ref, prepared)
+            level = drift.worst(result)
+            was = (self.drift or {}).get("level")
+            self.drift = {"level": level, "cams": {str(c): r for c, r in result.items()}, "t": now,
+                          "reference": (self.drift or {}).get("reference")}
+            if level in ("warn", "bad") and level != was:
+                moved = ", ".join(f"camera {c + 1}: {r['px']} px" for c, r in result.items() if r["level"] in ("warn", "bad"))
+                self.note(f"Drift: the empty board looks different from the reference picture ({moved}). A camera or the board may have moved.")
+        except Exception:
+            log.exception("drift check failed")
+
+    def take_reference(self):
+        """The empty board as it is now is the reference of the drift check. False if the board is not known to be empty."""
+        if self.tracker.empty is None or self.tracker.count:
+            return False
+        drift.save_reference(self.base / "reference", self.tracker.empty)
+        self._reference_due = False
+        now = datetime.now().strftime("%H:%M:%S")
+        self.drift = {"level": "ok", "cams": {}, "t": now, "reference": now}
+        self.note("The empty board is the reference picture of the drift check now.")
+        return True
 
     def _save_bundle(self, ev, entry):
         try:
@@ -206,6 +246,7 @@ class Worker:
 
     def _use_model(self, new):
         self.model = new
+        self._reference_due = True                  # the model fits the picture of the empty board that comes next
         self.tracker.model = new
         self.tracker._small_mask = {c: cv2.resize(m, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST) > 0 for c, m in new.masks.items()}
         self.tracker.reset()
@@ -272,7 +313,7 @@ class Worker:
         return {"cameras": self.cams.status(), "board": {"status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count, "moving": self.tracker.moving,
                 "throws": [t["segment"]["name"] for t in self.tracker.throws]}, "busy": self.busy, "progress": self.progress, "events": events[::-1],
                 "notes": notes[::-1], "settings": self.settings.__dict__, "load": {"feed_ms": round(self.feed_ms, 1), "looks_per_s": round(self.rate, 1)},
-                "clips": self.clips.count if self.clips else None, "model": {"radii": {str(k): round(v, 2) for k, v in self.model.radii.items()}}}
+                "clips": self.clips.count if self.clips else None, "drift": self.drift, "model": {"radii": {str(k): round(v, 2) for k, v in self.model.radii.items()}}}
 
     def jpeg(self, cam, overlay=True):
         frames = self.cams.latest_frames()
@@ -313,6 +354,7 @@ class Worker:
         while not self.stop.is_set():
             ok = all(c["error"] is None and c["age_s"] is not None and c["age_s"] < 2.0 for c in self.cams.status())
             self.out.put({"type": "worker", "ok": ok, "status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count,
+                          "drift": (self.drift or {}).get("level"),
                           "cameras": [{"error": c["error"], "fps": c["fps"]} for c in self.cams.status()]})
             if ok:
                 self.out.put(state_message(self.tracker, "Heartbeat"))
@@ -394,6 +436,9 @@ def serve(worker, port):
             if self.path == "/api/model/revert":
                 ok = worker.revert_model()
                 return self._send(200 if ok else 404, json.dumps({"ok": ok}).encode(), "application/json")
+            if self.path == "/api/drift/accept":
+                ok = worker.take_reference()
+                return self._send(200 if ok else 409, b'{"ok":true}' if ok else b'{"ok":false}', "application/json")
             if self.path == "/api/reset":
                 worker.reset()
             elif self.path == "/api/calibrate":

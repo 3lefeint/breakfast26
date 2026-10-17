@@ -71,6 +71,15 @@
       <button class="btn" disabled={busy} onclick={() => post('/api/detection/reset')}>{t('Empty board = now')}</button>
       <button class="btn" disabled={status.busy} onclick={() => (adjusting = !adjusting)}>{adjusting ? t('Back to the pictures') : t('Adjust by hand')}</button>
     </div>
+    {#if status.drift && (status.drift.level === 'warn' || status.drift.level === 'bad') && !adjusting}
+      <div class="drift" class:bad={status.drift.level === 'bad'} role="alert">
+        <span>{t('The empty board looks different from when the model was made: a camera or the board may have moved.')}
+          {#each Object.entries(status.drift.cams).filter(([, r]) => r.level === 'warn' || r.level === 'bad') as [c, r] (c)}
+            <b>{t('Camera')} {Number(c) + 1}: {r.px} px</b>{' '}
+          {/each}</span>
+        <button class="btn" disabled={busy || board.count > 0} onclick={() => post('/api/detection/drift/accept', t('Take the empty board as it is now as the reference? Do this only if the model still fits the pictures.'))}>{t('The model still fits')}</button>
+      </div>
+    {/if}
     {#if status.busy && !adjusting}
       <div class="progress" role="progressbar" aria-valuenow={Math.round((status.progress?.fraction ?? 0) * 100)} aria-valuemin="0" aria-valuemax="100">
         <span class="spinner" aria-hidden="true"></span>
@@ -155,6 +164,8 @@
   .btn { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; padding: 0.45rem 1rem; font: inherit; cursor: pointer; }
   .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .btn:disabled { opacity: 0.5; cursor: default; }
+  .drift { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; justify-content: space-between; border: 1px solid var(--yellow, #e0a73a); color: var(--yellow, #e0a73a); border-radius: 10px; padding: 0.6rem 0.9rem; margin: -0.2rem 0 1rem; font-size: 0.9rem; }
+  .drift.bad { border-color: var(--red); color: var(--red); }
   .progress { display: flex; align-items: center; gap: 0.8rem; margin: -0.2rem 0 1rem; }
   .progress .track { flex: 1; height: 10px; border-radius: 5px; background: var(--glass); border: 1px solid var(--glass-border); overflow: hidden; }
   .progress .fill { height: 100%; background: var(--accent); transition: width 0.4s; }

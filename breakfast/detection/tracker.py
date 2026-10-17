@@ -126,7 +126,7 @@ class BoardTracker:
             self.empty_hp = {c: detector.highpass(p) for c, p in prepared.items()}
             self._handled = True
             self.status = "ready"
-            return [Event("baseline", t, 0, info={"note": "empty board taken"})]
+            return [Event("baseline", t, 0, info={"note": "empty board taken"}, after=frames)]
         hp = {c: detector.highpass(p) for c, p in prepared.items()}
         if self.count:                                      # the darts were taken out (checked first: three darts that go are a big change)
             gone = {c: detector.changed_area(self.model.masks[c], self.empty_hp[c], hp[c]) for c in prepared}

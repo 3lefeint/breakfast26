@@ -52,7 +52,7 @@
   // The board stream is connected while the board sends its darts (null otherwise).
   let boardConnected = $derived($gameState.board_darts != null);
   // The state of the own dart detection's cameras for the top bar (null while it is off).
-  let cameras = $derived($gameState.detection?.enabled ? ($gameState.detection.ok ? ($gameState.detection.status === 'blocked' ? 'warn' : 'ok') : 'bad') : null);
+  let cameras = $derived($gameState.detection?.enabled ? ($gameState.detection.ok ? ($gameState.detection.status === 'blocked' || $gameState.detection.drift === 'warn' || $gameState.detection.drift === 'bad' ? 'warn' : 'ok') : 'bad') : null);
 
   let connLabel = $derived(
     $wsStatus === 'connected' ? t('Connected') : $wsStatus === 'reconnecting' ? t('Reconnecting…') : t('connecting…')

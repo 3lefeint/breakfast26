@@ -829,6 +829,17 @@ async def detection_labels():
     return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
 
 
+@app.post("/api/detection/drift/accept")
+async def detection_drift_accept():
+    """Take the empty board as it is now as the reference picture of the drift check."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/drift/accept")
+    if code == 409:
+        return {"error": "The board is not empty."}
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
 @app.get("/api/detection/model")
 async def detection_model():
     """The board model as reference points for the page of the manual adjustment (pixels per camera, the radii)."""
