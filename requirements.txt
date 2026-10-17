@@ -9,3 +9,5 @@ tomlkit
 edge-tts
 cryptography
 segno
+numpy
+opencv-python-headless

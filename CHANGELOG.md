@@ -18,6 +18,7 @@
 
 - Invitation as a QR code: *Create invitation* shows the code as a QR code above the text (rendered by Breakfast, no network call), so a phone can scan it and copy the text. (#166)
 - Admin area: the new tab *Linked locations* shows the approved sites as a table where the circle admin ticks which pairs are linked; a link set there works like one from an invitation and shows as *Set by the circle admin* in the list of linked locations, links from an invitation are marked in the table, and the tab order is Sites, Linked locations, Voice chats, Players, Sync, Reports, Usage (`GET /admin/links`, `PUT /admin/links/<a>/<b>`, `source` of a link). (#166)
+- Experimental dart detection from the board cameras (`[cameras] enabled = true`): Breakfast reads the three USB cameras itself instead of the board manager of Autodarts, follows darts and takeouts, and serves a diagnostics page with live pictures, the last events and an automatic calibration on the empty board.
 
 ### Changed
 - Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)

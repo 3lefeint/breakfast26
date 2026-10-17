@@ -165,23 +165,39 @@ class _Reconnect:
         return delay
 
 
+def _camera_source(cameras_cfg, handle, set_connected, **kwargs):
+    """The board source of the own dart detection, or None when it cannot be loaded (numpy or OpenCV missing): Breakfast then
+    runs without darts from the board instead of ending."""
+    try:
+        from breakfast.detection.source import CameraSource
+    except ImportError as e:
+        log.error("The dart detection is switched on but cannot be loaded (%s). No darts come from the board; "
+                  "install the packages of requirements.txt or set [cameras] enabled = false.", e)
+        return None
+    return CameraSource(cameras_cfg, handle, set_connected, **kwargs)
+
+
 def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None,
                     tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None,
-                    wu_ctrl=None):
-    """Background thread: local board WebSocket for Elimination, Target Battle, Killer and freeplay."""
+                    wu_ctrl=None, cameras_cfg=None):
+    """Background thread: local board WebSocket for Elimination, Target Battle, Killer and freeplay. With `cameras_cfg`
+    the darts come from our own detection (`breakfast/detection`) instead; the messages have the same shape."""
     prev_count = 0
 
-    def on_message(ws, message):
+    def handle(data):
         nonlocal prev_count
+        prev_count = _handle_board_message(
+            data, state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl, killer_ctrl, ft_ctrl, bb_ctrl, co_ctrl,
+            x01_ctrl, wu_ctrl=wu_ctrl)
+
+    def on_message(ws, message):
         try:
             msg = json.loads(message)
         except Exception:
             return
         if msg.get("type") != "state":
             return
-        prev_count = _handle_board_message(
-            msg.get("data", {}), state, mqtt_pub, elim_ctrl, audio, prev_count, tb_ctrl, killer_ctrl, ft_ctrl, bb_ctrl, co_ctrl,
-            x01_ctrl, wu_ctrl=wu_ctrl)
+        handle(msg.get("data", {}))
 
     def set_connected(connected):
         if state.board_darts.set_connected(connected):
@@ -195,6 +211,13 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
     def opened(ws):
         reconnect.opened()
         set_connected(True)
+
+    if cameras_cfg is not None:
+        source = _camera_source(cameras_cfg, handle, set_connected)
+        if source is not None:
+            source.start()
+            log.info("Dart detection from the cameras (no board manager)")
+        return
 
     def run():
         while True:
@@ -218,7 +241,7 @@ def run_direct(email, password, board_id, record_file=None,
                audio_dir=None, audio_profile=None, caller_cfg=None,
                web_port=None,
                stats_db=None, stats_timezone="UTC", log_events=False, config_path=None,
-               board_ws_url=DEFAULT_BOARD_WS_URL, board_manager_url=None):
+               board_ws_url=DEFAULT_BOARD_WS_URL, board_manager_url=None, cameras_cfg=None):
 
     from breakfast.web import server as web
     from breakfast.achievements import AchievementEngine
@@ -321,7 +344,7 @@ def run_direct(email, password, board_id, record_file=None,
         board_darts=state.board_darts, on_change=web.push) if stats_db_instance else None
     _start_board_ws(state, mqtt_pub, elim_ctrl, board_ws_url=board_ws_url, audio=audio, tb_ctrl=tb_ctrl,
                     killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl, x01_ctrl=x01_ctrl,
-                    wu_ctrl=wu_ctrl)
+                    wu_ctrl=wu_ctrl, cameras_cfg=cameras_cfg)
 
     def process_event(data):
         if recorder:

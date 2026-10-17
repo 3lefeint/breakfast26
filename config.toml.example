@@ -153,3 +153,12 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # convention applies (achievement_<id>.mp3, else achievement.mp3). Normally set on the page under
 # Settings → Audio & Voice → Achievements.
 # ton_up = ["fanfare.mp3", "drumroll.mp3"]
+
+# ── Own dart detection (replaces the board manager of Autodarts) ─────────────
+# With enabled = true the darts are read from the USB cameras by Breakfast itself. Stop Autodarts first: it holds the cameras.
+# The board model (calib_model.json) is made with the "Calibrate" button of the diagnostics page on an empty board.
+# [cameras]
+# enabled = false
+# dir = "detection"            # folder (under the data folder) with calib_model.json and the pictures of the events
+# devices = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]    # the capture nodes of the three cameras (default: the names the compose files give them in the container)
+# diag_port = 8770             # diagnostics page: live pictures, last events, calibration (0 = off)

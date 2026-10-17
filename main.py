@@ -117,6 +117,12 @@ def _add_mqtt_args(parser):
     parser.add_argument("--mqtt-base-topic", default=None)
 
 
+def _cameras_cfg(cfg):
+    """The `[cameras]` section when the dart detection of Breakfast is switched on, else None (the board manager is used)."""
+    section = cfg.get("cameras") or {}
+    return dict(section) if section.get("enabled") else None
+
+
 def main():
     # The standalone Windows build: run from its data folder, and let the first process only
     # watch the real one (see breakfast/frozen.py).
@@ -256,6 +262,7 @@ def main():
             config_path=cfg_path,
             board_ws_url=args.board_ws_url,
             board_manager_url=args.board_manager_url,
+            cameras_cfg=_cameras_cfg(cfg),
         )
     elif args.mode == "replay":
         if not args.file:
