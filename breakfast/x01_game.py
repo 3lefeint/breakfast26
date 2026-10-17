@@ -323,12 +323,12 @@ class X01Game(TurnGame):
             return
         self._replay_turn()
 
-    def correct_current_dart(self, dart_index, field):
+    def correct_current_dart(self, dart_index, field, point=None):
         if self.phase == "bull_off":
-            self._correct_bull_off_dart(dart_index, field)
+            self._correct_bull_off_dart(dart_index, field, point)
             return
         before = self.state
-        super().correct_current_dart(dart_index, field)
+        super().correct_current_dart(dart_index, field, point)
         if before == "playing":
             self._replay_turn()
 
@@ -483,11 +483,11 @@ class X01Game(TurnGame):
         self._last_turn_throws, self._last_turn_player = [throw], player
         self._changed()
 
-    def _correct_bull_off_dart(self, dart_index, field):
+    def _correct_bull_off_dart(self, dart_index, field, point=None):
         """Correct the dart of the visit in the bull-off, or enter one the board did not see."""
         if dart_index != 0 or self.state != "playing":
             return
-        throw = parse_field(field)
+        throw = parse_field(field, point)
         if self._one_dart_taken:
             distance = self._bull_distance(throw)
             self._bo["dist"][self.current] = distance
@@ -618,7 +618,7 @@ class X01Game(TurnGame):
             self._notify_end(None)
         return ok
 
-    def correct_last_dart(self, dart_index, field):
+    def correct_last_dart(self, dart_index, field, point=None):
         """Correct a dart of the last finished turn, also after it ended the match: the game goes back to before
         that turn and plays it again with the corrected dart."""
         # The bull-off after the max rounds has begun but nobody threw yet: the last turn is still the last thing that
@@ -632,7 +632,7 @@ class X01Game(TurnGame):
         throws = list(self._last_turn_throws)
         while len(throws) <= dart_index:
             throws.append({"segment": {"number": 0, "multiplier": 0}})
-        throws[dart_index] = parse_field(field)
+        throws[dart_index] = parse_field(field, point)
         self._restore(snap)
         if was_finished:
             self._notify_end(None)

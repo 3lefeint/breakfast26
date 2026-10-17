@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from breakfast.autodarts_client import AutodartsCloudClient
 from breakfast.dartboard import field_centers
 from breakfast.elimination import EliminationGame
+from breakfast.turn_game import parse_field
 from breakfast.mqtt_output import NullMqttPublisher
 from breakfast.stats import StatsDB, StatsTracker
 
@@ -214,6 +215,19 @@ class TestEliminationPositions:
         row = _positions(db, game_mode="Elimination")[0]
         assert (row["field"], row["entry"], row["corrected"], row["misread"]) == ("D16", "manual", 1, 0)
         assert (row["x"], row["y"]) == (CENTERS["D16"]["x"], CENTERS["D16"]["y"])
+
+    def test_a_dart_tapped_on_the_board_is_stored_where_it_was_tapped_and_counts(self):
+        db, game = self._game()
+        game.on_board_state(1, [_t(20, 3, 0.0, 0.6, "T20")])
+        game.correct_current_dart(0, "D16", {"x": 0.31, "y": -0.9})
+        game.on_board_state(0, [])
+        row = _positions(db, game_mode="Elimination")[0]
+        assert (row["field"], row["entry"], row["corrected"], row["misread"]) == ("D16", "placed", 0, 0)
+        assert (row["x"], row["y"]) == (0.31, -0.9)
+
+    def test_a_tap_on_a_miss_carries_no_point(self):
+        assert "coords" not in parse_field("0", {"x": 1.2, "y": 0.0})
+        assert parse_field("T20", {"x": 0.0, "y": 0.6})["coords"] == {"x": 0.0, "y": 0.6}
 
     def test_a_dart_corrected_to_a_miss_has_no_field_to_store(self):
         db, game = self._game()

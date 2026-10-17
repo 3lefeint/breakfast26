@@ -260,6 +260,15 @@ def run_direct(email, password, board_id, record_file=None,
 
     # Without an account (a first start of the standalone build) there is no cloud client: only
     # the web UI runs until the account is entered in Settings and the app is restarted.
+    def on_turn_darts(throws):
+        """The board view of a match played in Autodarts follows its darts: those found by the cameras, those added or
+        corrected by hand, numbered by their place in the turn."""
+        from breakfast.board_darts import _dart
+        darts = None if throws is None else [{"n": i + 1, **_dart(t)} for i, t in enumerate(throws)]
+        if state.cloud_darts != darts:
+            state.cloud_darts = darts
+            web.push()
+
     client = None
     if email and password and board_id:
         client = AutodartsCloudClient(
@@ -267,6 +276,7 @@ def run_direct(email, password, board_id, record_file=None,
             password=password,
             board_id=board_id,
             on_event=on_event,
+            on_turn_darts=on_turn_darts,
         )
 
     # Wired unconditionally (harmless if never triggered) — server.py's

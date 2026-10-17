@@ -157,6 +157,7 @@ def _build_payload() -> dict:
     return {
         "game": game_snap,
         "board_darts": _game_state.board_darts.snapshot() if _game_state else None,
+        "board_view": _board_view_darts(),
         "elimination": elim_snap,
         "elimination_beat_hint": _elim_beat_hint,
         "target_battle": tb_snap,
@@ -183,6 +184,20 @@ def _build_payload() -> dict:
     }
 
 
+def _board_view_darts():
+    """The darts to draw on the board of a game view: those the board reports (none without a board
+    connection) plus those of the turn in progress that were entered by hand."""
+    if _game_state and _game_state.cloud_darts is not None:         # a match played in Autodarts: its darts are all there is
+        return list(_game_state.cloud_darts)
+    darts = (_game_state.board_darts.snapshot() if _game_state else None) or []
+    for ctrl in (_x01_ctrl, _elim_ctrl, _tb_ctrl, _killer_ctrl, _ft_ctrl, _bb_ctrl, _co_ctrl):
+        game = ctrl.game if ctrl else None
+        manual = game.manual_darts() if game and hasattr(game, "manual_darts") else []
+        for index, dart in manual:
+            darts.insert(min(index, len(darts)), dart)
+    return [{**d, "n": i + 1} for i, d in enumerate(darts)]
+
+
 def _board_index(ctrl, dart_index: int):
     """Where dart `dart_index` of the running turn sits among the darts the board reports, None for
     a dart that was entered by hand."""
@@ -190,9 +205,9 @@ def _board_index(ctrl, dart_index: int):
     return game.board_index(dart_index) if game else dart_index
 
 
-def _move_board_dart(index: int | None, field: str):
-    """Show a corrected dart at the center of its new field."""
-    if index is not None and _game_state and _game_state.board_darts.override(index, field):
+def _move_board_dart(index: int | None, field: str, point: dict | None = None):
+    """Show a corrected dart at the point it was tapped at, or at the center of its new field."""
+    if index is not None and _game_state and _game_state.board_darts.override(index, field, point):
         push()
 
 
@@ -519,6 +534,12 @@ async def control_restart():
 class CorrectThrowBody(BaseModel):
     dart: int   # 1, 2, or 3
     field: str  # e.g. "T20", "D16", "25", "0"
+    x: float | None = None   # where on the board the dart was pressed (unit = outer edge of the double ring, y up)
+    y: float | None = None
+
+    @property
+    def point(self):
+        return {"x": self.x, "y": self.y} if self.x is not None and self.y is not None else None
 
 
 @app.post("/api/control/correct-throw")
@@ -528,8 +549,8 @@ async def control_correct_throw(body: CorrectThrowBody):
         return {"error": "cloud control not available"}
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
-    _run_in_thread(lambda: _cloud_client.correct_throw(body.dart, body.field))
-    _move_board_dart(body.dart - 1, body.field)
+    _run_in_thread(lambda: _cloud_client.correct_throw(body.dart, body.field, body.point))
+    _move_board_dart(body.dart - 1, body.field, body.point)
     return {"ok": True}
 
 
@@ -582,6 +603,12 @@ class CorrectBody(BaseModel):
 class CorrectDartBody(BaseModel):
     dart: int   # 1, 2, or 3
     field: str  # e.g. "T20", "D16", "25", "50", "0"
+    x: float | None = None   # where on the board the dart was tapped (unit = outer edge of the double ring, y up)
+    y: float | None = None
+
+    @property
+    def point(self):
+        return {"x": self.x, "y": self.y} if self.x is not None and self.y is not None else None
 
 
 @app.post("/api/elimination/start")
@@ -662,8 +689,8 @@ async def elim_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _elim_ctrl and _elim_ctrl.game:
-        _elim_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_elim_ctrl, body.dart - 1), body.field)
+        _elim_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_elim_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -677,9 +704,9 @@ async def elim_correct_last_dart(body: CorrectDartBody):
         return {"error": "no active or finished game"}
     if _elim_ctrl.game.online:
         return {"error": "correcting a finished turn is not available in an online match yet"}
-    if not _elim_ctrl.game.correct_last_dart(body.dart - 1, body.field):
+    if not _elim_ctrl.game.correct_last_dart(body.dart - 1, body.field, body.point):
         return {"error": "no turn to correct"}
-    _move_board_dart(body.dart - 1, body.field)
+    _move_board_dart(body.dart - 1, body.field, body.point)
     return {"ok": True}
 
 
@@ -764,8 +791,8 @@ async def tb_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _tb_ctrl and _tb_ctrl.game:
-        _tb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_tb_ctrl, body.dart - 1), body.field)
+        _tb_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_tb_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -847,8 +874,8 @@ async def killer_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _killer_ctrl and _killer_ctrl.game:
-        _killer_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_killer_ctrl, body.dart - 1), body.field)
+        _killer_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_killer_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -860,7 +887,7 @@ async def killer_correct_last_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if not (_killer_ctrl and _killer_ctrl.game):
         return {"error": "no active or finished game"}
-    if not _killer_ctrl.game.correct_last_dart(body.dart - 1, body.field):
+    if not _killer_ctrl.game.correct_last_dart(body.dart - 1, body.field, body.point):
         return {"error": "no turn to correct"}
     return {"ok": True}
 
@@ -945,8 +972,8 @@ async def x01_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _x01_ctrl and _x01_ctrl.game:
-        _x01_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_x01_ctrl, body.dart - 1), body.field)
+        _x01_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_x01_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -958,7 +985,7 @@ async def x01_correct_last_dart(body: CorrectDartBody):
         return {"error": "dart must be 1, 2, or 3"}
     if not (_x01_ctrl and _x01_ctrl.game):
         return {"error": "no active or finished match"}
-    if not _x01_ctrl.game.correct_last_dart(body.dart - 1, body.field):
+    if not _x01_ctrl.game.correct_last_dart(body.dart - 1, body.field, body.point):
         return {"error": "no turn to correct"}
     return {"ok": True}
 
@@ -1139,8 +1166,8 @@ async def ft_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _ft_ctrl and _ft_ctrl.game:
-        _ft_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_ft_ctrl, body.dart - 1), body.field)
+        _ft_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_ft_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -1222,8 +1249,8 @@ async def bb_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _bb_ctrl and _bb_ctrl.game:
-        _bb_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_bb_ctrl, body.dart - 1), body.field)
+        _bb_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_bb_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 
@@ -2016,8 +2043,8 @@ async def co_correct_dart(body: CorrectDartBody):
     if body.dart not in (1, 2, 3):
         return {"error": "dart must be 1, 2, or 3"}
     if _co_ctrl and _co_ctrl.game:
-        _co_ctrl.game.correct_current_dart(body.dart - 1, body.field)
-    _move_board_dart(_board_index(_co_ctrl, body.dart - 1), body.field)
+        _co_ctrl.game.correct_current_dart(body.dart - 1, body.field, body.point)
+    _move_board_dart(_board_index(_co_ctrl, body.dart - 1), body.field, body.point)
     return {"ok": True}
 
 

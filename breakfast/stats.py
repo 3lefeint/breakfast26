@@ -267,8 +267,9 @@ _FIELD_CENTERS = field_centers()
 
 def _is_corrected(field, x, y, entry) -> bool:
     """A dart sits on the exact center of its field, or Autodarts says it was not
-    detected, when it was set by a correction — its position is not where the dart landed."""
-    if entry not in (None, "", "detected"):
+    detected, when it was set by a correction — its position is not where the dart landed.
+    A dart tapped on the board (`placed`) has its position, to within the tap."""
+    if entry not in (None, "", "detected", "placed"):
         return True
     key = {"BULL": "50"}.get((field or "").upper(), (field or "").upper())
     center = _FIELD_CENTERS.get(key)

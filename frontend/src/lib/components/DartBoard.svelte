@@ -1,7 +1,10 @@
 <script>
   import { t } from '../i18n.js';
   // Dartboard. By default a click turns into the same field string the
-  // correction endpoints already accept (`T20`, `D16`, `25`, `50`, `0`).
+  // correction endpoints already accept (`T20`, `D16`, `25`, `50`, `0`), plus the point
+  // that was hit ({ x, y }, unit = outer edge of the double ring, y up; null for a miss).
+  // With `loupe` a pressed board shows a magnified piece around the finger above it and the
+  // dart is placed where the press is let go.
   // With `readonly` it only displays `darts` ({ n, x, y }, unit = outer edge
   // of the double ring, y up) as numbered markers.
   import { SEGMENT_ORDER, RINGS_MM, fieldAtMm } from '../dartboard.js';
@@ -18,7 +21,7 @@
   // 'outerSingle', 'innerSingle', 'triple' (or 'all'), `level` 'strong' (what is open, pulses),
   // 'owned' (the field of a number that belongs to a player), 'danger' (a hit costs you, red
   // dashed) or 'dead' (darkened). `n` 25 and 50 are the outer bull and the bullseye.
-  let { onSelect, disabled = false, readonly = false, darts = [], highlight = null, pointer = null,
+  let { onSelect, disabled = false, readonly = false, loupe = false, darts = [], highlight = null, pointer = null,
         zones = [] } = $props();
 
   const HALF = 200;           // viewBox is -200..200 on both axes
@@ -26,6 +29,11 @@
   const K = BOARD_R / RINGS_MM.DOUBLE_OUT;
 
   let hover = $state('');
+  let press = $state(null);   // while the board is pressed: { x, y } in mm (y down) and { px, py } in pixels inside the wrapper
+  let wrap = $state(null);
+
+  const LOUPE_SIZE = 120;     // px
+  const LOUPE_MM = 30;        // the piece of the board the magnifier shows, in mm
 
   function point(rMm, deg) {
     const a = (deg * Math.PI) / 180;
@@ -90,12 +98,47 @@
     return parts.map((part) => ({ key: `${z.n}-${z.level || "strong"}-${part}`, d: map[part], color: z.color, level: z.level || 'strong' }));
   }));
 
-  function fieldFromEvent(e) {
+  function mmFromEvent(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * (2 * HALF) - HALF;
     const y = ((e.clientY - rect.top) / rect.height) * (2 * HALF) - HALF;
-    return fieldAtMm(x / K, y / K);
+    return { x: x / K, y: y / K };
   }
+
+  function track(e) {
+    const mm = mmFromEvent(e);
+    const box = wrap.getBoundingClientRect();
+    press = { ...mm, px: e.clientX - box.left, py: e.clientY - box.top };
+    hover = fieldAtMm(mm.x, mm.y);
+  }
+
+  function down(e) {
+    if (readonly || disabled) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    track(e);
+  }
+
+  function move(e) {
+    if (press) track(e);
+    else if (!readonly && !disabled) { const { x, y } = mmFromEvent(e); hover = fieldAtMm(x, y); }
+    else hover = '';
+  }
+
+  function up(e) {
+    if (!press) return;
+    const { x, y } = mmFromEvent(e);
+    press = null;
+    const field = fieldAtMm(x, y);
+    onSelect(field, field === '0' ? null : { x: x / RINGS_MM.DOUBLE_OUT, y: -y / RINGS_MM.DOUBLE_OUT });
+  }
+
+  // The magnifier sits above the finger, below it when there is no room above.
+  const loupeBox = $derived.by(() => {
+    if (!loupe || !press || !wrap) return null;
+    const left = Math.min(Math.max(press.px, LOUPE_SIZE / 2), wrap.clientWidth - LOUPE_SIZE / 2) - LOUPE_SIZE / 2;
+    const above = press.py - LOUPE_SIZE - 28;
+    return { left, top: above > -LOUPE_SIZE / 2 ? above : press.py + 36 };
+  });
 
   function labelFor(field) {
     if (!field) return '';
@@ -106,13 +149,7 @@
   }
 </script>
 
-<div class="board-wrap" class:disabled class:readonly>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <svg viewBox="{-HALF} {-HALF} {2 * HALF} {2 * HALF}" class="dartboard"
-       aria-label={readonly ? t('Dartboard: darts on the board') : t('Dartboard: click where the dart landed')}
-       onclick={(e) => !readonly && !disabled && onSelect(fieldFromEvent(e))}
-       onpointermove={(e) => { hover = readonly || disabled ? '' : fieldFromEvent(e); }}
-       onpointerleave={() => (hover = '')}>
+{#snippet boardArt()}
     <circle r={BOARD_R + 4} fill="#0c0c0f" />
     {#each segments as s}
       <path d={s.innerSingle} fill={s.single} />
@@ -128,6 +165,16 @@
         <circle r={r * K} />
       {/each}
     </g>
+{/snippet}
+
+<div class="board-wrap" class:disabled class:readonly bind:this={wrap}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <svg viewBox="{-HALF} {-HALF} {2 * HALF} {2 * HALF}" class="dartboard" class:interactive={!readonly && !disabled}
+       aria-label={readonly ? t('Dartboard: darts on the board') : t('Dartboard: click where the dart landed')}
+       onpointerdown={down} onpointermove={move} onpointerup={up}
+       onpointercancel={() => (press = null)}
+       onpointerleave={() => { if (!press) hover = ''; }}>
+    {@render boardArt()}
     {#each zonePaths as z (z.key)}
       <path class="zone {z.level}" d={z.d} fill-rule="evenodd" style="--zone: {z.color || 'var(--accent)'}" />
     {/each}
@@ -165,12 +212,25 @@
       </g>
     {/each}
   </svg>
+  {#if loupeBox}
+    <div class="loupe" style="left: {loupeBox.left}px; top: {loupeBox.top}px; width: {LOUPE_SIZE}px; height: {LOUPE_SIZE}px" aria-hidden="true">
+      <svg viewBox="{press.x * K - LOUPE_MM * K / 2} {press.y * K - LOUPE_MM * K / 2} {LOUPE_MM * K} {LOUPE_MM * K}">
+        {@render boardArt()}
+      </svg>
+      <span class="cross"></span>
+    </div>
+  {/if}
   {#if !readonly}<div class="hover-label">{labelFor(hover) || ' '}</div>{/if}
 </div>
 
 <style>
-  .board-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .board-wrap { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; }
   .dartboard { width: 100%; max-width: var(--board-max, 380px); height: auto; cursor: crosshair; touch-action: manipulation; overflow: visible; }
+  .dartboard.interactive { touch-action: none; }
+  .loupe { position: absolute; z-index: 5; border-radius: 50%; overflow: hidden; border: 3px solid #fff; box-sizing: border-box; pointer-events: none; background: #0c0c0f; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); }
+  .loupe svg { width: 100%; height: 100%; display: block; }
+  .loupe .cross { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); background:
+    linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat, linear-gradient(var(--accent), var(--accent)) center / 100% 2px no-repeat; }
   .disabled .dartboard { cursor: default; opacity: 0.4; }
   .readonly .dartboard { cursor: default; }
   .num { fill: var(--muted); font-size: 16px; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }

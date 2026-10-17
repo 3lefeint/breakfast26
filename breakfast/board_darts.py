@@ -63,10 +63,13 @@ class BoardDarts:
             self._overrides = {i: d for i, d in self._overrides.items() if i < len(self._darts)}
             return self._refresh()
 
-    def override(self, index, field) -> bool:
-        """Moves a dart to the center of a corrected field. Returns True if it changed."""
+    def override(self, index, field, point=None) -> bool:
+        """Moves a dart to the point it was corrected at, or to the center of its corrected field.
+        Returns True if it changed."""
         field = field.upper()
         center = _FIELD_COORDS.get(field)
+        if point and field != "0":
+            center = point
         with self._lock:
             if center is None or not 0 <= index < len(self._darts):
                 return False

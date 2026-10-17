@@ -111,6 +111,43 @@ def test_undo_next_and_the_corrections_work_through_the_routes(client):
     assert c.post("/api/x01/undo").json() == {"error": "nothing to undo"}
 
 
+def test_a_dart_entered_by_hand_shows_on_the_board_where_it_was_tapped(client):
+    c, x01, elim, killer, state, db = client
+    c.post("/api/x01/start", json=START)
+    c.post("/api/x01/correct-dart", json={"dart": 1, "field": "T20", "x": 0.04, "y": 0.6})
+    assert server._build_payload()["board_darts"] is None          # no board connection, the view still has the dart
+    assert server._build_payload()["board_view"] == [{"n": 1, "field": "T20", "points": 60, "x": 0.04, "y": 0.6}]
+    state.board_darts.set_connected(True)
+    state.board_darts.update([{"segment": {"name": "S5", "number": 5, "multiplier": 1}, "coords": {"x": 0.1, "y": 0.2}}])
+    shown = server._build_payload()["board_view"]          # the board reports a dart: it comes in as the second one
+    assert [(d["n"], d["field"]) for d in shown] == [(1, "T20"), (2, "S5")]
+
+
+def test_two_darts_entered_by_hand_and_a_real_one_are_numbered_by_their_place_in_the_turn(client):
+    c, x01, elim, killer, state, db = client
+    c.post("/api/x01/start", json=START)
+    c.post("/api/x01/correct-dart", json={"dart": 1, "field": "S20", "x": 0.0, "y": 0.5})
+    c.post("/api/x01/correct-dart", json={"dart": 2, "field": "S1", "x": 0.1, "y": 0.5})
+    state.board_darts.set_connected(True)
+    state.board_darts.update([{"segment": {"name": "T5", "number": 5, "multiplier": 3}, "coords": {"x": 0.1, "y": 0.2}}])
+    shown = server._build_payload()["board_view"]
+    assert [(d["n"], d["field"]) for d in shown] == [(1, "S20"), (2, "S1"), (3, "T5")]
+
+
+def test_a_match_played_in_autodarts_shows_all_the_darts_of_its_turn(client):
+    c, x01, elim, killer, state, db = client
+    state.board_darts.set_connected(True)
+    state.board_darts.update([{"segment": {"name": "T5", "number": 5, "multiplier": 3}, "coords": {"x": 0.1, "y": 0.2}}])
+    state.cloud_darts = [{"n": 1, "field": "S20", "points": 20, "x": 0.0, "y": 0.5},
+                         {"n": 2, "field": "S1", "points": 1, "x": 0.1, "y": 0.5},
+                         {"n": 3, "field": "T5", "points": 15, "x": 0.1, "y": 0.2}]
+    assert [d["n"] for d in server._build_payload()["board_view"]] == [1, 2, 3]
+    state.cloud_darts = []                                  # the darts were pulled
+    assert server._build_payload()["board_view"] == []
+    state.cloud_darts = None                                # no such match: the board stream decides again
+    assert [d["field"] for d in server._build_payload()["board_view"]] == ["T5"]
+
+
 def test_a_dart_other_than_1_to_3_is_refused(client):
     c, *_ = client
     c.post("/api/x01/start", json=START)

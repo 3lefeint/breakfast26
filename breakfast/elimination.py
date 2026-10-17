@@ -467,7 +467,7 @@ class EliminationGame(TurnGame):
             self._last_turn_player = None
         return undone
 
-    def correct_last_dart(self, dart_index, field):
+    def correct_last_dart(self, dart_index, field, point=None):
         """Correct one dart of the last finished turn, also after it ended the match: the game goes
         back to before that turn and plays it again with the corrected dart. Returns False when there
         is no such turn."""
@@ -485,7 +485,7 @@ class EliminationGame(TurnGame):
         throws = list(self._last_turn_throws)
         while len(throws) <= dart_index:
             throws.append({"segment": {"number": 0, "multiplier": 0}})
-        throws[dart_index] = parse_field(field)
+        throws[dart_index] = parse_field(field, point)
         if self.stats_db:
             self._forget_stored_turn(snap, was_finished)
         self._restore(snap)
@@ -523,10 +523,10 @@ class EliminationGame(TurnGame):
         if snap["turn_recorded"]:
             self.stats_db.delete_last_elimination_turn(self.match_id, snap["player"])
 
-    def correct_current_dart(self, dart_index, field):
+    def correct_current_dart(self, dart_index, field, point=None):
         if self.online and not self.is_local(self.current_player):
             return      # a remote player's darts are corrected at their own site
-        super().correct_current_dart(dart_index, field)
+        super().correct_current_dart(dart_index, field, point)
 
     def next_turn(self):
         if self.online and not self.is_local(self.current_player):

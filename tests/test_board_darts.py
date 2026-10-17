@@ -51,6 +51,18 @@ class TestBoardDarts:
         assert b.snapshot()[0] == {"n": 1, "field": "T20", "points": 60, "x": 0.0, "y": 103 / 170}
         assert b.snapshot()[1]["x"] == 0.16
 
+    def test_override_with_a_point_puts_the_dart_where_it_was_tapped(self):
+        b = _connected()
+        b.update([_throw("S4", 0.62, 0.43, 4)])
+        assert b.override(0, "T20", {"x": 0.03, "y": 0.55}) is True
+        assert b.snapshot()[0] == {"n": 1, "field": "T20", "points": 60, "x": 0.03, "y": 0.55}
+
+    def test_override_to_a_miss_ignores_the_point(self):
+        b = _connected()
+        b.update([_throw("S4", 0.62, 0.43, 4)])
+        b.override(0, "0", {"x": 0.9, "y": 0.9})
+        assert b.snapshot()[0]["points"] == 0 and (b.snapshot()[0]["x"], b.snapshot()[0]["y"]) != (0.9, 0.9)
+
     def test_override_survives_the_next_dart_landing(self):
         b = _connected()
         b.update([_throw("S4", 0.62, 0.43, 4)])

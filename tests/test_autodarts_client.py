@@ -271,19 +271,65 @@ class TestCorrectThrow:
             lambda url, **kw: calls.append((url, kw)) or resp)
         return calls
 
+    def _post_with(self, monkeypatch):
+        calls = []
+        resp = MagicMock(status_code=200, ok=True, text="")
+        monkeypatch.setattr(
+            "breakfast.autodarts_client.requests.post",
+            lambda url, **kw: (calls.append((url, kw)) if url.endswith("/throws") else None) or resp)
+        return calls
+
     def test_patches_the_throw_with_the_field_center(self, monkeypatch):
         calls = self._patch_with(monkeypatch, 200)
         client = _make_client()
         _start_match(client, "m1")
+        client._prev_throws_count = 2
         client.correct_throw(2, "t20")
         url, kw = calls[0]
         assert url.endswith("/m1/throws")
         assert kw["json"] == {"changes": {"1": {"coords": {"x": 0.0, "y": 103 / 170}, "type": "normal"}}}
 
+    def test_patches_the_throw_with_the_pressed_point(self, monkeypatch):
+        calls = self._patch_with(monkeypatch, 200)
+        client = _make_client()
+        _start_match(client, "m1")
+        client._prev_throws_count = 3
+        client.correct_throw(3, "T20", {"x": 0.02, "y": 0.58})
+        assert calls[0][1]["json"] == {"changes": {"2": {"coords": {"x": 0.02, "y": 0.58}, "type": "normal"}}}
+
+    def test_a_miss_keeps_its_own_point(self, monkeypatch):
+        calls = self._patch_with(monkeypatch, 200)
+        client = _make_client()
+        _start_match(client, "m1")
+        client._prev_throws_count = 1
+        client.correct_throw(1, "0", {"x": 0.9, "y": 0.9})
+        assert calls[0][1]["json"]["changes"]["0"]["coords"] == {"x": 0.0, "y": 1.1}
+
+    def test_a_dart_the_board_did_not_see_is_added_with_the_pressed_spot(self, monkeypatch):
+        calls = self._post_with(monkeypatch)
+        client = _make_client()
+        _start_match(client, "m1")
+        client._prev_throws_count = 2
+        client.correct_throw(3, "S1", {"x": 0.277, "y": 0.782})
+        (url, kw), = calls
+        assert url.endswith("/m1/throws")
+        assert kw["json"] == {"segment": {"name": "S1", "number": 1, "bed": "SingleOuter", "multiplier": 1},
+                              "coords": {"x": 0.277, "y": 0.782}, "entry": "manual_coords"}
+
+    def test_the_darts_missing_before_it_are_added_as_misses(self, monkeypatch):
+        calls = self._post_with(monkeypatch)
+        client = _make_client()
+        _start_match(client, "m1")
+        client._prev_throws_count = 1
+        client.correct_throw(3, "T20", {"x": 0.0, "y": 0.6})
+        assert [kw["json"]["segment"]["name"] for _, kw in calls] == ["M20", "T20"]
+        assert calls[0][1]["json"]["segment"] == {"name": "M20", "number": 20, "bed": "Outside", "multiplier": 0}
+
     def test_rejected_correction_logs_the_response_body(self, monkeypatch, caplog):
         self._patch_with(monkeypatch, 502, "upstream failed")
         client = _make_client()
         _start_match(client)
+        client._prev_throws_count = 1
         with caplog.at_level("WARNING"):
             client.correct_throw(1, "50")
         assert "upstream failed" in caplog.text
@@ -294,6 +340,45 @@ class TestCorrectThrow:
         _start_match(client)
         client.correct_throw(1, "20")
         assert calls == []
+
+
+class TestTurnDarts:
+    """The darts of the turn reach the board view as Autodarts has them, whoever put them there."""
+
+    @staticmethod
+    def _state(throws, remaining=501):
+        return {"variant": "X01", "players": [{"name": "Alice"}], "player": 0, "gameScores": [remaining],
+                "turns": [{"throws": throws, "points": 0, "busted": False}],
+                "settings": {"baseScore": 501}, "winner": -1, "gameWinner": -1}
+
+    @staticmethod
+    def _throw(name, number, multiplier, x, y, entry="detected"):
+        return {"segment": {"name": name, "number": number, "multiplier": multiplier, "bed": "x"},
+                "coords": {"x": x, "y": y}, "entry": entry}
+
+    def test_every_dart_of_the_turn_is_published_in_order(self):
+        seen = []
+        client = AutodartsCloudClient(email="e", password="p", board_id="b", on_event=lambda e: None,
+                                      on_turn_darts=seen.append)
+        throws = [self._throw("S20", 20, 1, 0.0, 0.5, "manual_coords"), self._throw("T19", 19, 3, 0.1, -0.6, "manual_coords")]
+        client._process_x01(self._state(throws))
+        assert [t["segment"]["name"] for t in seen[-1]] == ["S20", "T19"]
+
+    def test_pulling_the_darts_publishes_an_empty_turn(self):
+        seen = []
+        client = AutodartsCloudClient(email="e", password="p", board_id="b", on_event=lambda e: None,
+                                      on_turn_darts=seen.append)
+        client._process_x01(self._state([self._throw("S20", 20, 1, 0.0, 0.5)]))
+        client._process_x01(self._state([]))
+        assert seen[-1] == []
+
+    def test_a_failing_listener_does_not_stop_the_match(self):
+        def boom(throws):
+            raise RuntimeError("nope")
+        events = []
+        client = AutodartsCloudClient(email="e", password="p", board_id="b", on_event=events.append, on_turn_darts=boom)
+        client._process_x01(self._state([self._throw("S20", 20, 1, 0.0, 0.5)], remaining=481))
+        assert [e["event"] for e in events] == ["dart1-thrown"]
 
 
 class TestBustedEvent:

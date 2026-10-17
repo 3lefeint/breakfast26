@@ -34,6 +34,7 @@ class GameState:
     def __init__(self):
         # Lives outside reset(): it follows the local board stream, not the match.
         self.board_darts = BoardDarts()
+        self.cloud_darts = None     # the darts of the turn of a match played in Autodarts, with their positions; None without one
         self.reset()
 
     def reset(self):

@@ -160,7 +160,7 @@
   {/if}
 {:else if view === 'x01'}
   <div id="active">
-    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_darts ?? []} own={$x01Own} tournament={$tournament} />
+    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_view ?? []} own={$x01Own} tournament={$tournament} />
   </div>
 {:else if view === 'tournament'}
   <div id="activeElim">
@@ -174,7 +174,7 @@
   <X01FinishedTv x={$x01Own} {sessionStats} />
 {:else if view === 'elim-live'}
   <div id="activeElim">
-    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_darts ?? []} online={$online} />
+    <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_view ?? []} online={$online} />
   </div>
 {:else if view === 'elim-finished'}
   <EliminationFinishedTv elimination={$elimination} online={$online} />

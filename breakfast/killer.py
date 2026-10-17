@@ -418,11 +418,11 @@ class KillerGame(TurnGame):
             return
         self._replay_turn()
 
-    def correct_current_dart(self, dart_index, field):
+    def correct_current_dart(self, dart_index, field, point=None):
         if self.phase != "playing":
             return          # before the game a dart counts as it lands, see correct_last_dart()
         before = self.state
-        super().correct_current_dart(dart_index, field)
+        super().correct_current_dart(dart_index, field, point)
         if before == "playing":
             self._replay_turn()
 
@@ -521,7 +521,7 @@ class KillerGame(TurnGame):
         if snap["turn_recorded"]:
             self.stats_db.delete_last_killer_turn(self.match_id, snap["player"])
 
-    def correct_last_dart(self, dart_index, field):
+    def correct_last_dart(self, dart_index, field, point=None):
         """Correct one dart of the last finished turn, also after it ended the game: the game goes
         back to before that turn and plays it again with the corrected dart."""
         from .turn_game import parse_field
@@ -529,13 +529,13 @@ class KillerGame(TurnGame):
             log.warning("No turn to correct")
             return False
         if self._history[-1]["phase"] != "playing":
-            return self._correct_pre_throw(field)
+            return self._correct_pre_throw(field, point)
         snap = self._history.pop()
         was_finished = self.state == "finished"
         throws = list(self._last_turn_throws)
         while len(throws) <= dart_index:
             throws.append({"segment": {"number": 0, "multiplier": 0}})
-        throws[dart_index] = parse_field(field)
+        throws[dart_index] = parse_field(field, point)
         if self.stats_db:
             self._forget_stored_turn(snap, was_finished)
         self._restore(snap)
@@ -551,7 +551,7 @@ class KillerGame(TurnGame):
         log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
         return True
 
-    def _correct_pre_throw(self, field):
+    def _correct_pre_throw(self, field, point=None):
         """Correct the last throw before the game: back to before it, and the throw again."""
         from .turn_game import parse_field
         snap = self._history.pop()
@@ -560,7 +560,7 @@ class KillerGame(TurnGame):
         self._restore(snap)
         self._silent = True
         try:
-            self._pre_throw(parse_field(field))
+            self._pre_throw(parse_field(field, point))
         finally:
             self._silent = False
         log.info("Last throw corrected: %s", field)

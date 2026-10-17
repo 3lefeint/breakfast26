@@ -53,12 +53,11 @@
   });
 
   let selectedDartNum = $state(1);
-  let correctField = $state('');
   let boardOpen = $state(false);
   let canCorrect = $derived(canControl && game.match_started);
 
   function openCorrect(n) {
-    if (!canCorrect || cur[`throw${n}_raw`] == null) return;
+    if (!canCorrect) return;      // an empty box enters a dart the board did not see
     selectedDartNum = n;
     boardOpen = true;
   }
@@ -75,12 +74,6 @@
     if (!confirm(t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
     navigate('home');
-  }
-  async function correctThrowSubmit() {
-    const field = correctField.trim();
-    if (!field) return;
-    await api('POST', correctEndpoint, { dart: selectedDartNum, field: field.toUpperCase() });
-    correctField = '';
   }
   async function forceClearMatch() {
     if (!confirm(t('Clear the current match locally? Only do this if it looks stuck/abandoned — this does not touch the match on the Autodarts side.'))) return;
@@ -125,7 +118,7 @@
           {@const raw = cur[`throw${n}_raw`]}
           {@const pts = cur[`throw${n}_points`]}
           {@const isBust = cur.is_bust && cur.last_dart_number >= n}
-          <button type="button" class="dart-box {dartBoxClass(pts, isBust)}" class:correctable={canCorrect && raw != null}
+          <button type="button" class="dart-box {dartBoxClass(pts, isBust)}" class:correctable={canCorrect}
                   onclick={() => openCorrect(n)}>
             <div class="dlabel">D{n}</div>
             <div class="dval">{raw != null ? String(raw).toUpperCase() : '—'}</div>
@@ -168,20 +161,6 @@
           <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
           <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}>{t('⟳ Reset Board')}</button>
         {/if}
-      </div>
-      <div class="throw-correct-row">
-        <span class="lbl">{t('Correct:')}</span>
-        <div class="dart-num-group">
-          {#each [1, 2, 3] as n}
-            <button class="btn-dart-num" class:sel={selectedDartNum === n} disabled={!canControl || !game.match_started} onclick={() => (selectedDartNum = n)}>D{n}</button>
-          {/each}
-        </div>
-        <input class="field-input" placeholder="T20" maxlength="4" disabled={!canControl || !game.match_started}
-               bind:value={correctField}
-               oninput={(e) => { correctField = e.target.value.toUpperCase(); }}
-               onkeydown={(e) => e.key === 'Enter' && correctThrowSubmit()}>
-        <button class="btn-correct" disabled={!canControl || !game.match_started} onclick={correctThrowSubmit}>{t('✓ Apply')}</button>
-        <button class="btn-correct" disabled={!canControl || !game.match_started} onclick={() => (boardOpen = true)}>{t('🎯 Board')}</button>
       </div>
     </div>
   </div>
@@ -256,18 +235,6 @@
   .btn-ctrl:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
   .btn-ctrl:disabled { opacity: 0.35; cursor: default; transform: none; }
   .btn-ctrl.danger:hover { border-color: var(--red); color: var(--red); }
-  .throw-correct-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; }
-  .throw-correct-row .lbl { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
-  .dart-num-group { display: flex; gap: 0.25rem; }
-  .btn-dart-num { background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 999px; padding: 0.3rem 0.6rem; font-size: 0.8rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
-  .btn-dart-num.sel { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-  .btn-dart-num:disabled { opacity: 0.35; cursor: default; }
-  .field-input { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; padding: 0.3rem 0.6rem; font-size: 0.9rem; width: 70px; text-transform: uppercase; }
-  .field-input:focus { outline: none; border-color: var(--accent); }
-  .field-input:disabled { opacity: 0.35; }
-  .btn-correct { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 999px; padding: 0.3rem 0.85rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color 0.15s, color 0.15s; }
-  .btn-correct:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-correct:disabled { opacity: 0.35; cursor: default; }
   .x01-layout { flex: 1; display: flex; gap: 1.5vw; padding: 1.3vw 2vw; min-height: 0; }
   .x01-main { flex: 3 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1.2vw; min-height: 0; }
   .x01-board {

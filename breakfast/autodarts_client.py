@@ -16,7 +16,7 @@ import requests
 import websocket
 
 from breakfast import board_status
-from breakfast.dartboard import field_centers
+from breakfast.dartboard import autodarts_segment, field_centers
 
 log = logging.getLogger(__name__)
 
@@ -148,9 +148,10 @@ class AutodartsCloudClient:
     """Connects to the Autodarts cloud WebSocket and translates match-state snapshots
     into darts-caller-compatible events, delivered via the on_event callback."""
 
-    def __init__(self, *, email: str, password: str, board_id: str, on_event):
+    def __init__(self, *, email: str, password: str, board_id: str, on_event, on_turn_darts=None):
         self._board_id = board_id
         self._on_event = on_event
+        self._on_turn_darts = on_turn_darts      # gets the throws of the turn in progress, None when no match is open
 
         self._auth = _AuthClient(email, password)
         self._login_ok = False
@@ -275,11 +276,12 @@ class AutodartsCloudClient:
     def next_game(self):
         self._match_post("games/next")
 
-    def correct_throw(self, dart_number: int, field: str):
+    def correct_throw(self, dart_number: int, field: str, point: dict | None = None):
         """PATCH a throw to correct its detected value.
 
         dart_number: 1, 2, or 3 (1-based)
         field: field name as shown on board — e.g. 'T20', 'D16', 'S5', '25', '50', '0' (miss)
+        point: {x, y} where the dart was pressed on the board; without it (or for a miss) the center of the field
         """
         with self._match_lock:
             mid = self._current_match
@@ -290,6 +292,15 @@ class AutodartsCloudClient:
         coords = _FIELD_COORDS.get(key)
         if coords is None:
             log.warning("Unknown field '%s'", field)
+            return
+        if point and key != "0":
+            coords = {"x": float(point["x"]), "y": float(point["y"])}
+        reported = self._prev_throws_count          # the darts of the turn Autodarts has
+        if dart_number > reported:
+            # A dart the board did not see is added; the darts before it that are missing too become misses.
+            for _ in range(reported + 1, dart_number):
+                self._add_throw(mid, "0", dict(_FIELD_COORDS["0"]))
+            self._add_throw(mid, key, coords)
             return
         idx = str(dart_number - 1)  # 0-based index for API
         data = {"changes": {idx: {"coords": coords, "type": "normal"}}}
@@ -305,6 +316,22 @@ class AutodartsCloudClient:
                 log.warning("Throw correction rejected: %s", (res.text or "")[:300])
         except Exception as e:
             log.error("Throw correction failed: %s", e)
+
+    def _add_throw(self, match_id: str, field: str, coords: dict):
+        """POST a dart the board did not see to the match, the way the web app adds one by hand."""
+        data = {"segment": autodarts_segment(field, coords), "coords": coords, "entry": "manual_coords"}
+        try:
+            res = requests.post(
+                f"{_MATCHES_URL}{match_id}/throws",
+                headers={**self._auth_header(), "Content-Type": "application/json"},
+                json=data,
+                timeout=5,
+            )
+            log.info("Added throw %s → %s", field, res.status_code)
+            if not res.ok:
+                log.warning("Adding the throw rejected: %s", (res.text or "")[:300])
+        except Exception as e:
+            log.error("Adding the throw failed: %s", e)
 
     def match_status(self) -> dict:
         """Snapshot for /api/health: lets the UI warn about a match that looks
@@ -545,6 +572,7 @@ class AutodartsCloudClient:
                 self._match_started_at = None
                 self._last_activity_at = None
             log.info("Match ended (id=%s, event=%s)", mid, evt)
+            self._publish_turn_darts(None)
 
             ws.send(json.dumps({
                 "channel": "autodarts.matches",
@@ -631,6 +659,14 @@ class AutodartsCloudClient:
 
     # -------------------------------------------------------- X01 translation
 
+    def _publish_turn_darts(self, throws):
+        """The darts of the turn as Autodarts has them, those the cameras found and those added by hand."""
+        if self._on_turn_darts:
+            try:
+                self._on_turn_darts(throws)
+            except Exception:
+                log.exception("Publishing the darts of the turn failed")
+
     def _reset_turn_state(self):
         self._prev_throws_count = 0
         self._dart_cumulative = [0, 0, 0]
@@ -655,6 +691,7 @@ class AutodartsCloudClient:
             return
         turn = turns[0]
         throws = turn.get("throws") or []
+        self._publish_turn_darts(throws)
         cum_points = int(turn.get("points", 0))
         busted = turn.get("busted") is True
 
@@ -867,6 +904,7 @@ class AutodartsCloudClient:
             return
         turn = turns[0]
         throws = turn.get("throws") or []
+        self._publish_turn_darts(throws)
         busted = turn.get("busted") is True
 
         winner = m.get("winner", -1)

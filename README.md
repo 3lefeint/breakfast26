@@ -132,8 +132,8 @@ cannot be checked out) and the live average, 180s and checkout rate next to each
 board connection, a dartboard shows where each dart of the current turn landed.
 
 The X01 view also controls the board: undo the last detected throw, skip to the next player or leg, and
-reset the board. To correct a misread dart, tap it and choose the right field, or click the spot on a
-dartboard.
+reset the board. To correct a misread dart, or to enter one the board did not see, tap its box and press the spot on the
+dartboard (a magnifier shows it); the dart is stored where you let go.
 
 ### Games and drills
 

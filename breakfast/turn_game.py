@@ -33,9 +33,10 @@ def dart_value(throw):
     return (seg.get("number") or 0) * multiplier
 
 
-def parse_field(field):
+def parse_field(field, point=None):
     """A field string ('T20', 'D16', 'S5', '25', '50', '0') as a synthetic throw, shaped like
-    a throw of the board."""
+    a throw of the board. `point` ({x, y} in board units) is where on the board it was tapped:
+    the dart keeps it as its position, marked `placed`."""
     field = (field or "").strip().upper()
     if field in ("", "0", "MISS"):
         number, multiplier = 0, 0
@@ -47,7 +48,11 @@ def parse_field(field):
         number, multiplier = int(field[1:]), {"S": 1, "D": 2, "T": 3}[field[0]]
     else:
         number, multiplier = int(field), 1
-    return {"segment": {"number": number, "multiplier": multiplier}}
+    throw = {"segment": {"number": number, "multiplier": multiplier}}
+    if point and multiplier:
+        throw["coords"] = {"x": float(point["x"]), "y": float(point["y"])}
+        throw["entry"] = "placed"
+    return throw
 
 
 def dart_positions(throws):
@@ -56,7 +61,7 @@ def dart_positions(throws):
     for throw in throws:
         coords = throw.get("coords")
         if isinstance(coords, dict) and "x" in coords and "y" in coords:
-            positions.append({"field": (throw.get("segment") or {}).get("name"),
+            positions.append({"field": (throw.get("segment") or {}).get("name") or _field_from_segment(throw),
                               "x": float(coords["x"]), "y": float(coords["y"]),
                               "entry": throw.get("entry")})
         else:
@@ -169,14 +174,14 @@ class TurnGame:
             self._end_turn()
         self._prev_count = count
 
-    def correct_current_dart(self, dart_index, field):
+    def correct_current_dart(self, dart_index, field, point=None):
         """Correct one dart of the turn still in progress, e.g. by tapping a field on the TV
         view. The corrected dart is what gets scored when the turn ends."""
         if self.state != "playing":
             return
         if dart_index not in (0, 1, 2):
             return
-        throw = parse_field(field)
+        throw = parse_field(field, point)
         entered = dart_index >= len(self._current_darts)
         if entered:
             # A dart the board did not see. The empty boxes before it were misses.
@@ -188,7 +193,8 @@ class TurnGame:
         self._apply_dart_overrides()
         self._publish_turn()
         self._changed()
-        log.info("Dart %d corrected: %s", dart_index + 1, field)
+        log.info("Dart %d corrected: %s%s", dart_index + 1, field,
+                 f" at x={point['x']:.3f} y={point['y']:.3f}" if point else "")
 
     def _apply_dart_overrides(self):
         """Lay the darts corrected or entered by hand over those of the board. A corrected dart
@@ -235,6 +241,11 @@ class TurnGame:
         if self._dart_overrides.get(dart_index, {}).get("manual"):
             return None
         return dart_index - sum(1 for i, t in self._dart_overrides.items() if t.get("manual") and i < dart_index)
+
+    def manual_darts(self):
+        """The darts of the turn in progress that were entered by hand, as (place in the turn, board
+        dart): the board never reported them, so its dart list lacks them."""
+        return [(i, self.board_dart(t)) for i, t in sorted(self._dart_overrides.items()) if t.get("manual")]
 
     def board_dart(self, throw):
         """A dart for the board view: its field, what it is worth and where it sits."""

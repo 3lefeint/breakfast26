@@ -5,8 +5,11 @@
 ### Added
 - Optional anonymous usage and error reports, off by default: Settings → Usage reports switches them on and shows what is queued and sent; the relay stores them in a D1 database after a strict check (#58).
 - A computer opponent for X01 matches and tournaments: add it on the setup page with one of five stages from beginner to pro, defined by how precisely it throws at the triple 20; it throws at the triple 20, follows the checkout chart once it can finish, respects the in and out mode, and leaves no turns, results or achievements (#47).
+- The correction dialog is the dartboard only: pressing it stores the spot instead of the center of the field, with a magnifier above the finger, and such a dart counts in the position statistics; the field buttons of the dialog and the Correct row of the X01 controls are gone, and the dialog has an opaque background (#59).
 
 ### Fixed
+- An empty dart box on the TV view opens the correction dialog in every X01 match, to enter a dart the board did not see (#59).
+- A dart entered by hand, in Breakfast or in the board software, shows on the board view of the turn and is numbered by its place in it (#59).
 - The Windows start notes and the German text of the Dev tab named the removed `/tv` page; they point to the TV view `/#tv` now
 
 ## [1.4.0] - 2026-10-15
