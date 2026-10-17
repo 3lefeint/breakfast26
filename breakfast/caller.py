@@ -3,7 +3,7 @@
 The Caller handles the mode-independent lifecycle vocabulary (match/leg
 start, leg/match won, bust) and
 delegates per-dart / turn logic to a ModeHandler registered per game mode
-(caller_x01.py, caller_cricket.py).
+(caller_x01.py).
 
 Wireup (source_direct / source_replay):
 
@@ -44,7 +44,7 @@ def from_config(audio, cfg=None):
 
 
 class ModeHandler:
-    """Per-game-mode call logic. Override in caller_x01 / caller_cricket."""
+    """Per-game-mode call logic. Override in caller_x01."""
 
     def on_dart(self, evt, snapshot, audio):
         pass

@@ -8,6 +8,9 @@
 - The correction dialog is the dartboard only: pressing it stores the spot instead of the center of the field, with a magnifier above the finger, and such a dart counts in the position statistics; the field buttons of the dialog and the Correct row of the X01 controls are gone, and the dialog has an opaque background (#59).
 - Warm-up: a round over every segment of the board for one player, the big singles, the bull, the small singles, the bull, the doubles, the bull, the triples and the bull's eye in order, each field thrown at until it is hit, over all stations or only the ones that are switched on (the bull comes between them), with a setup page, a live view that lights the part of the field that is up, a result with the darts per station, the slowest fields and a comparison with earlier runs over the same stations, a card on Home and a Warm-up chip in the Stats (#33)
 
+### Changed
+- The unused translation of Cricket matches of the board software is removed; Breakfast has no Cricket mode.
+
 ### Fixed
 - An empty dart box on the TV view opens the correction dialog in every X01 match, to enter a dart the board did not see (#59).
 - A dart entered by hand, in Breakfast or in the board software, shows on the board view of the turn and is numbered by its place in it (#59).

@@ -647,8 +647,6 @@ class AutodartsCloudClient:
         with self._proc_lock:
             if variant in ("X01", "Random Checkout"):
                 self._process_x01(data)
-            elif variant == "Cricket":
-                self._process_cricket(data)
             # Other variants (ATC, RTW, Bermuda, etc.) can be added here
 
     def _map_players(self, players):
@@ -887,107 +885,6 @@ class AutodartsCloudClient:
                         "dartValue": str(cum_points),
                     },
                 })
-
-    # -------------------------------------------------------- Cricket translation
-
-    def _process_cricket(self, m):
-        players = m.get("players", [])
-        player_index = m.get("player", 0)
-        if player_index >= len(players):
-            return
-
-        p = players[player_index]
-        player_name = str(p.get("name", "")).lower()
-        is_bot = p.get("cpuPPR") is not None
-
-        turns = m.get("turns") or []
-        if not turns:
-            return
-        turn = turns[0]
-        throws = turn.get("throws") or []
-        self._publish_turn_darts(throws)
-        busted = turn.get("busted") is True
-
-        winner = m.get("winner", -1)
-        game_winner = m.get("gameWinner", -1)
-
-        common = {
-            "player": player_name,
-            "playerIndex": str(player_index),
-            "playerIsBot": str(is_bot),
-        }
-
-        CRICKET_FIELDS = {15, 16, 17, 18, 19, 20, 25}
-        n = len(throws)
-
-        # Darts pulled
-        if n == 0 and (self._prev_throws_count > 0 or self._is_game_finished):
-            self._emit({
-                **common,
-                "event": "darts-pulled",
-                "game": {
-                    "mode": m.get("variant"),
-                    "pointsLeft": "0",
-                    "dartsThrown": "3",
-                    "dartsThrownValue": self._last_points or "0",
-                    "busted": "True" if self._last_points == "B" else "False",
-                },
-            })
-            self._reset_turn_state()
-            self._is_game_finished = False
-            return
-
-        if winner != -1 and not self._is_game_finished:
-            self._is_game_finished = True
-            throw_pts = sum(
-                t["segment"]["number"] * t["segment"]["multiplier"]
-                for t in throws
-                if t.get("segment", {}).get("number") in CRICKET_FIELDS
-            )
-            self._emit({**common, "event": "match-won",
-                        "game": {"mode": m.get("variant"), "dartsThrownValue": throw_pts}})
-            return
-
-        if game_winner != -1 and not self._is_game_finished:
-            self._is_game_finished = True
-            throw_pts = sum(
-                t["segment"]["number"] * t["segment"]["multiplier"]
-                for t in throws
-                if t.get("segment", {}).get("number") in CRICKET_FIELDS
-            )
-            self._emit({**common, "event": "game-won",
-                        "game": {"mode": m.get("variant"), "dartsThrownValue": throw_pts}})
-            return
-
-        if busted and not self._is_game_finished:
-            self._last_points = "B"
-            self._prev_throws_count = n
-            self._emit({**common, "event": "busted", "game": {"mode": m.get("variant")}})
-            return
-
-        if 0 < n < self._prev_throws_count:
-            self._prev_throws_count = n
-            return
-
-        if n == 3 and n > self._prev_throws_count:
-            throw_pts = sum(
-                t["segment"]["number"] * t["segment"]["multiplier"]
-                for t in throws
-                if t.get("segment", {}).get("number") in CRICKET_FIELDS
-            )
-            self._last_points = str(throw_pts)
-            self._prev_throws_count = 3
-            self._emit({
-                **common,
-                "event": "darts-thrown",
-                "game": {
-                    "mode": m.get("variant"),
-                    "dartNumber": "3",
-                    "dartValue": throw_pts,
-                },
-            })
-        elif n > self._prev_throws_count:
-            self._prev_throws_count = n
 
     # ----------------------------------------------------------------- emit
 
