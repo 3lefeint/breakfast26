@@ -1,7 +1,7 @@
 <script>
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
-  // Ports tv.html's #elimFinished + #rematchModal — same default-order
+  // Ports #elimFinished + #rematchModal of the former tv.html — same default-order
   // rematch logic as Home's EliminationFinished.svelte, plus the
   // TV-only "New game" and "Done" buttons — both stop the game server-side
   // and navigate to Home's Elimination tab, just to different

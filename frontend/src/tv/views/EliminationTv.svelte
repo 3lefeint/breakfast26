@@ -1,7 +1,7 @@
 <script>
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
-  // Ports tv.html's #activeElim: two-column layout (player card | scrollable
+  // Ports #activeElim of the former tv.html: two-column layout (player card | scrollable
   // turn-queue list). Dart boxes are tap-to-correct, unlike Home's
   // plain DartsRow, so they're inlined here rather than reusing that
   // component. Reuses TargetDisplay/FreipassBadge/WinBadge/LivesDisplay

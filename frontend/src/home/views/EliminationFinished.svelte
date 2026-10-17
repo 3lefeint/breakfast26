@@ -94,7 +94,7 @@
   async function undoWin() {
     // Resumes the match server-side and un-records the win from
     // stats.db — for a match-ending dart that turned out to be
-    // misdetected. Elimination.svelte's own $effect redirects to /tv
+    // misdetected. Elimination.svelte's own $effect redirects to the TV view
     // once state flips back to "playing".
     if (!confirm(t('Undo the winning turn and resume the match?'))) return;
     await api('POST', '/api/elimination/undo');

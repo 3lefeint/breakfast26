@@ -4,7 +4,7 @@ Breakfast for Windows
 Start:      double-click breakfast.exe (a console window opens, closing it stops Breakfast).
 First run:  your browser opens the Settings page. Enter your Autodarts account under
             "Autodarts Source", save, and press Restart.
-Web UI:     http://localhost:8080   (TV view: /tv, sound: /audio on the device with the speakers)
+Web UI:     http://localhost:8080   (TV view: /#tv, sound: /audio on the device with the speakers)
             Windows asks once whether Breakfast may use the network: allow it for private
             networks, so a TV or phone can reach it.
 

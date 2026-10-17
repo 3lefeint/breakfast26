@@ -1,11 +1,11 @@
 <script>
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
-  // Ports tv.html's #active X01 display and migrates index.html's
-  // Scoreboard-tab controls here (Undo/Next Player/Next Leg/Reset Board,
+  // Ports #active X01 display of the former tv.html and migrates the
+  // Scoreboard-tab controls of index.html here (Undo/Next Player/Next Leg/Reset Board,
   // throw-correction row, abandoned-match warning + force-clear) — the
   // Scoreboard tab itself goes away entirely per the decided
-  // navigation redesign; /tv is now the only place X01 controls live.
+  // navigation redesign; the TV view is now the only place X01 controls live.
   import { cap } from '../../lib/util.js';
   import { getCheckout } from '../../lib/checkout.js';
   import { api } from '../../lib/api.js';
@@ -284,7 +284,7 @@
 
   /* On phone-width viewports, drop the lower-priority Avg
      column — Player/Remaining/Legs stay since those are what you'd
-     actually glance at /tv for on a phone. */
+     actually glance at the TV view for on a phone. */
   @media (max-width: 480px) {
     .players-section th:nth-child(4), .players-section td:nth-child(4) {
       display: none;

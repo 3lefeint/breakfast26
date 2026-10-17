@@ -1,7 +1,7 @@
 <script>
   import { t } from '../../lib/i18n.js';
   // Online Elimination on Home: host a match or join one with a code, pick the players of this
-  // site, and (as the host) order them and start. Once the match runs, /tv takes over.
+  // site, and (as the host) order them and start. Once the match runs, the TV view takes over.
   import { onMount } from 'svelte';
   import { online } from '../../lib/stores/online.js';
   import { players } from '../../lib/stores/players.js';

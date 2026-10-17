@@ -2,9 +2,9 @@
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Home's Elimination tab only handles Setup and the Finished/rematch
-  // screen — the live view is /tv's job (and does it better: full-width
+  // screen — the live view is the TV view's job (and does it better: full-width
   // layout, tap-to-correct darts, the voice-call role toggle). Starting
-  // a game (from Setup or a rematch) already navigates to /tv directly;
+  // a game (from Setup or a rematch) already navigates to the TV view directly;
   // this redirect only catches the edge case of landing on #elimination
   // while a game is *already* active (e.g. back button, another device
   // already started one).

@@ -66,7 +66,7 @@ class TestX01Demo:
         # Real recordings can start a moment after the actual match-started
         # fired (recording turned on slightly late) — state.py only sets
         # game_mode/points_start/match_started from an actual match-started
-        # event, so without one /tv would never leave "waiting for match".
+        # event, so without one the TV view would never leave "waiting for match".
         lines = [
             {"ts": "2026-01-01T10:00:00", "payload": {"event": "game-started", "game": {"mode": "X01", "pointsStart": "121"}}},
             {"ts": "2026-01-01T10:00:01", "payload": {"event": "dart1-thrown"}},

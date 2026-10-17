@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 
-// Achievements that were just earned and wait to be shown on /tv, oldest first.
+// Achievements that were just earned and wait to be shown in the TV view, oldest first.
 export const achievementQueue = writable([]);
 
 export function announceAchievement(message) {

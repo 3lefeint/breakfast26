@@ -1,6 +1,6 @@
 <script>
   import { t } from '../../lib/i18n.js';
-  // Shown on /tv while no match is running: the darts currently on the board
+  // Shown in the TV view while no match is running: the darts currently on the board
   // (freeplay, warm-up) as dart boxes with a turn total, and the live dartboard.
   import DartBoard from '../../lib/components/DartBoard.svelte';
 

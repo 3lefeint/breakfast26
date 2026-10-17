@@ -1,4 +1,4 @@
-// Ports index.html/tv.html's getCheckout() — identical on both today, now
+// Ports getCheckout() of the former index.html and tv.html — identical on both, now
 // shared instead of duplicated.
 export function getCheckout(n) {
   if (n > 170 || n < 2) return null;

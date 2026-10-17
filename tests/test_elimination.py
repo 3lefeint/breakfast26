@@ -119,7 +119,7 @@ def test_start_publishes_state_and_calls_once():
 
 
 def test_announce_start_delays_opening_calls_past_the_redirect_window(monkeypatch):
-    # elimStart()/startRematch() redirect the browser to /tv right after this
+    # elimStart()/startRematch() redirect the browser to the TV view right after this
     # POST completes; the opening calls must not fire until that new page has
     # had time to load and reconnect with role=audio, or they're lost for good.
     FakeTimer.created = []

@@ -1,7 +1,7 @@
 <script>
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
-  // Home's X01 page only handles the setup and the finished screen. The live view is /tv's job;
+  // Home's X01 page only handles the setup and the finished screen. The live view is the TV view's job;
   // starting a match navigates there, and landing here while a match is already running (back
   // button, another device started it) redirects.
   import { x01Own } from '../../lib/stores/x01Own.js';

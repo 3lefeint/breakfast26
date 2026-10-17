@@ -1,4 +1,4 @@
-// Mirrors index.html/tv.html's cap() helper — capitalizes the first
+// Mirrors the cap() helper of the former index.html and tv.html — capitalizes the first
 // letter. Svelte auto-escapes interpolated text, so no esc() equivalent
 // is needed here.
 export function cap(s) {

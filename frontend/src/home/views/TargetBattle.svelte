@@ -1,7 +1,7 @@
 <script>
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
-  // Home's Target Battle page only handles the setup and the finished screen. The live view is /tv's
+  // Home's Target Battle page only handles the setup and the finished screen. The live view is the TV view's
   // job; starting a game navigates there, and landing here while a game is already running (back
   // button, another device started it) redirects.
   import { targetBattle } from '../../lib/stores/targetBattle.js';

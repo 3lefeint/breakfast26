@@ -225,7 +225,7 @@ export default {
   'Records every incoming board event to a JSONL file — useful for building a new fixture for the demo below, or for `replay` mode. Only active in direct mode; leave blank to disable.': 'Zeichnet jedes eingehende Board-Event in eine JSONL-Datei auf – nützlich, um ein neues Fixture für die Demo unten oder für den `replay`-Modus zu bauen. Nur im Direktmodus aktiv; leer lassen zum Deaktivieren.',
   'Recording file': 'Aufzeichnungsdatei',
   'Simulate a match': 'Spiel simulieren',
-  'Plays out a full X01 leg or Elimination match at runtime, live on the TV view — no physical board needed. Refuses to start while a real match is already in progress.': 'Spielt zur Laufzeit ein komplettes X01-Leg oder Elimination-Spiel live auf /tv ab – kein echtes Board nötig. Startet nicht, solange ein echtes Spiel läuft.',
+  'Plays out a full X01 leg or Elimination match at runtime, live on the TV view — no physical board needed. Refuses to start while a real match is already in progress.': 'Spielt zur Laufzeit ein komplettes X01-Leg oder Elimination-Spiel live in der TV-Ansicht ab – kein echtes Board nötig. Startet nicht, solange ein echtes Spiel läuft.',
   '▶ Simulate X01 leg': '▶ X01-Leg simulieren',
   '▶ Simulate Elimination match': '▶ Elimination-Spiel simulieren',
   'Application': 'Anwendung',

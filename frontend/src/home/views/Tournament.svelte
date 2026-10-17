@@ -2,7 +2,7 @@
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Home's Tournament page: the setup and the tournaments played so far, or, while one is on, its bracket
-  // with the controls. The matches themselves are played on /tv.
+  // with the controls. The matches themselves are played in the TV view.
   import { onMount } from 'svelte';
   import { tournament } from '../../lib/stores/tournament.js';
   import { cap } from '../../lib/util.js';

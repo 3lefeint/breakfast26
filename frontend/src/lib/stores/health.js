@@ -1,9 +1,9 @@
 import { writable } from 'svelte/store';
 
 // Polls /api/health for the footer's MQTT/Autodarts connection dots,
-// version info, and (on /tv) the abandoned-match warning (matchActive +
+// version info, and (in the TV view) the abandoned-match warning (matchActive +
 // secondsSinceActivity) — same 30s interval as the original
-// index.html/tv.html. Shared between Home and TV.
+// index.html and tv.html. Shared between Home and TV.
 export const health = writable({
   mqttOk: null, autodartsOk: null, version: null, releaseDate: null,
   matchActive: false, secondsSinceActivity: null,

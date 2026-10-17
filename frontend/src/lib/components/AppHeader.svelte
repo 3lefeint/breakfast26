@@ -11,7 +11,7 @@
   //
   // glowColor ('green' | 'yellow' | 'red' | null) swaps that subtle
   // accent-tinted underline for a much more prominent colored glow —
-  // used by /tv to make the board's current status genuinely hard to
+  // used by the TV view to make the board's current status genuinely hard to
   // miss instead of a small footer dot nobody's looking at while
   // throwing. null keeps the default, app-wide accent glow.
   import logo from '../assets/logo.png';

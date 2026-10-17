@@ -41,7 +41,7 @@
   let spinning = $state(false);
 
   // The wheel turns for a round that is only seconds old, once per round: also when this screen
-  // was opened just now (starting a game loads /tv), but not when it is opened in the middle of one.
+  // was opened just now (starting a game opens the TV view), but not when it is opened in the middle of one.
   const FRESH_S = 3;
   let spunKey = null;
   let timer = null;
