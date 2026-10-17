@@ -74,6 +74,9 @@
     await api('POST', '/api/x01/stop');
     navigate('home');
   }
+  async function confirmDart(index) {
+    await api('POST', `/api/detection/confirm?index=${index}`, {});
+  }
   async function forceClearMatch() {
     if (!await confirmDialog(t('Clear the current match locally? Only do this if it looks stuck/abandoned — this does not touch the match on the Autodarts side.'))) return;
     await api('POST', '/api/control/force-clear-match');
@@ -125,7 +128,7 @@
           {@const raw = cur[`throw${n}_raw`]}
           {@const pts = cur[`throw${n}_points`]}
           {@const isBust = cur.is_bust && cur.last_dart_number >= n}
-          <button type="button" class="dart-box {dartBoxClass(raw, pts, isBust)}" class:correctable={canCorrect}
+          <button type="button" class="dart-box {dartBoxClass(raw, pts, isBust)}" class:correctable={canCorrect} class:uncertain={raw != null && boardDarts[n - 1]?.uncertain}
                   onclick={() => openCorrect(n)}>
             <div class="dlabel">D{n}</div>
             <div class="dval">{raw != null ? String(raw).toUpperCase() : '—'}</div>
@@ -146,6 +149,17 @@
           <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}><Icon name="board" size={20} />{t('Reset')}</button>
         {/if}
       </div>
+      {#if ownMatch && boardDarts.some((d) => d.uncertain)}
+        <div class="uncertain-row">
+          <span class="lbl">{t('Not sure about:')}</span>
+          {#each boardDarts as d, i (d.n)}
+            {#if d.uncertain}
+              <button type="button" class="btn-correct" onclick={() => confirmDart(i)}>D{i + 1} {String(d.field ?? '').toUpperCase()} ✓ {t('is right')}</button>
+            {/if}
+          {/each}
+          <span class="lbl">{t('Tap a dart to correct it.')}</span>
+        </div>
+      {/if}
     </div>
 
     <div class="players-section">
@@ -210,6 +224,13 @@
     transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   }
   .dart-box.correctable { cursor: pointer; }
+  .dart-box.uncertain { border-style: dashed; border-color: var(--yellow, #e0a73a); }
+  .dart-box.uncertain .dlabel::after { content: ' ?'; color: var(--yellow, #e0a73a); font-weight: 800; }
+  .btn-correct { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 999px; padding: 0.3rem 0.85rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color 0.15s, color 0.15s; }
+  .btn-correct:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-correct:disabled { opacity: 0.35; cursor: default; }
+  .uncertain-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; }
+  .uncertain-row .lbl { font-size: 0.8rem; color: var(--muted); }
   .dart-box.correctable:hover {
     border-color: var(--accent);
     transform: translateY(-2px);

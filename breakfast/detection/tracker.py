@@ -32,6 +32,8 @@ class Settings:
     support: float = 0.10           # share of changed pixels around a counted dart (against the empty board) below which it is gone
     same_spot_mm: float = 10.0      # a new dart this close to a counted one may be that dart, pushed by a bounce-out ...
     new_body_ratio: float = 1.15    # ... unless the picture around it has this much more changed than when it was counted (real darts: 1.4 to 2.5)
+    uncertain_margin_mm: float = 2.0    # a dart closer than this to a wire or ring is marked as uncertain ...
+    uncertain_sigma: float = 1.6        # ... and so is one whose position the cameras only know to within this (mm)
     patience: int = 40              # looks (about 0.3 s apart) at a blocked board before the picture is taken as it is
     retry_s: float = 1.0            # when a change could not be explained, look again after this long
 
@@ -149,6 +151,7 @@ class BoardTracker:
             self._handled = True
             return [Event("moved", t, self.count, info={"field": self.throws[near]["segment"]["name"], "now": result["field"]}, before=None, after=frames)]
         throw = detector.to_throw(result)
+        throw["detection"] = self._quality(result)
         self.count += 1
         self.throws.append(throw)
         self.sup0.append(self._support_of(result["x"], result["y"], hp))
@@ -156,6 +159,15 @@ class BoardTracker:
         self._handled = True
         self.status = "takeout" if self.count >= 3 else "ready"
         return [Event("dart", t, self.count, throw=throw, info={**result, "changed": changed}, before=before, after=frames)]
+
+    def _quality(self, result):
+        """How sure the detection is about a dart: the distance to the nearest wire or ring, the uncertainty of the position, and
+        whether every camera that saw it agrees. Stored with the throw; `uncertain` marks it on the TV view for a tap to confirm."""
+        agree_all = result["agree"] >= result["cams"]
+        uncertain = (result["field"] != "0" and result["margin"] < self.s.uncertain_margin_mm) or result["sigma"] > self.s.uncertain_sigma \
+            or (result["cams"] >= 3 and not agree_all)
+        return {"margin": round(result["margin"], 1), "sigma": round(result["sigma"], 2), "cams": result["cams"], "agree": result["agree"],
+                "uncertain": bool(uncertain)}
 
     def _support_of(self, x_mm, y_mm, hp):
         h, w = self.model.size[1], self.model.size[0]

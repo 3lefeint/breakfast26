@@ -22,7 +22,10 @@ def _dart(throw):
     if not (isinstance(coords, dict) and "x" in coords and "y" in coords):
         # No coordinates delivered: fall back to the center of the field.
         coords = _FIELD_COORDS.get(field) or {}
-    return {"field": field, "points": points, "x": coords.get("x"), "y": coords.get("y")}
+    dart = {"field": field, "points": points, "x": coords.get("x"), "y": coords.get("y")}
+    if (throw.get("detection") or {}).get("uncertain"):         # the own dart detection is not sure about this one
+        dart["uncertain"] = True
+    return dart
 
 
 def _field_points(field):

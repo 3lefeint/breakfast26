@@ -191,6 +191,9 @@
     {/if}
     {#each darts.filter((d) => d.x != null) as d (d.n)}
       <g class="dart" style="transform: translate({d.x * BOARD_R}px, {-d.y * BOARD_R}px)">
+        {#if d.uncertain}
+          <circle class="dart-uncertain" r="19" />
+        {/if}
         {#if d.ring}
           <circle class="dart-ring" r="16.5" style="stroke: {d.ring.color}" stroke-dasharray={d.ring.dash ? '5 3' : null} />
         {/if}
@@ -224,6 +227,7 @@
 </div>
 
 <style>
+  .dart-uncertain { fill: none; stroke: var(--yellow, #e0a73a); stroke-width: 2.5; stroke-dasharray: 5 4; }
   .board-wrap { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; }
   .dartboard { width: 100%; max-width: var(--board-max, 380px); height: auto; cursor: crosshair; touch-action: manipulation; overflow: visible; }
   .dartboard.interactive { touch-action: none; }

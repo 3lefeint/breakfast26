@@ -11,7 +11,7 @@ services:
   breakfast-detect:
     image: breakfast-detect:poc
     container_name: breakfast-detect
-    restart: "no"
+    restart: unless-stopped         # the restart button of the UI ends the process on purpose and relies on this
     command: ["direct"]
     ports:
       - "18080:8080"      # Breakfast

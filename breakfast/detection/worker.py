@@ -70,6 +70,8 @@ class Worker:
             del self.events[:-40]
         log.info("%s: %s", ev.kind, json.dumps(entry["info"] if ev.kind != "dart" else {k: entry["info"].get(k) for k in ("field", "sigma", "margin", "cams")}))
         self._save_bundle(ev, entry)
+        if ev.throw is not None:
+            ev.throw["detection"]["bundle"] = f"{entry['n']:04d}-{ev.kind}"       # which stored pictures belong to this dart
         if self.clips:
             self.clips.note_event(time.monotonic(), {k: entry[k] for k in ("kind", "count", "field")})
         name = names.get(ev.kind)
@@ -97,6 +99,28 @@ class Worker:
     def reset(self):
         self.tracker.reset()
         self.note("The next still picture is taken as the empty board.")
+
+    def label(self, index, field, confirm=False):
+        """What the player said about a dart of the turn (a correction in Breakfast, or a tap on "this one is right"): stored with the
+        detected field and the pictures it came from, a free label for measuring the detection. A confirmation clears the
+        uncertain mark and sends the state again."""
+        throws = self.tracker.throws
+        if not 0 <= index < len(throws):
+            return False
+        th = throws[index]
+        row = {"t": datetime.now().isoformat(timespec="seconds"), "index": index, "detected": th["segment"]["name"],
+               "corrected": field, "confirmed": bool(confirm), "detection": th.get("detection")}
+        try:
+            self.base.mkdir(parents=True, exist_ok=True)
+            with open(self.base / "labels.jsonl", "a") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError as e:
+            log.warning("label not written: %s", e)
+        self.note(f"Dart {index + 1}: detected {row['detected']}, " + ("confirmed" if confirm else f"corrected to {field}"))
+        if confirm:
+            th["detection"]["uncertain"] = False
+            self.out.put(state_message(self.tracker, "Dart confirmed"))
+        return True
 
     def note(self, text):
         with self.lock:
@@ -138,7 +162,7 @@ class Worker:
     def status(self):
         with self.lock:
             events, notes = list(self.events), list(self.notes)
-        return {"cameras": self.cams.status(), "board": {"status": self.tracker.status, "count": self.tracker.count, "moving": self.tracker.moving,
+        return {"cameras": self.cams.status(), "board": {"status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count, "moving": self.tracker.moving,
                 "throws": [t["segment"]["name"] for t in self.tracker.throws]}, "busy": self.busy, "events": events[::-1],
                 "notes": notes[::-1], "settings": self.settings.__dict__, "load": {"feed_ms": round(self.feed_ms, 1), "looks_per_s": round(self.rate, 1)},
                 "clips": self.clips.count if self.clips else None, "model": {"radii": {str(k): round(v, 2) for k, v in self.model.radii.items()}}}
@@ -181,7 +205,8 @@ class Worker:
     def _heartbeat(self):
         while not self.stop.is_set():
             ok = all(c["error"] is None and c["age_s"] is not None and c["age_s"] < 2.0 for c in self.cams.status())
-            self.out.put({"type": "worker", "ok": ok})
+            self.out.put({"type": "worker", "ok": ok, "status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count,
+                          "cameras": [{"error": c["error"], "fps": c["fps"]} for c in self.cams.status()]})
             if ok:
                 self.out.put(state_message(self.tracker, "Heartbeat"))
             self.stop.wait(2.0)
@@ -250,6 +275,15 @@ def serve(worker, port):
                 worker.reset()
             elif self.path == "/api/calibrate":
                 worker.calibrate()
+            elif self.path.startswith("/api/label") or self.path.startswith("/api/confirm"):
+                from urllib.parse import parse_qs, urlparse
+                q = parse_qs(urlparse(self.path).query)
+                index = int(q.get("index", ["-1"])[0])
+                if self.path.startswith("/api/confirm"):
+                    ok = worker.label(index, worker.tracker.throws[index]["segment"]["name"] if 0 <= index < len(worker.tracker.throws) else "", confirm=True)
+                else:
+                    ok = worker.label(index, q.get("field", [""])[0])
+                return self._send(200 if ok else 404, b'{"ok":true}' if ok else b'{"ok":false}', "application/json")
             else:
                 return self._send(404, b"", "text/plain")
             self._send(200, b'{"ok":true}', "application/json")
@@ -257,6 +291,11 @@ def serve(worker, port):
     srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True, name="detection diagnostics").start()
     log.info("detection diagnostics page on port %d", port)
+
+
+def board_status(tracker_status, cameras):
+    """What Breakfast is told about the board: `no_cameras` while a camera cannot be opened or read, else the tracker's status."""
+    return "no_cameras" if any(c["error"] for c in cameras) else tracker_status
 
 
 def model_path(cfg):

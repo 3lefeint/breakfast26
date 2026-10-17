@@ -23,8 +23,9 @@ def next_pause(pause, ran_s):
 
 
 class CameraSource:
-    def __init__(self, cfg, handler, set_connected):
+    def __init__(self, cfg, handler, set_connected, on_status=None):
         self.cfg, self.handler, self.set_connected = cfg, handler, set_connected
+        self.on_status = on_status or (lambda status: None)
         self._ctx = multiprocessing.get_context("spawn")
         self._proc = None
 
@@ -47,12 +48,14 @@ class CameraSource:
                 last = time.monotonic()
                 if msg.get("type") == "worker":
                     self.set_connected(bool(msg.get("ok")))
+                    self.on_status({k: v for k, v in msg.items() if k != "type"})
                 elif msg.get("type") == "state":
                     try:
                         self.handler(msg["data"])
                     except Exception:
                         log.exception("board message handler failed")
             self.set_connected(False)
+            self.on_status({"ok": False, "status": "stopped", "count": 0, "cameras": []})
             pause = next_pause(pause, time.monotonic() - started)
             log.log(logging.WARNING if pause <= RESTART_S else logging.INFO, "detection worker stopped, restarting in %.0f s", pause)
             if self._proc.is_alive():

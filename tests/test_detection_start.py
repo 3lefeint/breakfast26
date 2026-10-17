@@ -98,6 +98,12 @@ def test_a_camera_that_cannot_be_opened_is_logged_once(tmp_path, monkeypatch, ca
     assert len([r for r in caplog.records if "cannot open" in r.getMessage()]) == 1
 
 
+def test_a_camera_that_cannot_be_read_shows_as_no_cameras():
+    fine, broken = {"error": None, "fps": 30.0}, {"error": "cannot open", "fps": 0.0}
+    assert worker.board_status("ready", [fine, fine, fine]) == "ready"
+    assert worker.board_status("starting", [fine, broken, fine]) == "no_cameras"
+
+
 def test_no_default_fits_one_machine_only():
     assert worker.DEFAULT_DEVICES == ["/dev/cam0", "/dev/cam1", "/dev/cam2"]
     for name in ("config.toml.example", "docker-compose.detection.yml", "tools/detection_deploy.sh"):

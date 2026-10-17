@@ -213,10 +213,20 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
         set_connected(True)
 
     if cameras_cfg is not None:
-        source = _camera_source(cameras_cfg, handle, set_connected)
-        if source is not None:
-            source.start()
-            log.info("Dart detection from the cameras (no board manager)")
+        def on_status(status):
+            detection = {"enabled": True, **status}
+            if state.detection != detection:
+                state.detection = detection
+                from breakfast.web import server as web
+                web.push()
+
+        source = _camera_source(cameras_cfg, handle, set_connected, on_status=on_status)
+        if source is None:
+            state.detection = {"enabled": True, "ok": False, "status": "unavailable", "count": 0, "cameras": []}
+            return
+        state.detection = {"enabled": True, "ok": False, "status": "starting", "count": 0, "cameras": []}
+        source.start()
+        log.info("Dart detection from the cameras (no board manager)")
         return
 
     def run():
@@ -411,7 +421,8 @@ def run_direct(email, password, board_id, record_file=None,
              config_path=config_path, audio_engine=audio,
              board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl, killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl,
              x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl, wu_ctrl=wu_ctrl, resume_offers=resume_offers,
-             scene_engine=scene_engine)
+             scene_engine=scene_engine,
+             detection_port=(cameras_cfg.get("diag_port", 8770) or None) if cameras_cfg is not None else None)
     if web_port:
         web.start(web_port)
         web.start_update_check()
