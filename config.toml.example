@@ -162,3 +162,9 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # dir = "detection"            # folder (under the data folder) with calib_model.json and the pictures of the events
 # devices = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]    # the capture nodes of the three cameras (default: the names the compose files give them in the container)
 # diag_port = 8770             # diagnostics page: live pictures, last events, calibration (0 = off)
+# keep_sessions = 10           # sessions of event pictures kept (the oldest are removed at the start) ...
+# events_max_gb = 2.0          # ... and the most they may take together
+# [cameras.tracker]            # tracker settings; the Board page can change some of them while it runs (these are the start values)
+# settle_s = 0.35
+# exposure = 0                 # camera exposure time in units of 0.1 ms, 0 = the camera's automatic (a fixed value keeps the picture steady when an arm is in view)
+# white_balance = 0            # camera white balance in Kelvin, 0 = the camera's automatic

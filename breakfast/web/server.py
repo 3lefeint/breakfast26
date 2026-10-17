@@ -829,6 +829,33 @@ async def detection_labels():
     return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
 
 
+@app.get("/api/detection/settings")
+async def detection_settings():
+    """The settings of the own dart detection that can be changed while it runs, with their values and ranges."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "GET", "/api/settings")
+    return {"settings": json.loads(body)} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/settings")
+async def detection_settings_set(request: Request):
+    """Change some of them: a JSON object {name: value}. Answers which were applied and which refused (with the reason)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "POST", "/api/settings", 10, await request.body())
+    return json.loads(body) if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/settings/reset")
+async def detection_settings_reset():
+    """Back to the values of config.toml."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, body, _ = await asyncio.to_thread(_detection_call, "POST", "/api/settings/reset")
+    return {"settings": json.loads(body)} if code == 200 else {"error": "dart detection not reachable"}
+
+
 @app.post("/api/detection/drift/accept")
 async def detection_drift_accept():
     """Take the empty board as it is now as the reference picture of the drift check."""

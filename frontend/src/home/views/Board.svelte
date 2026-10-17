@@ -7,6 +7,7 @@
   import { apiJson } from '../../lib/api.js';
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import ModelAdjust from './ModelAdjust.svelte';
+  import DetectionSettings from './DetectionSettings.svelte';
 
   let status = $state(null);
   let tick = $state(Date.now());
@@ -148,12 +149,18 @@
       </table>
     {/if}
   </div>
+  <details class="section">
+    <summary class="section-title">{t('Settings')}</summary>
+    <DetectionSettings />
+  </details>
   {/if}
 {/if}
 
 <style>
   .section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
   .section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.7rem; }
+  details > summary { cursor: pointer; margin-bottom: 0; }
+  details[open] > summary { margin-bottom: 0.9rem; }
   .muted { color: var(--muted); }
   .warn { color: var(--yellow, #e0a73a); }
   .state-row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; margin-bottom: 1rem; }

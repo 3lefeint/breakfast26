@@ -18,6 +18,8 @@ class V4L2Camera:
         self.frame, self.stamp, self.seq = None, 0.0, 0
         self.error = "starting"
         self.rate = 0.0                          # measured pictures per second
+        self.controls = (0, 0)                   # (exposure, white balance): 0 = the camera's automatic, see `set_controls`
+        self._applied = None                     # what the open camera was last given
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name=f"camera {path}")
@@ -28,6 +30,25 @@ class V4L2Camera:
 
     def stop(self):
         self._stop.set()
+
+    def set_controls(self, exposure=0, white_balance=0):
+        """Fix the exposure (`exposure_time_absolute`, units of 100 microseconds) and the white balance (Kelvin), or 0 for the camera's automatic.
+        The automatic follows an arm in the picture and needs a moment to settle again, which looks like a change of the board. Takes
+        effect within a picture or two; it is also given again whenever the camera is reopened."""
+        self.controls = (int(exposure or 0), int(white_balance or 0))
+
+    def _apply_controls(self, cap):
+        if self.controls == self._applied or (self._applied is None and self.controls == (0, 0)):
+            return
+        exposure, white_balance = self.controls
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1 if exposure else 3)          # V4L2: 1 = manual, 3 = aperture priority (automatic)
+        if exposure:
+            cap.set(cv2.CAP_PROP_EXPOSURE, exposure)
+        cap.set(cv2.CAP_PROP_AUTO_WB, 0 if white_balance else 1)
+        if white_balance:
+            cap.set(cv2.CAP_PROP_WB_TEMPERATURE, white_balance)
+        self._applied = self.controls
+        log.info("camera %s: exposure %s, white balance %s", self.path, exposure or "automatic", white_balance or "automatic")
 
     def _open(self):
         cap = cv2.VideoCapture(self.path, cv2.CAP_V4L2)
@@ -49,8 +70,10 @@ class V4L2Camera:
                 self._stop.wait(RETRY_S)
                 continue
             self.error = None
+            self._applied = None
             count, t0 = 0, time.monotonic()
             while not self._stop.is_set():
+                self._apply_controls(cap)
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     self.error = "read failed"
@@ -89,6 +112,9 @@ class FolderCamera:
 
     def stop(self):
         self._stop.set()
+
+    def set_controls(self, exposure=0, white_balance=0):
+        pass                                    # pictures of a folder have their own light
 
     def _run(self):
         i = 0
@@ -140,10 +166,19 @@ class CameraGroup:
             self._last[i] = cam.latest()[2]
         return out
 
+    def set_controls(self, exposure=0, white_balance=0):
+        for c in self.cams:
+            c.set_controls(exposure, white_balance)
+
     def status(self):
         now = time.monotonic()
         return [{"path": c.path, "error": c.error, "fps": round(c.rate, 1),
-                 "age_s": round(now - c.stamp, 2) if c.stamp else None} for c in self.cams]
+                 "age_s": round(now - c.stamp, 2) if c.stamp else None, "brightness": _brightness(c.latest()[0])} for c in self.cams]
 
     def latest_frames(self):
         return {i: c.latest()[0] for i, c in enumerate(self.cams) if c.latest()[0] is not None}
+
+
+def _brightness(frame):
+    """Mean gray level (0 to 255) of a picture: what to look at when fixing the exposure."""
+    return None if frame is None else round(float(cv2.mean(cv2.cvtColor(frame[::4, ::4], cv2.COLOR_BGR2GRAY))[0]), 1)
