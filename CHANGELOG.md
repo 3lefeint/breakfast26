@@ -12,6 +12,7 @@
 - An empty dart box on the TV view opens the correction dialog in every X01 match, to enter a dart the board did not see (#59).
 - A dart entered by hand, in Breakfast or in the board software, shows on the board view of the turn and is numbered by its place in it (#59).
 - In an X01 match counted by the board software the darts and the total of a turn are cleared when the darts are pulled, not only at the next throw (#60).
+- The Next button of the Black Belt and Random checkout TV views ends the turn instead of doing nothing.
 - The Windows start notes and the German text of the Dev tab named the removed `/tv` page; they point to the TV view `/#tv` now
 
 ## [1.4.0] - 2026-10-15

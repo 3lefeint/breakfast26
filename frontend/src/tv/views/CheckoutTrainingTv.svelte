@@ -1,6 +1,7 @@
 <script>
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
+  import { api } from '../../lib/api.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Random checkout. The board fills most of the height with the darts of the attempt in
   // progress. Beside it: the score that is left (or has to be finished), the standard route if the

@@ -1,6 +1,7 @@
 <script>
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
+  import { api } from '../../lib/api.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   // Live Black Belt. The board shows the darts of the turn with the double that is up lit; beside
   // it the darts of the turn (a hit is marked, tap one to correct it), the ladder, the darts the
