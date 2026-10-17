@@ -7,7 +7,7 @@
   import Icon from '../../lib/components/Icon.svelte';
   import logo from '../../lib/assets/logo.png';
 
-  let { boardConnected = false, mqttOk = false, autodartsOk = false, wsConnected = true, connLabel = '' } = $props();
+  let { boardConnected = false, mqttOk = null, autodartsOk = false, wsConnected = true, connLabel = '' } = $props();
 </script>
 
 <header class="topbar">
@@ -21,7 +21,9 @@
         <span class="status"><span class="dot"></span><span class="label">{connLabel}</span></span>
       {/if}
       <span class="status" title={boardConnected ? t('Board connected') : t('Board offline')}><span class="dot" class:ok={boardConnected}></span><span class="label">{boardConnected ? t('Board connected') : t('Board offline')}</span></span>
-      <span class="status" title={t('MQTT')}><span class="dot" class:ok={mqttOk}></span><span class="label">{t('MQTT')}</span></span>
+      {#if mqttOk !== null}
+        <span class="status" title={t('MQTT')}><span class="dot" class:ok={mqttOk}></span><span class="label">{t('MQTT')}</span></span>
+      {/if}
       <span class="status" title={t('Autodarts')}><span class="dot" class:ok={autodartsOk}></span><span class="label">{t('Autodarts')}</span></span>
     </span>
     <a class="btn tv" href="#tv" onclick={openTv}><Icon name="tv" size={20} /><span>{t('Open TV')}</span></a>

@@ -225,7 +225,9 @@
 <footer>
   <span class="dot-group">
     <span><span class="conn-dot" class:ok={$connDot}></span><span class="conn-label">WS</span></span>
-    <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">{t('MQTT')}</span></span>
+    {#if $health.mqttOk !== null}
+      <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">{t('MQTT')}</span></span>
+    {/if}
     <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">{t('Autodarts')}</span></span>
   </span>
   <span class="version-info">{$health.version ? `v${$health.version} · ${($health.releaseDate ?? '').slice(0, 10)}` : ''}</span>

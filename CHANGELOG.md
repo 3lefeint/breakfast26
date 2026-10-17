@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- The MQTT status dot in the top bar and the TV footer is hidden when MQTT is not configured or switched off.
+
 ## [1.5.0] - 2026-10-17
 
 ### Added
