@@ -1,8 +1,9 @@
 """Locate one new dart from the pictures before and after it landed.
 
 Per camera: the difference image of before and after, the biggest changed blob is the dart, its lowest point is the tip, and
-the board model maps that pixel to a point on the board. The points of the cameras are fused (median, then weighted by the
-uncertainty of every pixel). Ported from the evaluation tools in `data/detection/detect.py`, which measured it against the
+the board model maps that pixel to a point on the board. The points of the cameras are fused by their median (the field and the
+position are the median's); the fusion weighted by the uncertainty of every pixel only gives the `sigma`, because on the reviewed
+throws it was wrong more often than the median. Ported from the evaluation tools in `data/detection/detect.py`, which measured it against the
 hand reviews of the throws.
 """
 import math
@@ -97,13 +98,15 @@ def _fuse_weighted(items):
     return (float(x[0]), float(x[1])), float(math.sqrt(np.trace(cov) / 2)), len(keep)
 
 
-def locate(model, befores, afters, min_cams=1):
+def locate(model, befores, afters, min_cams=1, masks=None):
     """The new dart between two picture sets (camera -> prepared picture). Returns a dict with `x`, `y` (mm), `field`, the
     `sigma` of the position, `margin` (distance to the nearest field boundary), `cams` (cameras that saw it), `off` (cameras
-    that put it off the board) and `tips`; or None if fewer than `min_cams` cameras saw a new dart."""
+    that put it off the board) and `tips`; or None if fewer than `min_cams` cameras saw a new dart. `masks` (camera -> mask)
+    replaces the areas of the board model: the parts of a picture to look at."""
     pts, tips = [], {}
+    masks = masks or model.masks
     for cam in model.cams:
-        tip, info = find_tip(model.masks[cam], befores[cam], afters[cam])
+        tip, info = find_tip(masks[cam], befores[cam], afters[cam])
         if tip is None:
             continue
         mm = model.to_board(cam, *tip)
@@ -122,8 +125,8 @@ def locate(model, befores, afters, min_cams=1):
         return {"x": mx, "y": my, "field": "0", "sigma": 0.0, "margin": 99.0, "cams": len(pts), "off": off, "agree": agree, "spread": spread, "tips": tips}
     fx = statistics.median(m[0] for m, _ in hits)
     fy = statistics.median(m[1] for m, _ in hits)
-    (wx, wy), sigma, used = _fuse_weighted(hits)
-    return {"x": wx, "y": wy, "field": model.field(wx, wy), "sigma": sigma, "margin": model.edge_distance(wx, wy),
+    _, sigma, used = _fuse_weighted(hits)
+    return {"x": fx, "y": fy, "field": model.field(fx, fy), "sigma": sigma, "margin": model.edge_distance(fx, fy),
             "cams": len(pts), "off": off, "agree": agree, "spread": spread, "used": used, "median": [fx, fy], "tips": tips}
 
 

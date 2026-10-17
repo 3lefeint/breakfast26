@@ -88,6 +88,7 @@ def test_tracker_follows_three_darts_and_the_takeout():
         events, t = run(tr, steps, start=t)
         got += [e for e in events if e.kind == "dart"]
     assert [e.count for e in got] == [1, 2, 3]
+    assert all(set(e.info["timing"]) == {"moving_s", "still_s", "work_ms"} and e.info["timing"]["still_s"] >= tr.s.settle_s for e in got)
     assert [e.throw["segment"]["name"] for e in got] == ["T20", detector.to_throw(detector.locate(model(), prepared(scene()), prepared(scene([darts[1]]))))["segment"]["name"], got[2].throw["segment"]["name"]]
     assert tr.status == "takeout"
     events, t = run(tr, [scene(darts, hand=True)] + [scene() for _ in range(12)], start=t)
@@ -236,3 +237,81 @@ def test_the_previous_model_can_be_taken_back(tmp_path):
     calibration.save(other, path)
     back = calibration.revert(path)
     assert abs(back.to_pixel(0, 0, 0)[0] - m.to_pixel(0, 0, 0)[0]) < 0.5
+
+
+def _board_with(darts, **settings):
+    """A tracker that has seen the empty board and counted the darts (each thrown on its own)."""
+    tr = BoardTracker(model(), Settings(**settings))
+    events, t = run(tr, [scene() for _ in range(20)])
+    for i in range(len(darts)):
+        events, t = run(tr, [scene(darts[:i]), scene(darts[:i], hand=True), scene(darts[:i + 1])] + [scene(darts[:i + 1]) for _ in range(12)], start=t)
+    assert tr.count == len(darts)
+    return tr, t
+
+
+def _forget_last_dart(tr):
+    tr.throws.pop(), tr.sup0.pop()
+    tr.count -= 1
+
+
+class TestRecount:
+    DARTS = [(0, 103), (50, 100)]
+
+    def test_a_dart_the_count_missed_is_counted_when_the_picture_keeps_showing_it(self):
+        tr, t = _board_with(self.DARTS)
+        _forget_last_dart(tr)                                       # the count lost the second dart, the board still has it
+        events, t = run(tr, [scene(self.DARTS, hand=True)] + [scene(self.DARTS) for _ in range(60)], start=t)
+        darts = [e for e in events if e.kind == "dart"]
+        assert len(darts) == 1 and darts[0].info["recounted"] and darts[0].count == 2
+        assert darts[0].throw["detection"]["recounted"] is True and darts[0].throw["detection"]["uncertain"] is True
+        assert abs(darts[0].throw["coords"]["x"] - 50 / 170) < 0.03 and abs(darts[0].throw["coords"]["y"] - 100 / 170) < 0.03
+        assert tr.count == 2
+
+    def test_one_look_is_not_enough(self):
+        tr, t = _board_with(self.DARTS)
+        _forget_last_dart(tr)
+        events, t = run(tr, [scene(self.DARTS, hand=True)] + [scene(self.DARTS) for _ in range(12)], start=t)    # about 0.6 s of stillness: one look
+        assert [e for e in events if e.kind == "dart"] == [] and tr.count == 1
+
+    def test_counted_darts_are_not_counted_again(self):
+        tr, t = _board_with(self.DARTS)
+        events, t = run(tr, [scene(self.DARTS, hand=True)] + [scene(self.DARTS) for _ in range(80)], start=t)
+        assert [e for e in events if e.kind == "dart"] == [] and tr.count == 2
+
+    def test_nothing_is_counted_with_the_switch_off(self):
+        tr, t = _board_with(self.DARTS, recount=False)
+        _forget_last_dart(tr)
+        events, t = run(tr, [scene(self.DARTS, hand=True)] + [scene(self.DARTS) for _ in range(60)], start=t)
+        assert [e for e in events if e.kind == "dart"] == [] and tr.count == 1
+
+    def test_nothing_is_counted_beyond_the_most_darts_on_the_board(self):
+        tr, t = _board_with(self.DARTS, max_darts=1)
+        _forget_last_dart(tr)
+        events, t = run(tr, [scene(self.DARTS, hand=True)] + [scene(self.DARTS) for _ in range(60)], start=t)
+        assert [e for e in events if e.kind == "dart"] == [] and tr.count == 1
+
+
+def test_the_field_comes_from_the_median_of_the_cameras_not_from_the_weighted_fusion():
+    # camera 2 sees the dart 2.5 mm further out; the weighted fusion would follow it a little, the median stays with the other two
+    after = scene([(0, 130)])
+    shifted = scene([(0, 132.5)])
+    after[2] = shifted[2]
+    result = detector.locate(model(), prepared(scene()), prepared(after))
+    assert (result["x"], result["y"]) == tuple(result["median"])
+    assert abs(result["y"] - result["tips"][0]["mm"][1]) < 0.1 and result["used"] == 3
+
+
+def test_a_dart_that_only_two_cameras_saw_is_marked_uncertain_even_in_the_middle_of_a_field():
+    for cameras, uncertain in ((3, False), (2, True)):
+        tr = BoardTracker(model(), Settings())
+        events, t = run(tr, [scene() for _ in range(20)])
+        frames = []
+        for _ in range(14):
+            f = scene([(0, 130)])
+            if cameras == 2:
+                f[2] = scene()[2]
+            frames.append(f)
+        events, t = run(tr, frames, start=t)
+        dart = [e for e in events if e.kind == "dart"][0]
+        assert dart.throw["detection"]["cams"] == cameras
+        assert dart.throw["detection"]["uncertain"] is uncertain, dart.throw["detection"]

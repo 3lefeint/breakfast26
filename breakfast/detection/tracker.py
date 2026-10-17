@@ -36,6 +36,10 @@ class Settings:
     uncertain_sigma: float = 1.6        # ... and so is one whose position the cameras only know to within this (mm)
     patience: int = 40              # looks (about 0.3 s apart) at a blocked board before the picture is taken as it is
     retry_s: float = 1.0            # when a change could not be explained, look again after this long
+    recount: bool = True            # count a dart that the picture shows but the count missed (see `_recount`)
+    recount_looks: int = 2          # settled looks in a row that must show it at the same place
+    recount_window_px: tuple = (40, 150, 20)    # around a counted dart's tip: pixels to each side, up and down that a dart already accounts for
+    max_darts: int = 3              # a recount never goes beyond this many darts on the board
 
 
 @dataclass
@@ -62,10 +66,12 @@ class BoardTracker:
         self.ref_raw = None
         self._prev = None           # camera -> small gray picture of the previous call
         self._still_since = None
+        self._moved_from = self._moved_to = None        # first and last moving look of the latest movement
         self._handled = True        # the current still period has been looked at
         self._retry_at = 0.0
         self.moving = False
         self._unclear = 0           # changes in a row that could not be explained
+        self._missing = None        # [x_mm, y_mm, looks]: where the picture shows a dart that is not counted, and for how many looks
         self._blocked = 0           # looks in a row at a board that something is in the way of
         self.status = "starting"
         small = {c: cv2.resize(m, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST) > 0 for c, m in model.masks.items()}
@@ -90,6 +96,7 @@ class BoardTracker:
     def reset(self):
         """Take the next settled picture as the empty board again (and forget the darts)."""
         self.count, self.throws, self.sup0, self.ref, self.empty, self.empty_hp, self.ref_raw = 0, [], [], None, None, None, None
+        self._missing = None
         self._handled = False
 
     # ------------------------------------------------------------------ main step
@@ -100,7 +107,9 @@ class BoardTracker:
         frac = self._motion(small)
         self._prev = small
         if frac > self.s.motion_fraction:
-            self._still_since, self._handled, self.moving = None, False, True
+            if not self.moving:
+                self._moved_from = t
+            self._still_since, self._handled, self.moving, self._moved_to = None, False, True, t
             return []
         self.moving = False
         if self._still_since is None:
@@ -110,6 +119,7 @@ class BoardTracker:
         return self._settled(t, frames)
 
     def _settled(self, t, frames):
+        self._work_from = time.monotonic()
         prepared = {c: detector.prepare(f) for c, f in frames.items()}
         if self.ref is None:
             self.ref, self.empty, self.ref_raw = prepared, prepared, frames
@@ -134,7 +144,8 @@ class BoardTracker:
                 self.empty = prepared
                 self.empty_hp = {c: detector.highpass(p) for c, p in prepared.items()}
             self._handled = True
-            return self._drop_unsupported(t, frames, prepared)     # nothing new: check that every counted dart is still there
+            events = self._drop_unsupported(t, frames, prepared)   # nothing new: check that every counted dart is still there
+            return events or self._recount(t, frames, prepared, hp)
         result = detector.locate(self.model, self.ref, prepared, min_cams=self.s.min_cams)
         if result is None:
             return self._unclear_change(t, frames, prepared, {"changed": changed})
@@ -158,14 +169,23 @@ class BoardTracker:
         before, self.ref, self.ref_raw = self.ref_raw, prepared, frames
         self._handled = True
         self.status = "takeout" if self.count >= 3 else "ready"
-        return [Event("dart", t, self.count, throw=throw, info={**result, "changed": changed}, before=before, after=frames)]
+        return [Event("dart", t, self.count, throw=throw, info={**result, "changed": changed, "timing": self._timing(t)}, before=before, after=frames)]
+
+    def _timing(self, t):
+        """Where the time to a counted dart went: how long the board moved, how long it was still before the look, the work."""
+        if self._moved_from is None:
+            return None
+        return {"moving_s": round(self._moved_to - self._moved_from, 2), "still_s": round(t - self._moved_to, 2),
+                "work_ms": round((time.monotonic() - self._work_from) * 1000)}
 
     def _quality(self, result):
         """How sure the detection is about a dart: the distance to the nearest wire or ring, the uncertainty of the position, and
-        whether every camera that saw it agrees. Stored with the throw; `uncertain` marks it on the TV view for a tap to confirm."""
-        agree_all = result["agree"] >= result["cams"]
+        whether every camera agrees. A dart that fewer than all cameras saw is uncertain: with two cameras nothing tells a wrong
+        point from a right one (the three wrong darts of the first 501 at the board were all seen by two agreeing cameras). Stored
+        with the throw; `uncertain` marks it on the TV view for a tap to confirm."""
+        all_cams = len(self.model.cams)
         uncertain = (result["field"] != "0" and result["margin"] < self.s.uncertain_margin_mm) or result["sigma"] > self.s.uncertain_sigma \
-            or (result["cams"] >= 3 and not agree_all)
+            or result["cams"] < all_cams or result["agree"] < result["cams"]
         return {"margin": round(result["margin"], 1), "sigma": round(result["sigma"], 2), "cams": result["cams"], "agree": result["agree"],
                 "uncertain": bool(uncertain)}
 
@@ -252,6 +272,49 @@ class BoardTracker:
         return [Event("removed", t, self.count, info={"field": th["segment"]["name"], "left": self.count, "why": "no longer on the board"}, after=frames)
                 for th in events]
 
+    def _recount(self, t, frames, prepared, hp):
+        """Counts a dart the picture shows and the count missed. The count drifts when a change was explained away (a dart taken for a
+        push, a change accepted after three tries, a dart seen by one camera only): the picture against the empty board then holds
+        a dart that no counted one accounts for. It is counted when two cameras put it at the same place, it stands out against the
+        empty board in two cameras and the same spot shows it in `recount_looks` settled looks in a row."""
+        if not self.s.recount or self.empty_hp is None or self.count >= self.s.max_darts:
+            self._missing = None
+            return []
+        left, up, down = self.s.recount_window_px
+        h, w = self.model.size[1], self.model.size[0]
+        masks = {}
+        for c in self.model.cams:
+            m = self.model.masks[c].copy()
+            for th in self.throws:
+                px, py = self.model.to_pixel(c, th["coords"]["x"] * 170.0, th["coords"]["y"] * 170.0)
+                m[max(0, int(py - up)):min(h, int(py + down)), max(0, int(px - left)):min(w, int(px + left))] = 0
+            masks[c] = m
+        result = detector.locate(self.model, self.empty_hp, hp, min_cams=self.s.min_cams, masks=masks)
+        if result is None or result["field"] == "0" or result["agree"] < 2:
+            self._missing = None
+            return []
+        votes = sum(1 for c in self.model.cams
+                    if detector.support((h, w), self.model, c, result["x"], result["y"], self.empty_hp[c], hp[c]) >= self.s.support)
+        if votes < min(2, len(self.model.cams)):
+            self._missing = None
+            return []
+        if self._missing and ((self._missing[0] - result["x"]) ** 2 + (self._missing[1] - result["y"]) ** 2) ** 0.5 <= self.s.same_spot_mm:
+            self._missing[2] += 1
+        else:
+            self._missing = [result["x"], result["y"], 1]
+        if self._missing[2] < self.s.recount_looks:
+            self._handled = False                       # look once more a moment later
+            self._retry_at = t + self.s.retry_s
+            return []
+        self._missing = None
+        throw = detector.to_throw(result)
+        throw["detection"] = {**self._quality(result), "recounted": True, "uncertain": True}     # late and not seen landing: the player confirms it
+        self.count += 1
+        self.throws.append(throw)
+        self.sup0.append(self._support_of(result["x"], result["y"], hp))
+        self.status = "takeout" if self.count >= 3 else "ready"
+        return [Event("dart", t, self.count, throw=throw, info={**result, "recounted": True}, after=frames)]
+
     def _unclear_change(self, t, frames, prepared, info):
         """A change nobody can explain (a hand, a bounce, a lost dart). Look again a moment later; after three times the picture
         is taken as it is (the count stays) so the same change is not reported again and again."""
@@ -275,7 +338,7 @@ class BoardTracker:
 
     def _takeout(self, t, frames, prepared):
         n = self.count
-        self.count, self.throws, self.sup0 = 0, [], []
+        self.count, self.throws, self.sup0, self._missing = 0, [], [], None
         self.ref, self.ref_raw, self.empty = prepared, frames, prepared
         self.empty_hp = {c: detector.highpass(p) for c, p in prepared.items()}
         self._handled = True
