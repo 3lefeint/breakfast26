@@ -44,9 +44,9 @@ in their config, off by default) and stores them in a D1 database. Every batch i
 itself is never stored. Set it up once:
 
 ```bash
-npx wrangler d1 create breakfast-telemetry     # put the printed database_id into wrangler.jsonc
+npx wrangler d1 create breakfast-telemetry     # put the printed database_id into the config you deploy with
 npx wrangler d1 migrations apply breakfast-telemetry --remote
-npm run deploy
+npm run deploy        # or: npx wrangler deploy -c <your config>, if you keep your own with the database_id and a domain
 ```
 
 Without the `DB` binding the route answers 503 and the rest of the relay is not affected. Read the reports with
