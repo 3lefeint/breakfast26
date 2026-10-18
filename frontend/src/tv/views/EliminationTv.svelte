@@ -84,12 +84,11 @@
   </div>
   <div class="live-board"><DartBoard readonly darts={boardDarts} zones={hintZones} /></div>
   <div class="elim-target-row">
-    <span class="elim-target-label">{t('Target')}</span>
-    <span class="elim-target-value">{elimination.target != null ? elimination.target + 1 : '—'}</span>
-  </div>
-  <div class="freipass-badge-row">
     {#if elimination.freipass}
       <span class="freipass-badge">{t('Freipass')}</span>
+    {:else}
+      <span class="elim-target-label">{t('Target')}</span>
+      <span class="elim-target-value">{elimination.target != null ? elimination.target + 1 : '—'}</span>
     {/if}
   </div>
   <div class="elim-endgame-row">
@@ -145,18 +144,17 @@
   .dart-box .dval { font-size: clamp(1.2rem, 2.5vw, 3rem); font-weight: 800; }
   .dart-box.miss .dval { color: var(--red); }
   .live-board { --board-max: min(360px, 32vh); margin-top: 1rem; display: flex; justify-content: center; }
-  .elim-target-row { display: flex; align-items: baseline; gap: 0.6em; margin-top: 1rem; }
+  .elim-target-row { display: flex; align-items: baseline; gap: 0.6em; margin-top: 1rem; min-height: clamp(2.4rem, 4.6vw, 3.8rem); }
   .elim-target-label { font-size: clamp(0.75rem, 1.3vw, 1.1rem); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
   .elim-target-value {
     font-size: clamp(1.6rem, 3.8vw, 3rem); font-weight: 800; color: var(--accent);
     text-shadow: 0 0 28px color-mix(in srgb, var(--accent) 40%, transparent);
   }
-  .freipass-badge-row { margin-top: 1rem; min-height: 1.6em; }
   .freipass-badge {
-    font-size: clamp(0.7rem, 1.2vw, 1.3rem); font-weight: 700;
+    font-size: clamp(1.5rem, 3.4vw, 3rem); font-weight: 800; align-self: center;
     background: color-mix(in srgb, var(--yellow) 18%, rgba(0, 0, 0, 0.3));
     color: var(--yellow); border: 1px solid color-mix(in srgb, var(--yellow) 35%, transparent);
-    border-radius: 999px; padding: 0.15em 0.7em;
+    border-radius: 999px; padding: 0.1em 0.8em;
   }
   .elim-endgame-row { margin-top: 1.5rem; display: flex; gap: 0.6rem; }
   .btn-end-game {
