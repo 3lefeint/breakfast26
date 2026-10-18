@@ -1,3 +1,4 @@
+import { alertDialog } from './confirm.js';
 import { api, apiJson } from './api.js';
 import { cap } from './util.js';
 import { t } from './i18n.js';
@@ -12,7 +13,7 @@ export async function rematch(k) {
     bull_off: k.setup.bull_off,
     throw_numbers: k.setup.throw_numbers,
   });
-  if (res.error) alert(t(res.error));
+  if (res.error) alertDialog(t(res.error));
   return !res.error;
 }
 

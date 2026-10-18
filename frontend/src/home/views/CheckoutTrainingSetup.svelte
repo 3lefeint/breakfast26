@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Random checkout setup: one player, the range of scores, the number of attempts and whether the
@@ -19,7 +20,7 @@
   }
 
   async function start() {
-    if (!player) { alert(t('Select a player.')); return; }
+    if (!player) { alertDialog(t('Select a player.')); return; }
     if (await startRun({ player, low: range.low, high: range.high, attempts, show_route: showRoute })) openTv();
   }
   import Toggle from '../../lib/components/Toggle.svelte';

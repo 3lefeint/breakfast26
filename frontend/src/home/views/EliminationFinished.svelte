@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog, alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #elimFinished + #rematchModal. Default rematch
@@ -73,7 +74,7 @@
   }
 
   async function startRematch() {
-    if (rematchPlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
+    if (rematchPlayers.length < 2) { alertDialog(t('Select at least 2 players.')); return; }
     await api('POST', '/api/elimination/start', { players: rematchPlayers, lives: rematchLives });
     openTv();
   }
@@ -96,7 +97,7 @@
     // stats.db — for a match-ending dart that turned out to be
     // misdetected. Elimination.svelte's own $effect redirects to the TV view
     // once state flips back to "playing".
-    if (!confirm(t('Undo the winning turn and resume the match?'))) return;
+    if (!await confirmDialog(t('Undo the winning turn and resume the match?'))) return;
     await api('POST', '/api/elimination/undo');
   }
 </script>

@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Field Training setup: one player, the field (a number or the bull) and the number of darts.
@@ -20,8 +21,8 @@
   }
 
   async function start() {
-    if (!player) { alert(t('Select a player.')); return; }
-    if (!Number.isInteger(darts) || darts < 1) { alert(t('The number of darts has to be at least 1.')); return; }
+    if (!player) { alertDialog(t('Select a player.')); return; }
+    if (!Number.isInteger(darts) || darts < 1) { alertDialog(t('The number of darts has to be at least 1.')); return; }
     if (await startRun({ player, field, darts })) openTv();
   }
   import Toggle from '../../lib/components/Toggle.svelte';

@@ -1,3 +1,4 @@
+import { alertDialog } from './confirm.js';
 import { api, apiJson } from './api.js';
 import { t } from './i18n.js';
 
@@ -10,7 +11,7 @@ export async function rematch(tb) {
     tiebreak: tb.setup.tiebreak,
     targets: tb.setup.targets,
   });
-  if (res.error) alert(t(res.error));
+  if (res.error) alertDialog(t(res.error));
   return !res.error;
 }
 

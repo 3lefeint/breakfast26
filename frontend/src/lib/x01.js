@@ -1,3 +1,4 @@
+import { alertDialog } from './confirm.js';
 import { api, apiJson } from './api.js';
 import { t } from './i18n.js';
 
@@ -22,7 +23,7 @@ export async function rematch(x) {
     max_rounds: x.setup.max_rounds,
     bots: Object.fromEntries(x.players.filter((p) => p.bot).map((p) => [p.name, p.bot])),
   });
-  if (res.error) alert(t(res.error));
+  if (res.error) alertDialog(t(res.error));
   return !res.error;
 }
 

@@ -6,9 +6,20 @@
 - A summary of a finished X01 match: the legs won and the figures of all players side by side (averages, checkout %, 60+ to 180, busts) with the highest turn, highest checkout and fastest leg, every leg with the course of the remaining score and each turn next to the others, and a heatmap per player, for every player including the computer opponent; a Summary button on the TV result and in the match list of the X01 statistics (#62).
 
 ### Changed
+- The X01 TV view follows the Elimination layout: the remaining score sits right of the dart boxes in a fixed width, vertically centered to them, the turn total and the checkout hint are at the right of the player name, the control buttons are larger and below the dart boxes with the spacing of the dart boxes, Cancel is a subdued button at the bottom right of the board box, the player table scrolls instead of growing and takes 70 % of the height next to the 30 % of the player card, and the game info (mode, score, rules, leg) is shown in the top bar instead of above the player card. (#70)
+- The TV view uses the same top bar as the other pages (board, MQTT and Autodarts status, Settings), without the Open TV button; the game title, the board status glow and the sound button stay. The footer with the connection status and the version is gone. (#70)
+- The Elimination TV view shows the dartboard in its own box on the right, like the X01 view, with the player card and the player list stacked on the left; the turn total sits right of the dart boxes in a fixed width and the target at the right of the player name, the control buttons are wide and below the dart boxes, the Hint button sits at the top right and a subdued Cancel button at the bottom right of the board box, the player card and the list share the height 30 to 70, the dart boxes show the field hit (T20) with its value below, and the player list uses a smaller font and scrolls instead of squeezing the rows. (#70)
+- The live views of all games share the same player card (same height, padding, avatar and button position) and a list box below it. The Killer TV view follows the same layout: the dartboard in its own box on the right with a subdued Cancel button, the player card above the scrolling player list (30 to 70), wide Undo, Next and Reset buttons below the dart boxes, and the game rules in the top bar. (#70)
+- The Target Battle TV view follows the same layout: the dartboard in its own box on the right with a subdued Cancel button, a player card with the target, the dart boxes, the round total and wide Undo, Next and Reset buttons, the scrolling player list and round table below it (30 to 70), and the round with its dots in the top bar. (#70)
+- The Field Training, Black Belt, Warm-up and Checkout Training TV views follow the same layout: the dartboard in its own box on the right with a subdued Cancel button, the player card with the target, the dart boxes and wide Undo, Next, Reset and Finish buttons, and the progress and counters in the box below it. (#70)
+- The result screens of all games use the same larger pill buttons with the same spacing as the live views, and the same labels (Rematch or Replay, Undo, Done); the Elimination result screen has no New game button and lists the placements with avatars like the Killer one, and the X01 result lists place and avatar for every player. (#70)
 - During a freipass the Elimination TV view hides the target and shows Freipass larger in its place.
 - The rematch dialog of an Elimination match has an opaque background, and the Rematch button on its result screen is the green one instead of New game.
+- Confirmation questions (cancel a game, undo a turn, delete, restart, install an update, ...) and error messages use an own dialog (Yes and No, or OK) instead of the browser's. (#70)
 - The MQTT status dot in the top bar and the TV footer is hidden when MQTT is not configured or switched off.
+
+### Fixed
+- The Reset button (with a board icon) is back in the X01 TV view for matches scored by Breakfast and is also in the Elimination TV view; the Next Player button is labeled Next. (#70)
 
 ## [1.5.0] - 2026-10-17
 

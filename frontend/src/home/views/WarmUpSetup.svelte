@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Warm-up setup: the stations to go over and one player. All is on until a station is picked, picking one switches
@@ -25,7 +26,7 @@
   }
 
   async function start() {
-    if (!player) { alert(t('Select a player.')); return; }
+    if (!player) { alertDialog(t('Select a player.')); return; }
     if (await startRun({ player, stations: all ? null : KINDS.filter((k) => picked[k]) })) openTv();
   }
 </script>

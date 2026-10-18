@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog } from '../../lib/confirm.js';
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
@@ -20,7 +21,7 @@
   );
 
   async function undo() {
-    if (!confirm(t('Undo the last turn and resume the game?'))) return;
+    if (!await confirmDialog(t('Undo the last turn and resume the game?'))) return;
     await api('POST', '/api/target-battle/undo');
   }
 
@@ -67,19 +68,19 @@
   </div>
   <div class="actions">
     <button class="btn" onclick={() => rematch(tb)}>{t('↻ Rematch')}</button>
-    <button class="btn ghost" onclick={undo}>{t('↩ Undo last turn')}</button>
-    <button class="btn ghost" onclick={done}>{t('Done')}</button>
+    <button class="btn ghost" onclick={undo}>{t('↩ Undo')}</button>
+    <button class="btn ghost" onclick={done}>{t('✓ Done')}</button>
   </div>
 </div>
 
 <style>
-  .finished { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6rem; padding: 1.5rem 2rem; }
+  .finished { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; padding: 1.5rem 2rem; }
   .heading { font-size: clamp(2rem, 5vw, 4.2rem); font-weight: 800; color: var(--green); text-align: center; }
   .results { list-style: none; padding: 0; width: min(36rem, 90vw); }
   .results li {
     display: grid; grid-template-columns: 2.5rem 1fr auto; align-items: center; gap: 1rem;
-    padding: 0.7rem 1.2rem; margin-top: 0.7rem; border-radius: 16px;
-    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); font-size: clamp(1.1rem, 2.4vw, 2rem);
+    padding: 0.6rem 1.2rem; margin-top: 0.6rem; border-radius: 16px;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); font-size: clamp(1.1rem, 2.2vw, 1.9rem);
   }
   .results li.winner { border-color: color-mix(in srgb, var(--green) 55%, transparent); }
   .place { color: var(--muted); font-weight: 700; }
@@ -94,9 +95,10 @@
   td { padding: 0.35em 0.6em; text-align: center; border-top: 1px solid var(--glass-border); }
   td.t { color: var(--accent); font-weight: 800; }
   td.zero { color: var(--muted); }
-  .actions { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
-  .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.7rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
-  .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); }
-  .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+  .actions { display: flex; gap: 1vw; flex-wrap: wrap; justify-content: center; }
+  .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.75rem 2rem; font-size: clamp(1rem, 1.5vw, 1.6rem); font-weight: 600; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+  .btn:hover { background: #15803d; }
+  .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+  .btn.ghost:hover { background: var(--glass); border-color: var(--accent); color: var(--text); }
   .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

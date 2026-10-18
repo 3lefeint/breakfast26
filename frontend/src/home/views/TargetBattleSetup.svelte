@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Target Battle setup: players (order = play order, or random), number of rounds, how the target
@@ -66,16 +67,16 @@
   }
 
   async function start() {
-    if (gamePlayers.length < 1) { alert(t('Select at least 1 player.')); return; }
+    if (gamePlayers.length < 1) { alertDialog(t('Select at least 1 player.')); return; }
     if (fixedOrder && targets.some((tk) => !Number.isInteger(tk) || tk < 1 || tk > 20)) {
-      alert(t('Every target has to be a number from 1 to 20.'));
+      alertDialog(t('Every target has to be a number from 1 to 20.'));
       return;
     }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     const res = await apiJson('POST', '/api/target-battle/start', {
       players: order, rounds, scoring, tiebreak, targets: fixedOrder ? targets : null,
     });
-    if (res.error) { alert(t(res.error)); return; }
+    if (res.error) { alertDialog(t(res.error)); return; }
     openTv();
   }
 </script>

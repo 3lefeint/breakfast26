@@ -8,6 +8,7 @@
   import Aurora from '../lib/components/Aurora.svelte';
   import Sidebar from './shell/Sidebar.svelte';
   import TopBar from './shell/TopBar.svelte';
+  import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
   import Home from './views/Home.svelte';
   import Elimination from './views/Elimination.svelte';
@@ -78,8 +79,10 @@
   }
 </script>
 
+<ConfirmDialog />
+
 {#if $route === 'tv'}
-  <TvApp />
+  <TvApp {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel} />
 {:else}
   <Aurora />
 

@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog } from '../../lib/confirm.js';
   import { t } from '../../lib/i18n.js';
   // Settings → Achievements (shown with the Dev tab): which sound each achievement plays when it is
   // earned. Every achievement lists what plays now (an assignment, the `achievement_<id>` file or the
@@ -91,7 +92,7 @@
   async function removeFile(f) {
     const users = f.used_by.map((u) => u.names?.en || u.id).join(', ');
     const warning = users ? '\n\n' + t('It is assigned to: {users}. It is taken out there.', { users }) : '';
-    if (!confirm(t('Delete {name}?', { name: f.name }) + warning)) return;
+    if (!await confirmDialog(t('Delete {name}?', { name: f.name }) + warning)) return;
     message = '';
     const res = await fetch(`${URL}/files/${encodeURIComponent(f.name)}`, { method: 'DELETE' }).then((r) => r.json());
     if (res.error) { message = t(res.error); return; }

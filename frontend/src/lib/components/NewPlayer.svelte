@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../confirm.js';
   import { t } from '../i18n.js';
   // Creates a new player and hands the name to the setup page, which puts it into its game.
   import { apiJson } from '../api.js';
@@ -10,7 +11,7 @@
     const n = name.trim();
     if (!n) return;
     const res = await apiJson('POST', '/api/players', { name: n });
-    if (res.error) { alert(t(res.error)); return; }
+    if (res.error) { alertDialog(t(res.error)); return; }
     name = '';
     onadded(n);
   }

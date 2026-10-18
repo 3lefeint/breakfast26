@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished X01 match on Home: the legs won, the average, a rematch with the same
@@ -24,7 +25,7 @@
   }
 
   async function undoWin() {
-    if (!confirm(t('Undo the last turn and resume the game?'))) return;
+    if (!await confirmDialog(t('Undo the last turn and resume the game?'))) return;
     await api('POST', '/api/x01/undo');
   }
 </script>

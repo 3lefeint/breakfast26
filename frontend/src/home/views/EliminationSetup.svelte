@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #elimSetup: lives counter, reorderable game-player
@@ -46,10 +47,10 @@
   }
 
   async function start() {
-    if (gamePlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
+    if (gamePlayers.length < 2) { alertDialog(t('Select at least 2 players.')); return; }
     const order = randomOrder ? shuffled(gamePlayers) : gamePlayers;
     const res = await apiJson('POST', '/api/elimination/start', { players: order, lives: livesCount, bots });
-    if (res.error) { alert(t(res.error)); return; }
+    if (res.error) { alertDialog(t(res.error)); return; }
     openTv();
   }
 </script>

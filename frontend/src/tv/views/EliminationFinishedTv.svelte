@@ -1,20 +1,25 @@
 <script>
+  import { confirmDialog, alertDialog } from '../../lib/confirm.js';
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Ports #elimFinished + #rematchModal of the former tv.html — same default-order
   // rematch logic as Home's EliminationFinished.svelte, plus the
-  // TV-only "New game" and "Done" buttons — both stop the game server-side
-  // and navigate to Home's Elimination tab, just to different
-  // views once there (setup vs. the hub's default Elimination view).
+  // TV-only "Done" button — stops the game server-side and navigates to Home's Elimination tab.
   import { cap } from '../../lib/util.js';
   import { api, apiJson } from '../../lib/api.js';
   import { players } from '../../lib/stores/players.js';
+  import Avatar from '../../lib/components/Avatar.svelte';
+  import Crown from '../../lib/components/Crown.svelte';
+  import { gameState } from '../../lib/stores/gameState.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import { dartLabel } from '../../lib/killer.js';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
   let { elimination, online = null } = $props();
   let lastDarts = $derived(elimination.last_turn?.darts || []);
+  // The winner first, then the others in the reverse order in which they went out.
+  let rows = $derived([elimination.winner, ...[...(elimination.elimination_order || [])].reverse()].filter(Boolean)
+    .map((name) => ({ name, lives: (elimination.players || []).find((p) => p.name === name)?.lives || 0 })));
   let correctingIndex = $state(null);
 
   let showModal = $state(false);
@@ -70,15 +75,11 @@
   }
 
   async function startRematch() {
-    if (rematchPlayers.length < 2) { alert(t('Select at least 2 players.')); return; }
+    if (rematchPlayers.length < 2) { alertDialog(t('Select at least 2 players.')); return; }
     await api('POST', '/api/elimination/start', { players: rematchPlayers, lives: rematchLives });
     showModal = false;
   }
 
-  async function newGame() {
-    await api('POST', '/api/elimination/stop');
-    navigate('elimination');
-  }
   let onlineError = $state('');
   async function onlineRematch() {
     const res = await apiJson('POST', '/api/online/rematch');
@@ -94,39 +95,46 @@
     // stats.db — for a match-ending dart that turned out to be
     // misdetected. App.svelte switches back to the live view on its own
     // once elimination.state flips back to "playing".
-    if (!confirm(t('Undo the winning turn and resume the match?'))) return;
+    if (!await confirmDialog(t('Undo the winning turn and resume the match?'))) return;
     await api('POST', '/api/elimination/undo');
   }
 </script>
 
 <ConfettiBurst />
 
-<div class="elim-finished">
-  <div class="winner-card">
-    <div class="trophy">🏆</div>
-    <div class="winner-name">{cap(elimination.winner || '')}</div>
-    <div class="winner-label">{t('Winner')}</div>
-    {#if lastDarts.length && !online}
-      <div class="last">
-        <span class="last-label">{t('Last turn, {name}', { name: cap(elimination.last_turn.player) })}</span>
-        {#each lastDarts as d, i}
-          <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
-        {/each}
-      </div>
-    {/if}
-    <div class="finished-actions">
-      <button class="btn btn-add" onclick={newGame}>{t('New game')}</button>
-      {#if !online}
-        <button class="btn btn-start" onclick={openRematchModal}>{t('🔁 Rematch')}</button>
-      {:else if online.host}
-        <button class="btn btn-start" onclick={onlineRematch}>{t('🔁 Rematch')}</button>
-      {/if}
-      <button class="btn btn-add" onclick={finishDone}>{t('✓ Done')}</button>
+<div class="finished">
+  <div class="heading">{t('{name} wins', { name: cap(elimination.winner || '') })}</div>
+  <ul class="results">
+    {#each rows as p, i (p.name)}
+      <li class:winner={p.name === elimination.winner}>
+        <span class="place">{i + 1}</span>
+        <span class="who">
+          <span class="swatch"><Avatar name={p.name || ''} color={$gameState.player_colors?.[p.name] || null} size={100} /></span>
+          <span class="name-crown">{#if p.name === elimination.winner}<Crown />{/if}{cap(p.name)}</span>
+        </span>
+        <span class="lives">{p.lives > 0 ? '❤️'.repeat(p.lives) : '☠️'}</span>
+      </li>
+    {/each}
+  </ul>
+  {#if lastDarts.length && !online}
+    <div class="last">
+      <span class="last-label">{t('Last turn, {name}', { name: cap(elimination.last_turn.player) })}</span>
+      {#each lastDarts as d, i}
+        <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
+      {/each}
     </div>
-    {#if online && !online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
-    {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
-    {#if !online}<button class="btn-undo-win" onclick={undoWin}>{t('↩ Undo winning turn')}</button>{/if}
+  {/if}
+  <div class="finished-actions">
+    {#if !online}
+      <button class="btn btn-start" onclick={openRematchModal}>{t('↻ Rematch')}</button>
+    {:else if online.host}
+      <button class="btn btn-start" onclick={onlineRematch}>{t('↻ Rematch')}</button>
+    {/if}
+    {#if !online}<button class="btn btn-add" onclick={undoWin}>{t('↩ Undo')}</button>{/if}
+    <button class="btn btn-add" onclick={finishDone}>{t('✓ Done')}</button>
   </div>
+  {#if online && !online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
+  {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
 </div>
 
 {#if showModal}
@@ -183,23 +191,31 @@
 {/if}
 
 <style>
-  .elim-finished { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; }
-  .winner-card { padding: 3vw 5vw; border-radius: 28px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
-  .trophy { font-size: clamp(3rem, 6vw, 6rem); margin-bottom: 0.5rem; }
-  .winner-name { font-size: clamp(1.5rem, 4vw, 3rem); font-weight: 700; color: var(--green); }
-  .winner-label { color: var(--muted); margin: 0.5rem 0 1.5rem; }
-  .finished-actions { display: flex; gap: 0.5rem; justify-content: center; }
+  .finished { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; padding: 1.5rem 2rem; }
+  .heading { font-size: clamp(2rem, 5vw, 4.2rem); font-weight: 800; color: var(--green); text-align: center; }
+  .results { list-style: none; padding: 0; width: min(36rem, 90vw); max-height: 42vh; overflow-y: auto; }
+  .results li {
+    display: grid; grid-template-columns: 2.5rem 1fr auto; align-items: center; gap: 1rem;
+    padding: 0.6rem 1.2rem; margin-top: 0.6rem; border-radius: 16px;
+    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); font-size: clamp(1.1rem, 2.2vw, 1.9rem);
+  }
+  .results li.winner { border-color: color-mix(in srgb, var(--green) 55%, transparent); }
+  .place { color: var(--muted); font-weight: 700; }
+  .who { display: flex; align-items: center; gap: 0.7em; }
+  .name-crown { position: relative; display: inline-block; }
+  .swatch { width: 1.5em; height: 1.5em; border-radius: 50%; flex-shrink: 0; align-self: center; overflow: visible; }
+  .swatch :global(svg) { width: 100%; height: 100%; }
+  .finished-actions { display: flex; gap: 1vw; justify-content: center; }
+  .finished-actions .btn { border-radius: 999px; padding: 0.75rem 2rem; font-size: clamp(1rem, 1.5vw, 1.6rem); transition: border-color 0.15s, color 0.15s, background 0.15s; }
+  .finished-actions .btn:hover { opacity: 1; }
+  .finished-actions .btn-start:hover { background: #15803d; }
+  .finished-actions .btn-add { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+  .finished-actions .btn-add:hover { border-color: var(--accent); }
   .online-note { color: var(--muted); font-size: 0.9rem; margin-top: 1rem; }
   .online-error { color: var(--red); font-size: 0.9rem; margin-top: 1rem; }
-  .btn-undo-win {
-    display: block; margin: 1rem auto 0; background: none; border: none;
-    color: var(--muted); font-size: 0.8rem; text-decoration: underline;
-    cursor: pointer;
-  }
-  .btn-undo-win:hover { color: var(--text); }
-  .last { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin: -0.5rem 0 1.2rem; }
-  .last-label { color: var(--muted); font-size: 0.9rem; }
-  .dart-chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.3rem 0.8rem; font-family: inherit; font-weight: 700; color: var(--text); cursor: pointer; }
+  .last { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
+  .last-label { color: var(--muted); font-size: clamp(0.85rem, 1.4vw, 1.3rem); }
+  .dart-chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.4rem 1rem; font-family: inherit; font-size: clamp(1rem, 1.8vw, 1.6rem); font-weight: 700; color: var(--text); cursor: pointer; }
   .dart-chip:hover { border-color: var(--accent); }
   .elim-section-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1rem; }
   .hint { color: var(--muted); font-size: 0.75rem; text-transform: none; letter-spacing: normal; }

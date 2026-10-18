@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog, alertDialog } from '../../lib/confirm.js';
   import { t } from '../../lib/i18n.js';
   // Mirrors index.html's #view-settings: config form (logging/mqtt/stats/
   // web/direct/audio/caller), theme application, voice-pack regeneration
@@ -175,7 +176,7 @@
       });
       await playAudioBlobResponse(res);
     } catch (e) {
-      alert(t('Preview failed: {error}', { error: e.message }));
+      alertDialog(t('Preview failed: {error}', { error: e.message }));
     }
   }
 
@@ -183,7 +184,7 @@
     try {
       await playAudioBlobResponse(await fetch('/api/voicepack/file/' + encodeURIComponent(filename) + '?' + packQuery().slice(1)));
     } catch (e) {
-      alert(t('Playback failed: {error}', { error: e.message }));
+      alertDialog(t('Playback failed: {error}', { error: e.message }));
     }
   }
 
@@ -191,7 +192,7 @@
     const key = vpFormKey.trim();
     const variants = vpFormVariants.map((v) => v.trim()).filter(Boolean);
     if (!key || !variants.length) {
-      alert(t('Key and at least one variant are required.'));
+      alertDialog(t('Key and at least one variant are required.'));
       return;
     }
     vpSaving = true;
@@ -201,28 +202,28 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group: vpSelectedGroup, key, variants, pack: vpPack || null }),
       }).then((r) => r.json());
-      if (res.error) { alert(t('Save failed: {error}', { error: t(res.error) })); return; }
+      if (res.error) { alertDialog(t('Save failed: {error}', { error: t(res.error) })); return; }
       resetVpForm();
       await loadVoicepackEntries();
     } catch (e) {
-      alert(t('Save failed: {error}', { error: e }));
+      alertDialog(t('Save failed: {error}', { error: e }));
     } finally {
       vpSaving = false;
     }
   }
 
   async function deleteVpVariant(key, index) {
-    if (!confirm(t('Delete this variant?'))) return;
+    if (!await confirmDialog(t('Delete this variant?'))) return;
     try {
       const res = await fetch('/api/voicepack/entries', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group: vpSelectedGroup, key, variant_index: index, pack: vpPack || null }),
       }).then((r) => r.json());
-      if (res.error) { alert(t('Delete failed: {error}', { error: t(res.error) })); return; }
+      if (res.error) { alertDialog(t('Delete failed: {error}', { error: t(res.error) })); return; }
       await loadVoicepackEntries();
     } catch (e) {
-      alert(t('Delete failed: {error}', { error: e }));
+      alertDialog(t('Delete failed: {error}', { error: e }));
     }
   }
 
@@ -388,7 +389,7 @@
       showBanner(res);
       await loadAppearance();
     } catch (err) {
-      alert(t('Save failed: {error}', { error: err }));
+      alertDialog(t('Save failed: {error}', { error: err }));
     }
   }
 
@@ -404,11 +405,11 @@
   }
 
   async function regenerateVoicepack() {
-    if (voicepackForce && !confirm(t('Regenerate the ENTIRE voice pack? This can take several minutes.'))) return;
+    if (voicepackForce && !await confirmDialog(t('Regenerate the ENTIRE voice pack? This can take several minutes.'))) return;
     const res = await api('POST', '/api/voicepack/generate', { force: voicepackForce, pack: vpPack || null })
       .then(() => ({}))
       .catch((err) => ({ error: String(err) }));
-    if (res && res.error) alert(t('Could not start: {error}', { error: t(res.error) }));
+    if (res && res.error) alertDialog(t('Could not start: {error}', { error: t(res.error) }));
   }
 
   async function startDemo(mode) {
@@ -419,11 +420,11 @@
     const res = await fetch(`/api/dev/demo/${mode}`, { method: 'POST' })
       .then((r) => r.json())
       .catch((err) => ({ started: false, error: String(err) }));
-    if (!res?.started) alert(t('Could not start demo: {error}', { error: (res?.error ? t(res.error) : t('unknown error')) }));
+    if (!res?.started) alertDialog(t('Could not start demo: {error}', { error: (res?.error ? t(res.error) : t('unknown error')) }));
   }
 
   async function restartApp() {
-    if (!confirm(t('Restart Breakfast now? The app will be briefly unavailable while it restarts.'))) return;
+    if (!await confirmDialog(t('Restart Breakfast now? The app will be briefly unavailable while it restarts.'))) return;
     await api('POST', '/api/control/restart');
   }
 
@@ -455,12 +456,12 @@
 
   async function applyUpdate() {
     if (!updateInfo?.update_available) return;
-    if (!confirm(t('Install update to v{latest}? The app will be briefly unavailable while it rebuilds and restarts.', { latest: updateInfo.latest }))) return;
+    if (!await confirmDialog(t('Install update to v{latest}? The app will be briefly unavailable while it rebuilds and restarts.', { latest: updateInfo.latest }))) return;
     const res = await fetch('/api/updates/apply', { method: 'POST' })
       .then((r) => r.json())
       .catch((e) => ({ error: String(e) }));
     if (res.error || res.ok === false) {
-      alert(t('Could not start the update: {error}', { error: (res.error ? t(res.error) : t('unknown error')) }));
+      alertDialog(t('Could not start the update: {error}', { error: (res.error ? t(res.error) : t('unknown error')) }));
       return;
     }
     updateApplying = true;

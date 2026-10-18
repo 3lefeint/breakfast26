@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // X01 setup: the rules (base score, in and out mode, max rounds, legs to win, bull-off) and the players. The
@@ -40,11 +41,11 @@
   }
 
   async function start() {
-    if (gamePlayers.length < 1) { alert(t('Select at least 1 player.')); return; }
+    if (gamePlayers.length < 1) { alertDialog(t('Select at least 1 player.')); return; }
     const res = await apiJson('POST', '/api/x01/start', {
       players: gamePlayers, start: startScore, in_mode: inMode, out_mode: outMode, legs, bull_off: bullOff && gamePlayers.length > 1, max_rounds: maxRounds, bots,
     });
-    if (res.error) { alert(t(res.error)); return; }
+    if (res.error) { alertDialog(t(res.error)); return; }
     openTv();
   }
 </script>

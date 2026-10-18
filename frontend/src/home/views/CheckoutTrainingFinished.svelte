@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The result of a finished Random checkout run on Home: another run with the same setup, a new
@@ -14,7 +15,7 @@
   }
 
   async function undoLast() {
-    if (!confirm(t('Undo the last attempt and resume the run?'))) return;
+    if (!await confirmDialog(t('Undo the last attempt and resume the run?'))) return;
     await undoAttempt();
   }
 </script>

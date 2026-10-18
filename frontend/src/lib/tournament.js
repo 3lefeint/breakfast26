@@ -1,3 +1,4 @@
+import { confirmDialog, alertDialog } from './confirm.js';
 import { api, apiJson } from './api.js';
 import { t } from './i18n.js';
 
@@ -42,13 +43,13 @@ export function previewSnap(seats, legsByRound) {
 
 export async function drawSeats(players) {
   const res = await apiJson('POST', '/api/tournament/draw', { players });
-  if (res.error) { alert(t(res.error)); return null; }
+  if (res.error) { alertDialog(t(res.error)); return null; }
   return res.seats;
 }
 
 export async function startTournament(setup) {
   const res = await apiJson('POST', '/api/tournament/start', setup);
-  if (res.error) { alert(t(res.error)); return false; }
+  if (res.error) { alertDialog(t(res.error)); return false; }
   return true;
 }
 
@@ -57,7 +58,7 @@ export function nextMatch() {
 }
 
 export async function abortTournament() {
-  if (!confirm(t('Abort the tournament? The matches played and their statistics stay.'))) return false;
+  if (!await confirmDialog(t('Abort the tournament? The matches played and their statistics stay.'))) return false;
   await api('POST', '/api/tournament/abort');
   return true;
 }

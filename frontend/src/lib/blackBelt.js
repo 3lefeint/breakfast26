@@ -1,3 +1,4 @@
+import { alertDialog } from './confirm.js';
 import { api, apiJson } from './api.js';
 import { t } from './i18n.js';
 
@@ -8,7 +9,7 @@ export function stepLabel(field) {
 
 export async function startRun(setup) {
   const res = await apiJson('POST', '/api/black-belt/start', setup);
-  if (res.error) alert(t(res.error));
+  if (res.error) alertDialog(t(res.error));
   return !res.error;
 }
 

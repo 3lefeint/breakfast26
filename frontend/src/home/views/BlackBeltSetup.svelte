@@ -1,4 +1,5 @@
 <script>
+  import { alertDialog } from '../../lib/confirm.js';
   import { openTv } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // Black Belt setup: one player and the direction of the ladder. There is no limit, a run ends
@@ -12,7 +13,7 @@
   let backwards = $state(false);
 
   async function start() {
-    if (!player) { alert(t('Select a player.')); return; }
+    if (!player) { alertDialog(t('Select a player.')); return; }
     if (await startRun({ player, backwards })) openTv();
   }
   import Toggle from '../../lib/components/Toggle.svelte';

@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog } from '../../lib/confirm.js';
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The bull-off before an X01 match: everybody throws one dart at the bull, the closest throws first,
@@ -32,7 +33,7 @@
       if (await abortTournament()) navigate('tournament');
       return;
     }
-    if (!confirm(t('Cancel the current game?'))) return;
+    if (!await confirmDialog(t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
     navigate('home');
   }
@@ -43,7 +44,7 @@
   }
 
   async function undo() {
-    if (!confirm(t('Undo the last completed turn?'))) return;
+    if (!await confirmDialog(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/x01/undo');
   }
 </script>

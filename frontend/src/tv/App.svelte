@@ -10,15 +10,16 @@
   import { x01Own } from '../lib/stores/x01Own.js';
   import { tournament } from '../lib/stores/tournament.js';
   import { roundName } from '../lib/tournament.js';
+  import { ruleChips } from '../lib/x01.js';
+  import { ruleChips as killerRuleChips } from '../lib/killer.js';
   import { fieldTraining } from '../lib/stores/fieldTraining.js';
   import { blackBelt } from '../lib/stores/blackBelt.js';
   import { warmUp } from '../lib/stores/warmUp.js';
   import { checkoutTraining } from '../lib/stores/checkoutTraining.js';
   import { online } from '../lib/stores/online.js';
   import { cap } from '../lib/util.js';
-  import { startAudio, stopAudio, toggleAudio, audioOn, connDot, locked, primeAutoplay } from './lib/audio.js';
-  import { health } from '../lib/stores/health.js';
-  import AppHeader from '../lib/components/AppHeader.svelte';
+  import { startAudio, stopAudio, toggleAudio, audioOn, locked, primeAutoplay } from './lib/audio.js';
+  import TopBar from '../home/shell/TopBar.svelte';
   import Aurora from '../lib/components/Aurora.svelte';
   import AchievementBanner from './views/AchievementBanner.svelte';
   import X01View from './views/X01View.svelte';
@@ -63,13 +64,21 @@
     lastPhase = phase;
   });
 
+  let { boardConnected = false, mqttOk = null, autodartsOk = false, wsConnected = true, connLabel = '' } = $props();
+
   let game = $derived($gameState.game || {});
   let sessionStats = $derived($gameState.session_stats || {});
 
   let matchMeta = $derived.by(() => {
     if ($elimination && ($elimination.state === 'finished' || $elimination.active)) return t('Elimination');
-    if ($targetBattle && ($targetBattle.state === 'finished' || $targetBattle.active)) return t('Target Battle');
-    if ($killer && ($killer.state === 'finished' || $killer.active)) return t('Killer');
+    if ($targetBattle && ($targetBattle.state === 'finished' || $targetBattle.active)) {
+      if ($targetBattle.state !== 'playing') return t('Target Battle');
+      const round = $targetBattle.tiebreak
+        ? t('Tiebreak · round {n}', { n: $targetBattle.round })
+        : t('Round {n} of {total}', { n: $targetBattle.round, total: $targetBattle.rounds });
+      return `${t('Target Battle')} · ${round}`;
+    }
+    if ($killer && ($killer.state === 'finished' || $killer.active)) return [t('Killer'), ...killerRuleChips($killer)].join(' · ');
     if ($fieldTraining && ($fieldTraining.state === 'finished' || $fieldTraining.active)) return t('Field Training');
     if ($blackBelt && ($blackBelt.state === 'finished' || $blackBelt.active)) return t('Black Belt');
     if ($warmUp && ($warmUp.state === 'finished' || $warmUp.active)) return t('Warm-up');
@@ -80,8 +89,12 @@
     }
     if ($x01Own && ($x01Own.state === 'finished' || ($x01Own.active && !game.match_started))) return t('X01');
     if (!game.match_started) return game.board_status ? `${t('Board')}: ${game.board_status}` : '—';
-    const legLabel = game.current_leg > 1 ? ` · ${t('Leg {n}', { n: game.current_leg })}` : '';
-    return [game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null].filter(Boolean).join(' · ') + legLabel;
+    const ownMatch = $x01Own && $x01Own.active && $x01Own.phase === 'playing';
+    const round = $tournament && $tournament.active && $tournament.current
+      ? roundName($tournament.current.round, $tournament.rounds.length) : null;
+    const legLabel = game.current_leg > 1 ? t('Leg {n}', { n: game.current_leg }) : null;
+    return [game.game_mode, game.points_start ? `${game.points_start} ${t('pts')}` : null, round, game.special, legLabel,
+      ...(ownMatch ? ruleChips($x01Own) : [])].filter(Boolean).join(' · ');
   });
 
   let view = $derived.by(() => {
@@ -147,7 +160,16 @@
 
 <AchievementBanner />
 
-<AppHeader title={matchMeta} glowColor={headerGlow}>
+<TopBar tv {boardConnected} {mqttOk} {autodartsOk} {wsConnected} {connLabel} title={matchMeta} glowColor={headerGlow}>
+  {#snippet titleExtra()}
+    {#if view === 'tb-live' && !$targetBattle.tiebreak}
+      <span class="dots" aria-hidden="true">
+        {#each Array($targetBattle.rounds) as _, i}
+          <span class="dot" class:done={i < $targetBattle.round - 1} class:now={i === $targetBattle.round - 1}></span>
+        {/each}
+      </span>
+    {/if}
+  {/snippet}
   {#snippet right()}
     {#if $audioOn && $locked}
       <button type="button" class="tap-note" onclick={primeAutoplay}>{t('Tap for sound')}</button>
@@ -156,7 +178,7 @@
       {$audioOn ? '🔊' : '🔇'}
     </button>
   {/snippet}
-</AppHeader>
+</TopBar>
 
 {#if view === 'idle'}
   {#if $gameState.board_darts}
@@ -222,16 +244,6 @@
   <CheckoutTrainingFinishedTv co={$checkoutTraining} />
 {/if}
 
-<footer>
-  <span class="dot-group">
-    <span><span class="conn-dot" class:ok={$connDot}></span><span class="conn-label">WS</span></span>
-    {#if $health.mqttOk !== null}
-      <span><span class="conn-dot" class:ok={$health.mqttOk}></span><span class="conn-label">{t('MQTT')}</span></span>
-    {/if}
-    <span><span class="conn-dot" class:ok={$health.autodartsOk}></span><span class="conn-label">{t('Autodarts')}</span></span>
-  </span>
-  <span class="version-info">{$health.version ? `v${$health.version} · ${($health.releaseDate ?? '').slice(0, 10)}` : ''}</span>
-</footer>
 
 <style>
   /* html/body's height/background/reset come from lib/theme.css (shared
@@ -248,6 +260,10 @@
     :global(html.tv-mode), :global(body.tv-mode) { overflow-y: auto; }
   }
   :global(body.tv-mode #app) { min-height: 100vh; display: flex; flex-direction: column; }
+  .dots { display: flex; gap: 0.3rem; }
+  .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
+  .dot.done { background: var(--accent); }
+  .dot.now { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
   .sound-btn { cursor: pointer; user-select: none; font-size: 1.1rem; background: none; border: none; color: inherit; font-family: inherit; padding: 0; }
   .tap-note { cursor: pointer; font-family: inherit; font-size: 0.8rem; color: var(--muted); background: var(--glass); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.15rem 0.7rem; margin-right: 0.6rem; }
   .tap-note:hover { color: var(--accent); border-color: var(--accent); }
@@ -258,15 +274,4 @@
   #active, #activeElim { flex: 1; display: flex; min-height: 0; }
   #active { flex-direction: column; }
   #activeElim { flex-direction: row; gap: 1.5vw; padding: 1.3vw 2vw; }
-  footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 1.5rem; height: 2.1rem; background: var(--glass); border-top: 1px solid var(--glass-border);
-    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); box-shadow: var(--glass-bar-shadow);
-    font-size: 0.8rem; color: var(--muted); flex-shrink: 0;
-  }
-  .dot-group { display: flex; align-items: center; gap: 1.25rem; }
-  .conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 7px; transition: background 0.3s; }
-  .conn-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .conn-label { font-size: 0.8rem; color: var(--text); }
-  .version-info { color: var(--muted); }
 </style>

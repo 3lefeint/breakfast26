@@ -1,4 +1,5 @@
 <script>
+  import { confirmDialog } from '../../lib/confirm.js';
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   import Avatar from '../../lib/components/Avatar.svelte';
@@ -19,7 +20,7 @@
   let correctingIndex = $state(null);
 
   async function undo() {
-    if (!confirm(t('Undo the last turn and resume the game?'))) return;
+    if (!await confirmDialog(t('Undo the last turn and resume the game?'))) return;
     await api('POST', '/api/killer/undo');
   }
 
@@ -57,8 +58,8 @@
   {/if}
   <div class="actions">
     <button class="btn" onclick={() => rematch(killer)}>{t('↻ Rematch')}</button>
-    <button class="btn ghost" onclick={undo}>{t('↩ Undo last turn')}</button>
-    <button class="btn ghost" onclick={done}>{t('Done')}</button>
+    <button class="btn ghost" onclick={undo}>{t('↩ Undo')}</button>
+    <button class="btn ghost" onclick={done}>{t('✓ Done')}</button>
   </div>
 </div>
 
@@ -79,7 +80,7 @@
   }
   .results li.winner { border-color: color-mix(in srgb, var(--green) 55%, transparent); }
   .place { color: var(--muted); font-weight: 700; }
-  .who { display: flex; align-items: baseline; gap: 0.7em; }
+  .who { display: flex; align-items: center; gap: 0.7em; }
   .name-crown { position: relative; display: inline-block; }
   .swatch { width: 1.5em; height: 1.5em; border-radius: 50%; flex-shrink: 0; align-self: center;  overflow: visible; }
   .number { color: var(--muted); font-size: 0.7em; }
@@ -87,9 +88,10 @@
   .last-label { color: var(--muted); font-size: clamp(0.85rem, 1.4vw, 1.3rem); }
   .dart-chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.4rem 1rem; font-family: inherit; font-size: clamp(1rem, 1.8vw, 1.6rem); font-weight: 700; color: var(--text); cursor: pointer; }
   .dart-chip:hover { border-color: var(--accent); }
-  .actions { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
-  .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.7rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
-  .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); }
-  .btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+  .actions { display: flex; gap: 1vw; flex-wrap: wrap; justify-content: center; }
+  .btn { background: #166534; color: #fff; border: none; border-radius: 999px; padding: 0.75rem 2rem; font-size: clamp(1rem, 1.5vw, 1.6rem); font-weight: 600; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+  .btn:hover { background: #15803d; }
+  .btn.ghost { background: var(--glass); color: color-mix(in srgb, var(--text) 82%, transparent); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+  .btn.ghost:hover { background: var(--glass); border-color: var(--accent); color: var(--text); }
   .swatch :global(svg) { width: 100%; height: 100%; }
 </style>

@@ -98,6 +98,8 @@ class EliminationGame(TurnGame):
             "freipass": self.freipass,
             "lives_max": self.lives_max,
             "current_darts": list(self._current_darts),
+            # The fields hit in this turn (T20, 25, None for a miss), as the TV view shows them.
+            "current_fields": [self.board_dart(t)["field"] for t in self._last_throws[:len(self._current_darts)]],
             "last_darts": last_darts,
             "elimination_order": list(self.elimination_order),
             "last_turn": {"player": self._last_turn_player,
