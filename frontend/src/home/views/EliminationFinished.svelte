@@ -116,11 +116,11 @@
     </div>
   {/if}
   <div class="finished-actions">
-    <button class="btn btn-start" onclick={newGame}>{t('New game')}</button>
+    <button class="btn btn-add" onclick={newGame}>{t('New game')}</button>
     {#if !$online}
-      <button class="btn btn-add" onclick={openRematchModal}>{t('🔁 Rematch')}</button>
+      <button class="btn btn-start" onclick={openRematchModal}>{t('🔁 Rematch')}</button>
     {:else if $online.host}
-      <button class="btn btn-add" onclick={onlineRematch}>{t('🔁 Rematch')}</button>
+      <button class="btn btn-start" onclick={onlineRematch}>{t('🔁 Rematch')}</button>
     {/if}
   </div>
   {#if $online && !$online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
@@ -244,7 +244,7 @@
   }
   .modal-box {
     position: relative; z-index: 1;
-    background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    background: var(--surface); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow);
     border-radius: 16px; padding: 1.25rem;
     max-width: 480px; width: 100%;
   }

@@ -115,11 +115,11 @@
       </div>
     {/if}
     <div class="finished-actions">
-      <button class="btn btn-start" onclick={newGame}>{t('New game')}</button>
+      <button class="btn btn-add" onclick={newGame}>{t('New game')}</button>
       {#if !online}
-        <button class="btn btn-add" onclick={openRematchModal}>{t('🔁 Rematch')}</button>
+        <button class="btn btn-start" onclick={openRematchModal}>{t('🔁 Rematch')}</button>
       {:else if online.host}
-        <button class="btn btn-add" onclick={onlineRematch}>{t('🔁 Rematch')}</button>
+        <button class="btn btn-start" onclick={onlineRematch}>{t('🔁 Rematch')}</button>
       {/if}
       <button class="btn btn-add" onclick={finishDone}>{t('✓ Done')}</button>
     </div>
@@ -230,6 +230,6 @@
   .btn-add { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); padding: 0.5rem 1rem; }
   .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1.5rem 1rem; }
   .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(3, 8, 20, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: none; padding: 0; cursor: default; }
-  .modal-box { position: relative; z-index: 1; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; max-width: 480px; width: 100%; }
+  .modal-box { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); border-radius: 16px; padding: 1.25rem; max-width: 480px; width: 100%; }
   .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
 </style>
