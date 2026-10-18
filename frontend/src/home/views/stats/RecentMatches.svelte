@@ -8,6 +8,7 @@
   import { fieldLabel, RATING_LABELS, percent } from '../../../lib/fieldTraining.js';
   import { rangeLabel, fieldName } from '../../../lib/checkoutTraining.js';
   import { KINDS, modeLabel } from '../../../lib/warmUp.js';
+  import X01Summary from '../../../lib/components/X01Summary.svelte';
 
   let { mode } = $props();
 
@@ -15,6 +16,7 @@
   let open = $state(false);
   let openMatches = $state(new Set());
   let matchDetails = $state({});
+  let summaryMatch = $state(null);
 
   onMount(async () => {
     try {
@@ -252,6 +254,9 @@
                   {/each}
                 </tbody>
               </table>
+              {#if mode === 'x01'}
+                <button type="button" class="summary-btn" onclick={(e) => { e.stopPropagation(); summaryMatch = m.match_id; }}>{t('Summary')}</button>
+              {/if}
             {/if}
           </div>
         {/if}
@@ -261,7 +266,22 @@
 </div>
 {/if}
 
+{#if summaryMatch}
+  <div class="modal-overlay">
+    <button type="button" class="overlay-backdrop" aria-label={t('Close')} onclick={() => (summaryMatch = null)}></button>
+    <div class="modal-box">
+      <X01Summary matchId={summaryMatch} />
+      <button type="button" class="summary-btn" onclick={() => (summaryMatch = null)}>{t('Close')}</button>
+    </div>
+  </div>
+{/if}
+
 <style>
+  .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1.5rem 1rem; }
+  .overlay-backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(3, 8, 20, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: none; padding: 0; cursor: default; }
+  .modal-box { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.25rem; max-width: 56rem; width: 100%; }
+  .summary-btn { margin-top: 0.8rem; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; color: var(--text); padding: 0.5rem 1rem; font-family: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+  .summary-btn:hover { border-color: var(--accent); }
   .section-title { font-size: 0.8rem; color: var(--muted); margin: 1.5rem 0 0.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
   .collapsible-title {
     display: flex; align-items: center; gap: 0.4rem;

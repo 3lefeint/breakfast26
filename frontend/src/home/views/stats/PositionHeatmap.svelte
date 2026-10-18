@@ -4,7 +4,7 @@
   // DENSITY_MIN darts on, a density overlay that shows where they cluster.
   import { SEGMENT_ORDER, RINGS_MM, polar } from '../../../lib/dartboard.js';
 
-  let { darts = [], corrected = 0 } = $props();
+  let { darts = [], corrected = 0, caption = true } = $props();
 
   const DENSITY_MIN = 30;
   const HALF = 192, BOARD_R = 150;                  // board units -> px; the numbers reach out to about 185
@@ -80,9 +80,11 @@
       </g>
     </svg>
   </div>
-  <div class="note">
-    {t('{n} darts with a position', { n: darts.length })}{#if corrected} · {t('{n} corrected darts are left out', { n: corrected })}{/if}
-  </div>
+  {#if caption}
+    <div class="note">
+      {t('{n} darts with a position', { n: darts.length })}{#if corrected} · {t('{n} corrected darts are left out', { n: corrected })}{/if}
+    </div>
+  {/if}
 {/if}
 
 <style>

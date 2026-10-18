@@ -1562,6 +1562,16 @@ async def stats_match(match_id: str):
     return _stats_db.match_stats(match_id)
 
 
+@app.get("/api/stats/x01/match/{match_id}/summary")
+async def stats_x01_match_summary(match_id: str):
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    summary = _stats_db.x01_match_summary(match_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="unknown match")
+    return summary
+
+
 @app.delete("/api/stats/player/{name}")
 async def stats_delete_player(name: str):
     # Destructive and irreversible (unlike hiding) — worth INFO, not DEBUG.

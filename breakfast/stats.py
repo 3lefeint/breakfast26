@@ -53,6 +53,24 @@ CREATE TABLE IF NOT EXISTS turns (
     created_at TEXT,
     FOREIGN KEY (match_id) REFERENCES matches(match_id)
 );
+CREATE TABLE IF NOT EXISTS bot_turns (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id         TEXT    NOT NULL,
+    player           TEXT    NOT NULL,
+    leg              INTEGER NOT NULL DEFAULT 1,
+    turn             INTEGER NOT NULL,
+    remaining_before INTEGER NOT NULL,
+    score            INTEGER NOT NULL DEFAULT 0,
+    is_bust          INTEGER NOT NULL DEFAULT 0,
+    is_checkout      INTEGER NOT NULL DEFAULT 0,
+    darts_count      INTEGER NOT NULL DEFAULT 0,
+    dart1     TEXT, dart1_val INTEGER, dart1_rem INTEGER,
+    dart2     TEXT, dart2_val INTEGER, dart2_rem INTEGER,
+    dart3     TEXT, dart3_val INTEGER, dart3_rem INTEGER,
+    positions  TEXT,
+    created_at TEXT,
+    FOREIGN KEY (match_id) REFERENCES matches(match_id)
+);
 CREATE TABLE IF NOT EXISTS legs (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id TEXT NOT NULL,
@@ -1806,6 +1824,146 @@ class StatsDB:
             self._conn.commit()
         self._turn_stored(match_id)
 
+    def insert_bot_turn(self, match_id, player, leg, turn, remaining_before,
+                        score, is_bust, is_checkout, darts, positions=None):
+        """A turn of the computer opponent, for the match summary only. It lives in its own table so that no
+        statistic, leaderboard or achievement sees it. Arguments as in insert_turn()."""
+        d = [darts[i] if i < len(darts) else (None, None, None) for i in range(3)]
+        pos = [{"x": p["x"], "y": p["y"]} if p else None for p in (positions or [])]
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO bot_turns "
+                "(match_id, player, leg, turn, remaining_before, score,"
+                " is_bust, is_checkout, darts_count,"
+                " dart1, dart1_val, dart1_rem,"
+                " dart2, dart2_val, dart2_rem,"
+                " dart3, dart3_val, dart3_rem, positions, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (match_id, player, leg, turn, remaining_before, score,
+                 int(is_bust), int(is_checkout), len(darts),
+                 d[0][0], d[0][1], d[0][2],
+                 d[1][0], d[1][1], d[1][2],
+                 d[2][0], d[2][1], d[2][2], json.dumps(pos), _now_iso()),
+            )
+            self._conn.commit()
+
+    def delete_last_bot_turn(self, match_id: str) -> dict | None:
+        """Undo the most recent turn of the computer opponent. Returns {"leg"}, None when none is stored."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, leg FROM bot_turns WHERE match_id = ? ORDER BY id DESC LIMIT 1", (match_id,)).fetchone()
+            if not row:
+                return None
+            self._conn.execute("DELETE FROM bot_turns WHERE id = ?", (row["id"],))
+            self._conn.commit()
+        return {"leg": row["leg"]}
+
+    def bot_turn_counts(self, match_id: str, leg: int) -> dict:
+        """{bot: number of turns stored in this leg}, to number the next turn."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT player, MAX(turn) AS n FROM bot_turns WHERE match_id = ? AND leg = ? GROUP BY player",
+                (match_id, leg)).fetchall()
+        return {r["player"]: r["n"] for r in rows}
+
+    def x01_match_summary(self, match_id: str) -> dict | None:
+        """Everything the summary of a finished X01 match shows: per player the 3-dart average and the first-9
+        average (the first three turns of each leg, busts count as 0), the turns in the order played with
+        the fields hit and the remaining score after each, and the dart positions. None for an unknown match."""
+        with self._lock:
+            match = self._conn.execute(
+                "SELECT match_id, started_at, ended_at, game_mode, points_start, players, winner"
+                " FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+            if not match:
+                return None
+            cols = ("player, leg, turn, remaining_before, score, is_bust, is_checkout, darts_count,"
+                    " dart1, dart2, dart3, dart1_rem, dart2_rem, dart3_rem, created_at")
+            human = self._conn.execute(f"SELECT {cols}, 0 AS bot, NULL AS positions FROM turns WHERE match_id = ?",
+                                       (match_id,)).fetchall()
+            bots = self._conn.execute(f"SELECT {cols}, 1 AS bot, positions FROM bot_turns WHERE match_id = ?",
+                                      (match_id,)).fetchall()
+            pos = self._conn.execute(
+                "SELECT player, leg, turn, dart_number, x, y FROM dart_positions"
+                " WHERE match_id = ? AND game_mode = 'X01' AND corrected = 0", (match_id,)).fetchall()
+            legs = self._conn.execute(
+                "SELECT leg, winner FROM legs WHERE match_id = ? ORDER BY leg", (match_id,)).fetchall()
+            colors = {r["name"]: r["color"] for r in self._conn.execute("SELECT name, color FROM players")}
+        try:
+            order = list(json.loads(match["players"] or "[]"))
+        except (TypeError, ValueError):
+            order = []
+        rows = sorted(human + bots, key=lambda r: (r["leg"], r["created_at"] or ""))
+        turns = []
+        darts = {}
+        stats = {}
+        for r in rows:
+            name = r["player"]
+            fields = [r[k].upper() for k in ("dart1", "dart2", "dart3") if r[k]]
+            rem = r["remaining_before"] if r["is_bust"] else next(
+                (r[k] for k in ("dart3_rem", "dart2_rem", "dart1_rem") if r[k] is not None), r["remaining_before"])
+            turns.append({"player": name, "leg": r["leg"], "turn": r["turn"], "score": r["score"],
+                          "fields": fields, "is_bust": bool(r["is_bust"]), "is_checkout": bool(r["is_checkout"]),
+                          "remaining_before": r["remaining_before"], "remaining": rem})
+            st = stats.setdefault(name, {"score": 0, "darts": 0, "f9_score": 0, "f9_darts": 0, "turns": 0,
+                                         "s60": 0, "s100": 0, "s140": 0, "s180": 0, "co_attempts": 0, "co_hits": 0,
+                                         "highest_turn": 0, "highest_finish": 0, "busts": 0, "leg_darts": {}})
+            st["score"] += r["score"]
+            st["darts"] += r["darts_count"]
+            st["turns"] += 1
+            st["busts"] += int(bool(r["is_bust"]))
+            st["highest_turn"] = max(st["highest_turn"], r["score"])
+            band = ("s180" if r["score"] == 180 else "s140" if r["score"] >= 140 else "s100" if r["score"] >= 100
+                    else "s60" if r["score"] >= 60 else None)
+            if band:
+                st[band] += 1
+            st["leg_darts"][r["leg"]] = st["leg_darts"].get(r["leg"], 0) + r["darts_count"]
+            before = (r["remaining_before"], r["dart1_rem"], r["dart2_rem"])
+            attempts = sum(1 for n in range(r["darts_count"]) if _can_double_out(before[n]))
+            st["co_attempts"] += attempts
+            if r["is_checkout"]:
+                st["co_hits"] += 1
+                st["highest_finish"] = max(st["highest_finish"], r["score"])
+            if r["turn"] <= 3:
+                st["f9_score"] += r["score"]
+                st["f9_darts"] += r["darts_count"]
+            if r["bot"]:
+                for p in json.loads(r["positions"] or "[]"):
+                    if p:
+                        darts.setdefault(name, []).append({"x": p["x"], "y": p["y"]})
+        for r in pos:
+            darts.setdefault(r["player"], []).append({"x": r["x"], "y": r["y"]})
+        human_names = {r["player"] for r in human}
+        # A win of a computer opponent is stored as no winner: the checkout turn names it.
+        checkout_by = {r["leg"]: r["player"] for r in rows if r["is_checkout"]}
+        legs = [{"leg": l["leg"], "winner": l["winner"] or checkout_by.get(l["leg"])} for l in legs]
+        won = {}
+        for l in legs:
+            if l["winner"]:
+                won[l["winner"]] = won.get(l["winner"], 0) + 1
+        leaders = [n for n, c in won.items() if c == max(won.values())] if won else []
+        winner = match["winner"] or (leaders[0] if len(leaders) == 1 else None)
+        names = [n for n in order if n in stats] + [n for n in stats if n not in order]
+        players = [{
+            "name": n,
+            "bot": n not in human_names,
+            "turns": stats[n]["turns"],
+            "avg3": round(stats[n]["score"] / stats[n]["darts"] * 3, 1) if stats[n]["darts"] else 0.0,
+            "first9": round(stats[n]["f9_score"] / stats[n]["f9_darts"] * 3, 1) if stats[n]["f9_darts"] else None,
+            "color": colors.get(n),
+            "darts_thrown": stats[n]["darts"],
+            "s60": stats[n]["s60"], "s100": stats[n]["s100"], "s140": stats[n]["s140"], "s180": stats[n]["s180"],
+            "co_attempts": stats[n]["co_attempts"], "co_hits": stats[n]["co_hits"],
+            "co_pct": round(stats[n]["co_hits"] / stats[n]["co_attempts"] * 100, 1) if stats[n]["co_attempts"] else None,
+            "highest_turn": stats[n]["highest_turn"], "highest_finish": stats[n]["highest_finish"] or None,
+            "busts": stats[n]["busts"],
+            "best_leg_darts": min((stats[n]["leg_darts"][l["leg"]] for l in legs
+                                   if l["winner"] == n and l["leg"] in stats[n]["leg_darts"]), default=None),
+            "darts": darts.get(n, []),
+        } for n in names]
+        return {"match_id": match["match_id"], "started_at": match["started_at"], "ended_at": match["ended_at"],
+                "points_start": match["points_start"], "winner": winner, "players": players,
+                "legs": legs, "turns": turns}
+
     def _insert_positions(self, match_id, game_mode, player, leg, turn, fields_positions):
         """Caller holds the lock and commits. fields_positions: (field, position) per
         dart, in dart order; darts without a position are skipped."""
@@ -3189,6 +3347,11 @@ def _checkout_exprs(p: str = "") -> tuple:
     return attempts, hits
 
 
+def _can_double_out(remaining) -> bool:
+    """A score a double can finish: the same test as `_checkout_exprs`."""
+    return remaining is not None and (remaining == 50 or (0 < remaining <= 40 and remaining % 2 == 0))
+
+
 def _checkout_columns(p: str = "") -> str:
     """SELECT columns co_attempts and co_hits."""
     attempts, hits = _checkout_exprs(p)
@@ -3237,8 +3400,9 @@ class StatsTracker:
         self._turn_per_player: dict[str, int] = {}
         self._buf: dict | None = None
         self._session_stats: dict[str, dict] = {}
-        self._bots: set[str] = set()        # the players of the match the computer plays: they leave no turns
+        self._bots: set[str] = set()        # the players of the match the computer plays: their turns go to bot_turns, not to turns
         self._turn_log: list[dict] = []     # the turns flushed in this match, to take the right one out on an undo
+        self._bot_turn_per_player: dict[str, int] = {}
 
     @property
     def session_stats(self) -> dict:
@@ -3257,6 +3421,7 @@ class StatsTracker:
             tournament_id   = game.get("tournamentId")
             self._leg       = 1
             self._turn_per_player = {}
+            self._bot_turn_per_player = {}
             self._buf       = None
             self._session_stats = {}
             self._bots      = set(game.get("bots") or [])
@@ -3277,6 +3442,7 @@ class StatsTracker:
                 if leg:
                     self._leg = leg
                     self._turn_per_player = self._db.x01_turn_counts(self._match_id, leg)
+                    self._bot_turn_per_player = self._db.bot_turn_counts(self._match_id, leg)
 
         elif ev == "dart1-thrown" and self._is_x01():
             dv  = int(game.get("dartValue") or 0)
@@ -3332,6 +3498,7 @@ class StatsTracker:
                 self._db.record_leg_win(self._match_id, self._leg, self._human(winner), game.get("decidedBy"))
             self._leg += 1
             self._turn_per_player = {}
+            self._bot_turn_per_player = {}
 
         elif ev == "match-won":
             self._flush_turn()
@@ -3385,6 +3552,7 @@ class StatsTracker:
         if last is None or last["stored"]:
             self._undo_last_stored_turn()
         else:
+            self._db.delete_last_bot_turn(self._match_id)
             mine = self._session_stats.get(last["player"])
             if mine:        # a bot keeps live stats in memory only
                 mine["turns"] -= 1
@@ -3395,6 +3563,8 @@ class StatsTracker:
             if leg:
                 self._leg = leg
                 self._turn_per_player = self._db.x01_turn_counts(self._match_id, leg)
+        if last is not None and not last["stored"]:
+            self._bot_turn_per_player = self._db.bot_turn_counts(self._match_id, self._leg)
 
     def _undo_last_stored_turn(self):
         """Take the last stored turn out of the database and bring the counters back in line with it."""
@@ -3404,6 +3574,7 @@ class StatsTracker:
         if removed["was_checkout"]:
             self._leg = removed["leg"]
         self._turn_per_player = self._db.x01_turn_counts(self._match_id, self._leg)
+        self._bot_turn_per_player = self._db.bot_turn_counts(self._match_id, self._leg)
         bots = {p: v for p, v in self._session_stats.items() if p in self._bots}
         self._session_stats = {**self._db.x01_session_accumulators(self._match_id), **bots}
 
@@ -3429,7 +3600,14 @@ class StatsTracker:
         self._turn_log.append({"stored": not is_bot, "checkout": is_checkout, "player": player,
                                "darts": len(darts), "score": score})
 
-        if not is_bot:
+        if is_bot:
+            turn_n = self._bot_turn_per_player.get(player, 0) + 1
+            self._bot_turn_per_player[player] = turn_n
+            self._db.insert_bot_turn(
+                match_id=self._match_id, player=player, leg=buf["leg"], turn=turn_n,
+                remaining_before=buf["remaining_before"], score=score, is_bust=is_bust,
+                is_checkout=is_checkout, darts=darts, positions=buf.get("positions"))
+        else:
             turn_n = self._turn_per_player.get(player, 0) + 1
             self._turn_per_player[player] = turn_n
             self._db.insert_turn(

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- A summary of a finished X01 match: the legs won and the figures of all players side by side (averages, checkout %, 60+ to 180, busts) with the highest turn, highest checkout and fastest leg, every leg with the course of the remaining score and each turn next to the others, and a heatmap per player, for every player including the computer opponent; a Summary button on the TV result and in the match list of the X01 statistics (#62).
+
 ### Changed
 - The MQTT status dot in the top bar and the TV footer is hidden when MQTT is not configured or switched off.
 

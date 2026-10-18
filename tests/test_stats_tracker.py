@@ -281,3 +281,73 @@ class TestStatsTracker:
         tracker.process(ev_darts_pulled(player="bob"))
         tracker.process({"event": "match-won", "player": "alice", "game": {"winner": "alice"}})
         assert db.x01_win_counts() == {"alice": 1}
+
+
+# ── match summary and bot turns ───────────────────────────────────────────────
+
+def _bot_match(db):
+    """alice (human) and cpu (bot) play one leg of 501 down to a few turns; returns the tracker."""
+    tr = StatsTracker(db)
+    start = ev_match_started()
+    start["game"]["bots"] = ["cpu"]
+    tr.process(start)
+    for player, darts in (("alice", [("T20", 60, 441), ("T20", 60, 381), ("S20", 20, 361)]),
+                          ("cpu", [("S20", 20, 481), ("S5", 5, 476), ("S1", 1, 475)]),
+                          ("alice", [("T20", 60, 301), ("T20", 60, 241), ("T20", 60, 181)]),
+                          ("cpu", [("S20", 20, 455), ("S20", 20, 435), ("S20", 20, 415)])):
+        for n, (field, val, left) in enumerate(darts, start=1):
+            tr.process(ev_dart(n, val, left, field, player))
+        tr.process(ev_darts_pulled(player))
+    return tr
+
+
+def test_bot_turns_go_to_their_own_table(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    _bot_match(db)
+    assert {r[0] for r in db._conn.execute("SELECT DISTINCT player FROM turns")} == {"alice"}
+    assert [r["turn"] for r in db._conn.execute("SELECT turn FROM bot_turns WHERE player = 'cpu' ORDER BY id")] == [1, 2]
+    assert db._conn.execute("SELECT COUNT(*) FROM players WHERE name = 'cpu'").fetchone()[0] == 0
+
+
+def test_undo_of_a_bot_turn_removes_it_from_the_summary(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    tr = _bot_match(db)
+    tr.process({"event": "x01-resync", "player": "cpu", "game": {"undoStored": True}})
+    assert db._conn.execute("SELECT COUNT(*) FROM bot_turns").fetchone()[0] == 1
+    assert tr._bot_turn_per_player == {"cpu": 1}
+
+
+def test_summary_averages_first_nine_and_turns(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    _bot_match(db)
+    s = db.x01_match_summary("m1")
+    by_name = {p["name"]: p for p in s["players"]}
+    assert [p["name"] for p in s["players"]] == ["alice", "cpu"] and by_name["cpu"]["bot"] and not by_name["alice"]["bot"]
+    assert by_name["alice"]["avg3"] == 160.0 and by_name["alice"]["first9"] == 160.0
+    assert by_name["cpu"]["avg3"] == 43.0
+    assert [(t["player"], t["score"], t["fields"], t["remaining"]) for t in s["turns"]][:2] == [
+        ("alice", 140, ["T20", "T20", "S20"], 361), ("cpu", 26, ["S20", "S5", "S1"], 475)]
+    assert db.x01_match_summary("nope") is None
+
+
+def test_summary_comparison_figures(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    _bot_match(db)
+    by_name = {p["name"]: p for p in db.x01_match_summary("m1")["players"]}
+    alice = by_name["alice"]
+    assert (alice["darts_thrown"], alice["s100"], alice["s140"], alice["s180"], alice["highest_turn"]) == (6, 0, 1, 1, 180)
+    assert (alice["busts"], alice["co_hits"], alice["highest_finish"], alice["best_leg_darts"]) == (0, 0, None, None)
+    assert by_name["cpu"]["s60"] == 1 and by_name["cpu"]["darts_thrown"] == 6
+
+
+def test_summary_names_the_winner_of_a_bot_leg(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    tr = StatsTracker(db)
+    start = ev_match_started()
+    start["game"]["bots"] = ["cpu", "cpu2"]
+    tr.process(start)
+    for n, (val, left) in enumerate([(20, 81), (60, 21), (21, 0)], start=1):
+        tr.process(ev_dart(n, val, left, "S20", "cpu"))
+    tr.process(ev_match_won("cpu"))
+    s = db.x01_match_summary("m1")
+    assert s["winner"] == "cpu" and s["legs"] == [{"leg": 1, "winner": "cpu"}]

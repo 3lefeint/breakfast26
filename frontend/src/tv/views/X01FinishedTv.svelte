@@ -11,12 +11,20 @@
   import Crown from '../../lib/components/Crown.svelte';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
+  import X01Summary from '../../lib/components/X01Summary.svelte';
 
   let { x, sessionStats = {} } = $props();
 
   let rows = $derived([...(x.players || [])].sort((a, b) => b.legs_won - a.legs_won));
   let lastDarts = $derived(x.last_turn?.darts || []);
   let correctingIndex = $state(null);
+  let showSummary = $state(false);
+
+  // The summary is as high as the window, so the footer stays at the bottom and the summary scrolls inside.
+  $effect(() => {
+    document.body.classList.toggle('tv-fixed-height', showSummary);
+    return () => document.body.classList.remove('tv-fixed-height');
+  });
 
   async function undo() {
     if (!confirm(t('Undo the last turn and resume the game?'))) return;
@@ -29,6 +37,14 @@
   }
 </script>
 
+{#if showSummary}
+  <div class="summary-page">
+    <X01Summary matchId={x.match_id} />
+    <div class="actions">
+      <button class="btn ghost" onclick={() => (showSummary = false)}>{t('← Result')}</button>
+    </div>
+  </div>
+{:else}
 <ConfettiBurst />
 
 <div class="finished">
@@ -53,6 +69,7 @@
   {/if}
   <div class="actions">
     <button class="btn" onclick={() => rematch(x)}>{t('↻ Rematch')}</button>
+    <button class="btn ghost" onclick={() => (showSummary = true)}>{t('Summary')}</button>
     <button class="btn ghost" onclick={undo}>{t('↩ Undo last turn')}</button>
     <button class="btn ghost" onclick={done}>{t('Done')}</button>
   </div>
@@ -62,8 +79,11 @@
   <DartCorrectModal dartIndex={correctingIndex} onClose={() => (correctingIndex = null)}
                     endpoint="/api/x01/correct-last-dart" />
 {/if}
+{/if}
 
 <style>
+  :global(body.tv-fixed-height #app) { height: 100dvh; }
+  .summary-page { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding: 1.5rem 2rem; }
   .finished { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; padding: 1.5rem 2rem; }
   .heading { font-size: clamp(2rem, 5vw, 4.2rem); font-weight: 800; color: var(--green); text-align: center; }
   .meta { color: var(--muted); font-size: clamp(0.8rem, 1.3vw, 1.2rem); margin-top: -1rem; }
