@@ -17,10 +17,14 @@ import asyncio
 import logging
 import os
 import re
+import shutil
 import socket
+import sqlite3
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 import uvicorn
@@ -60,6 +64,8 @@ class _ColorFormatter(logging.Formatter):
 # relative volume paths the same way the host itself would.
 REPO_DIR = os.environ.get("REPO_DIR") or os.getcwd()
 BREAKFAST_HEALTH_URL = os.environ.get("BREAKFAST_HEALTH_URL", "http://breakfast:8080/api/health")
+STATS_DB = Path(os.environ.get("STATS_DB") or Path(REPO_DIR) / "data" / "stats.db")
+BACKUPS_KEPT = 3
 HEALTH_TIMEOUT_S = 90
 HEALTH_POLL_INTERVAL_S = 2
 
@@ -124,6 +130,38 @@ def _current_version() -> str:
     return r.json()["version"]
 
 
+def _backup_db(version: str) -> Path | None:
+    """Copy the statistics database before an update from *version* into `backups/` next to it, with SQLite's backup
+    API (consistent while the app runs), and keep the last few. The same as breakfast/db_backup.py: this service
+    does not carry the `breakfast` package. None when there is no database file."""
+    if not STATS_DB.is_file():
+        return None
+    directory = STATS_DB.parent / "backups"
+    directory.mkdir(exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    target = directory / f"{STATS_DB.stem}-v{version}-{stamp}.db"
+    src = sqlite3.connect(f"file:{STATS_DB}?mode=ro", uri=True)
+    try:
+        dst = sqlite3.connect(target)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    pattern = re.compile(rf"^{re.escape(STATS_DB.stem)}-v[\w.]+-\d{{8}}-\d{{6}}\.db$")
+    for old in sorted((p for p in directory.iterdir() if pattern.match(p.name)), key=lambda p: p.name, reverse=True)[BACKUPS_KEPT:]:
+        old.unlink(missing_ok=True)
+    return target
+
+
+def _restore_db(backup: Path) -> None:
+    """Put the copy back as the database; its write-ahead files belong to the state that is replaced."""
+    shutil.copyfile(backup, STATS_DB)
+    for suffix in ("-wal", "-shm"):
+        Path(f"{STATS_DB}{suffix}").unlink(missing_ok=True)
+
+
 def _wait_healthy(expected_version: str, timeout=HEALTH_TIMEOUT_S) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -185,6 +223,13 @@ def _run_apply() -> None:
             _set_phase("failed", f"already on the latest version ({previous_version})")
             return
 
+        _set_phase("backing_up")
+        try:
+            db_copy = _backup_db(previous_version)
+        except Exception as e:
+            _set_phase("failed", f"the backup of the statistics database failed, nothing was changed: {e}")
+            return
+
         _set_phase("fetching")
         _run("git", "fetch", "origin", "master")
         _run("git", "checkout", "master")
@@ -201,9 +246,13 @@ def _run_apply() -> None:
 
         _set_phase("rolling_back", f"{latest} did not come up healthy")
         _run("git", "reset", "--hard", last_good)
+        if db_copy:
+            _run("docker", "compose", "stop", "breakfast", timeout=120)
+            _restore_db(db_copy)
         _run("docker", "compose", "up", "-d", "--build", "breakfast", timeout=600)
         if _wait_healthy(previous_version):
-            _set_phase("rolled_back", f"update to {latest} failed its health check, reverted to {previous_version}")
+            _set_phase("rolled_back", f"update to {latest} failed its health check, reverted to {previous_version}"
+                                      + (" and the statistics database was restored" if db_copy else ""))
         else:
             _set_phase("failed", f"rollback to {previous_version} also failed its health check — needs a manual look")
     except subprocess.CalledProcessError as e:

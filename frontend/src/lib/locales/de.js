@@ -648,6 +648,7 @@ export default {
   "What's new in v{version}": 'Neu in v{version}',
   "What's new in this version": 'Neu in dieser Version',
   'No changes are listed for this version.': 'Für diese Version sind keine Änderungen aufgeführt.',
+  'Last backup of the statistics: v{version}, {time}': 'Letzte Sicherung der Statistik: v{version}, {time}',
   'Resume open game?': 'Offenes Spiel fortsetzen?',
   'Resume': 'Fortsetzen',
   'Discard': 'Verwerfen',

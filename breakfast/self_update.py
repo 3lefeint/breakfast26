@@ -6,10 +6,11 @@ release. An update downloads and verifies the zip, unpacks it next to the instal
 hands over to a small batch script, which only starts once the old program has ended (a running
 executable cannot replace its own files):
 
+    0. (before, in the running program) copy `stats.db` to `data/backups/`
     1. back up the installation (everything but `data/` and `update/`)
     2. copy the new version over it
     3. start it and wait for /api/health to report the new version
-    4. if that does not happen in time, restore the backup and start the old version again
+    4. if that does not happen in time, restore the backup (and the copy of `stats.db`) and start the old version again
 
 The script does the health check and the rollback itself, so a new version that cannot start at
 all is rolled back as well. It writes the outcome to `update/status.json`, which the web UI reads
@@ -30,7 +31,7 @@ from pathlib import Path
 
 import requests
 
-from breakfast import frozen
+from breakfast import db_backup, frozen
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ RELEASE_API = os.environ.get(
 EXE_NAME = "breakfast.exe"
 ASSET_RE = re.compile(r"^breakfast-windows-v(\d+\.\d+\.\d+)\.zip$")
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
-_ACTIVE_PHASES = ("starting", "checking", "fetching", "verifying", "installing")
+_ACTIVE_PHASES = ("starting", "checking", "fetching", "verifying", "backing_up", "installing")
 NO_BUILD = "no Windows build has been published yet"
 HEALTH_TRIES = 45          # 45 tries, 2 s apart: the new version has 90 s to answer
 
@@ -154,7 +155,7 @@ def unpack(zip_path: Path, staging: Path) -> Path:
 
 def build_script() -> str:
     """The batch script. Arguments: install dir, new files, backup dir, pid to wait for, port,
-    expected version."""
+    expected version, the copy of `stats.db` taken for this update and the database file (both optional)."""
     return r'''@echo off
 setlocal enableextensions
 set "INSTALL=%~1"
@@ -163,6 +164,8 @@ set "BACKUP=%~3"
 set "PARENT=%~4"
 set "PORT=%~5"
 set "VERSION=%~6"
+set "DBBACKUP=%~7"
+set "DBFILE=%~8"
 set "STATUS=%INSTALL%\update\status.json"
 set "LOG=%INSTALL%\update\update.log"
 set "KEEP=/XD data update"
@@ -217,6 +220,11 @@ echo [%date% %time%] the new version did not come up, restoring the backup >> "%
 taskkill /F /T /IM breakfast.exe >nul 2>&1
 ping -n 3 127.0.0.1 >nul
 robocopy "%BACKUP%" "%INSTALL%" /MIR %KEEP% %QUIET% >> "%LOG%" 2>&1
+if not defined DBBACKUP goto db_restored
+if not exist "%DBBACKUP%" goto db_restored
+copy /y "%DBBACKUP%" "%DBFILE%" >> "%LOG%" 2>&1
+del /q "%DBFILE%-wal" "%DBFILE%-shm" 2>nul
+:db_restored
 >"%STATUS%" echo {"phase":"rolled_back","detail":"v%VERSION% did not pass its health check, the previous version is back"}
 start "" "%INSTALL%\breakfast.exe"
 goto end
@@ -253,8 +261,9 @@ def _leave_for_handoff() -> None:
 
 # ── the update itself ────────────────────────────────────────────────────────
 
-def apply(current: str, *, spawn=_spawn_script, leave=_leave_for_handoff) -> dict:
-    """Start an update in the background. *spawn* and *leave* exist for the tests."""
+def apply(current: str, *, db_path=None, spawn=_spawn_script, leave=_leave_for_handoff) -> dict:
+    """Start an update in the background. *db_path*: the statistics database, copied before the update. *spawn* and
+    *leave* exist for the tests."""
     with _lock:
         current_status = status()
         # a phase that has not changed for a quarter of an hour is a leftover of a crash
@@ -262,11 +271,11 @@ def apply(current: str, *, spawn=_spawn_script, leave=_leave_for_handoff) -> dic
                 and time.time() - current_status.get("at", 0) < 900):
             return {"ok": False, "error": "an update is already in progress"}
         _set_phase("starting")
-    threading.Thread(target=_run, args=(current, spawn, leave), daemon=True).start()
+    threading.Thread(target=_run, args=(current, db_path, spawn, leave), daemon=True).start()
     return {"ok": True}
 
 
-def _run(current: str, spawn, leave) -> None:
+def _run(current: str, db_path, spawn, leave) -> None:
     try:
         _set_phase("checking")
         release = latest_release()
@@ -289,6 +298,12 @@ def _run(current: str, spawn, leave) -> None:
             _set_phase("failed", "the checksum of the download does not match")
             return
 
+        _set_phase("backing_up")
+        try:
+            db_copy = db_backup.backup(db_path, current) if db_path else None
+        except Exception as e:
+            raise RuntimeError(f"the backup of the statistics database failed, nothing was changed: {e}") from e
+
         _set_phase("installing")
         new_files = unpack(zip_path, frozen.update_dir() / "staging")
         shutil.rmtree(work, ignore_errors=True)
@@ -297,7 +312,8 @@ def _run(current: str, spawn, leave) -> None:
         script.write_text(build_script(), encoding="utf-8")
         frozen.write_json_atomic(frozen.handoff_file(), {"version": release["version"]})
         spawn(script, [frozen.install_dir(), new_files, frozen.update_dir() / "backup",
-                       os.getppid(), frozen.configured_port(), release["version"]])
+                       os.getppid(), frozen.configured_port(), release["version"],
+                       *((db_copy, db_path) if db_copy else ())])
         leave()
     except Exception as e:
         log.exception("update failed")

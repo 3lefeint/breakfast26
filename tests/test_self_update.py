@@ -73,7 +73,7 @@ class TestScript:
     def test_swaps_backs_up_and_rolls_back(self):
         script = self_update.build_script()
         for part in ("Get-Process -Id", ":parent_gone", "robocopy \"%INSTALL%\" \"%BACKUP%\"", "robocopy \"%NEWFILES%\" \"%INSTALL%\"",
-                     "/api/health", ":restore", "taskkill", "rolled_back", "data update"):
+                     "/api/health", ":restore", "taskkill", "rolled_back", "data update", "copy /y \"%DBBACKUP%\" \"%DBFILE%\""):
             assert part in script
 
 
@@ -168,6 +168,31 @@ class TestApply:
         assert args[2] == install / "update" / "backup" and args[4] == 8080 and args[5] == "1.0.1"
         assert json.loads(frozen.handoff_file().read_text()) == {"version": "1.0.1"}
         assert calls[1] == "left"
+
+    def test_the_database_is_copied_first_and_handed_over_for_a_rollback(self, release_server, tmp_path):
+        from breakfast.stats import StatsDB
+        db = tmp_path / "data" / "stats.db"
+        db.parent.mkdir()
+        StatsDB(str(db))
+        release_server["make"]("1.0.1")
+        calls = []
+        self_update.apply("1.0.0", db_path=str(db), spawn=lambda script, args: calls.append((script, args)),
+                          leave=lambda: calls.append("left"))
+        deadline = time.time() + 10
+        while "left" not in calls and time.time() < deadline:
+            time.sleep(0.05)
+        args = calls[0][1]
+        assert args[6].parent == db.parent / "backups" and args[6].name.startswith("stats-v1.0.0-") and args[6].is_file()
+        assert args[7] == str(db)
+
+    def test_an_update_whose_database_cannot_be_copied_changes_nothing(self, release_server, tmp_path, monkeypatch):
+        release_server["make"]("1.0.1")
+        monkeypatch.setattr("breakfast.db_backup.backup", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+        calls = []
+        self_update.apply("1.0.0", db_path=str(tmp_path / "stats.db"), spawn=lambda *a: calls.append(a), leave=lambda: calls.append("left"))
+        status = _wait_phase("failed")
+        assert "backup of the statistics database failed" in status["detail"] and "disk full" in status["detail"]
+        assert calls == []
 
     def test_a_wrong_checksum_stops_the_update(self, release_server):
         release_server["state"]["corrupt"] = True

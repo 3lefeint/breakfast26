@@ -28,6 +28,7 @@ from breakfast import joke as joke_mod
 from breakfast import known_players as kp
 from breakfast import tournament as tournament_mod
 from breakfast import online as online_mod
+from breakfast import db_backup
 from breakfast import telemetry as telemetry_mod
 from breakfast.update_check import UpdateChecker
 from breakfast import frozen, self_update
@@ -2457,12 +2458,18 @@ async def updates_check():
 async def updates_apply():
     log.info("Update apply requested via UI")
     if frozen.is_frozen():
-        return self_update.apply(__version__)
+        return self_update.apply(__version__, db_path=_stats_db.path if _stats_db else None)
     try:
         return await asyncio.to_thread(_updater_post, "/apply")
     except Exception as e:
         log.warning("Updater unreachable on /apply: %s", e)
         return {"error": f"updater unreachable: {e}"}
+
+
+@app.get("/api/updates/backup")
+async def updates_backup():
+    """The newest copy of the statistics database taken before an update, `{"backup": null}` when there is none."""
+    return {"backup": db_backup.latest(_stats_db.path) if _stats_db else None}
 
 
 @app.get("/api/updates/status")

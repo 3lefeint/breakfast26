@@ -88,6 +88,7 @@
     await loadVoicePackProfiles();
     await loadVoicepackPacks();
     await loadVoicepackGroups();
+    await loadDbBackup();
   });
 
   // The packs that have a plan file, and the one to start on (the active profile if it has a plan).
@@ -434,6 +435,15 @@
     const game = $gameState.running_game;
     if (!game) return '';
     return ' ' + (game.resumable ? t('The running game will be saved.') : t('The running game will be lost.'));
+  }
+
+  // The newest copy of the statistics database that an update took before it started.
+  let dbBackup = $state(null);
+
+  async function loadDbBackup() {
+    try {
+      dbBackup = (await fetch('/api/updates/backup').then((r) => r.json())).backup;
+    } catch (_) { /* nothing shown */ }
   }
 
   let whatsNew = $state(null);
@@ -897,6 +907,10 @@
       <button type="button" class="btn btn-save" style="width:100%; margin-top:0.5rem" onclick={applyUpdate}>{t('Update now')}</button>
     {:else if updateInfo}
       <p class="note">{t('Up to date — version {current} is the latest.', { current: updateInfo.current })}</p>
+    {/if}
+
+    {#if dbBackup}
+      <p class="note">{t('Last backup of the statistics: v{version}, {time}', { version: dbBackup.version, time: new Date(dbBackup.at).toLocaleString() })}</p>
     {/if}
 
     <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={showWhatsNew}>{t("What's new in this version")}</button>

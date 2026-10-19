@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- The statistics database is copied to a `backups` folder next to it before every update (Docker and Windows, the last three are kept), a rollback puts the copy back, and Settings → Updates shows when the latest copy was made (#71).
 - After an update the changes of the installed version are shown once in a dialog, taken from the changelog, and Settings → Updates reopens them (#66).
 - A newer release is announced by itself: the app looks for one once after the start and then every 24 hours, and shows a dot on the Settings button, a chip at the top of Settings and a one-time notice that is not shown in the TV view or while a game is running and not again for a dismissed version. `[updates] check = false` or Settings → Update check turns it off (#61).
 - A match of X01, a tournament, Elimination or Killer that is in play is saved after every change. After a restart or an update the Home app offers to resume or discard it, and the match goes on at the start of the turn that was in play. The Restart and Install update buttons warn when a game is running (#65).

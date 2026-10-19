@@ -50,3 +50,22 @@ def test_updates_status_reports_unreachable_updater(monkeypatch):
     monkeypatch.setattr(server, "_updater_get", boom)
     res = asyncio.run(server.updates_status())
     assert "error" in res
+
+
+def test_the_latest_backup_is_reported(tmp_path):
+    from starlette.testclient import TestClient
+
+    from breakfast import db_backup
+    from breakfast.stats import StatsDB, StatsTracker
+    from breakfast.web import server
+
+    path = tmp_path / "stats.db"
+    db = StatsDB(str(path))
+    server.wire(None, None, stats_tracker=StatsTracker(db))
+    try:
+        client = TestClient(server.app)
+        assert client.get("/api/updates/backup").json() == {"backup": None}
+        db_backup.backup(path, "1.5.0")
+        assert client.get("/api/updates/backup").json()["backup"]["version"] == "1.5.0"
+    finally:
+        server.wire(None, None)

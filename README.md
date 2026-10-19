@@ -290,6 +290,9 @@ Breakfast looks for a newer release once after the start and then every 24 hours
 is running, not again for a version you dismissed). Installing stays manual. `[updates] check = false` (or Settings →
 Update check) switches the automatic check off.
 
+Before every update the statistics database is copied to a `backups` folder next to it (the last three are kept), and a
+rollback puts that copy back; Settings → Updates shows when the latest one was made.
+
 After an update the changes of the new version are shown once in a dialog (once per browser, not in the TV view, not
 while a game is running); Settings → Updates reopens them.
 

@@ -84,3 +84,93 @@ class TestSelfRestart:
 
         monkeypatch.setattr(updater_app, "_run", boom)
         updater_app._self_restart()  # must not raise
+
+
+class TestDatabaseBackup:
+    def test_the_copy_is_taken_and_restored(self, tmp_path, monkeypatch):
+        import sqlite3
+        from updater import app as updater_app
+
+        db = tmp_path / "stats.db"
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE t (v)")
+        con.execute("INSERT INTO t VALUES (1)")
+        con.commit()
+        con.close()
+        monkeypatch.setattr(updater_app, "STATS_DB", db)
+        copy = updater_app._backup_db("1.5.0")
+        assert copy.parent == tmp_path / "backups" and copy.name.startswith("stats-v1.5.0-")
+        con = sqlite3.connect(db)
+        con.execute("DELETE FROM t")
+        con.commit()
+        con.close()
+        (tmp_path / "stats.db-wal").write_text("stale")
+        updater_app._restore_db(copy)
+        assert sqlite3.connect(db).execute("SELECT v FROM t").fetchall() == [(1,)]
+        assert not (tmp_path / "stats.db-wal").exists()
+
+    def test_only_the_last_three_are_kept_and_no_database_is_no_copy(self, tmp_path, monkeypatch):
+        import sqlite3
+        import time
+        from updater import app as updater_app
+
+        db = tmp_path / "stats.db"
+        monkeypatch.setattr(updater_app, "STATS_DB", db)
+        assert updater_app._backup_db("1.5.0") is None
+        sqlite3.connect(db).execute("CREATE TABLE t (v)").connection.close()
+        for _ in range(5):
+            updater_app._backup_db("1.5.0")
+            time.sleep(1.05)
+        assert len(list((tmp_path / "backups").iterdir())) == 3
+
+
+class TestApplyWithDatabase:
+    def run_apply(self, tmp_path, monkeypatch, healthy):
+        import sqlite3
+        import subprocess
+        from updater import app as updater_app
+
+        db = tmp_path / "stats.db"
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE t (v)")
+        con.execute("INSERT INTO t VALUES (1)")
+        con.commit()
+        con.close()
+        steps, migrated = [], []
+
+        def fake_run(*args, **kwargs):
+            steps.append(" ".join(args))
+            if args[:2] == ("git", "rev-parse"):
+                return subprocess.CompletedProcess(args, 0, stdout="abc\n", stderr="")
+            if args[:3] == ("docker", "compose", "up") and not migrated:
+                migrated.append(True)      # the new version migrates the database
+                con = sqlite3.connect(db)
+                con.execute("INSERT INTO t VALUES (2)")
+                con.commit()
+                con.close()
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        answers = iter(healthy)
+        monkeypatch.setattr(updater_app, "STATS_DB", db)
+        monkeypatch.setattr(updater_app, "_run", fake_run)
+        monkeypatch.setattr(updater_app, "_current_version", lambda: "1.5.0")
+        monkeypatch.setattr(updater_app, "_latest_tag", lambda: "v1.6.0")
+        monkeypatch.setattr(updater_app, "_wait_healthy", lambda *a, **k: next(answers))
+        monkeypatch.setattr(updater_app, "_self_restart", lambda: None)
+        updater_app._run_apply()
+        return updater_app, db, steps
+
+    def test_a_rollback_puts_the_database_back_before_the_old_version_starts(self, tmp_path, monkeypatch):
+        import sqlite3
+        updater_app, db, steps = self.run_apply(tmp_path, monkeypatch, [False, True])
+        assert updater_app._state["phase"] == "rolled_back" and "statistics database was restored" in updater_app._state["detail"]
+        assert steps.index("docker compose stop breakfast") < len(steps) - 1
+        assert steps[-1].startswith("docker compose up")
+        assert sqlite3.connect(db).execute("SELECT v FROM t").fetchall() == [(1,)]
+
+    def test_a_good_update_keeps_the_new_database_and_the_copy(self, tmp_path, monkeypatch):
+        import sqlite3
+        updater_app, db, steps = self.run_apply(tmp_path, monkeypatch, [True])
+        assert updater_app._state["phase"] == "done"
+        assert sqlite3.connect(db).execute("SELECT v FROM t").fetchall() == [(1,), (2,)]
+        assert len(list((tmp_path / "backups").iterdir())) == 1
