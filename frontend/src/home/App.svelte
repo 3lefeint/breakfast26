@@ -10,6 +10,8 @@
   import TopBar from './shell/TopBar.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import UpdateToast from '../lib/components/UpdateToast.svelte';
+  import WhatsNew from '../lib/components/WhatsNew.svelte';
+  import { changesOf } from '../lib/changelog.js';
   import { choiceDialog, alertDialog, answerConfirm } from '../lib/confirm.js';
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
   import Home from './views/Home.svelte';
@@ -102,6 +104,41 @@
     if (view) location.hash = '#settings';
   }
 
+  // After an update the changes of the installed version are shown once per browser: not in the TV view, not while a
+  // match is offered for resuming or a game is running. A browser that has seen no version yet only remembers it.
+  const SEEN_KEY = 'breakfast.seen-version';
+  let whatsNew = $state(null);
+  let whatsNewDone = false;
+
+  function seenVersion() {
+    try { return localStorage.getItem(SEEN_KEY); } catch (_) { return null; }
+  }
+
+  function rememberVersion(version) {
+    try { localStorage.setItem(SEEN_KEY, version); } catch (_) { /* shown again next time */ }
+  }
+
+  async function checkWhatsNew(version) {
+    const seen = seenVersion();
+    if (seen === version) return;
+    const changes = seen ? await changesOf(version) : null;
+    if (changes?.sections.length) whatsNew = changes;
+    else rememberVersion(version);
+  }
+
+  $effect(() => {
+    const version = $health.version;
+    const state = $gameState;
+    if (!version || whatsNewDone || $route === 'tv' || state.resume === undefined || state.resume.length || state.running_game) return;
+    whatsNewDone = true;
+    checkWhatsNew(version);
+  });
+
+  function closeWhatsNew() {
+    rememberVersion(whatsNew.version);
+    whatsNew = null;
+  }
+
   // Android-style hidden unlock: tap the version number DEV_TAP_THRESHOLD
   // times in a row (within DEV_TAP_WINDOW_MS of each other) to reveal
   // Settings' Dev tab for this run, without touching config.toml — POST
@@ -190,6 +227,10 @@
         </div>
     </main>
   </div>
+
+  {#if whatsNew}
+    <WhatsNew changes={whatsNew} onclose={closeWhatsNew} />
+  {/if}
 
   {#if toastVersion}
     <UpdateToast version={toastVersion} onview={() => closeToast(true)} onclose={() => closeToast(false)} />

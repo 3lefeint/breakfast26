@@ -290,6 +290,9 @@ Breakfast looks for a newer release once after the start and then every 24 hours
 is running, not again for a version you dismissed). Installing stays manual. `[updates] check = false` (or Settings →
 Update check) switches the automatic check off.
 
+After an update the changes of the new version are shown once in a dialog (once per browser, not in the TV view, not
+while a game is running); Settings → Updates reopens them.
+
 A match of X01, a tournament, Elimination or Killer that is in play is saved after every change. After a restart or an
 update the Home app offers to **Resume** it or to **Discard** it; nothing resumes by itself, and the match goes on at
 the start of the turn that was in play. The Restart and Install buttons warn when a game is running.

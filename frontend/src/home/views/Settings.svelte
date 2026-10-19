@@ -15,6 +15,9 @@
   import { gameState } from '../../lib/stores/gameState.js';
   import { api } from '../../lib/api.js';
   import PageHeader from '../../lib/components/PageHeader.svelte';
+  import WhatsNew from '../../lib/components/WhatsNew.svelte';
+  import { health } from '../../lib/stores/health.js';
+  import { changesOf } from '../../lib/changelog.js';
   import AchievementSounds from './AchievementSounds.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
 
@@ -431,6 +434,14 @@
     const game = $gameState.running_game;
     if (!game) return '';
     return ' ' + (game.resumable ? t('The running game will be saved.') : t('The running game will be lost.'));
+  }
+
+  let whatsNew = $state(null);
+
+  async function showWhatsNew() {
+    const changes = await changesOf($health.version);
+    if (changes?.sections.length) whatsNew = changes;
+    else alertDialog(t('No changes are listed for this version.'));
   }
 
   async function showUpdates() {
@@ -888,6 +899,8 @@
       <p class="note">{t('Up to date — version {current} is the latest.', { current: updateInfo.current })}</p>
     {/if}
 
+    <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={showWhatsNew}>{t("What's new in this version")}</button>
+
     {#if updateOutcome === 'rolled_back'}
       <p class="note update-error">{t('Update failed and was automatically rolled back')}{updateOutcomeDetail ? `: ${updateOutcomeDetail}` : '.'} {t('Contact whoever maintains this app if it keeps happening.')}</p>
     {:else if updateOutcome === 'timeout'}
@@ -895,6 +908,10 @@
     {/if}
   {/if}
 </div>
+{/if}
+
+{#if whatsNew}
+  <WhatsNew changes={whatsNew} onclose={() => (whatsNew = null)} />
 {/if}
 
 <style>
