@@ -77,6 +77,8 @@ port = 8080
 # Installing stays manual (Settings → Updates). false: never contact the internet for it.
 # [updates]
 # check = true
+# auto_install = false   # true: install a newer patch or minor release by itself after the start and at 04:00 (time zone of
+#                        # [stats], else the server's), never while a game is running and never a new major version
 
 # ── Statistics (SQLite) ───────────────────────────────────────────────────────
 # Per-turn data is stored here; lifetime and session stats are derived from it.

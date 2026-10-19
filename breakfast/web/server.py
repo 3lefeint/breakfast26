@@ -1751,7 +1751,8 @@ async def get_config():
             "enabled": raw.get("telemetry", {}).get("enabled") is True,
             "url": raw.get("telemetry", {}).get("url"),
         },
-        "updates": {"check": raw.get("updates", {}).get("check") is not False},
+        "updates": {"check": raw.get("updates", {}).get("check") is not False,
+                    "auto_install": raw.get("updates", {}).get("auto_install") is True},
         "runtime_fields": list(cfg_mod.RUNTIME_FIELDS),
         # Read-only — not part of the editable Settings form. True when
         # either `[dev] enabled = true` in config.toml, or the version-tap
@@ -2444,7 +2445,8 @@ def update_check() -> dict:
 def start_update_check():
     """Look for a newer release by itself, see update_check.py."""
     global _update_checker
-    _update_checker = UpdateChecker(update_check, _config_path, on_change=push)
+    _update_checker = UpdateChecker(update_check, _config_path, on_change=push, install=install_update,
+                                    busy=lambda: _running_game() is not None)
     _update_checker.start()
 
 
@@ -2454,13 +2456,18 @@ async def updates_check():
     return await asyncio.to_thread(update_check)
 
 
+def install_update() -> dict:
+    """Start the update: the standalone build does it itself, else the updater service."""
+    if frozen.is_frozen():
+        return self_update.apply(__version__, db_path=_stats_db.path if _stats_db else None)
+    return _updater_post("/apply")
+
+
 @app.post("/api/updates/apply")
 async def updates_apply():
     log.info("Update apply requested via UI")
-    if frozen.is_frozen():
-        return self_update.apply(__version__, db_path=_stats_db.path if _stats_db else None)
     try:
-        return await asyncio.to_thread(_updater_post, "/apply")
+        return await asyncio.to_thread(install_update)
     except Exception as e:
         log.warning("Updater unreachable on /apply: %s", e)
         return {"error": f"updater unreachable: {e}"}

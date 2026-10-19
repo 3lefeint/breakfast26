@@ -290,6 +290,11 @@ Breakfast looks for a newer release once after the start and then every 24 hours
 is running, not again for a version you dismissed). Installing stays manual. `[updates] check = false` (or Settings →
 Update check) switches the automatic check off.
 
+With `[updates] auto_install = true` (or Settings → Update check → Install updates automatically, off by default) a newer
+patch or minor release is installed by itself after the start and at 04:00 every day (in the `[stats]` time zone, else the
+server's). It is skipped while a game is running, a new major version is only announced, and a version that was tried
+before is not tried again automatically.
+
 Before every update the statistics database is copied to a `backups` folder next to it (the last three are kept), and a
 rollback puts that copy back; Settings → Updates shows when the latest one was made.
 

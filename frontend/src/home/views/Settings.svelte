@@ -39,7 +39,7 @@
     record: { file: '' },
     online: { relay_url: '', site_name: '' },
     telemetry: { enabled: false, url: '' },
-    updates: { check: true },
+    updates: { check: true, auto_install: false },
     // Read-only — not part of the editable form/save flow, set directly in
     // config.toml. Only gates whether the Dev tab below is shown at all.
     dev: { enabled: false },
@@ -375,6 +375,7 @@
     (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
     (updates.telemetry ??= {}).enabled = cfg.telemetry.enabled;
     (updates.updates ??= {}).check = cfg.updates.check;
+    (updates.updates ??= {}).auto_install = cfg.updates.auto_install;
     (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
     (updates.web ??= {}).elimination_beat_hint = cfg.web.elimination_beat_hint;
     (updates.web ??= {}).aurora_animation = cfg.web.aurora_animation;
@@ -701,7 +702,12 @@
         <label for="sUpdateCheck">{t('Look for a new release every day')}</label>
         <input type="checkbox" id="sUpdateCheck" bind:checked={cfg.updates.check}>
       </div>
-      <p class="note">{t('Shows a notice when a newer release is available. Installing stays manual. Switch it off if this installation should not contact the internet by itself.')}</p>
+      <p class="note">{t('Shows a notice when a newer release is available. Switch it off if this installation should not contact the internet by itself.')}</p>
+      <div class="settings-row">
+        <label for="sAutoInstall">{t('Install updates automatically')}</label>
+        <input type="checkbox" id="sAutoInstall" bind:checked={cfg.updates.auto_install} disabled={!cfg.updates.check}>
+      </div>
+      <p class="note">{t('Installs a newer patch or minor release after the start and at 04:00, never while a game is running. A new major version is only announced.')}</p>
     </div>
 
     <div class="settings-section">

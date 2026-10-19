@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Updates can be installed automatically (`[updates] auto_install`, Settings → Update check, off by default): a newer patch or minor release is installed after the start and at 04:00 every day, not while a game is running, a new major version is only announced, and a version that was tried before is not tried again (#72).
 - The statistics database is copied to a `backups` folder next to it before every update (Docker and Windows, the last three are kept), a rollback puts the copy back, and Settings → Updates shows when the latest copy was made (#71).
 - After an update the changes of the installed version are shown once in a dialog, taken from the changelog, and Settings → Updates reopens them (#66).
 - A newer release is announced by itself: the app looks for one once after the start and then every 24 hours, and shows a dot on the Settings button, a chip at the top of Settings and a one-time notice that is not shown in the TV view or while a game is running and not again for a dismissed version. `[updates] check = false` or Settings → Update check turns it off (#61).
