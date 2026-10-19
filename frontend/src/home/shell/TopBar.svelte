@@ -9,7 +9,7 @@
   import Icon from '../../lib/components/Icon.svelte';
   import logo from '../../lib/assets/logo.png';
 
-  let { boardConnected = false, mqttOk = null, autodartsOk = false, wsConnected = true, connLabel = '', tv = false, title = '', glowColor = null, right: rightSlot, titleExtra } = $props();
+  let { boardConnected = false, mqttOk = null, autodartsOk = false, wsConnected = true, connLabel = '', tv = false, title = '', glowColor = null, updateAvailable = false, right: rightSlot, titleExtra } = $props();
 </script>
 
 <header class="topbar" class:glow-green={glowColor === 'green'} class:glow-yellow={glowColor === 'yellow'} class:glow-red={glowColor === 'red'}>
@@ -33,7 +33,10 @@
     {#if !tv}
       <a class="btn tv" href="#tv" onclick={openTv}><Icon name="tv" size={20} /><span>{t('Open TV')}</span></a>
     {/if}
-    <a class="btn icon" href="#settings" aria-label={t('Settings')} title={t('Settings')}><Icon name="settings" size={20} /></a>
+    <a class="btn icon" href="#settings" aria-label={t('Settings')} title={t('Settings')}>
+      <Icon name="settings" size={20} />
+      {#if updateAvailable}<span class="update-dot" title={t('Update available')}></span>{/if}
+    </a>
   </div>
 </header>
 
@@ -63,7 +66,8 @@
     background: var(--glass); font-size: 0.95rem; transition: border-color 0.15s, background 0.15s;
   }
   .btn:hover { border-color: var(--accent); background: var(--glass-strong); }
-  .btn.icon { width: 2.75rem; padding: 0; justify-content: center; }
+  .btn.icon { position: relative; width: 2.75rem; padding: 0; justify-content: center; }
+  .update-dot { position: absolute; top: 0.45rem; right: 0.45rem; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 
   @media (max-width: 800px) {
     .topbar { padding: 0 1rem; }

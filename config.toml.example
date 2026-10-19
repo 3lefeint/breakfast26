@@ -72,6 +72,12 @@ port = 8080
 # enabled = false
 # url = "https://breakfast-relay.example.workers.dev"   # default: the [online] relay_url
 
+# ── Updates ──────────────────────────────────────────────────────────────────
+# Looks for a newer release once after the start and then every 24 hours, and shows a notice in the app.
+# Installing stays manual (Settings → Updates). false: never contact the internet for it.
+# [updates]
+# check = true
+
 # ── Statistics (SQLite) ───────────────────────────────────────────────────────
 # Per-turn data is stored here; lifetime and session stats are derived from it.
 # Use "none" to disable stats collection entirely.

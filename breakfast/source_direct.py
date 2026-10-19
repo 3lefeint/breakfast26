@@ -305,6 +305,7 @@ def run_direct(email, password, board_id, record_file=None,
              x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl, wu_ctrl=wu_ctrl, resume_offers=resume_offers)
     if web_port:
         web.start(web_port)
+        web.start_update_check()
 
     if client:
         log.info("Connecting to Autodarts cloud (board=%s)", board_id)

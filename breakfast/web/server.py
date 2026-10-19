@@ -29,6 +29,7 @@ from breakfast import known_players as kp
 from breakfast import tournament as tournament_mod
 from breakfast import online as online_mod
 from breakfast import telemetry as telemetry_mod
+from breakfast.update_check import UpdateChecker
 from breakfast import frozen, self_update
 from breakfast import voicepack
 from breakfast import voicepack_editor as ve
@@ -56,6 +57,7 @@ _killer_ctrl = None
 _x01_ctrl = None
 _tournament_ctrl = None
 _resume_offers = None
+_update_checker = None
 _ft_ctrl = None
 _co_ctrl = None
 _bb_ctrl = None
@@ -193,6 +195,7 @@ def _build_payload() -> dict:
         "voicepack_generation": _voicepack_status,
         "dev_demo": _dev_demo.status() if _dev_demo else None,
         "online": _online.status() if _online and _online.active else None,
+        "update": _update_checker.status() if _update_checker else None,
         "resume": _resume_offers.offers() if _resume_offers else [],
         "running_game": _running_game(),
     }
@@ -1747,6 +1750,7 @@ async def get_config():
             "enabled": raw.get("telemetry", {}).get("enabled") is True,
             "url": raw.get("telemetry", {}).get("url"),
         },
+        "updates": {"check": raw.get("updates", {}).get("check") is not False},
         "runtime_fields": list(cfg_mod.RUNTIME_FIELDS),
         # Read-only — not part of the editable Settings form. True when
         # either `[dev] enabled = true` in config.toml, or the version-tap
@@ -2425,16 +2429,28 @@ def _updater_post(path: str) -> dict:
     return r.json()
 
 
-@app.get("/api/updates/check")
-async def updates_check():
-    log.debug("Update check requested")
+def update_check() -> dict:
+    """What the newest release is: {current, latest, update_available}, or {error}."""
     if frozen.is_frozen():
-        return await asyncio.to_thread(self_update.check, __version__)
+        return self_update.check(__version__)
     try:
-        return await asyncio.to_thread(_updater_get, "/check")
+        return _updater_get("/check")
     except Exception as e:
         log.warning("Updater unreachable on /check: %s", e)
         return {"error": f"updater unreachable: {e}"}
+
+
+def start_update_check():
+    """Look for a newer release by itself, see update_check.py."""
+    global _update_checker
+    _update_checker = UpdateChecker(update_check, _config_path, on_change=push)
+    _update_checker.start()
+
+
+@app.get("/api/updates/check")
+async def updates_check():
+    log.debug("Update check requested")
+    return await asyncio.to_thread(update_check)
 
 
 @app.post("/api/updates/apply")

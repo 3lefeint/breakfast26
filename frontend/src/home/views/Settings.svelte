@@ -9,7 +9,7 @@
   // (saves the whole config regardless of which tab is showing); Restart
   // lives outside the tabs entirely since it's a whole-app action, not a
   // setting category.
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { applyAuroraColors, applyLook, auroraAnimated, loadAppearance } from '../../lib/stores/appearance.js';
   import ColorField from '../../lib/components/ColorField.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
@@ -36,6 +36,7 @@
     record: { file: '' },
     online: { relay_url: '', site_name: '' },
     telemetry: { enabled: false, url: '' },
+    updates: { check: true },
     // Read-only — not part of the editable form/save flow, set directly in
     // config.toml. Only gates whether the Dev tab below is shown at all.
     dev: { enabled: false },
@@ -369,6 +370,7 @@
     (updates.logging ??= {}).events = cfg.logging.events;
     (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
     (updates.telemetry ??= {}).enabled = cfg.telemetry.enabled;
+    (updates.updates ??= {}).check = cfg.updates.check;
     (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
     (updates.web ??= {}).elimination_beat_hint = cfg.web.elimination_beat_hint;
     (updates.web ??= {}).aurora_animation = cfg.web.aurora_animation;
@@ -429,6 +431,12 @@
     const game = $gameState.running_game;
     if (!game) return '';
     return ' ' + (game.resumable ? t('The running game will be saved.') : t('The running game will be lost.'));
+  }
+
+  async function showUpdates() {
+    activeTab = 'general';
+    await tick();
+    document.getElementById('updates-panel')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   async function restartApp() {
@@ -532,6 +540,10 @@
   <div class="settings-banner" class:ok={banner.kind === 'ok'} class:warn={banner.kind === 'warn'} class:error={banner.kind === 'error'}>
     {banner.text}
   </div>
+{/if}
+
+{#if $gameState.update?.available}
+  <button type="button" class="update-chip" onclick={showUpdates}>{t('v{version} available', { version: $gameState.update.latest })}</button>
 {/if}
 
 <div class="tab-row">
@@ -660,6 +672,15 @@
       <div class="settings-row"><label for="sOnlineRelay">{t('Relay address')}</label><input type="text" id="sOnlineRelay" placeholder={t('wss://breakfast-relay.example.workers.dev')} bind:value={cfg.online.relay_url}></div>
       <div class="settings-row"><label for="sOnlineSite">{t('This site\'s name')}</label><input type="text" id="sOnlineSite" placeholder={t('e.g. Home')} maxlength="24" bind:value={cfg.online.site_name}></div>
       <p class="note">{t('Play one Elimination match with Breakfast installations elsewhere, through a relay. Without an address, online play stays off.')}</p>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Update check')} <span class="badge runtime">{t('applies instantly')}</span></div>
+      <div class="settings-row">
+        <label for="sUpdateCheck">{t('Look for a new release every day')}</label>
+        <input type="checkbox" id="sUpdateCheck" bind:checked={cfg.updates.check}>
+      </div>
+      <p class="note">{t('Shows a notice when a newer release is available. Installing stays manual. Switch it off if this installation should not contact the internet by itself.')}</p>
     </div>
 
     <div class="settings-section">
@@ -849,7 +870,7 @@
   <button type="button" class="btn btn-stop" style="width:100%" onclick={restartApp}>{t('Restart Breakfast')}</button>
 </div>
 
-<div class="settings-section maintenance">
+<div class="settings-section maintenance" id="updates-panel">
   <div class="settings-section-title">{t('Updates')}</div>
   {#if updateApplying}
     <p class="note">{updatePhaseText}</p>
@@ -923,6 +944,11 @@
   .note { font-size: 0.75rem; color: var(--muted); margin: 0 0 0.5rem; }
   .report-preview { font-size: 0.7rem; max-height: 12rem; overflow: auto; margin: 0 0 0.5rem; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0, 0, 0, 0.25); white-space: pre-wrap; word-break: break-all; }
   .note.update-error { color: var(--red); }
+  .update-chip {
+    margin-bottom: 1rem; padding: 0.45rem 1rem; border-radius: 999px; border: 1px solid var(--accent); background: var(--glass);
+    color: var(--accent); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  }
+  .update-chip:hover { background: var(--accent); color: #0c0c0f; }
   .settings-banner {
     padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid;
     font-size: 0.875rem; margin-bottom: 1rem;

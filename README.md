@@ -104,7 +104,7 @@ board_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 port = 8080
 ```
 
-The other sections (`[audio]`, `[mqtt]`, `[stats]`, `[online]`, `[telemetry]`, `[logging]` and more) are described in
+The other sections (`[audio]`, `[mqtt]`, `[stats]`, `[online]`, `[telemetry]`, `[updates]`, `[logging]` and more) are described in
 `config.toml.example`. MQTT and statistics can be switched off (`[mqtt] enabled = false`, `[stats] db = "none"`).
 
 ## Using Breakfast
@@ -284,6 +284,11 @@ works without it. All topics are published under a base topic (default `autodart
 - **Docker**: the `updater` service in `docker-compose.yml` provides the same function under Settings →
   **Updates**: it pulls the newest release tag, rebuilds, restarts and rolls back if the new build is not
   healthy. Remove the service if you do not want self-update.
+
+Breakfast looks for a newer release once after the start and then every 24 hours: a dot on the Settings button, a
+"vX.Y.Z available" chip at the top of Settings and a one-time notice in the corner (not in the TV view, not while a game
+is running, not again for a version you dismissed). Installing stays manual. `[updates] check = false` (or Settings →
+Update check) switches the automatic check off.
 
 A match of X01, a tournament, Elimination or Killer that is in play is saved after every change. After a restart or an
 update the Home app offers to **Resume** it or to **Discard** it; nothing resumes by itself, and the match goes on at

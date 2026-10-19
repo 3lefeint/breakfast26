@@ -9,6 +9,7 @@
   import Sidebar from './shell/Sidebar.svelte';
   import TopBar from './shell/TopBar.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
+  import UpdateToast from '../lib/components/UpdateToast.svelte';
   import { choiceDialog, alertDialog, answerConfirm } from '../lib/confirm.js';
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
   import Home from './views/Home.svelte';
@@ -78,6 +79,29 @@
     }
   });
 
+  // A newer release is announced once with a notice in the corner: not in the TV view, not while a game is running, and
+  // not again for a version that was dismissed (remembered in this browser).
+  const DISMISSED_KEY = 'breakfast.update-dismissed';
+  let toastVersion = $state(null);
+  let toastDone = false;
+
+  function dismissedVersion() {
+    try { return localStorage.getItem(DISMISSED_KEY); } catch (_) { return null; }
+  }
+
+  $effect(() => {
+    const update = $gameState.update;
+    if ($route === 'tv' || toastDone || !update?.available || $gameState.running_game) return;
+    toastDone = true;
+    if (dismissedVersion() !== update.latest) toastVersion = update.latest;
+  });
+
+  function closeToast(view) {
+    try { localStorage.setItem(DISMISSED_KEY, toastVersion); } catch (_) { /* not remembered */ }
+    toastVersion = null;
+    if (view) location.hash = '#settings';
+  }
+
   // Android-style hidden unlock: tap the version number DEV_TAP_THRESHOLD
   // times in a row (within DEV_TAP_WINDOW_MS of each other) to reveal
   // Settings' Dev tab for this run, without touching config.toml — POST
@@ -120,7 +144,8 @@
   {/if}
 
   <div class="shell">
-    <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel} />
+    <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel}
+            updateAvailable={!!$gameState.update?.available} />
     <Sidebar route={$route} {boardAddress} version={$health.version} {onVersionTap} />
 
     <main>
@@ -165,6 +190,10 @@
         </div>
     </main>
   </div>
+
+  {#if toastVersion}
+    <UpdateToast version={toastVersion} onview={() => closeToast(true)} onclose={() => closeToast(false)} />
+  {/if}
 {/if}
 
 <style>

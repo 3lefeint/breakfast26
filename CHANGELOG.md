@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- A newer release is announced by itself: the app looks for one once after the start and then every 24 hours, and shows a dot on the Settings button, a chip at the top of Settings and a one-time notice that is not shown in the TV view or while a game is running and not again for a dismissed version. `[updates] check = false` or Settings → Update check turns it off (#61).
 - A match of X01, a tournament, Elimination or Killer that is in play is saved after every change. After a restart or an update the Home app offers to resume or discard it, and the match goes on at the start of the turn that was in play. The Restart and Install update buttons warn when a game is running (#65).
 - A summary of a finished X01 match: the legs won and the figures of all players side by side (averages, checkout %, 60+ to 180, busts) with the highest turn, highest checkout and fastest leg, every leg with the course of the remaining score and each turn next to the others, and a heatmap per player, for every player including the computer opponent; a Summary button on the TV result and in the match list of the X01 statistics (#62).
 
