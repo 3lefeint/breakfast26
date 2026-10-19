@@ -238,14 +238,15 @@ class X01Game(TurnGame):
         return {"fieldName": _field_name(throw), "fieldNumber": number, "fieldMultiplier": multiplier,
                 "type": _bed(throw), **self._position_fields(throw)}
 
-    def _emit_match_started(self):
+    def _emit_match_started(self, resumed=False):
         self._match_started = True
         starter = self.order[self.leg_start]
         self._emit({**self._common(starter), "event": "match-started", "id": self.match_id,
                     "game": {"mode": "X01", "pointsStart": str(self.start), "special": None,
                              "players": list(self.order),
                              **({"tournamentId": self.tournament_id} if self.tournament_id else {}),
-                             **({"bots": sorted(self.bot_levels)} if self.bot_levels else {})}})
+                             **({"bots": sorted(self.bot_levels)} if self.bot_levels else {}),
+                             **({"resumed": True, "leg": self.leg} if resumed else {})}})
 
     def _emit_resync(self, st, undo_stored, undo_leg=False):
         """Tell the program that the match is back at the state `st`; `undo_stored`: the turn that was stored is gone,
@@ -578,6 +579,34 @@ class X01Game(TurnGame):
         else:
             self._start_match_soon()
 
+    # ── saving and resuming ──────────────────────────────────────────────────
+
+    def dump(self):
+        """What it takes to play the match on after a restart: the rules and the state as of the start of the turn
+        in progress (its darts are not kept)."""
+        return {"players": list(self.legs_won), "start": self.start, "in_mode": self.in_mode, "out_mode": self.out_mode,
+                "legs": self.legs, "bull_off": self.bull_off, "max_rounds": self.max_rounds, "match_id": self.match_id,
+                "tournament_id": self.tournament_id, "bots": dict(self.bot_levels), "state": copy.deepcopy(self._turn_start)}
+
+    def resume(self, state):
+        """Put a game that was just built from `dump()` back to its state and tell the program about it, without any
+        call or sound. A game that was over (a match of a tournament waiting for its result) stays over."""
+        self._load_state(state)
+        self._turn_start = copy.deepcopy(state)
+        if self.state != "playing":
+            return
+        if self.phase == "playing" and not self._match_started:
+            self._start_match()
+            return
+        if self._match_started:
+            self._silent = True
+            try:
+                self._emit_match_started(resumed=True)
+                self._emit_resync(self._turn_start, undo_stored=False)
+            finally:
+                self._silent = False
+        self._changed()
+
     # ── undo and corrections ─────────────────────────────────────────────────
 
     def _snapshot_state(self, player):
@@ -715,6 +744,7 @@ class X01Game(TurnGame):
 
 class X01Controller(TurnGameController):
     TOPIC = "x01_own"
+    RESUME_MODE = "X01"
 
     def __init__(self, emit, stats_db=None, audio=None, on_change=None):
         """*emit*: the function the events of the match go to. No MQTT commands: the match is started through
@@ -723,7 +753,7 @@ class X01Controller(TurnGameController):
         self.stats_db = stats_db
         self.audio = audio
         self.game = None
-        self._on_change = on_change
+        self._on_change = self._saving(on_change)
         self._lock = threading.RLock()
         self._init_bots(aim_x01, darts_x01, over=x01_turn_over, scatter=X01_SCATTER_MM)
 
@@ -742,6 +772,25 @@ class X01Controller(TurnGameController):
         game.announce_start()
         return game
 
+    def _dump(self, game):
+        """A match that is won is not saved, except one of a tournament: its result is still to be taken over."""
+        if game.state != "playing" and not (game.state == "finished" and game.tournament_id):
+            return None
+        return game.dump()
+
+    def resume(self, saved, on_end=None):
+        """Play on a match that `X01Game.dump()` saved. Nothing is announced."""
+        game = X01Game(saved["players"], self.emit, start=saved["start"], in_mode=saved["in_mode"],
+                       out_mode=saved["out_mode"], legs=saved["legs"], bull_off=saved["bull_off"], audio=self.audio,
+                       on_change=self._on_change, stats_db=self.stats_db, match_id=saved["match_id"],
+                       tournament_id=saved.get("tournament_id"), on_end=on_end, max_rounds=saved.get("max_rounds"),
+                       bots=saved.get("bots"))
+        with self._lock:
+            self.bots.set_bots(game.bot_levels)
+            self.game = game
+        game.resume(saved["state"])
+        return game
+
     @property
     def match_active(self):
         """A match is on, also before its first dart and after the last one."""
@@ -751,6 +800,7 @@ class X01Controller(TurnGameController):
         with self._lock:
             game, self.game = self.game, None
             self.bots.clear()
+        self._clear_saved()
         if game:
             game.stopped()
         if self._on_change:

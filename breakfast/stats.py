@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS tournaments (
     status     TEXT NOT NULL,
     data       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS running_match (
+    mode       TEXT PRIMARY KEY,
+    data       TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS turns (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id         TEXT    NOT NULL,
@@ -509,6 +514,28 @@ class StatsDB:
             )
             self._conn.commit()
         telemetry.record_match_opened(match_id, game_mode)
+
+    # ── Running match ─────────────────────────────────────────────────────────
+
+    def save_running_match(self, mode: str, data: dict):
+        """Keep the state of the match in play in `mode` (one row per game), so that it can be resumed after a restart."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO running_match (mode, data, updated_at) VALUES (?, ?, ?)"
+                " ON CONFLICT(mode) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                (mode, json.dumps(data), _now_iso()))
+            self._conn.commit()
+
+    def clear_running_match(self, mode: str):
+        with self._lock:
+            self._conn.execute("DELETE FROM running_match WHERE mode = ?", (mode,))
+            self._conn.commit()
+
+    def running_matches(self) -> dict:
+        """{mode: {"data": the saved state, "saved_at": time}} of the matches that were in play."""
+        with self._lock:
+            rows = self._conn.execute("SELECT mode, data, updated_at FROM running_match").fetchall()
+        return {r["mode"]: {"data": json.loads(r["data"]), "saved_at": r["updated_at"]} for r in rows}
 
     # ── Tournaments ───────────────────────────────────────────────────────────
 
@@ -3414,7 +3441,10 @@ class StatsTracker:
         player = _safe_name(event_data.get("player"))
         game   = event_data.get("game", {})
 
-        if ev == "match-started":
+        if ev == "match-started" and game.get("resumed"):
+            self._resume_match(event_data.get("id"), game)
+
+        elif ev == "match-started":
             self._match_id  = event_data.get("id")
             self._game_mode = game.get("mode", "")
             pts_start       = int(game.get("pointsStart") or 0)
@@ -3509,6 +3539,20 @@ class StatsTracker:
                 self._db.close_match(self._match_id)
 
     # ── internal ─────────────────────────────────────────────────────────────
+
+    def _resume_match(self, match_id, game):
+        """A match that was in play before a restart goes on: the counters are rebuilt from what is stored.
+        The live statistics of a bot are not stored and start again."""
+        self._match_id = match_id
+        self._game_mode = game.get("mode", "")
+        self._leg = int(game.get("leg") or 1)
+        self._buf = None
+        self._bots = set(game.get("bots") or [])
+        self._turn_log = []
+        if self._match_id:
+            self._turn_per_player = self._db.x01_turn_counts(self._match_id, self._leg)
+            self._bot_turn_per_player = self._db.bot_turn_counts(self._match_id, self._leg)
+            self._session_stats = self._db.x01_session_accumulators(self._match_id)
 
     def _on_bust(self, player, game):
         """Marks the turn as a bust and stores the dart that busted. That dart has

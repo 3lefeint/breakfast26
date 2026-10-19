@@ -152,7 +152,7 @@ dartboard (a magnifier shows it); the dart is stored where you let go.
   included (it is rounded up to the next power of two, a bye moves on without a match), and any two seats can be swapped
   by hand. After a match its result waits half a minute, then the
   next pairing starts by itself; the TV view shows the whole bracket between the matches. The tournament is stored, so it
-  survives a restart (a match in play does not), and its matches count in the statistics like any X01 match.
+  survives a restart (a match in play is offered again, see [Updates](#updates)), and its matches count in the statistics like any X01 match.
 - **Elimination**: any number of players, each with a number of lives. Every turn has to beat the total of
   the previous turn, otherwise the player loses a life; the last player with lives left wins. Turns can be
   corrected and undone, and a dart the board did not detect can be entered by hand and the Next button ends a turn without pulling the darts. An optional hint on the TV view marks the fields on the board that still beat the
@@ -284,6 +284,10 @@ works without it. All topics are published under a base topic (default `autodart
 - **Docker**: the `updater` service in `docker-compose.yml` provides the same function under Settings →
   **Updates**: it pulls the newest release tag, rebuilds, restarts and rolls back if the new build is not
   healthy. Remove the service if you do not want self-update.
+
+A match of X01, a tournament, Elimination or Killer that is in play is saved after every change. After a restart or an
+update the Home app offers to **Resume** it or to **Discard** it; nothing resumes by itself, and the match goes on at
+the start of the turn that was in play. The Restart and Install buttons warn when a game is running.
 
 ## Security
 

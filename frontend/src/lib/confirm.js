@@ -14,11 +14,18 @@ export function alertDialog(message) {
   return ask(message, true);
 }
 
-function ask(message, info) {
+// A question with two answers that have their own labels. Escape and a click next to the dialog do not answer it:
+// it stays open until one of the buttons is pressed. Closed by something else (`answerConfirm(null)`, another dialog)
+// it resolves null.
+export function choiceDialog(message, yes, no) {
+  return ask(message, false, { yes, no, modal: true });
+}
+
+function ask(message, info, options = {}) {
   return new Promise((resolve) => {
     confirmRequest.update((open) => {
-      if (open) open.resolve(false);
-      return { message, info, resolve };
+      if (open) open.resolve(open.modal ? null : false);
+      return { message, info, resolve, ...options };
     });
   });
 }

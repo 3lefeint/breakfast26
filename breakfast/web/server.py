@@ -55,6 +55,7 @@ _tb_ctrl = None
 _killer_ctrl = None
 _x01_ctrl = None
 _tournament_ctrl = None
+_resume_offers = None
 _ft_ctrl = None
 _co_ctrl = None
 _bb_ctrl = None
@@ -84,8 +85,8 @@ def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
          tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, tournament_ctrl=None,
-         wu_ctrl=None):
-    global _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
+         wu_ctrl=None, resume_offers=None):
+    global _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online, _elim_beat_hint
     _game_state = game_state
@@ -94,6 +95,7 @@ def wire(game_state, elim_ctrl,
     _killer_ctrl = killer_ctrl
     _x01_ctrl = x01_ctrl
     _tournament_ctrl = tournament_ctrl
+    _resume_offers = resume_offers
     _ft_ctrl = ft_ctrl
     _co_ctrl = co_ctrl
     _bb_ctrl = bb_ctrl
@@ -191,7 +193,25 @@ def _build_payload() -> dict:
         "voicepack_generation": _voicepack_status,
         "dev_demo": _dev_demo.status() if _dev_demo else None,
         "online": _online.status() if _online and _online.active else None,
+        "resume": _resume_offers.offers() if _resume_offers else [],
+        "running_game": _running_game(),
     }
+
+
+def _running_game():
+    """The game in play that a restart or an update would end: {"mode", "resumable"}, None when there is none. A
+    match of X01, Elimination or Killer is saved and offered again after the restart."""
+    if _tournament_ctrl and _tournament_ctrl.running:
+        return {"mode": "Tournament", "resumable": True}
+    for mode, ctrl in (("X01", _x01_ctrl), ("Elimination", _elim_ctrl), ("Killer", _killer_ctrl)):
+        game = ctrl.game if ctrl else None
+        if game and game.state == "playing":
+            return {"mode": mode, "resumable": not (mode == "Elimination" and game.online)}
+    for mode, ctrl in (("Target Battle", _tb_ctrl), ("Field Training", _ft_ctrl), ("Black Belt", _bb_ctrl),
+                       ("Warm-up", _wu_ctrl), ("Checkout Training", _co_ctrl)):
+        if ctrl and ctrl.active:
+            return {"mode": mode, "resumable": False}
+    return None
 
 
 def _board_view_darts():
@@ -525,6 +545,22 @@ async def control_force_clear_match():
     if not _cloud_client:
         return {"error": "cloud control not available"}
     _run_in_thread(_cloud_client.force_clear_match)
+    return {"ok": True}
+
+
+@app.post("/api/resume/{key}")
+async def resume_match(key: str):
+    """Play on a match that was in play before the restart."""
+    if not _resume_offers:
+        return {"error": "nothing to resume"}
+    error = _resume_offers.resume(key)
+    return {"error": error} if error else {"ok": True}
+
+
+@app.post("/api/resume/{key}/discard")
+async def discard_resume(key: str):
+    if not (_resume_offers and _resume_offers.discard(key)):
+        return {"error": "nothing to discard"}
     return {"ok": True}
 
 

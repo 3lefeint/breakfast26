@@ -423,8 +423,16 @@
     if (!res?.started) alertDialog(t('Could not start demo: {error}', { error: (res?.error ? t(res.error) : t('unknown error')) }));
   }
 
+  // What a restart or an update does to the game in play: a match of X01, Elimination or Killer is saved and offered
+  // again afterwards, any other game is lost.
+  function runningNote() {
+    const game = $gameState.running_game;
+    if (!game) return '';
+    return ' ' + (game.resumable ? t('The running game will be saved.') : t('The running game will be lost.'));
+  }
+
   async function restartApp() {
-    if (!await confirmDialog(t('Restart Breakfast now? The app will be briefly unavailable while it restarts.'))) return;
+    if (!await confirmDialog(t('Restart Breakfast?') + runningNote())) return;
     await api('POST', '/api/control/restart');
   }
 
@@ -456,7 +464,7 @@
 
   async function applyUpdate() {
     if (!updateInfo?.update_available) return;
-    if (!await confirmDialog(t('Install update to v{latest}? The app will be briefly unavailable while it rebuilds and restarts.', { latest: updateInfo.latest }))) return;
+    if (!await confirmDialog(t('Install update to v{latest}?', { latest: updateInfo.latest }) + runningNote())) return;
     const res = await fetch('/api/updates/apply', { method: 'POST' })
       .then((r) => r.json())
       .catch((e) => ({ error: String(e) }));

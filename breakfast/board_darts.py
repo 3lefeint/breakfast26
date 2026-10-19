@@ -77,6 +77,11 @@ class BoardDarts:
                 "field": field, "points": _field_points(field), "x": center["x"], "y": center["y"]}
             return self._refresh()
 
+    def count(self):
+        """How many darts the board reports now."""
+        with self._lock:
+            return len(self._darts)
+
     def snapshot(self):
         """List of {n, field, points, x, y}, or None while the board stream is not connected."""
         with self._lock:

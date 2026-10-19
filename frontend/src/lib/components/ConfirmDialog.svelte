@@ -5,7 +5,7 @@
 
   function onKey(e) {
     if (!$confirmRequest) return;
-    if (e.key === 'Escape') { e.preventDefault(); answerConfirm(false); }
+    if (e.key === 'Escape') { e.preventDefault(); if (!$confirmRequest.modal) answerConfirm(false); }
     else if (e.key === 'Enter') { e.preventDefault(); answerConfirm(true); }
   }
 </script>
@@ -14,15 +14,15 @@
 
 {#if $confirmRequest}
   <div class="confirm-overlay">
-    <button type="button" class="confirm-backdrop" aria-label={t('OK')} onclick={() => answerConfirm(false)}></button>
+    <button type="button" class="confirm-backdrop" aria-label={t('OK')} onclick={() => { if (!$confirmRequest.modal) answerConfirm(false); }}></button>
     <div class="confirm-box" role="alertdialog" aria-modal="true" aria-label={$confirmRequest.message}>
       <p class="confirm-text">{$confirmRequest.message}</p>
       <div class="confirm-actions">
         {#if $confirmRequest.info}
           <button type="button" class="confirm-btn yes" onclick={() => answerConfirm(true)}>{t('OK')}</button>
         {:else}
-          <button type="button" class="confirm-btn" onclick={() => answerConfirm(false)}>{t('No')}</button>
-          <button type="button" class="confirm-btn yes" onclick={() => answerConfirm(true)}>{t('Yes')}</button>
+          <button type="button" class="confirm-btn" onclick={() => answerConfirm(false)}>{$confirmRequest.no ?? t('No')}</button>
+          <button type="button" class="confirm-btn yes" onclick={() => answerConfirm(true)}>{$confirmRequest.yes ?? t('Yes')}</button>
         {/if}
       </div>
     </div>

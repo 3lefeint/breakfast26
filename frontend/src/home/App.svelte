@@ -9,6 +9,7 @@
   import Sidebar from './shell/Sidebar.svelte';
   import TopBar from './shell/TopBar.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
+  import { choiceDialog, alertDialog, answerConfirm } from '../lib/confirm.js';
   import DevUnlockCelebration from '../lib/components/DevUnlockCelebration.svelte';
   import Home from './views/Home.svelte';
   import Elimination from './views/Elimination.svelte';
@@ -48,6 +49,34 @@
   let connLabel = $derived(
     $wsStatus === 'connected' ? t('Connected') : $wsStatus === 'reconnecting' ? t('Reconnecting…') : t('connecting…')
   );
+
+  // A match that was in play when the program ended is offered here, on every client but the TV view. It goes on only
+  // when someone chooses to; the dialog closes by itself when another client has chosen.
+  const offered = new Set();
+  let offerOpen = null;
+
+  async function offerResume(offer) {
+    offerOpen = offer.key;
+    const answer = await choiceDialog(t('Resume open game?'),
+      t('Resume'), t('Discard'));
+    offerOpen = null;
+    if (answer === null) return;
+    const res = await fetch(`/api/resume/${offer.key}${answer ? '' : '/discard'}`, { method: 'POST' })
+      .then((r) => r.json())
+      .catch((e) => ({ error: String(e) }));
+    if (res.error) alertDialog(t('Could not resume the match: {error}', { error: t(res.error) }));
+  }
+
+  $effect(() => {
+    const offers = $gameState.resume ?? [];
+    if (offerOpen && !offers.some((o) => o.key === offerOpen)) answerConfirm(null);
+    if ($route === 'tv' || offerOpen) return;
+    const next = offers.find((o) => !offered.has(o.key));
+    if (next) {
+      offered.add(next.key);
+      offerResume(next);
+    }
+  });
 
   // Android-style hidden unlock: tap the version number DEV_TAP_THRESHOLD
   // times in a row (within DEV_TAP_WINDOW_MS of each other) to reveal

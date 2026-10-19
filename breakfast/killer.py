@@ -490,13 +490,13 @@ class KillerGame(TurnGame):
         self.stats_db.set_winner(self.match_id, self.winner)
         self.stats_db.close_match(self.match_id)
 
-    def announce_start(self):
-        """Publish the first state. Only once the game is assigned to its controller, since the
-        state push builds its snapshot from there."""
+    def announce_start(self, calls=True):
+        """Publish the first state (and make the opening calls, not for a game that goes on after a restart). Only once
+        the game is assigned to its controller, since the state push builds its snapshot from there."""
         self._publish_state()
         self._publish_turn(reset=True)
         self._publish_last_turn([])
-        if self.audio:
+        if self.audio and calls:
             threading.Timer(START_CALLS_DELAY_S, self._play_start_calls).start()
 
     # ── undo and corrections ─────────────────────────────────────────────────
@@ -631,9 +631,34 @@ class KillerGame(TurnGame):
 class KillerController(TurnGameController):
     TOPIC = "killer"
 
+    RESUME_MODE = "Killer"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._init_bots(aim_killer, darts_killer)
+
+    def _dump(self, game):
+        """The turn in progress is not kept."""
+        if game.state != "playing":
+            return None
+        return {"players": list(game.order), "own_goal": game.own_goal, "singles": game.singles,
+                "bull_off": game.bull_off, "throw_numbers": game.throw_numbers, "colors": game.colors,
+                "match_id": game.match_id, "bots": dict(self.bots.levels), "state": game._turn_start}
+
+    def resume(self, saved):
+        """Play on a match that `_dump()` saved. Nothing is announced."""
+        bots = saved.get("bots") or {}
+        game = KillerGame(
+            saved["players"], self.mqtt_pub.client, self.base_topic, own_goal=saved["own_goal"],
+            singles=saved["singles"], bull_off=saved["bull_off"], throw_numbers=saved["throw_numbers"],
+            audio=self.audio, on_change=self._on_change, colors=saved["colors"], match_id=saved["match_id"],
+            stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db)
+        game._restore(saved["state"])
+        with self._lock:
+            self.bots.set_bots(bots)
+            self.game = game
+        game.announce_start(calls=False)
+        return game
 
     def start(self, players, own_goal=False, singles=False, bull_off=True, throw_numbers=True, bots=None):
         """Start a game. Raises ValueError for a setup that cannot be played. *bots*: {name: level} of

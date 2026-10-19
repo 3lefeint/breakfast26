@@ -264,6 +264,22 @@ class TournamentController:
         self._changed()
         return True
 
+    def adopt(self, game):
+        """The match that was in play when the program ended was resumed: it is the match in play again. A match that
+        was already won waits for its result to be taken over."""
+        with self._lock:
+            if not self.running or game.tournament_id != self.t["id"]:
+                return False
+            found = next(((r, i) for r, matches in enumerate(self.t["bracket"].rounds)
+                          for i, m in enumerate(matches) if m["match_id"] == game.match_id and not m["winner"]), None)
+            if not found:
+                return False
+            self.current, self.pending, self.phase = found, None, "match"
+        if game.state == "finished":
+            self._on_match_end(game.winner)
+        self._changed()
+        return True
+
     def _finish(self):
         self.t["status"] = "finished"
         self.phase, self.current, self.pending = "finished", None, None

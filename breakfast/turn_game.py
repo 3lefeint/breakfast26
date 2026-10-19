@@ -323,6 +323,7 @@ class TurnGame:
 
 class TurnGameController:
     TOPIC = ""
+    RESUME_MODE = None      # the key a match in play is saved under so that it can go on after a restart, None: not saved
 
     def __init__(self, mqtt_pub, base_topic, stats_db=None, audio=None, on_change=None):
         self.mqtt_pub = mqtt_pub
@@ -330,7 +331,7 @@ class TurnGameController:
         self.stats_db = stats_db
         self.audio = audio
         self.game = None
-        self._on_change = on_change
+        self._on_change = self._saving(on_change)
         self._lock = threading.RLock()
         self.bots = None     # a BotRunner for the games that can be played against the computer
 
@@ -343,6 +344,48 @@ class TurnGameController:
 
     def _topic(self, suffix):
         return f"{self.base_topic}/{self.TOPIC}/{suffix}"
+
+    # ── saving a match in play ───────────────────────────────────────────────
+
+    def _saving(self, on_change):
+        """*on_change*, preceded by saving the match in play."""
+        self._saved_text = None
+
+        def changed():
+            self._save()
+            if on_change:
+                on_change()
+        return changed
+
+    def _dump(self, game):
+        """What it takes to play *game* on after a restart, None for a game that is not saved (it is over, or cannot
+        be resumed)."""
+        return None
+
+    def _save(self):
+        game = self.game
+        if not (self.RESUME_MODE and self.stats_db and game):
+            return
+        try:
+            data = self._dump(game)
+            if data is None:
+                self._clear_saved()
+                return
+            text = json.dumps(data, sort_keys=True)
+            if text != self._saved_text:
+                self.stats_db.save_running_match(self.RESUME_MODE, data)
+                self._saved_text = text
+        except Exception:
+            log.exception("Saving the match in play failed")
+
+    def _clear_saved(self):
+        """The match is over or was cancelled: there is nothing to resume."""
+        self._saved_text = None
+        if self.RESUME_MODE and self.stats_db:
+            try:
+                self.stats_db.clear_running_match(self.RESUME_MODE)
+            except Exception:
+                log.exception("Clearing the saved match failed")
 
     @property
     def active(self):
@@ -393,6 +436,7 @@ class TurnGameController:
             self.game = None
             if self.bots:
                 self.bots.clear()
+        self._clear_saved()
         client = self.mqtt_pub.client
         client.publish(self._topic("active"), "false", retain=True)
         client.publish(self._topic("state"), "", retain=True)
