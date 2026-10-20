@@ -22,6 +22,7 @@
   let selected = $state('');
   let data = $state(null);
   let error = $state(false);
+  let avgView = $state('avg3');  // 'avg3' or 'first9'
   let heatView = $state(null);   // 'fields' or 'positions'; null: positions once there are enough
 
   let names = $derived([...new Set(players)].sort());
@@ -155,12 +156,18 @@
       </div>
     </div>
     <div class="card uni">
-      <div class="card-title">{t('Average over time')}</div>
+      <div class="card-title heat-title">
+        <span>{t('Average over time')}</span>
+        <span class="heat-switch">
+          <button type="button" class="mode-tab" class:active={avgView === 'avg3'} onclick={() => (avgView = 'avg3')}>{t('3 darts')}</button>
+          <button type="button" class="mode-tab" class:active={avgView === 'first9'} onclick={() => (avgView = 'first9')}>{t('First 9')}</button>
+        </span>
+      </div>
       <div class="middle">
-        <TrendLine yTitle="avg 3 darts"
-          points={data.avg_by_match.map((m) => ({
-            date: m.started_at, value: m.avg3,
-            tip: `${new Date(m.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · ${m.avg3.toFixed(1)} · ${t('{n} darts', { n: m.darts })}${m.points_start ? ' · ' + m.points_start : ''}`,
+        <TrendLine yTitle={avgView === 'first9' ? 'first 9' : 'avg 3 darts'}
+          points={data.avg_by_match.filter((m) => m[avgView] != null).map((m) => ({
+            date: m.started_at, value: m[avgView],
+            tip: `${new Date(m.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · ${m[avgView].toFixed(1)} · ${t('{n} darts', { n: m.darts })}${m.points_start ? ' · ' + m.points_start : ''}`,
           }))} />
       </div>
     </div>

@@ -35,6 +35,7 @@
   }
   let rankings = $derived({
     average: ranking(players.filter((p) => p.avg3 != null), (p) => p.avg3, (p) => p.avg3.toFixed(1), (p) => t('{n} turns', { n: p.turns })),
+    first9: ranking(players.filter((p) => p.first9 != null), (p) => p.first9, (p) => p.first9.toFixed(1)),
     tons: ranking(players, (p) => p.s100 + p.s140 + p.s180, (p) => `${p.s100 + p.s140 + p.s180}`, (p) => t('of {n}', { n: p.turns })),
     checkout: ranking(players.filter((p) => p.co_attempts), (p) => p.co_pct, (p) => `${p.co_pct}%`, (p) => `${p.co_hits}/${p.co_attempts}`),
   });
@@ -78,6 +79,7 @@
   <div class="section-title top">{t('Players compared')}</div>
   <div class="rankings">
     <RankBars title={t('Average (3 darts)')} rows={rankings.average} />
+    <RankBars title={t('First 9')} rows={rankings.first9} />
     <RankBars title={t('Turns of 100 or more')} rows={rankings.tons} />
     <RankBars title={t('Checkout %')} rows={rankings.checkout} />
   </div>

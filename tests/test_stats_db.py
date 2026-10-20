@@ -985,6 +985,24 @@ class TestAverageByMatch:
     def test_player_without_turns(self, db):
         assert db.player_avg_by_match("nobody") == []
 
+    def test_first_nine_counts_the_first_three_turns_of_every_leg(self, db):
+        _open(db, "m1")
+        for turn, score in ((1, 60), (2, 45), (3, 0), (4, 100)):
+            db.insert_turn("m1", "alice", 1, turn, 501, score, score == 0, False, [("S20", 20, 481)] * 3)
+        db.insert_turn("m1", "alice", 2, 1, 501, 90, False, False, [("S20", 20, 481)] * 3)
+        assert db.player_avg_by_match("alice")[0]["first9"] == round((60 + 45 + 0 + 90) * 3.0 / 12, 1)
+
+
+class TestFirstNineOverall:
+    def test_first_nine_over_all_matches_and_none_without_turns(self, db):
+        _open(db, "m1")
+        _open(db, "m2")
+        db.insert_turn("m1", "alice", 1, 1, 501, 60, False, False, [("S20", 20, 481)] * 3)
+        db.insert_turn("m1", "alice", 1, 4, 441, 140, False, False, [("S20", 20, 481)] * 3)
+        db.insert_turn("m2", "alice", 1, 1, 501, 100, False, False, [("S20", 20, 481)] * 3)
+        alice = next(r for r in db.all_players_stats() if r["player"] == "alice")
+        assert alice["first9"] == round((60 + 100) * 3.0 / 6, 1)
+
 
 class TestDartHits:
     def _turn(self, db, turn, darts, player="alice"):

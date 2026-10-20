@@ -2034,6 +2034,8 @@ class StatsDB:
                     COUNT(*) as turns,
                     SUM(t.score) as total_score,
                     SUM(t.darts_count) as total_darts,
+                    SUM(CASE WHEN t.turn <= 3 THEN t.score ELSE 0 END) as f9_score,
+                    SUM(CASE WHEN t.turn <= 3 THEN t.darts_count ELSE 0 END) as f9_darts,
                     SUM(CASE WHEN t.score = 180 THEN 1 ELSE 0 END) as s180,
                     SUM(CASE WHEN t.score >= 140 AND t.score < 180 THEN 1 ELSE 0 END) as s140,
                     SUM(CASE WHEN t.score >= 100 AND t.score < 140 THEN 1 ELSE 0 END) as s100,
@@ -2044,7 +2046,9 @@ class StatsDB:
                 GROUP BY t.player
                 ORDER BY sessions DESC, total_score DESC
             """).fetchall()
-        return [{"player": r["player"], **_row_stats_full(r)} for r in rows]
+        return [{"player": r["player"], **_row_stats_full(r),
+                 "first9": round(r["f9_score"] * 3.0 / r["f9_darts"], 1) if r["f9_darts"] else None}
+                for r in rows]
 
     def leaderboard(self, metric: str, limit: int = 10) -> list:
         """Top-N players sorted by *metric* (desc). Valid metrics: avg3, s180, co_pct, total_score."""
@@ -2876,11 +2880,14 @@ class StatsDB:
         }
 
     def player_avg_by_match(self, player: str) -> list:
-        """The 3-dart average of each match the player threw darts in, oldest first."""
+        """The 3-dart average and the first-9 average (the first three turns of each leg) of each match the
+        player threw darts in, oldest first."""
         with self._lock:
             rows = self._conn.execute("""
                 SELECT t.match_id as match_id, m.started_at as started_at, m.points_start as points_start,
-                       SUM(t.score) as score, SUM(t.darts_count) as darts
+                       SUM(t.score) as score, SUM(t.darts_count) as darts,
+                       SUM(CASE WHEN t.turn <= 3 THEN t.score ELSE 0 END) as f9_score,
+                       SUM(CASE WHEN t.turn <= 3 THEN t.darts_count ELSE 0 END) as f9_darts
                 FROM turns t JOIN matches m ON m.match_id = t.match_id
                 WHERE t.player = ?
                 GROUP BY t.match_id HAVING SUM(t.darts_count) > 0
@@ -2888,7 +2895,8 @@ class StatsDB:
             """, (player,)).fetchall()
         return [
             {"match_id": r["match_id"], "started_at": r["started_at"], "points_start": r["points_start"],
-             "darts": r["darts"], "avg3": round(r["score"] * 3.0 / r["darts"], 1)}
+             "darts": r["darts"], "avg3": round(r["score"] * 3.0 / r["darts"], 1),
+             "first9": round(r["f9_score"] * 3.0 / r["f9_darts"], 1) if r["f9_darts"] else None}
             for r in rows
         ]
 

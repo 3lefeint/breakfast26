@@ -314,6 +314,7 @@ export default {
   'Avg': 'Ø',
   'Summary': 'Zusammenfassung',
   'First 9': 'First 9',
+  '3 darts': '3 Darts',
   'Busts': 'Überworfen',
   'Throws first': 'Anwurf',
   'Fastest leg': 'Schnellstes Leg',
