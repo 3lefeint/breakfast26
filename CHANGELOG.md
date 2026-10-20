@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-20
+
 ### Added
 - The summary of an X01 match can be saved as an image (overview with the legs won, the figures and the highlights): through the share dialog where the browser offers one, else as a download (#63).
 - The X01 statistics show the first-9 average (the first three turns of each leg): as a ranking in Players compared and, next to the 3-dart average, in the average over time of a player (#64).
