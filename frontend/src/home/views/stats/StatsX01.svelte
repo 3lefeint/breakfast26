@@ -78,8 +78,8 @@
 
   <div class="section-title top">{t('Players compared')}</div>
   <div class="rankings">
-    <RankBars title={t('Average (3 darts)')} rows={rankings.average} />
-    <RankBars title={t('First 9')} rows={rankings.first9} />
+    <RankBars title={t('Average')} rows={rankings.average} />
+    <RankBars title={t('First 9 Dart Average')} rows={rankings.first9} />
     <RankBars title={t('Turns of 100 or more')} rows={rankings.tons} />
     <RankBars title={t('Checkout %')} rows={rankings.checkout} />
   </div>

@@ -159,8 +159,8 @@
       <div class="card-title heat-title">
         <span>{t('Average over time')}</span>
         <span class="heat-switch">
-          <button type="button" class="mode-tab" class:active={avgView === 'avg3'} onclick={() => (avgView = 'avg3')}>{t('3 darts')}</button>
-          <button type="button" class="mode-tab" class:active={avgView === 'first9'} onclick={() => (avgView = 'first9')}>{t('First 9')}</button>
+          <button type="button" class="mode-tab" class:active={avgView === 'avg3'} onclick={() => (avgView = 'avg3')}>{t('Average')}</button>
+          <button type="button" class="mode-tab" class:active={avgView === 'first9'} onclick={() => (avgView = 'first9')}>{t('First 9 Dart Average')}</button>
         </span>
       </div>
       <div class="middle">

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- The summary of an X01 match can be saved as an image (overview with the legs won, the figures and the highlights): through the share dialog where the browser offers one, else as a download (#63).
 - The X01 statistics show the first-9 average (the first three turns of each leg): as a ranking in Players compared and, next to the 3-dart average, in the average over time of a player (#64).
 - Updates can be installed automatically (`[updates] auto_install`, Settings → Update check, off by default): a newer patch or minor release is installed after the start and at 04:00 every day, not while a game is running, a new major version is only announced, and a version that was tried before is not tried again (#72).
 - The statistics database is copied to a `backups` folder next to it before every update (Docker and Windows, the last three are kept), a rollback puts the copy back, and Settings → Updates shows when the latest copy was made (#71).

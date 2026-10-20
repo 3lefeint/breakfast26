@@ -145,7 +145,7 @@ dartboard (a magnifier shows it); the dart is stored where you let go.
   the best-leg statistics. The match is stored like any other X01 match, and undo, the Next button and corrections
   of a dart work as in Elimination.
   A summary of the match (averages, the remaining score per turn, the darts on the board and every turn with the
-  fields hit) opens from the result on the TV view and from the match list of the X01 statistics.
+  fields hit) opens from the result on the TV view and from the match list of the X01 statistics; it can be saved as an image.
 - **X01 tournament**: single elimination in the X01 mode of Breakfast. Pick the players (a new one can be added on the
   spot), the base score, the in and out mode, the max rounds, a bull-off or a draw for who throws first, and the legs to win per round,
   so the final can be longer than the first round. The bracket is drawn at random as soon as there are two players, byes

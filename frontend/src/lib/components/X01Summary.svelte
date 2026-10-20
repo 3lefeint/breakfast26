@@ -4,8 +4,10 @@
   // players side by side with the highlights, the legs (the course of the remaining score and every
   // turn next to the others) and the darts on the board. Used on the TV after a match and as a dialog
   // from the match list of the statistics.
-  import { cap } from '../../lib/util.js';
+  import { cap, formatDateTime } from '../../lib/util.js';
   import Crown from './Crown.svelte';
+  import { saveSummaryImage } from '../summaryImage.js';
+  import { alertDialog } from '../confirm.js';
   import PositionHeatmap from '../../home/views/stats/PositionHeatmap.svelte';
 
   let { matchId } = $props();
@@ -41,8 +43,8 @@
   const fmt = (v, d = 1) => (v == null ? '—' : Number(v).toFixed(d));
   // One row per figure; `best` says which value stands out, `bar` draws a thin bar under it.
   let rows = $derived([
-    { label: t('Average (3 darts)'), get: (p) => p.avg3, show: (p) => fmt(p.avg3), best: 'max', bar: true },
-    { label: t('First 9'), get: (p) => p.first9, show: (p) => fmt(p.first9), best: 'max', bar: true },
+    { label: t('Average'), get: (p) => p.avg3, show: (p) => fmt(p.avg3), best: 'max', bar: true },
+    { label: t('First 9 Dart Average'), get: (p) => p.first9, show: (p) => fmt(p.first9), best: 'max', bar: true },
     { label: t('Checkout %'), get: (p) => p.co_pct, show: (p) => (p.co_pct == null ? '—' : `${fmt(p.co_pct)}% (${p.co_hits}/${p.co_attempts})`), best: 'max', bar: true },
     { label: t('Darts thrown'), get: (p) => p.darts_thrown, show: (p) => p.darts_thrown },
     { label: '60+', get: (p) => p.s60, show: (p) => p.s60, best: 'max' },
@@ -76,6 +78,14 @@
       { label: t('Fastest leg'), ...best('best_leg_darts', Math.min), unit: t('darts') },
     ].filter((h) => h.names);
   });
+
+  async function saveImage() {
+    try {
+      await saveSummaryImage({ summary, players, legsWon, played, rows, isBest, barWidth, highlights });
+    } catch (e) {
+      alertDialog(t('The image could not be created.'));
+    }
+  }
 
   // The legs tab.
   const W = 720, H = 150, LEFT = 34, RIGHT = 8, TOP = 8, BOTTOM = 6;
@@ -129,7 +139,8 @@
   <div class="summary">
     <div class="meta">
       <span class="chip">X01</span><span class="chip">{summary.points_start}</span>
-      <span class="when">{summary.started_at ? new Date(summary.started_at).toLocaleString() : ''}{played ? ` · ${played}` : ''}</span>
+      <span class="when">{summary.started_at ? formatDateTime(summary.started_at) : ''}{played ? ` · ${played}` : ''}</span>
+      <button type="button" class="save" onclick={saveImage}>{t('Export image')}</button>
     </div>
 
     <div class="scoreband">
@@ -186,7 +197,7 @@
         {/each}
       </svg>
       <div class="turns" style="--cols:{players.length}">
-        <div class="trow thead"><span></span>{#each players as p (p.name)}<span style="color:{p.tint}">{cap(p.name)}{#if p.name === starter}<small class="starts">{t('Throws first')}</small>{/if}</span>{/each}</div>
+        <div class="trow thead"><span></span>{#each players as p (p.name)}<span style="color:{p.tint}">{cap(p.name)}{#if p.name === starter}<small class="starts">{t('Opener')}</small>{/if}</span>{/each}</div>
         {#each turnNumbers as n (n)}
           <div class="trow">
             <span class="n">{n}</span>
@@ -218,6 +229,8 @@
   .meta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .chip { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.15rem 0.8rem; font-weight: 700; font-size: 0.9rem; }
   .when { color: var(--muted); font-size: 0.9rem; margin-left: 0.4rem; }
+  .save { margin-left: auto; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.4rem 1.1rem; font-family: inherit; font-size: 0.95rem; font-weight: 600; color: var(--text); cursor: pointer; }
+  .save:hover { border-color: var(--accent); }
 
   .scoreband { display: flex; gap: 0.5rem; }
   .side { flex: 1; min-width: 0; text-align: center; padding: 0.8rem 0.5rem; border-radius: 14px; border: 1px solid var(--glass-border);
