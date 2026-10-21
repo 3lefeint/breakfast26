@@ -9,6 +9,7 @@ the result.
 
 import json
 import logging
+import secrets
 import threading
 import time
 
@@ -17,7 +18,7 @@ import websocket
 
 log = logging.getLogger(__name__)
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 NAME_LENGTH = 24
 MAX_LIVES = 10
 REJOIN_WINDOW_S = 180
@@ -85,8 +86,10 @@ def validate_client_frame(m):
             return "mode must be create, join or rejoin"
         if not _is_name(m.get("site")):
             return "site must be a name of up to 24 characters"
-        if not _is_text(m.get("password"), 128):
+        if m["mode"] == "create" and not _is_text(m.get("password"), 128):
             return "password is required"
+        if m["mode"] == "join" and _is_text(m.get("password"), 128) == _is_text(m.get("ticket"), 128):
+            return "join needs a password or a ticket"
         if m["mode"] == "rejoin":
             if not _is_text(m.get("token"), 128):
                 return "token is required to rejoin"
@@ -95,6 +98,8 @@ def validate_client_frame(m):
         return None
     if t == "lobby_set_players":
         return None if _names(m.get("players")) else "players must be a list of unique names"
+    if t == "lobby_set_ready":
+        return None if isinstance(m.get("ready"), bool) else "ready must be a boolean"
     if t == "lobby_start":
         if not _is_int(m.get("lives"), 1, MAX_LIVES):
             return "lives must be 1 to 10"
@@ -150,8 +155,8 @@ def validate_server_frame(m):
         sites = m.get("sites")
         if not isinstance(sites, list) or not all(
                 isinstance(s, dict) and _is_name(s.get("site")) and _names(s.get("players")) and isinstance(s.get("connected"), bool)
-                for s in sites):
-            return "sites must list {site, players, connected}"
+                and isinstance(s.get("ready"), bool) for s in sites):
+            return "sites must list {site, players, connected, ready}"
         return None if _is_int(m.get("lives"), 0, MAX_LIVES) else "lives must be 0 to 10"
     if t == "rematch":
         return None
@@ -220,6 +225,11 @@ def throw_from_wire(wire):
 
 # ── the session ───────────────────────────────────────────────────────────────────────
 
+def _raw(body):
+    """The text of a JSON body as it is sent, also what a signed request is signed over."""
+    return json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+
+
 class RelayError(Exception):
     """Something the user has to be told: no relay, wrong password, ..."""
 
@@ -254,7 +264,8 @@ class OnlineSession:
         self.controller = controller
         self._on_change = on_change
         self._connect = connect or _open_socket
-        self._post = post or (lambda url, body: requests.post(url, json=body, timeout=CONNECT_TIMEOUT_S))
+        self._post = post or (lambda url, body, headers=None: requests.post(
+            url, data=_raw(body), headers={"content-type": "application/json", **(headers or {})}, timeout=CONNECT_TIMEOUT_S))
         self._sleep = sleep
         self._lock = threading.RLock()
         self._send_lock = threading.Lock()
@@ -271,6 +282,7 @@ class OnlineSession:
         self.code = None
         self.site = None
         self.password = None
+        self.ticket = None
         self.token = None
         self.host = False
         self.lobby = {"host": None, "sites": [], "lives": 0, "order": []}
@@ -303,11 +315,18 @@ class OnlineSession:
 
     # ── commands ─────────────────────────────────────────────────────────────────
 
-    def create(self, relay_url, site, password):
-        """Reserve a code, open the lobby as its host. Returns the code."""
+    def create(self, relay_url, site, password="", sign=None):
+        """Reserve a code, open the lobby as its host. Returns the code. Without a password only linked locations
+        can join; with `sign` (see Locations.signer_for) the match is announced to the linked locations."""
+        password = password or secrets.token_urlsafe(18)
         self._begin(relay_url, site, password)
+        body = {"protocol_version": PROTOCOL_VERSION}
         try:
-            res = self._post(f"{_http_base(relay_url)}/api/matches", {"protocol_version": PROTOCOL_VERSION})
+            if sign:
+                body["site"] = site
+                res = self._post(f"{_http_base(relay_url)}/api/matches", body, sign("POST", "/api/matches", _raw(body)))
+            else:
+                res = self._post(f"{_http_base(relay_url)}/api/matches", body)
         except requests.RequestException as e:
             self._fail(f"The relay is not reachable: {e}")
         if res.status_code != 200:
@@ -316,10 +335,15 @@ class OnlineSession:
         self._open("create")
         return self.code
 
-    def join(self, relay_url, code, site, password):
+    def join(self, relay_url, code, site, password=None, ticket=None):
+        """Join by code and password, or by the ticket of a linked location."""
         self._begin(relay_url, site, password)
+        self.ticket = ticket
         self.code = code.strip().upper()
         self._open("join")
+
+    def set_ready(self, ready):
+        self._send({"type": "lobby_set_ready", "ready": bool(ready)})
 
     def set_players(self, players):
         with self._lock:
@@ -404,8 +428,11 @@ class OnlineSession:
             self._conn = conn
             self._closing = False
             self._fatal = False
-        hello = {"type": "hello", "protocol_version": PROTOCOL_VERSION, "mode": mode, "site": self.site,
-                 "password": self.password}
+        hello = {"type": "hello", "protocol_version": PROTOCOL_VERSION, "mode": mode, "site": self.site}
+        if mode == "join" and self.ticket:
+            hello["ticket"] = self.ticket
+        elif self.password:
+            hello["password"] = self.password
         if mode == "rejoin":
             hello.update(token=self.token, last_seq=self._last_seq())
         self._send(hello)

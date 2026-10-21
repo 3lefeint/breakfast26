@@ -1,8 +1,8 @@
-// Message shapes of protocol version 1 (see ../PROTOCOL.md) and their validation.
+// Message shapes of protocol version 2 (see ../PROTOCOL.md) and their validation.
 // Both the Worker and the Python client check their frames against the examples in
 // ../protocol-tests/messages.json.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const CLOSE = {
   BAD_REQUEST: 4400,
@@ -27,6 +27,8 @@ export const LIMITS = {
   REJOIN_WINDOW_MS: 3 * 60 * 1000,
   MAX_FAILED_HELLOS: 8,
   LOCK_MS: 5 * 60 * 1000,
+  TICKET_TTL_MS: 2 * 60 * 1000,
+  MAX_TICKETS: 10,
 } as const;
 
 export interface Throw {
@@ -77,7 +79,8 @@ export function validateClientFrame(m: unknown): string | null {
       if (!isInt(m.protocol_version, 0, 1_000_000)) return "protocol_version must be an integer";
       if (m.mode !== "create" && m.mode !== "join" && m.mode !== "rejoin") return "mode must be create, join or rejoin";
       if (!validName(m.site)) return "site must be a name of up to 24 characters";
-      if (!isStr(m.password, 128)) return "password is required";
+      if (m.mode === "create" && !isStr(m.password, 128)) return "password is required";
+      if (m.mode === "join" && (isStr(m.password, 128) === isStr(m.ticket, 128))) return "join needs a password or a ticket";
       if (m.mode === "rejoin") {
         if (!isStr(m.token, 128)) return "token is required to rejoin";
         if (!isInt(m.last_seq, 0, 1_000_000)) return "last_seq must be an integer";
@@ -85,6 +88,8 @@ export function validateClientFrame(m: unknown): string | null {
       return null;
     case "lobby_set_players":
       return nameList(m.players) ? null : "players must be a list of unique names";
+    case "lobby_set_ready":
+      return typeof m.ready === "boolean" ? null : "ready must be a boolean";
     case "lobby_start":
       if (!isInt(m.lives, 1, LIMITS.MAX_LIVES)) return "lives must be 1 to 10";
       return nameList(m.order, LIMITS.MIN_PLAYERS) ? null : "order must list the players once";
@@ -127,8 +132,8 @@ export function validateServerFrame(m: unknown): string | null {
       return isStr(m.state, 20) ? null : "state is required";
     case "lobby":
       if (!validName(m.host)) return "host must be a name";
-      if (!Array.isArray(m.sites) || !m.sites.every((s) => isObj(s) && validName(s.site) && nameList(s.players) && typeof s.connected === "boolean"))
-        return "sites must list {site, players, connected}";
+      if (!Array.isArray(m.sites) || !m.sites.every((s) => isObj(s) && validName(s.site) && nameList(s.players) && typeof s.connected === "boolean" && typeof s.ready === "boolean"))
+        return "sites must list {site, players, connected, ready}";
       return isInt(m.lives, 0, LIMITS.MAX_LIVES) ? null : "lives must be 0 to 10";
     case "rematch":
       return null;

@@ -97,8 +97,8 @@ class Harness:
         self.session = OnlineSession(self.ctrl, connect=self._connect, post=self._post, sleep=self.sleeps.append)
         self.next_frames = [WELCOME]
 
-    def _post(self, url, body):
-        self.posts.append((url, body))
+    def _post(self, url, body, headers=None):
+        self.posts.append((url, body) if headers is None else (url, body, headers))
         return SimpleNamespace(status_code=200, json=lambda: {"code": "K7M2QX", "expires_in_s": 600})
 
     def _connect(self, url):
@@ -124,10 +124,32 @@ class TestLobby:
     def test_create_reserves_a_code_and_says_hello(self, h):
         code = h.session.create("ws://127.0.0.1:8787", "Home", "pw")
         assert code == "K7M2QX"
-        assert h.posts == [("http://127.0.0.1:8787/api/matches", {"protocol_version": 1})]
+        assert h.posts == [("http://127.0.0.1:8787/api/matches", {"protocol_version": 2})]
         assert h.conns[0].url == "ws://127.0.0.1:8787/ws/K7M2QX"
-        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 1, "mode": "create", "site": "Home", "password": "pw"}
+        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 2, "mode": "create", "site": "Home", "password": "pw"}
         assert h.session.status()["phase"] == "lobby" and h.session.status()["host"] is True
+
+    def test_a_host_without_a_password_gets_a_random_one(self, h):
+        h.session.create("ws://relay", "Home")
+        password = h.conns[0].sent[0]["password"]
+        assert len(password) >= 20 and h.session.status()["host"] is True
+
+    def test_a_signed_create_announces_the_match_to_the_linked_locations(self, h):
+        signed = []
+        h.session.create("ws://relay", "Home", "", lambda method, path, raw: signed.append((method, path, raw)) or {"x-location": "a" * 32})
+        url, body, headers = h.posts[0]
+        assert body == {"protocol_version": 2, "site": "Home"} and headers == {"x-location": "a" * 32}
+        assert signed == [("POST", "/api/matches", '{"protocol_version":2,"site":"Home"}')]
+
+    def test_join_with_a_ticket_sends_no_password(self, h):
+        h.next_frames = [{**WELCOME, "site": "Club", "host": False}]
+        h.session.join("ws://relay", "k7m2qx", "Club", ticket="t" * 32)
+        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 2, "mode": "join", "site": "Club", "ticket": "t" * 32}
+
+    def test_ready_goes_to_the_relay(self, h):
+        h.session.create("ws://relay", "Home", "pw")
+        h.session.set_ready(True)
+        assert h.conns[0].sent[-1] == {"type": "lobby_set_ready", "ready": True}
 
     def test_secure_relay_urls_use_https_for_the_reservation(self, h):
         h.session.create("wss://relay.example.workers.dev/", "Home", "pw")
@@ -163,7 +185,7 @@ class TestLobby:
 
     def test_the_lobby_is_kept(self, h):
         h.session.create("ws://relay", "Home", "pw")
-        h.conns[0].push({"type": "lobby", "host": "Home", "sites": [{"site": "Home", "players": ["anna"], "connected": True}], "lives": 0, "order": []})
+        h.conns[0].push({"type": "lobby", "host": "Home", "sites": [{"site": "Home", "players": ["anna"], "connected": True, "ready": True}], "lives": 0, "order": []})
         assert _wait(lambda: h.session.status()["lobby"]["sites"])
         assert h.session.status()["lobby"]["sites"][0]["players"] == ["anna"]
 
@@ -300,7 +322,7 @@ class TestMatch:
         assert conn.sent[-1] == {"type": "rematch"}
         conn.push({"type": "rematch"})
         conn.push({"type": "lobby", "host": "Home", "lives": 2, "order": ["carl", "anna"],
-                   "sites": [{"site": "Home", "players": ["anna"], "connected": True}, {"site": "Club", "players": ["carl"], "connected": True}]})
+                   "sites": [{"site": "Home", "players": ["anna"], "connected": True, "ready": True}, {"site": "Club", "players": ["carl"], "connected": True, "ready": False}]})
         assert _wait(lambda: h.session.status()["phase"] == "lobby")
         status = h.session.status()
         assert status["result"] is None and status["match"] is None and status["lobby"]["order"] == ["carl", "anna"]

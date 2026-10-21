@@ -4,8 +4,8 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { Deps, MatchCore, MatchState, Out } from "./core";
-import { CLOSE, LIMITS, PROTOCOL_VERSION } from "./protocol";
-import { handleLocations } from "./locations";
+import { CLOSE, LIMITS, PROTOCOL_VERSION, validName } from "./protocol";
+import { authenticate, handleLocations, Rooms } from "./locations";
 import { TELEMETRY_LIMITS, TELEMETRY_VERSION, validateTelemetry } from "./telemetry";
 
 export interface Env {
@@ -30,6 +30,21 @@ function randomCode(): string {
   return [...bytes].map((b) => LIMITS.CODE_ALPHABET[b % LIMITS.CODE_ALPHABET.length]).join("");
 }
 
+/** The match rooms as the locations routes see them. */
+function rooms(env: Env): Rooms {
+  const room = (code: string) => env.MATCH.get(env.MATCH.idFromName(code));
+  return {
+    async status(code) {
+      const res = await room(code).fetch("https://room/status");
+      return res.status === 200 ? await res.json() : null;
+    },
+    async ticket(code) {
+      const res = await room(code).fetch("https://room/ticket", { method: "POST" });
+      return res.status === 200 ? ((await res.json()) as { ticket: string }).ticket : null;
+    },
+  };
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -49,24 +64,41 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/api/matches") {
-      let body: { protocol_version?: unknown } = {};
-      try { body = await request.json(); } catch { /* handled below */ }
+      const raw = await request.text();
+      let body: { protocol_version?: unknown; site?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* handled below */ }
       if (body.protocol_version !== PROTOCOL_VERSION) {
         return json({ error: `protocol version ${String(body.protocol_version)} is not supported, please upgrade Breakfast` }, 426);
       }
       if (await limited(env, request, "create", CREATE_LIMIT)) return json({ error: "too many requests" }, 429);
+      // A registered location signs the request; its linked locations can then list and join the match.
+      let hostLocation: string | null = null;
+      if (request.headers.get("x-location")) {
+        if (!env.DB) return json({ error: "locations are not set up here" }, 503);
+        const who = await authenticate(request, env, raw, Date.now());
+        if (who instanceof Response) return who;
+        hostLocation = who.id;
+      }
       for (let attempt = 0; attempt < 8; attempt++) {
         const code = randomCode();
         const room = env.MATCH.get(env.MATCH.idFromName(code));
         const res = await room.fetch(`https://room/reserve?code=${code}`, { method: "POST" });
-        if (res.status === 200) return json({ code, expires_in_s: LIMITS.CODE_TTL_MS / 1000 });
+        if (res.status !== 200) continue;
+        if (hostLocation && env.DB) {
+          const now = Date.now();
+          const site = typeof body.site === "string" && validName(body.site) ? body.site.trim() : null;
+          await env.DB.prepare("DELETE FROM open_matches WHERE expires_at < ?").bind(now).run();
+          await env.DB.prepare("INSERT INTO open_matches (code, location_id, site, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+            .bind(code, hostLocation, site, now, now + LIMITS.CODE_TTL_MS).run();
+        }
+        return json({ code, expires_in_s: LIMITS.CODE_TTL_MS / 1000 });
       }
       return json({ error: "could not reserve a code" }, 503);
     }
 
     if (request.method === "POST" && url.pathname === "/telemetry") return telemetry(request, env);
 
-    const located = await handleLocations(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
+    const located = await handleLocations(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key), rooms(env));
     if (located) return located;
 
     const ws = url.pathname.match(/^\/ws\/([A-Z0-9]{6})$/);
@@ -120,6 +152,16 @@ export class MatchRoom extends DurableObject<Env> {
       this.core = MatchCore.reserve(url.searchParams.get("code") ?? "", deps);
       await this.save();
       return new Response("ok");
+    }
+
+    if (url.pathname === "/status") {
+      return this.core && this.core.phase !== "reserved" ? Response.json(this.core.status()) : new Response("none", { status: 404 });
+    }
+    if (url.pathname === "/ticket" && request.method === "POST") {
+      const ticket = this.core ? await this.core.issueTicket() : null;
+      if (!ticket) return new Response("not open", { status: 409 });
+      await this.save();
+      return Response.json({ ticket });
     }
 
     const pair = new WebSocketPair();

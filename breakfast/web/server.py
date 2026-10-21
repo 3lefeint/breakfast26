@@ -1419,12 +1419,21 @@ async def wu_correct_dart(body: CorrectDartBody):
 # ── REST: online Elimination ─────────────────────────────────────────────────
 
 class OnlineCreateBody(BaseModel):
-    password: str
+    password: str = ""        # empty: only linked locations can join
     site: str | None = None
 
 
 class OnlineJoinBody(OnlineCreateBody):
     code: str
+
+
+class OnlineLinkedJoinBody(BaseModel):
+    code: str
+    site: str | None = None
+
+
+class OnlineReadyBody(BaseModel):
+    ready: bool
 
 
 class OnlinePlayersBody(BaseModel):
@@ -1449,7 +1458,8 @@ def _online_settings() -> tuple[str | None, str | None]:
 @app.get("/api/online")
 async def online_status():
     relay_url, site_name = _online_settings()
-    return {"configured": bool(relay_url), "site_name": site_name,
+    located = _locations.status() if _locations else {}
+    return {"configured": bool(relay_url), "site_name": site_name, "location_name": located.get("name"),
             "status": _online.status() if _online and _online.active else None}
 
 
@@ -1458,35 +1468,85 @@ async def _online_call(fn, *args):
         return {"error": "online play is not available"}
     try:
         result = await asyncio.to_thread(fn, *args)
-    except online_mod.RelayError as e:
+    except (online_mod.RelayError, locations_mod.LocationError) as e:
         return {"error": str(e)}
     return {"ok": True, **({"code": result} if isinstance(result, str) else {})}
 
 
+def _online_site(requested):
+    """The name of this site in a match: the one asked for, else `[online] site_name`, else the location's name."""
+    _, site_name = _online_settings()
+    located = _locations.status()["name"] if _locations else None
+    return (requested or site_name or located or "").strip()
+
+
+def _online_blocked():
+    relay_url, _ = _online_settings()
+    if not relay_url:
+        return None, {"error": "set the relay address in Settings first"}
+    if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
+        return None, {"error": "a game is running, cancel it first"}
+    return relay_url, None
+
+
 @app.post("/api/online/create")
 async def online_create(body: OnlineCreateBody):
-    relay_url, site_name = _online_settings()
-    site = (body.site or site_name or "").strip()
-    if not relay_url:
-        return {"error": "set the relay address in Settings first"}
+    relay_url, blocked = _online_blocked()
+    if blocked:
+        return blocked
+    site = _online_site(body.site)
     if not site:
         return {"error": "give this site a name"}
-    if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
-        return {"error": "a game is running, cancel it first"}
-    return await _online_call(_online.create, relay_url, site, body.password)
+    sign = _locations.signer_for(relay_url) if _locations else None
+    return await _online_call(_online.create, relay_url, site, body.password, sign)
 
 
 @app.post("/api/online/join")
 async def online_join(body: OnlineJoinBody):
-    relay_url, site_name = _online_settings()
-    site = (body.site or site_name or "").strip()
-    if not relay_url:
-        return {"error": "set the relay address in Settings first"}
+    relay_url, blocked = _online_blocked()
+    if blocked:
+        return blocked
+    site = _online_site(body.site)
     if not site:
         return {"error": "give this site a name"}
-    if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.state == "playing":
-        return {"error": "a game is running, cancel it first"}
+    if not body.password:
+        return {"error": "enter the match password"}
     return await _online_call(_online.join, relay_url, body.code, site, body.password)
+
+
+@app.get("/api/online/open")
+async def online_open():
+    """The open matches of the linked locations, fetched when asked."""
+    relay_url, _ = _online_settings()
+    if not (_locations and relay_url and _locations.signer_for(relay_url)):
+        return {"ok": True, "registered": False, "matches": []}
+    try:
+        matches = await asyncio.to_thread(_locations.open_matches)
+    except locations_mod.LocationError as e:
+        return {"error": str(e)}
+    return {"ok": True, "registered": True, "matches": matches}
+
+
+@app.post("/api/online/join-linked")
+async def online_join_linked(body: OnlineLinkedJoinBody):
+    relay_url, blocked = _online_blocked()
+    if blocked:
+        return blocked
+    if not (_locations and _locations.signer_for(relay_url)):
+        return {"error": "register this location first"}
+    site = _online_site(body.site)
+    if not site:
+        return {"error": "give this site a name"}
+
+    def join():
+        _online.join(relay_url, body.code, site, ticket=_locations.join_ticket(body.code))
+
+    return await _online_call(join)
+
+
+@app.post("/api/online/ready")
+async def online_ready(body: OnlineReadyBody):
+    return await _online_call(_online.set_ready, body.ready)
 
 
 @app.post("/api/online/players")

@@ -1,8 +1,9 @@
 <script>
   import { t } from '../../lib/i18n.js';
-  // Online Elimination on Home: host a match or join one with a code, pick the players of this
-  // site, and (as the host) order them and start. Once the match runs, the TV view takes over.
-  import { onMount } from 'svelte';
+  // Online Elimination on Home: host a match, join one of a linked location or join with a code, pick the players
+  // of this site, say ready, and (as the host) order them and start. Once the match runs, the TV view takes over.
+  // The open matches of the linked locations are fetched when the page opens and on Refresh, not kept up to date.
+  import { onMount, untrack } from 'svelte';
   import { online } from '../../lib/stores/online.js';
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
@@ -10,8 +11,11 @@
 
   let configured = $state(true);
   let site = $state('');
+  let locationName = $state('');
   let password = $state('');
+  let joinPassword = $state('');
   let code = $state('');
+  let open = $state({ registered: false, matches: [], error: '' });
   let error = $state('');
   let busy = $state(false);
 
@@ -23,24 +27,48 @@
     if (res) {
       configured = res.configured;
       site = res.site_name || '';
+      locationName = res.location_name || '';
     }
+    loadOpen();
   });
+
+  async function loadOpen() {
+    const res = await apiJson('GET', '/api/online/open').catch(() => null);
+    if (!res) return;
+    open = res.error ? { registered: true, matches: [], error: res.error } : { registered: res.registered, matches: res.matches, error: '' };
+  }
+
+  // Back on the start page after a match: the list may have changed.
+  let wasOnline = false;
+  $effect(() => {
+    const now = !!$online;
+    if (!now && wasOnline) untrack(loadOpen);
+    wasOnline = now;
+  });
+
+  // A name another site already uses is the one error that needs more than the relay's words.
+  const explain = (message) => /site name is already taken/.test(message)
+    ? t('That site name is already taken in this match. Enter another name for this site.') : t(message);
 
   async function run(url, body) {
     busy = true;
     error = '';
     const res = await apiJson('POST', url, body);
     busy = false;
-    if (res.error) error = t(res.error);
+    if (res.error) error = explain(res.error);
     return res;
   }
 
   const create = () => run('/api/online/create', { site, password });
-  const join = () => run('/api/online/join', { code, site, password });
+  const join = () => run('/api/online/join', { code, site, password: joinPassword });
+  const joinLinked = (match) => run('/api/online/join-linked', { code: match.code, site });
   const leave = () => run('/api/online/leave');
 
   let mine = $derived($online?.lobby.sites.find((s) => s.site === $online.site)?.players ?? []);
   let everyone = $derived(($online?.lobby.sites ?? []).flatMap((s) => s.players));
+  let meReady = $derived($online?.lobby.sites.find((s) => s.site === $online.site)?.ready ?? false);
+  let othersReady = $derived(($online?.lobby.sites ?? []).filter((s) => s.site !== $online.lobby.host).every((s) => s.ready));
+  const setReady = () => run('/api/online/ready', { ready: !meReady });
 
   // The host's order: keep what was arranged, drop who left, add who came.
   $effect(() => {
@@ -90,18 +118,32 @@
       <p class="note">{t('Set the relay address under Settings → Online first.')}</p>
     {:else}
       <div class="form">
-        <label>{t('This site\'s name')} <input type="text" bind:value={site} placeholder={t('e.g. Home')} maxlength="24"></label>
-        <label>{t('Match password')} <input type="text" bind:value={password} placeholder={t('everyone needs the same one')}></label>
+        <label>{t('This site\'s name')} <input type="text" bind:value={site} placeholder={locationName || t('e.g. Home')} maxlength="24"></label>
       </div>
+      {#if open.registered}
+        <div class="box open-box">
+          <div class="box-title">{t('Matches of linked locations')} <button type="button" class="btn-link" onclick={loadOpen}>{t('Refresh')}</button></div>
+          {#each open.matches as m (m.code)}
+            <div class="open-match">
+              <span><strong>{m.location.name}</strong> <span class="hint">· {t('{players} players', { players: m.players })}</span></span>
+              <button class="btn btn-start" disabled={busy || !(site.trim() || locationName)} onclick={() => joinLinked(m)}>{t('Join')}</button>
+            </div>
+          {:else}
+            <p class="note">{open.error || t('No open matches.')}</p>
+          {/each}
+        </div>
+      {/if}
       <div class="two">
         <div class="box">
           <div class="box-title">{t('Host a match')}</div>
-          <button class="btn btn-start" disabled={busy || !site.trim() || !password} onclick={create}>{t('Create')}</button>
+          <input type="text" bind:value={password} placeholder={t('Password (optional)')} title={t('Without a password only linked locations can join')}>
+          <button class="btn btn-start" disabled={busy || !(site.trim() || locationName)} onclick={create}>{t('Create')}</button>
         </div>
         <div class="box">
           <div class="box-title">{t('Join with a code')}</div>
           <input type="text" class="code-input" bind:value={code} placeholder={t('CODE')} maxlength="6">
-          <button class="btn btn-add" disabled={busy || !site.trim() || !password || code.trim().length < 6} onclick={join}>{t('Join')}</button>
+          <input type="text" bind:value={joinPassword} placeholder={t('Match password')}>
+          <button class="btn btn-add" disabled={busy || !(site.trim() || locationName) || !joinPassword || code.trim().length < 6} onclick={join}>{t('Join')}</button>
         </div>
       </div>
     {/if}
@@ -113,7 +155,7 @@
     <div class="code-row">
       <span class="label">{t('Join code')}</span>
       <span class="code">{$online.code}</span>
-      <span class="hint">{t('valid for 10 minutes, with the match password')}</span>
+      <span class="hint">{t('valid for 10 minutes')}</span>
     </div>
 
     <div class="sites">
@@ -123,6 +165,7 @@
           <strong>{s.site}</strong>
           {#if s.site === $online.lobby.host}<span class="tag">{t('host')}</span>{/if}
           {#if s.site === $online.site}<span class="tag">{t('you')}</span>{/if}
+          {#if s.site !== $online.lobby.host}<span class="tag" class:ok={s.ready}>{s.ready ? t('ready') : t('not ready')}</span>{/if}
           <span class="site-players">{s.players.length ? s.players.map(cap).join(', ') : t('no players yet')}</span>
         </div>
       {/each}
@@ -132,7 +175,7 @@
     <div class="known-chips">
       {#each $players.known as name (name)}
         <button type="button" class="chip" class:in-game={mine.includes(name)} disabled={everyone.includes(name) && !mine.includes(name)}
-                onclick={() => toggle(name)}>{cap(name)}</button>
+                onclick={() => toggle(name)}>{cap(name)}{#if everyone.includes(name) && !mine.includes(name)} <span class="hint">· {ownerOf(name)}</span>{/if}</button>
       {/each}
     </div>
 
@@ -157,8 +200,10 @@
         </div>
         <button class="btn btn-add" onclick={shuffle} disabled={order.length < 2}>{t('🔀 Shuffle')}</button>
       </div>
-      <button class="btn btn-start" disabled={busy || order.length < 2} onclick={start}>{t('▶ Start')}</button>
+      <button class="btn btn-start" disabled={busy || order.length < 2 || !othersReady} onclick={start}>{t('▶ Start')}</button>
+      {#if !othersReady}<p class="note">{t('Waiting for the other sites to be ready…')}</p>{/if}
     {:else}
+      <button class="btn ready-btn" class:btn-start={!meReady} class:btn-add={meReady} disabled={busy || !mine.length} onclick={setReady}>{meReady ? t('Not ready') : t('Ready')}</button>
       <p class="note">{t('Waiting for the host to start the match…')}</p>
     {/if}
     <button class="btn-link" onclick={leave}>{t('Leave')}</button>
@@ -190,6 +235,9 @@
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   .box { background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
   .box-title { font-size: 0.85rem; font-weight: 600; }
+  .open-box { margin-bottom: 0.75rem; align-items: stretch; }
+  .open-match { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+  .ready-btn { margin-top: 0.75rem; }
   .code-input { text-transform: uppercase; letter-spacing: 0.25em; font-family: monospace; width: 10rem; }
   .code-row { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .code-row .label { color: var(--muted); font-size: 0.85rem; }
@@ -198,6 +246,7 @@
   .site { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 8px; font-size: 0.9rem; }
   .site.me { border-color: var(--accent); }
   .site-players { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
+  .tag.ok { color: var(--green); border-color: var(--green); }
   .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0 0.3rem; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
   .dot.ok { background: var(--green); }

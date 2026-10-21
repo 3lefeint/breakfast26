@@ -1,4 +1,4 @@
-# Relay protocol, version 1
+# Relay protocol, version 2
 
 How Breakfast installations ("sites") play one Elimination match over the relay.
 Design decisions: `DESIGN.md`. Both sides are tested against the examples in
@@ -6,9 +6,11 @@ Design decisions: `DESIGN.md`. Both sides are tested against the examples in
 
 ## Transport
 
-- `POST /api/matches` with `{"protocol_version": 1}` reserves a **join code** and answers
+- `POST /api/matches` with `{"protocol_version": 2}` reserves a **join code** and answers
   `{"code": "K7M2QX", "expires_in_s": 600}`. The code has 6 characters from
-  `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` and is valid 10 minutes, or until the match starts.
+  `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` and is valid 10 minutes, or until the match starts. A registered location
+  signs the request (headers as under "Locations") and may add `site` (its name in the match): the match is then
+  listed for the locations linked to it.
 - `GET /ws/<code>` upgrades to a WebSocket (one Durable Object per code). Every frame is one
   JSON object with a string field `type`. The first frame from the client must be `hello`
   within 10 seconds.
@@ -37,8 +39,9 @@ puts the match into `paused` until it rejoins or the host decides. A `finished` 
 
 | type | fields | notes |
 |------|--------|-------|
-| `hello` | `protocol_version`, `mode` (`create` \| `join` \| `rejoin`), `site`, `password`; for `rejoin` also `token`, `last_seq` | `create` only on a reserved code and makes the sender the host; the password is set here |
-| `lobby_set_players` | `players` (list of names) | the sender's local players, replaces its earlier list; names are unique across the lobby |
+| `hello` | `protocol_version`, `mode` (`create` \| `join` \| `rejoin`), `site`; `password` for `create` and `join`, or `ticket` instead of the password for `join`; for `rejoin` also `token`, `last_seq` | `create` only on a reserved code and makes the sender the host; the password is set here |
+| `lobby_set_players` | `players` (list of names) | the sender's local players, replaces its earlier list (and takes back the site's `ready`); names are unique across the lobby |
+| `lobby_set_ready` | `ready` (bool) | the sender is ready to start; passed on in `lobby`, the relay does not hold the start back |
 | `lobby_start` | `lives` (1 to 10), `order` (all lobby players once) | host only; at least 2 players, at most 12 players and 6 sites |
 | `dart` | `seq`, `player`, `throws` | live darts of the turn in progress, informational, relayed as is |
 | `turn` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner` | the finished turn, authoritative |
@@ -60,7 +63,7 @@ match is over), `turn.eliminated` the players that lost their last life with thi
 | type | fields | notes |
 |------|--------|-------|
 | `welcome` | `code`, `site`, `token`, `host` (bool), `state` | answer to a valid `hello`; the `token` authenticates a later `rejoin` |
-| `lobby` | `host`, `sites` (list of `{site, players, connected}`), `lives`, `order` | sent on every lobby change |
+| `lobby` | `host`, `sites` (list of `{site, players, connected, ready}`), `lives`, `order` | sent on every lobby change; the host always counts as ready |
 | `started` | `match_id`, `lives`, `order`, `owners` (player -> site) | the match begins; `current_player` is `order[0]` |
 | `rematch` | | the host asked for a rematch; followed by a `lobby` whose `order` is that of a local rematch (the first eliminated starts, the winner is last), without sites that are gone |
 | `dart` | as received, plus `site` | forwarded to the other sites |
@@ -108,7 +111,9 @@ of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and 
 | `GET /locations/<id>/links` | that location | `{links: [{link_id, kind, created_at, peer}]}` |
 | `DELETE /links/<id>` | either side of the link | remove the link |
 | `PATCH /locations/<id>` `{name}` | that location | rename it; the id and the links stay |
-| `DELETE /locations/<id>` | that location | delete it with its links and open invitations |
+| `DELETE /locations/<id>` | that location | delete it with its links, open invitations and open matches |
+| `GET /locations/<id>/open-matches` | that location | `{matches: [{code, location: {id, name}, site, sites, players}]}`: the matches in the lobby that locations linked to it opened (at most 20) |
+| `POST /locations/<id>/join-ticket` `{code}` | that location | a one-time ticket (valid 2 minutes, at most 10 open per match) to join that open match with `hello.ticket` instead of the password; 404 unless the match belongs to a linked location |
 
 Only the hash of a token is stored. An unknown, used or expired token answers 404 without telling which. Registering,
 inviting, redeeming and reading are limited per IP address or per location. Links have a `kind` (`play` for now).

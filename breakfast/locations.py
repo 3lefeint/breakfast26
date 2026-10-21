@@ -147,16 +147,28 @@ class Locations:
 
     # ── requests to the relay ─────────────────────────────────────────────────
 
-    def _signed(self, state, method, base, path, body=None):
-        raw = json.dumps(body, separators=(",", ":")) if body is not None else ""
+    def _headers(self, state, method, path, raw):
+        """The headers that sign a request to the relay (the signature covers method, path, time and body)."""
         timestamp = str(int(self._now()))
         message = f"{method}\n{path}\n{timestamp}\n{hashlib.sha256(raw.encode()).hexdigest()}"
         key = Ed25519PrivateKey.from_private_bytes(_unb64(state["key"]))
-        headers = {"x-location": state["id"], "x-timestamp": timestamp, "x-signature": _b64(key.sign(message.encode()))}
+        return {"x-location": state["id"], "x-timestamp": timestamp, "x-signature": _b64(key.sign(message.encode()))}
+
+    def _signed(self, state, method, base, path, body=None):
+        raw = json.dumps(body, separators=(",", ":")) if body is not None else ""
+        headers = self._headers(state, method, path, raw)
         if raw:
             headers["content-type"] = "application/json"
         fn = {"POST": self._post, "GET": self._get, "DELETE": self._delete, "PATCH": self._patch}[method]
         return self._answer(fn, base + path, data=raw.encode() if raw else None, headers=headers)
+
+    def signer_for(self, relay_url):
+        """`sign(method, path, raw) -> headers` for requests of this location to `relay_url`, or None when this
+        installation is not registered there."""
+        state = self._load()
+        if "id" not in state or state.get("relay") != http_base(relay_url):
+            return None
+        return lambda method, path, raw: self._headers(state, method, path, raw)
 
     @staticmethod
     def _answer(fn, url, **kw):
@@ -283,6 +295,20 @@ class Locations:
         with self._lock:
             state = self._registered()
             return self._signed(state, "GET", state["relay"], f"/locations/{state['id']}/links")["links"]
+
+    def open_matches(self):
+        """The open online matches of the linked locations (fetched when asked, not kept)."""
+        with self._lock:
+            state = self._registered()
+            return self._signed(state, "GET", state["relay"], f"/locations/{state['id']}/open-matches")["matches"]
+
+    def join_ticket(self, code):
+        """A one-time ticket to join the open match `code` of a linked location without its password."""
+        with self._lock:
+            state = self._registered()
+            data = self._signed(state, "POST", state["relay"], f"/locations/{state['id']}/join-ticket", {"code": str(code).strip().upper()})
+            log.info("Locations: joining the match %s of a linked location", data.get("code"))
+            return data["ticket"]
 
     def unlink(self, link_id, pin):
         with self._lock:

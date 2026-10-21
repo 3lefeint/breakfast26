@@ -59,6 +59,11 @@ export function freshTimestamp(timestamp: string | null, nowMs: number): boolean
 }
 
 export interface LocationEnv { DB?: D1Database }
+/** What the routes need from the match rooms (the Durable Objects), kept out of this file. */
+export interface Rooms {
+  status(code: string): Promise<{ phase: string; host: string | null; sites: number; players: number } | null>;
+  ticket(code: string): Promise<string | null>;
+}
 export type Limiter = (purpose: string, cfg: { limit: number; windowMs: number }, key?: string) => Promise<boolean>;
 
 const REGISTER_LIMIT = { limit: 20, windowMs: 3_600_000 };
@@ -67,6 +72,7 @@ const REDEEM_LIMIT = { limit: 10, windowMs: 3_600_000 };
 const REDEEM_IP_LIMIT = { limit: 30, windowMs: 3_600_000 };
 const READ_LIMIT = { limit: 120, windowMs: 3_600_000 };
 const WRITE_LIMIT = { limit: 60, windowMs: 3_600_000 };
+const TICKET_LIMIT = { limit: 60, windowMs: 3_600_000 };
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -88,7 +94,7 @@ async function readBody(request: Request): Promise<{ raw: string; data: Record<s
 }
 
 /** The location that signed the request, or the reason it is refused. */
-async function authenticate(request: Request, env: LocationEnv, raw: string, now: number): Promise<{ id: string } | Response> {
+export async function authenticate(request: Request, env: LocationEnv, raw: string, now: number): Promise<{ id: string } | Response> {
   const id = request.headers.get("x-location");
   const timestamp = request.headers.get("x-timestamp");
   const signature = request.headers.get("x-signature") ?? "";
@@ -104,19 +110,23 @@ async function authenticate(request: Request, env: LocationEnv, raw: string, now
 const SAME_LINK = "SELECT id FROM links WHERE (location_a = ?1 AND location_b = ?2) OR (location_a = ?2 AND location_b = ?1)";
 
 /** The routes of the locations; null when the request is none of them. */
-export async function handleLocations(request: Request, env: LocationEnv, limited: Limiter, now = Date.now()): Promise<Response | null> {
+export async function handleLocations(request: Request, env: LocationEnv, limited: Limiter, rooms: Rooms, now = Date.now()): Promise<Response | null> {
   const path = new URL(request.url).pathname;
   const method = request.method;
   const invite = path.match(/^\/locations\/([0-9a-f]{32})\/invitations$/);
   const links = path.match(/^\/locations\/([0-9a-f]{32})\/links$/);
   const link = path.match(/^\/links\/([0-9a-f]{32})$/);
   const own = path.match(/^\/locations\/([0-9a-f]{32})$/);
+  const open = path.match(/^\/locations\/([0-9a-f]{32})\/open-matches$/);
+  const ticket = path.match(/^\/locations\/([0-9a-f]{32})\/join-ticket$/);
   const route =
     method === "POST" && path === "/locations" ? "register"
     : method === "POST" && invite ? "invite"
     : method === "POST" && path === "/invitations/redeem" ? "redeem"
     : method === "GET" && links ? "links"
     : method === "DELETE" && link ? "unlink"
+    : method === "GET" && open ? "open"
+    : method === "POST" && ticket ? "ticket"
     : method === "PATCH" && own ? "rename"
     : method === "DELETE" && own ? "delete"
     : null;
@@ -191,6 +201,43 @@ export async function handleLocations(request: Request, env: LocationEnv, limite
     return json({ links: rows.results.map((r) => ({ link_id: r.link_id, kind: r.kind, created_at: r.created_at, peer: { id: r.peer_id, name: r.peer_name } })) });
   }
 
+  if (route === "open") {
+    if (who.id !== open![1]) return json({ error: "not your location" }, 403);
+    if (await limited("loc-read", READ_LIMIT, who.id)) return tooMany();
+    const rows = await db.prepare(
+      "SELECT om.code, om.site, locations.id AS location_id, locations.name AS location_name FROM open_matches om " +
+      "JOIN locations ON locations.id = om.location_id " +
+      "JOIN links ON (links.location_a = ?1 AND links.location_b = om.location_id) OR (links.location_b = ?1 AND links.location_a = om.location_id) " +
+      "WHERE om.expires_at >= ?2 ORDER BY om.created_at DESC LIMIT 20",
+    ).bind(who.id, now).all<{ code: string; site: string | null; location_id: string; location_name: string }>();
+    const matches = [];
+    for (const r of rows.results) {
+      const status = await rooms.status(r.code);
+      if (!status || status.phase !== "lobby") {
+        await db.prepare("DELETE FROM open_matches WHERE code = ?").bind(r.code).run();
+        continue;
+      }
+      matches.push({ code: r.code, location: { id: r.location_id, name: r.location_name }, site: status.host ?? r.site, sites: status.sites, players: status.players });
+    }
+    return json({ matches });
+  }
+
+  if (route === "ticket") {
+    if (who.id !== ticket![1]) return json({ error: "not your location" }, 403);
+    if (await limited("loc-ticket", TICKET_LIMIT, who.id)) return tooMany();
+    const code = body.data.code;
+    if (typeof code !== "string" || !/^[A-Z0-9]{6}$/.test(code)) return json({ error: "that match is not open for you" }, 404);
+    const row = await db.prepare(
+      "SELECT om.site FROM open_matches om " +
+      "JOIN links ON (links.location_a = ?1 AND links.location_b = om.location_id) OR (links.location_b = ?1 AND links.location_a = om.location_id) " +
+      "WHERE om.code = ?2 AND om.expires_at >= ?3",
+    ).bind(who.id, code, now).first<{ site: string | null }>();
+    if (!row) return json({ error: "that match is not open for you" }, 404);
+    const issued = await rooms.ticket(code);
+    if (!issued) return json({ error: "that match is not open any more" }, 409);
+    return json({ ticket: issued, code }, 201);
+  }
+
   if (route === "rename" || route === "delete") {
     if (who.id !== own![1]) return json({ error: "not your location" }, 403);
     if (await limited("loc-write", WRITE_LIMIT, who.id)) return tooMany();
@@ -203,6 +250,7 @@ export async function handleLocations(request: Request, env: LocationEnv, limite
     await db.batch([
       db.prepare("DELETE FROM links WHERE location_a = ?1 OR location_b = ?1").bind(who.id),
       db.prepare("DELETE FROM invitations WHERE location_id = ?").bind(who.id),
+      db.prepare("DELETE FROM open_matches WHERE location_id = ?").bind(who.id),
       db.prepare("DELETE FROM locations WHERE id = ?").bind(who.id),
     ]);
     return json({ ok: true });

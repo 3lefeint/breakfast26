@@ -35,7 +35,7 @@ class Room {
   }
 
   async hello(conn: string, mode: string, site: string, extra: Record<string, unknown> = {}) {
-    return this.send(conn, { type: "hello", protocol_version: 1, mode, site, password: "pw", ...extra });
+    return this.send(conn, { type: "hello", protocol_version: 2, mode, site, password: "pw", ...extra });
   }
 
   frames(conn: string, type: string): Frame[] { return (this.inbox[conn] ?? []).filter((f) => f.type === type); }
@@ -81,7 +81,7 @@ describe("lobby", () => {
   });
 
   it("refuses another protocol version loudly", async () => {
-    await r.hello("h", "create", "Home", { protocol_version: 2 });
+    await r.hello("h", "create", "Home", { protocol_version: 3 });
     expect(r.closed.h).toBe(CLOSE.UPGRADE);
     expect((r.last("h", "error").message as string)).toContain("upgrade");
   });
@@ -119,7 +119,7 @@ describe("lobby", () => {
     await r.send("c", { type: "lobby_set_players", players: ["anna"] });
     expect(r.last("c", "rejected")).toMatchObject({ for: "lobby_set_players" });
     expect(r.last("h", "lobby").sites).toEqual([
-      { site: "Home", players: ["anna"], connected: true }, { site: "Club", players: [], connected: true }]);
+      { site: "Home", players: ["anna"], connected: true, ready: true }, { site: "Club", players: [], connected: true, ready: false }]);
   });
 
   it("caps the number of players", async () => {
@@ -257,8 +257,8 @@ describe("rematch", () => {
     const lobby = r.last("c", "lobby");
     expect(lobby.order).toEqual(["carl", "anna", "ben"]);
     expect(lobby.sites).toEqual([
-      { site: "Home", players: ["anna", "ben"], connected: true },
-      { site: "Club", players: ["carl"], connected: true },
+      { site: "Home", players: ["anna", "ben"], connected: true, ready: true },
+      { site: "Club", players: ["carl"], connected: true, ready: false },
     ]);
   });
 
@@ -300,7 +300,7 @@ describe("rematch", () => {
     r.drop("c");
     await r.send("h", { type: "rematch" });
     const lobby = r.last("h", "lobby");
-    expect(lobby.sites).toEqual([{ site: "Home", players: ["anna", "ben"], connected: true }]);
+    expect(lobby.sites).toEqual([{ site: "Home", players: ["anna", "ben"], connected: true, ready: true }]);
     expect(lobby.order).toEqual(["anna", "ben"]);
     await r.hello("c2", "join", "Club");
     await r.send("c2", { type: "lobby_set_players", players: ["carl"] });
@@ -439,5 +439,85 @@ describe("persistence", () => {
     r.core = restored;
     await r.send("c", turn(2, "carl", "ben"));
     expect(r.last("c", "turn_ok")).toMatchObject({ seq: 2 });
+  });
+});
+
+describe("linked locations", () => {
+  it("a ticket lets a site join without the password, once", async () => {
+    await r.hello("h", "create", "Home");
+    const ticket = (await r.core.issueTicket()) as string;
+    expect(ticket).toHaveLength(32);
+    await r.hello("c", "join", "Club", { password: undefined, ticket });
+    expect(r.last("c", "welcome")).toMatchObject({ host: false });
+    await r.hello("d", "join", "Other", { password: undefined, ticket });
+    expect(r.closed.d).toBe(CLOSE.UNAUTHORIZED);
+  });
+
+  it("a ticket survives a name that is already taken", async () => {
+    await r.hello("h", "create", "Home");
+    const ticket = (await r.core.issueTicket()) as string;
+    await r.hello("x", "join", "Home", { password: undefined, ticket });
+    expect(r.closed.x).toBe(CLOSE.CONFLICT);
+    await r.hello("c", "join", "Club", { password: undefined, ticket });
+    expect(r.last("c", "welcome")).toMatchObject({ host: false });
+  });
+
+  it("a ticket runs out and a wrong one counts as a failed hello", async () => {
+    await r.hello("h", "create", "Home");
+    const ticket = (await r.core.issueTicket()) as string;
+    r.advance(LIMITS.TICKET_TTL_MS + 1);
+    await r.hello("c", "join", "Club", { password: undefined, ticket });
+    expect(r.closed.c).toBe(CLOSE.UNAUTHORIZED);
+    await r.hello("d", "join", "Club", { password: undefined, ticket: "f".repeat(32) });
+    expect(r.core.s.failedHellos).toBe(2);
+  });
+
+  it("tickets are only issued while the match is in the lobby, and only a few at a time", async () => {
+    expect(await r.core.issueTicket()).toBeNull();               // reserved
+    await r.hello("h", "create", "Home");
+    for (let i = 0; i < LIMITS.MAX_TICKETS; i++) expect(await r.core.issueTicket()).not.toBeNull();
+    expect(await r.core.issueTicket()).toBeNull();
+    await startedMatch();
+    expect(await r.core.issueTicket()).toBeNull();               // playing
+  });
+
+  it("reports what the list of open matches shows", async () => {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club");
+    await r.send("h", { type: "lobby_set_players", players: ["anna", "ben"] });
+    expect(r.core.status()).toEqual({ phase: "lobby", host: "Home", sites: 2, players: 2 });
+  });
+});
+
+describe("ready", () => {
+  it("is passed on to everybody, the host always counts as ready", async () => {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club");
+    expect(r.last("h", "lobby").sites).toEqual([
+      { site: "Home", players: [], connected: true, ready: true },
+      { site: "Club", players: [], connected: true, ready: false },
+    ]);
+    await r.send("c", { type: "lobby_set_ready", ready: true });
+    expect((r.last("h", "lobby").sites as { ready: boolean }[]).map((x) => x.ready)).toEqual([true, true]);
+    await r.send("c", { type: "lobby_set_ready", ready: false });
+    expect((r.last("h", "lobby").sites as { ready: boolean }[])[1].ready).toBe(false);
+  });
+
+  it("is withdrawn when the site changes its players", async () => {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club");
+    await r.send("c", { type: "lobby_set_ready", ready: true });
+    await r.send("c", { type: "lobby_set_players", players: ["carl"] });
+    expect((r.last("h", "lobby").sites as { ready: boolean }[])[1].ready).toBe(false);
+  });
+
+  it("only counts in the lobby, and does not hold the start back", async () => {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club");
+    await r.send("h", { type: "lobby_set_players", players: ["anna", "ben"] });
+    await r.send("h", { type: "lobby_start", lives: 3, order: ["anna", "ben"] });
+    expect(r.last("h", "started")).toBeDefined();                 // the guest was not ready
+    await r.send("c", { type: "lobby_set_ready", ready: true });
+    expect(r.last("c", "rejected")).toMatchObject({ for: "lobby_set_ready" });
   });
 });

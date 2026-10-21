@@ -254,10 +254,17 @@ When a match ends, the TV announces what was earned:
 ### Online Elimination
 
 Play one Elimination match together with players at other locations, each on their own Breakfast
-installation. One site hosts the match and receives a join code; the others join with that code and a shared
-password. Each site adds its own players, and the host sets the lives and the order.
+installation. One site hosts the match; the others join with its join code and a shared password, or, if
+the sites are linked, with one click. Each site adds its own players and says it is ready, and the host sets the
+lives and the order.
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off.
+
+**Linked locations.** Under Settings → Connections, *Location Online Settings* registers the installation at
+the relay with a name and a local PIN. *Create invitation* gives a code for another location, which pastes it under
+*Accept an invitation*; the two are linked from then on. A match that a registered location opens then shows up
+under *Matches of linked locations* on the Online page of the linked ones, who join it without a password. A host
+who leaves the password empty is joinable only by linked locations.
 
 ### Usage reports
 

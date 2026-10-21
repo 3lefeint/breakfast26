@@ -13,6 +13,7 @@ interface SiteState {
   connection: string | null;
   left: boolean;
   droppedAt: number | null;
+  ready: boolean;
 }
 
 export interface TurnRecord {
@@ -51,6 +52,7 @@ export interface MatchState {
   decisionSent: boolean;
   failedHellos: number;
   lockedUntil: number;
+  tickets: Record<string, number>;
 }
 
 export interface Out {
@@ -86,7 +88,10 @@ function sameText(a: string, b: string): boolean {
 }
 
 export class MatchCore {
-  constructor(public s: MatchState, private deps: Deps) {}
+  constructor(public s: MatchState, private deps: Deps) {
+    s.tickets ??= {};   // a room stored before the tickets existed
+    for (const x of Object.values(s.sites)) x.ready ??= false;
+  }
 
   static reserve(code: string, deps: Deps): MatchCore {
     const now = deps.now();
@@ -95,7 +100,7 @@ export class MatchCore {
       passwordSalt: null, passwordHash: null, host: null, sites: {}, pending: {}, conns: {},
       lives: 0, order: [], active: [], eliminated: [], current: null, owners: {},
       seq: 0, log: [], acks: {}, matchId: null, rejoinDeadline: null, decisionSent: false,
-      failedHellos: 0, lockedUntil: 0,
+      failedHellos: 0, lockedUntil: 0, tickets: {},
     }, deps);
   }
 
@@ -120,6 +125,7 @@ export class MatchCore {
     switch (m.type) {
       case "hello": return [this.fail(conn, CLOSE.BAD_REQUEST, "already said hello")];
       case "lobby_set_players": return this.lobbySetPlayers(conn, site, m);
+      case "lobby_set_ready": return this.lobbySetReady(conn, site, m);
       case "lobby_start": return this.lobbyStart(conn, site, m);
       case "rematch": return this.rematch(conn, site);
       case "dart": return this.dart(site, m);
@@ -218,9 +224,15 @@ export class MatchCore {
 
     if (m.mode === "join") {
       if (s.phase !== "lobby") return [this.fail(conn, CLOSE.CONFLICT, "the match has already started")];
-      if (!(await this.passwordOk(m.password as string))) return [this.failAuth(conn, "wrong password")];
+      const ticket = typeof m.ticket === "string" ? await sha256(m.ticket) : null;
+      if (ticket !== null) {
+        if (!((s.tickets[ticket] ?? 0) > now)) return [this.failAuth(conn, "invalid or expired ticket")];
+      } else if (!(await this.passwordOk(m.password as string))) {
+        return [this.failAuth(conn, "wrong password")];
+      }
       if (s.sites[site]) return [this.fail(conn, CLOSE.CONFLICT, "that site name is already taken")];
       if (Object.keys(s.sites).length >= LIMITS.MAX_SITES) return [this.fail(conn, CLOSE.CONFLICT, "the match is full")];
+      if (ticket !== null) delete s.tickets[ticket];
       const token = await this.addSite(conn, site);
       return [this.welcome(conn, site, token, false), ...this.lobbyFrames()];
     }
@@ -260,6 +272,14 @@ export class MatchCore {
     if (taken) return [this.rejected(conn, "lobby_set_players", `the name ${taken} is already in the lobby`)];
     if (others.size + players.length > LIMITS.MAX_PLAYERS) return [this.rejected(conn, "lobby_set_players", `at most ${LIMITS.MAX_PLAYERS} players`)];
     s.sites[site].players = players;
+    s.sites[site].ready = false;
+    return this.lobbyFrames();
+  }
+
+  /** A site says it is ready to start. The relay only passes it on; it does not hold the start back. */
+  private lobbySetReady(conn: string, site: string, m: Frame): Out[] {
+    if (this.s.phase !== "lobby") return [this.rejected(conn, "lobby_set_ready", "the match is not in the lobby")];
+    this.s.sites[site].ready = m.ready as boolean;
     return this.lobbyFrames();
   }
 
@@ -298,6 +318,8 @@ export class MatchCore {
     if (s.phase !== "finished") return [this.rejected(conn, "rematch", "the match is not finished")];
     const ranked = this.placements(s.active[0] ?? null).map((p) => p.player).reverse();
     for (const [name, x] of Object.entries(s.sites)) if (x.left || x.connection === null) delete s.sites[name];
+    for (const x of Object.values(s.sites)) x.ready = false;
+    s.tickets = {};
     const present = Object.values(s.sites).flatMap((x) => x.players);
     s.order = [...ranked.filter((p) => present.includes(p)), ...present.filter((p) => !ranked.includes(p))];
     s.phase = "lobby";
@@ -428,11 +450,31 @@ export class MatchCore {
     return out;
   }
 
+  // ── linked locations ─────────────────────────────────────────────────────────
+
+  /** A one-time ticket that lets a linked location join without the password; null unless the match is in the lobby. */
+  async issueTicket(): Promise<string | null> {
+    const s = this.s;
+    if (s.phase !== "lobby") return null;
+    const now = this.deps.now();
+    for (const [hash, until] of Object.entries(s.tickets)) if (until <= now) delete s.tickets[hash];
+    if (Object.keys(s.tickets).length >= LIMITS.MAX_TICKETS) return null;
+    const ticket = this.deps.randomHex(16);
+    s.tickets[await sha256(ticket)] = now + LIMITS.TICKET_TTL_MS;
+    return ticket;
+  }
+
+  /** What the list of open matches shows. */
+  status(): { phase: Phase; host: string | null; sites: number; players: number } {
+    const sites = Object.values(this.s.sites);
+    return { phase: this.s.phase, host: this.s.host, sites: sites.length, players: sites.reduce((n, x) => n + x.players.length, 0) };
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────────────
 
   private async addSite(conn: string, name: string): Promise<string> {
     const token = this.deps.randomHex(16);
-    this.s.sites[name] = { name, tokenHash: await sha256(token), players: [], connection: conn, left: false, droppedAt: null };
+    this.s.sites[name] = { name, tokenHash: await sha256(token), players: [], connection: conn, left: false, droppedAt: null, ready: false };
     this.s.conns[conn] = name;
     return token;
   }
@@ -460,7 +502,7 @@ export class MatchCore {
 
   private lobbyFrames(): Out[] {
     const s = this.s;
-    const sites = Object.values(s.sites).map((x) => ({ site: x.name, players: x.players, connected: x.connection !== null }));
+    const sites = Object.values(s.sites).map((x) => ({ site: x.name, players: x.players, connected: x.connection !== null, ready: x.name === s.host || x.ready }));
     return this.toAll({ type: "lobby", host: s.host, sites, lives: s.lives, order: s.order });
   }
 
