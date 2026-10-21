@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-21
+
 ### Added
 - The LED display (`ESPHome/esp.yaml`) shows Field Training, Black Belt, Warm-up, Checkout Training, Target Battle and Killer: the darts of the turn, the figures of the game on the six digits, the target as two small digits on the matrix with hit, miss and win animations, the dart count or the lives of a Killer on the strip. A stopped board makes the strip pulse red and shows `StoP`. (#75)
 - Home Assistant entities for the games with their own topics and for Elimination: their state, an Active sensor each and Stop and Undo buttons for their command topics (`ESPHome/mqtt/`). (#75)
