@@ -53,6 +53,8 @@ Without the `DB` binding the route answers 503 and the rest of the relay is not 
 `npx wrangler d1 execute breakfast-telemetry --remote --command "SELECT type, COUNT(*) FROM events GROUP BY type"`;
 locally, `migrations apply ... --local` and `npm run dev` give a database to try it against.
 
+The same database holds the locations (`0002_locations.sql`, see PROTOCOL.md, "Locations"): registering, invitations and links need the `DB` binding and the migrations applied.
+
 ## Try it by hand
 
 Two Breakfast installations on one machine, each with its own `config.toml` and database:

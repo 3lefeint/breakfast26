@@ -27,6 +27,7 @@ from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
 from breakfast import known_players as kp
 from breakfast import tournament as tournament_mod
+from breakfast import locations as locations_mod
 from breakfast import online as online_mod
 from breakfast import db_backup
 from breakfast import telemetry as telemetry_mod
@@ -64,6 +65,7 @@ _co_ctrl = None
 _bb_ctrl = None
 _wu_ctrl = None
 _online = None
+_locations = None
 _cloud_client = None
 _stats_tracker = None
 _stats_db = None
@@ -91,7 +93,7 @@ def wire(game_state, elim_ctrl,
          wu_ctrl=None, resume_offers=None):
     global _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online, _elim_beat_hint
+           _dev_demo, _online, _locations, _elim_beat_hint
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
@@ -104,6 +106,7 @@ def wire(game_state, elim_ctrl,
     _bb_ctrl = bb_ctrl
     _wu_ctrl = wu_ctrl
     _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
+    _locations = locations_mod.Locations(config_path) if config_path else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
     _stats_db = stats_tracker._db if stats_tracker else None
@@ -1512,6 +1515,96 @@ async def online_leave():
     if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.online:
         _elim_ctrl.stop()
     return result
+
+
+# ── REST: locations ──────────────────────────────────────────────────────────
+
+class LocationRegisterBody(BaseModel):
+    name: str
+    pin: str
+
+
+class LocationPinBody(BaseModel):
+    pin: str
+
+
+class LocationNewPinBody(LocationPinBody):
+    new_pin: str
+
+
+class LocationRenameBody(LocationPinBody):
+    name: str
+
+
+class LocationJoinBody(LocationPinBody):
+    code: str
+
+
+class LocationUnlinkBody(LocationPinBody):
+    link_id: str
+
+
+async def _location_call(fn, *args):
+    if not _locations:
+        return {"error": "locations are not available"}
+    try:
+        return {"ok": True, **await asyncio.to_thread(fn, *args)}
+    except locations_mod.LocationError as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/locations")
+async def locations_status():
+    if not _locations:
+        return {"available": False}
+    relay_url, _ = _online_settings()
+    return {"available": True, "relay_configured": bool(relay_url), **_locations.status()}
+
+
+@app.post("/api/locations/register")
+async def locations_register(body: LocationRegisterBody):
+    relay_url, _ = _online_settings()
+    return await _location_call(lambda: {"location": _locations.register(relay_url, body.name, body.pin)})
+
+
+@app.post("/api/locations/rename")
+async def locations_rename(body: LocationRenameBody):
+    return await _location_call(lambda: {"location": _locations.rename(body.name, body.pin)})
+
+
+@app.post("/api/locations/unregister")
+async def locations_unregister(body: LocationPinBody):
+    return await _location_call(lambda: _locations.unregister(body.pin) or {})
+
+
+@app.post("/api/locations/change-pin")
+async def locations_change_pin(body: LocationNewPinBody):
+    return await _location_call(lambda: _locations.change_pin(body.pin, body.new_pin) or {})
+
+
+@app.post("/api/locations/pin")
+async def locations_set_pin(body: LocationPinBody):
+    return await _location_call(lambda: _locations.set_pin(body.pin) or {})
+
+
+@app.post("/api/locations/invite")
+async def locations_invite(body: LocationPinBody):
+    return await _location_call(lambda: {"code": _locations.invite(body.pin)})
+
+
+@app.post("/api/locations/join")
+async def locations_join(body: LocationJoinBody):
+    return await _location_call(lambda: {"link": _locations.join(body.code, body.pin)})
+
+
+@app.get("/api/locations/links")
+async def locations_links():
+    return await _location_call(lambda: {"links": _locations.links()})
+
+
+@app.post("/api/locations/unlink")
+async def locations_unlink(body: LocationUnlinkBody):
+    return await _location_call(lambda: _locations.unlink(body.link_id, body.pin) or {})
 
 
 # ── REST: stats ──────────────────────────────────────────────────────────────

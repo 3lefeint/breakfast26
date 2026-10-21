@@ -17,6 +17,7 @@
   import { health } from '../../lib/stores/health.js';
   import { changesOf } from '../../lib/changelog.js';
   import AchievementSounds from './AchievementSounds.svelte';
+  import LocationsSection from './LocationsSection.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
 
   const MASK = '●●●●●';
@@ -922,6 +923,8 @@
       <div class="settings-row"><label for="sOnlineRelay">{t('Relay address')}</label><input type="text" id="sOnlineRelay" placeholder={t('wss://breakfast-relay.example.workers.dev')} bind:value={cfg.online.relay_url}></div>
       <div class="settings-row"><label for="sOnlineSite">{t('This site\'s name')}</label><input type="text" id="sOnlineSite" placeholder={t('e.g. Home')} maxlength="24" bind:value={cfg.online.site_name}></div>
     </div>
+
+    <LocationsSection />
   {:else if activeTab === 'system'}
     <div class="settings-section" id="updates-panel">
       <div class="settings-section-title">{t('Updates')}</div>

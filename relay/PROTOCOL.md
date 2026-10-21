@@ -92,3 +92,23 @@ match is over), `turn.eliminated` the players that lost their last life with thi
 - A site that drops is rejoinable with its `token` for 3 minutes. After that the host gets
   `decision_needed`: `continue` eliminates the site's players (`site_dropped`), `abort` ends the
   match with `ended` (`aborted`) and no placements.
+
+## Locations
+
+Separate from the match protocol: plain HTTP routes, stored in D1 (`migrations/0002_locations.sql`). A location is an
+installation registered with an Ed25519 public key (32 raw bytes, base64url). Requests other than the registration carry
+`x-location` (its id), `x-timestamp` (unix seconds, at most 5 minutes off) and `x-signature` (base64url Ed25519 signature
+of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and `DELETE`).
+
+| Route | Signed by | Purpose |
+|---|---|---|
+| `POST /locations` `{name, public_key}` | the new key itself (`x-timestamp`, `x-signature` only) | register; returns `{id}`; registering the same key again returns the same id |
+| `POST /locations/<id>/invitations` | that location | a one-time invitation; returns `{token, expires_at}` (valid 7 days, at most 5 open) |
+| `POST /invitations/redeem` `{token}` | the redeeming location | link the two locations; returns `{link_id, peer: {id, name}}` |
+| `GET /locations/<id>/links` | that location | `{links: [{link_id, kind, created_at, peer}]}` |
+| `DELETE /links/<id>` | either side of the link | remove the link |
+| `PATCH /locations/<id>` `{name}` | that location | rename it; the id and the links stay |
+| `DELETE /locations/<id>` | that location | delete it with its links and open invitations |
+
+Only the hash of a token is stored. An unknown, used or expired token answers 404 without telling which. Registering,
+inviting, redeeming and reading are limited per IP address or per location. Links have a `kind` (`play` for now).

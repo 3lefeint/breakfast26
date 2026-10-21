@@ -7,3 +7,4 @@ tomli_w
 tzdata
 tomlkit
 edge-tts
+cryptography

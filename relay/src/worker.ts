@@ -1,10 +1,11 @@
 // The Cloudflare side: an HTTP/WebSocket front door, one MatchRoom Durable Object per join
 // code (it holds a MatchCore and keeps it in storage), and a small RateLimiter Durable
-// Object per client address and purpose.
+// Object per client address and purpose. The locations (src/locations.ts) live in D1.
 
 import { DurableObject } from "cloudflare:workers";
 import { Deps, MatchCore, MatchState, Out } from "./core";
 import { CLOSE, LIMITS, PROTOCOL_VERSION } from "./protocol";
+import { handleLocations } from "./locations";
 import { TELEMETRY_LIMITS, TELEMETRY_VERSION, validateTelemetry } from "./telemetry";
 
 export interface Env {
@@ -64,6 +65,9 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/telemetry") return telemetry(request, env);
+
+    const located = await handleLocations(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
+    if (located) return located;
 
     const ws = url.pathname.match(/^\/ws\/([A-Z0-9]{6})$/);
     if (request.method === "GET" && ws) {

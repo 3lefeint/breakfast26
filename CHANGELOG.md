@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- An installation can register as a location at the relay (Settings → Connections → Location Online Settings) with a name and a local PIN, create a one-time invitation code and link with another location by pasting its code; links are listed and can be removed, the location can be renamed and signed off again and its PIN changed; the calls are logged. The relay stores locations, invitations and links in D1 (`relay/migrations/0002_locations.sql`) and checks signed requests (Ed25519). (#76)
+
 ## [1.8.0] - 2026-10-21
 
 ### Added
