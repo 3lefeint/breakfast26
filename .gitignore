@@ -12,6 +12,9 @@ config.toml
 # Docker deployment's consolidated config/data directory
 data/
 
+# Docker deployment's local settings (the published port)
+.env
+
 # ESPHome secrets
 ESPHome/secrets.yaml
 

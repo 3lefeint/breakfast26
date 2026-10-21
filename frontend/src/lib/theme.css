@@ -62,17 +62,22 @@ body {
   --aurora-3:    #09433e;
 }
 
-:root[data-theme="ocean"]  { --accent: #22d3ee; --accent-soft: #0e3138;
+:root[data-aurora="ocean"]  { --accent: #22d3ee; --accent-soft: #0e3138;
   --aurora-base: #020f16; --aurora-1: #065163; --aurora-2: #013f60; --aurora-3: #093633; }
-:root[data-theme="sunset"] { --accent: #fb923c; --accent-soft: #3a2313;
+:root[data-aurora="sunset"] { --accent: #fb923c; --accent-soft: #3a2313;
   --aurora-base: #0f070d; --aurora-1: #6f2507; --aurora-2: #5c0c2c; --aurora-3: #3d166f; }
-:root[data-theme="forest"] { --accent: #34d399; --accent-soft: #103324;
+:root[data-aurora="forest"] { --accent: #34d399; --accent-soft: #103324;
   --aurora-base: #020f09; --aurora-1: #024431; --aurora-2: #09433e; --aurora-3: #253809; }
 
-/* Ready-made aurora palettes (Settings → Aurora → Palette). They replace the aurora colors of the theme, not
-   its accent, and a color the user picked replaces them in turn. */
-:root[data-aurora="northern"] { --aurora-base: #03120f; --aurora-1: #0a5c4a; --aurora-2: #1b3a8a; --aurora-3: #4a1d7a; }
-:root[data-aurora="ember"]    { --aurora-base: #120505; --aurora-1: #7a1f0a; --aurora-2: #8a3b05; --aurora-3: #4a0f2a; }
-:root[data-aurora="lavender"] { --aurora-base: #0b0715; --aurora-1: #3b1f7a; --aurora-2: #5a2a86; --aurora-3: #1f3a7a; }
-:root[data-aurora="graphite"] { --aurora-base: #0a0b0d; --aurora-1: #2b2f36; --aurora-2: #1c2026; --aurora-3: #3a3f48; }
-:root[data-aurora="sakura"]   { --aurora-base: #12060d; --aurora-1: #7a1f4a; --aurora-2: #5a1a6a; --aurora-3: #2a1a5a; }
+/* Ready-made palettes (Settings → Appearance → Palette). They replace the aurora colors and the accent of the
+   default look above; a color the user picked replaces them in turn. */
+:root[data-aurora="northern"] { --accent: #5eead4; --accent-soft: #0f3a35;
+  --aurora-base: #03120f; --aurora-1: #0a5c4a; --aurora-2: #1b3a8a; --aurora-3: #4a1d7a; }
+:root[data-aurora="ember"]    { --accent: #f97316; --accent-soft: #3a1d0c;
+  --aurora-base: #120505; --aurora-1: #7a1f0a; --aurora-2: #8a3b05; --aurora-3: #4a0f2a; }
+:root[data-aurora="lavender"] { --accent: #a78bfa; --accent-soft: #271c47;
+  --aurora-base: #0b0715; --aurora-1: #3b1f7a; --aurora-2: #5a2a86; --aurora-3: #1f3a7a; }
+:root[data-aurora="graphite"] { --accent: #94a3b8; --accent-soft: #23272e;
+  --aurora-base: #0a0b0d; --aurora-1: #2b2f36; --aurora-2: #1c2026; --aurora-3: #3a3f48; }
+:root[data-aurora="sakura"]   { --accent: #f472b6; --accent-soft: #3d1630;
+  --aurora-base: #12060d; --aurora-1: #7a1f4a; --aurora-2: #5a1a6a; --aurora-3: #2a1a5a; }

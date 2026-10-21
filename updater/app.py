@@ -68,11 +68,19 @@ STATS_DB = Path(os.environ.get("STATS_DB") or Path(REPO_DIR) / "data" / "stats.d
 BACKUPS_KEPT = 3
 HEALTH_TIMEOUT_S = 90
 HEALTH_POLL_INTERVAL_S = 2
+# The port Breakfast is published on at the host: `BREAKFAST_PORT` in the untracked `.env` next to the compose file
+# (`"${BREAKFAST_PORT:-8080}:8080"`), the port inside the container stays 8080.
+ENV_FILE = Path(REPO_DIR) / ".env"
+COMPOSE_FILE = Path(REPO_DIR) / "docker-compose.yml"
+PORT_VAR = "BREAKFAST_PORT"
+DEFAULT_PORT = 8080
+PORT_MIN, PORT_MAX = 1024, 65535
 
 app = FastAPI(title="breakfast-updater", docs_url=None, redoc_url=None)
 
 _state = {"phase": "idle", "detail": None, "started_at": None}
 _state_lock = threading.Lock()
+_port_state = {"phase": "idle", "detail": None}
 
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
@@ -294,6 +302,120 @@ async def apply():
         _state["detail"] = None
         _state["started_at"] = time.time()
     threading.Thread(target=_run_apply, daemon=True).start()
+    return {"ok": True}
+
+
+def _compose_has_port_variable() -> bool:
+    """False for a checkout whose compose file still has the fixed 8080:8080 (before the update that brings the variable)."""
+    try:
+        return PORT_VAR in COMPOSE_FILE.read_text()
+    except OSError:
+        return False
+
+
+def _read_env_lines() -> list[str] | None:
+    try:
+        return ENV_FILE.read_text().splitlines()
+    except OSError:
+        return None
+
+
+def _env_port(lines: list[str] | None) -> int:
+    for line in lines or []:
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == PORT_VAR and value.strip().isdigit():
+            return int(value.strip())
+    return DEFAULT_PORT
+
+
+def _write_env_port(lines: list[str] | None, port: int) -> None:
+    """Set BREAKFAST_PORT in `.env`, every other line stays as it is."""
+    kept = [line for line in lines or [] if line.partition("=")[0].strip() != PORT_VAR]
+    ENV_FILE.write_text("\n".join([*kept, f"{PORT_VAR}={port}"]) + "\n")
+
+
+def _restore_env(lines: list[str] | None) -> None:
+    if lines is None:
+        ENV_FILE.unlink(missing_ok=True)
+    else:
+        ENV_FILE.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+# Exit code of the bind probe when the port is taken (anything else that fails means the probe itself did not work).
+_PORT_TAKEN = 3
+
+
+def _port_free(port: int) -> bool | None:
+    """Whether the host can still bind *port*: a short container from this image on the host network tries it.
+    None when the probe could not run (the recreate then decides)."""
+    probe = ("import socket, sys\n"
+             "s = socket.socket()\n"
+             f"try: s.bind(('0.0.0.0', {port}))\n"
+             f"except OSError: sys.exit({_PORT_TAKEN})\n")
+    try:
+        image = _run("docker", "inspect", "--format", "{{.Image}}", socket.gethostname()).stdout.strip()
+        _run("docker", "run", "--rm", "--network", "host", "--entrypoint", "python", image, "-c", probe, timeout=60)
+        return True
+    except subprocess.CalledProcessError as e:
+        return False if e.returncode == _PORT_TAKEN else None
+    except Exception:
+        return None
+
+
+def _set_port_phase(phase: str, detail: str | None = None) -> None:
+    with _state_lock:
+        _port_state["phase"] = phase
+        _port_state["detail"] = detail
+    log.info("port phase=%s detail=%s", phase, detail)
+
+
+def _run_port_change(previous: list[str] | None, port: int) -> None:
+    """Recreate `breakfast` with the new published port; on a failure put the old `.env` back and recreate again."""
+    try:
+        _set_port_phase("recreating")
+        _run("docker", "compose", "up", "-d", "breakfast", timeout=300)
+        _set_port_phase("done", str(port))
+    except Exception as e:
+        stderr = (getattr(e, "stderr", "") or str(e)).strip()[:300]
+        log.exception("port change failed")
+        try:
+            _restore_env(previous)
+            _run("docker", "compose", "up", "-d", "breakfast", timeout=300)
+        except Exception:
+            log.exception("restoring the old port failed")
+        _set_port_phase("failed", stderr)
+
+
+@app.get("/port")
+async def get_port():
+    log.debug("Port requested")
+    with _state_lock:
+        state = dict(_port_state)
+    return {"port": _env_port(_read_env_lines()), "supported": _compose_has_port_variable(), **state}
+
+
+@app.post("/port")
+async def set_port(body: dict):
+    port = body.get("port")
+    if not isinstance(port, int) or isinstance(port, bool) or not PORT_MIN <= port <= PORT_MAX:
+        return {"ok": False, "code": "invalid", "error": f"the port must be a number from {PORT_MIN} to {PORT_MAX}"}
+    if not _compose_has_port_variable():
+        return {"ok": False, "code": "unsupported", "error": "the compose file has no port setting yet, update first"}
+    with _state_lock:
+        if _state["phase"] not in ("idle", "done", "rolled_back", "failed") \
+                or _port_state["phase"] == "recreating":
+            return {"ok": False, "code": "busy", "error": "an update or a port change is in progress"}
+        _port_state["phase"] = "recreating"
+        _port_state["detail"] = None
+    previous = _read_env_lines()
+    if port == _env_port(previous):
+        _set_port_phase("idle")
+        return {"ok": False, "code": "same", "error": "that port is already set"}
+    if await asyncio.to_thread(_port_free, port) is False:
+        _set_port_phase("idle")
+        return {"ok": False, "code": "in_use", "error": f"port {port} is already in use on this machine"}
+    _write_env_port(previous, port)
+    threading.Thread(target=_run_port_change, args=(previous, port), daemon=True).start()
     return {"ok": True}
 
 

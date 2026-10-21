@@ -21,7 +21,7 @@ class TestAppearance:
     def test_the_defaults(self, configure):
         configure()
         assert asyncio.run(server.get_appearance()) == {
-            "theme": "default", "accent_color": None, "aurora_animation": True,
+            "accent_color": None, "aurora_animation": True,
             "aurora": {"base": None, "1": None, "2": None, "3": None},
             "palette": None, "streaks": True, "speed": 100, "intensity": 100, "blur": 100,
             "pause_idle": 0, "glass": 100, "bar": 92}
@@ -30,11 +30,24 @@ class TestAppearance:
         configure({"aurora_animation": False})
         assert asyncio.run(server.get_appearance())["aurora_animation"] is False
 
-    def test_theme_accent_and_aurora_colors_come_from_the_config(self, configure):
-        configure({"theme": "sunset", "accent_color": "#ff8800", "aurora_base": "#010203", "aurora_2": "#0a0b0c"})
+    def test_palette_accent_and_aurora_colors_come_from_the_config(self, configure):
+        configure({"aurora_palette": "sunset", "accent_color": "#ff8800", "aurora_base": "#010203", "aurora_2": "#0a0b0c"})
         res = asyncio.run(server.get_appearance())
-        assert res["theme"] == "sunset" and res["accent_color"] == "#ff8800"
+        assert res["palette"] == "sunset" and res["accent_color"] == "#ff8800"
         assert res["aurora"] == {"base": "#010203", "1": None, "2": "#0a0b0c", "3": None}
+
+    def test_the_theme_of_an_older_config_is_the_palette_until_one_is_chosen(self, configure):
+        configure({"theme": "ocean"})
+        assert asyncio.run(server.get_appearance())["palette"] == "ocean"
+        assert asyncio.run(server.get_config())["web"]["aurora_palette"] == "ocean"
+        configure({"theme": "ocean", "aurora_palette": "ember"})
+        assert asyncio.run(server.get_appearance())["palette"] == "ember"
+
+    def test_choosing_a_palette_removes_the_theme_of_an_older_config(self, configure):
+        configure({"theme": "ocean"})
+        assert asyncio.run(server.patch_config({"web": {"aurora_palette": None}})) == {"saved": True, "restart_required": []}
+        assert asyncio.run(server.get_appearance())["palette"] is None
+        assert "theme" not in cfg_mod.load(server._config_path)["web"]
 
     def test_aurora_colors_are_stored_and_cleared_without_a_restart(self, configure):
         configure()

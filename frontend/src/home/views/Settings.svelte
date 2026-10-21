@@ -1,15 +1,13 @@
 <script>
   import { confirmDialog, alertDialog } from '../../lib/confirm.js';
   import { t } from '../../lib/i18n.js';
-  // Mirrors index.html's #view-settings: config form (logging/mqtt/stats/
-  // web/direct/audio/caller), theme application, voice-pack regeneration
-  // with progress polling, and the Restart button. Reworked into category
-  // tabs (General/MQTT/Autodarts Source/Voice & Caller) instead of one
-  // long stacked page — Save stays persistent below the tab content
-  // (saves the whole config regardless of which tab is showing); Restart
-  // lives outside the tabs entirely since it's a whole-app action, not a
-  // setting category.
+  // The settings page: config form (logging/mqtt/stats/web/direct/audio/caller), the look, voice-pack
+  // regeneration and editing, updates and the Restart button. Grouped into tabs (Appearance, Audio & Voice with
+  // its sub-tabs, Connections, System, Dev); the address is #settings/<tab>[/<sub-tab>]. Save stays below the
+  // tab content and saves the whole config regardless of which tab is showing.
   import { onMount, tick } from 'svelte';
+  import { route, navigate, openTv } from '../../lib/router.js';
+  import { pendingRestart } from '../../lib/stores/pendingRestart.js';
   import { applyAuroraColors, applyLook, auroraAnimated, loadAppearance } from '../../lib/stores/appearance.js';
   import ColorField from '../../lib/components/ColorField.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
@@ -26,7 +24,7 @@
     logging: { level: 'INFO', events: false, file: '' },
     mqtt: { enabled: true, host: '', port: '', username: '', password: '', base_topic: '' },
     stats: { db: '', timezone: '' },
-    web: { port: '', theme: 'default', accent_color: '', language: 'en', aurora_animation: true, elimination_beat_hint: false,
+    web: { port: '', accent_color: '', language: 'en', aurora_animation: true,
            aurora_base: '', aurora_1: '', aurora_2: '', aurora_3: '',
            aurora_palette: '', aurora_streaks: true, aurora_speed: 100, aurora_intensity: 100, aurora_blur: 100,
            aurora_pause_idle: 0, glass_strength: 100, bar_opacity: 92 },
@@ -46,15 +44,22 @@
   });
 
   const TABS = [
-    { id: 'general', label: t('General') },
-    { id: 'mqtt', label: 'MQTT' },
-    { id: 'source', label: t('Autodarts Source') },
-    { id: 'voice', label: t('Voice & Caller') },
-    { id: 'voicepack', label: t('Voice Pack') },
+    { id: 'appearance', label: t('Appearance') },
+    { id: 'audio', label: t('Audio & Voice') },
+    { id: 'connections', label: t('Connections') },
+    { id: 'system', label: t('System') },
   ];
-  let activeTab = $state('general');
-  let tabs = $derived(cfg.dev?.enabled
-    ? [...TABS, { id: 'achievements', label: t('Achievements') }, { id: 'dev', label: t('Dev') }] : TABS);
+  const AUDIO_TABS = [
+    { id: 'caller', label: t('Caller') },
+    { id: 'voicepack', label: t('Voice Pack') },
+    { id: 'achievements', label: t('Achievements') },
+  ];
+  let tabs = $derived(cfg.dev?.enabled ? [...TABS, { id: 'dev', label: t('Dev') }] : TABS);
+  let address = $derived($route.split('/'));   // ['settings', tab, sub-tab]
+  let activeTab = $derived(tabs.some((tk) => tk.id === address[1]) ? address[1] : 'appearance');
+  let audioTab = $derived(AUDIO_TABS.some((tk) => tk.id === address[2]) ? address[2] : 'caller');
+  const openTab = (id) => navigate(id === 'appearance' ? 'settings' : 'settings/' + id);
+  const openAudioTab = (id) => navigate('settings/audio/' + id);
 
   let cfg = $state(emptyCfg());
   let voicePackProfiles = $state([]);
@@ -85,10 +90,12 @@
   onMount(async () => {
     await loadConfig();
     await loadAppearance();
+    lookTick += 1;
     await loadVoicePackProfiles();
     await loadVoicepackPacks();
     await loadVoicepackGroups();
     await loadDbBackup();
+    await loadPort();
   });
 
   // The packs that have a plan file, and the one to start on (the active profile if it has a plan).
@@ -252,6 +259,13 @@
     }
   }
 
+  // The report address starts as the relay address (empty in the file means the same) and follows it while it is not
+  // typed over; it is saved as empty again when it equals the relay address.
+  let reportFollowsRelay = $state(true);
+  $effect(() => {
+    if (reportFollowsRelay) cfg.telemetry.url = cfg.online.relay_url || '';
+  });
+
   async function loadConfig() {
     try {
       const loaded = await fetch('/api/config').then((r) => r.json());
@@ -262,6 +276,8 @@
       }
       cfg = fresh;
       loadedCfg = JSON.parse(JSON.stringify(fresh));
+      reportFollowsRelay = !fresh.telemetry.url || fresh.telemetry.url === fresh.online.relay_url;
+      if (!reportFollowsRelay) cfg.telemetry.url = fresh.telemetry.url;
       if (!cfg.stats.timezone) {
         // Nothing configured: suggest the zone of this browser, saved like any other change.
         cfg.stats.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
@@ -278,7 +294,7 @@
     { key: 'aurora_2', label: t('Color 2') }, { key: 'aurora_3', label: t('Color 3') },
   ];
   const PALETTES = [
-    ['northern', t('Northern lights')], ['ember', t('Ember')], ['lavender', t('Lavender')],
+    ['ocean', t('Ocean')], ['sunset', t('Sunset')], ['forest', t('Forest')], ['northern', t('Northern lights')], ['ember', t('Ember')], ['lavender', t('Lavender')],
     ['graphite', t('Graphite')], ['sakura', t('Sakura')],
   ];
   // [key, label, lowest, highest, step, default]
@@ -289,6 +305,9 @@
   ];
   const LOOK_DEFAULTS = { aurora_animation: true, aurora_streaks: true, aurora_palette: '', aurora_pause_idle: 0,
     ...Object.fromEntries(LOOK_SLIDERS.map(([key, , , , , def]) => [key, def])) };
+  const GLASS_KEYS = ['glass_strength', 'bar_opacity'];
+  const GLASS_SLIDERS = LOOK_SLIDERS.filter(([key]) => GLASS_KEYS.includes(key));
+  const AURORA_SLIDERS = LOOK_SLIDERS.filter(([key]) => !GLASS_KEYS.includes(key));
   let lookTick = $state(0);   // moves on every preview, so the swatches show the color the palette gives
   const presetColor = (key) => getComputedStyle(document.documentElement).getPropertyValue('--' + key.replace('_', '-')).trim() || '#000000';
   function previewLook() {
@@ -359,28 +378,28 @@
     addIfChanged('record', 'file', cfg.record.file);
     addIfChanged('online', 'relay_url', cfg.online.relay_url);
     addIfChanged('online', 'site_name', cfg.online.site_name);
-    addIfChanged('telemetry', 'url', cfg.telemetry.url);
+    const reportUrl = cfg.telemetry.url === cfg.online.relay_url ? '' : cfg.telemetry.url;
+    addIfChanged('telemetry', 'url', reportUrl);
     addIfChanged('mqtt', 'port', cfg.mqtt.port, (v) => parseInt(v, 10));
+    if (portInfo?.mode === 'config') addIfChanged('web', 'port', cfg.web.port, (v) => parseInt(v, 10));
     addIfChanged('caller', 'checkout_limit', cfg.caller.checkout_limit, (v) => parseInt(v, 10));
     addIfChanged('caller', 'ambient_volume', cfg.caller.ambient_volume, (v) => parseFloat(v));
 
-    // Selects — always a concrete value, no "clear" concept; send as-is.
-    const addTo = (section, key, val) => { (updates[section] ??= {})[key] = val; };
-    addTo('logging', 'level', cfg.logging.level);
-    addTo('web', 'theme', cfg.web.theme);
-    addTo('web', 'language', cfg.web.language);
-
-    // Checkboxes — always included.
-    (updates.logging ??= {}).events = cfg.logging.events;
-    (updates.mqtt ??= {}).enabled = cfg.mqtt.enabled;
-    (updates.telemetry ??= {}).enabled = cfg.telemetry.enabled;
-    (updates.updates ??= {}).check = cfg.updates.check;
-    (updates.updates ??= {}).auto_install = cfg.updates.auto_install;
-    (updates.web ??= {}).joke_of_the_day = cfg.web.joke_of_the_day;
-    (updates.web ??= {}).elimination_beat_hint = cfg.web.elimination_beat_hint;
-    (updates.web ??= {}).aurora_animation = cfg.web.aurora_animation;
+    // Selects and checkboxes — always a concrete value, sent when it differs from the loaded one.
+    const addIfDiffers = (section, key, val) => {
+      if (val !== loadedCfg[section]?.[key]) (updates[section] ??= {})[key] = val;
+    };
+    addIfDiffers('logging', 'level', cfg.logging.level);
+    addIfDiffers('web', 'language', cfg.web.language);
+    addIfDiffers('logging', 'events', cfg.logging.events);
+    addIfDiffers('mqtt', 'enabled', cfg.mqtt.enabled);
+    addIfDiffers('telemetry', 'enabled', cfg.telemetry.enabled);
+    addIfDiffers('updates', 'check', cfg.updates.check);
+    addIfDiffers('updates', 'auto_install', cfg.updates.auto_install);
+    addIfDiffers('web', 'joke_of_the_day', cfg.web.joke_of_the_day);
+    addIfDiffers('web', 'aurora_animation', cfg.web.aurora_animation);
     for (const key of ['enabled', 'per_dart', 'turn_total', 'announce_change', 'call_player', 'call_misses']) {
-      (updates.caller ??= {})[key] = cfg.caller[key];
+      addIfDiffers('caller', key, cfg.caller[key]);
     }
 
     try {
@@ -394,19 +413,42 @@
         return;
       }
       showBanner(res);
+      if (res.saved) {
+        loadedCfg = JSON.parse(JSON.stringify(cfg));
+        loadedCfg.telemetry.url = reportUrl;
+        timezoneSuggested = false;
+      }
       await loadAppearance();
+      lookTick += 1;
     } catch (err) {
       alertDialog(t('Save failed: {error}', { error: err }));
     }
   }
 
+  // What a setting is called in the notice that asks for a restart (the config key as `section.key`).
+  const KEY_LABELS = {
+    'logging.file': t('Log file'), 'logging.events': t('Log events'),
+    'mqtt.enabled': t('MQTT enabled'), 'mqtt.host': t('MQTT host'), 'mqtt.port': t('MQTT port'),
+    'mqtt.username': t('MQTT username'), 'mqtt.password': t('MQTT password'), 'mqtt.base_topic': t('MQTT base topic'),
+    'stats.db': t('Database file'), 'stats.timezone': t('Time zone'),
+    'direct.email': t('Email'), 'direct.password': t('Board data source password'), 'direct.board_id': t('Board ID'),
+    'direct.board_ws_url': t('Board WebSocket URL'), 'direct.board_manager_url': t('Board manager URL'),
+    'audio.dir': t('Sounds directory'), 'audio.profile': t('Voice Profile'),
+    'caller.enabled': t('Caller enabled'), 'caller.per_dart': t('Call every dart'),
+    'caller.turn_total': t('Call turn total'), 'caller.checkout_limit': t('Repeat same Checkout limit'),
+    'caller.announce_change': t('Call player change'), 'caller.call_player': t('Call player names'),
+    'caller.ambient_volume': t('Ambient volume (0 = off)'), 'caller.call_misses': t('Call a Miss'),
+    'record.file': t('Recording file'), 'web.port': t('Web UI port'),
+  };
+  const labelOf = (key) => KEY_LABELS[key] ?? key;
+
   function showBanner(res) {
     if (!res.saved) {
       banner = { kind: 'error', text: res.error ? t('Save failed: {error}', { error: t(res.error) }) : t('Save failed.') };
-    } else if (res.restart_required?.length) {
-      banner = { kind: 'warn', text: t('Saved. Restart required to apply: {keys}', { keys: res.restart_required.join(', ') }) };
     } else {
-      banner = { kind: 'ok', text: t('Saved. Changes applied immediately.') };
+      // A restart notice stays until it is dismissed or the app was restarted, see the banner below the heading.
+      if (res.restart_required?.length) pendingRestart.update((keys) => [...new Set([...keys, ...res.restart_required])]);
+      banner = { kind: 'ok', text: $pendingRestart.length ? t('Saved.') : t('Saved. Changes applied immediately.') };
     }
     setTimeout(() => { banner = null; }, 8000);
   }
@@ -456,7 +498,7 @@
   }
 
   async function showUpdates() {
-    activeTab = 'general';
+    navigate('settings/system');
     await tick();
     document.getElementById('updates-panel')?.scrollIntoView({ behavior: 'smooth' });
   }
@@ -464,6 +506,67 @@
   async function restartApp() {
     if (!await confirmDialog(t('Restart Breakfast?') + runningNote())) return;
     await api('POST', '/api/control/restart');
+    pendingRestart.set([]);
+    // A port saved outside Docker is taken at the start: this page moves to it.
+    const port = Number(loadedCfg.web.port);
+    if (portInfo?.mode === 'config' && port && port !== (Number(location.port) || 80)) await waitForPort(port);
+  }
+
+  // The web UI port. In Docker the updater service publishes it (`.env`) and recreates the container, elsewhere it is
+  // `[web] port` of the config, saved with the form and taken at the next restart.
+  let portInfo = $state(null);        // { mode: 'docker' | 'config', port, supported?, phase?, detail?, error? }
+  let portInput = $state('');
+  let portApplying = $state(false);
+
+  async function loadPort() {
+    try {
+      portInfo = await fetch('/api/web-port').then((r) => r.json());
+      portInput = portInfo.port ?? '';
+    } catch (_) { /* the Dev tab shows nothing */ }
+  }
+
+  const PORT_MESSAGES = {
+    in_use: (port) => t('Port {port} is already in use on this machine.', { port }),
+    unsupported: () => t('This installation has no port setting yet. Install the latest update first.'),
+    busy: () => t('An update or a port change is already in progress.'),
+    same: () => t('That port is already set.'),
+    invalid: () => t('The port must be a number from 1024 to 65535.'),
+  };
+
+  // Waits until Breakfast answers on *port* of this host, then opens the page there.
+  async function waitForPort(port) {
+    portApplying = true;
+    const origin = `${location.protocol}//${location.hostname}:${port}`;
+    const deadline = Date.now() + 3 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        await fetch(`${origin}/api/health`, { mode: 'no-cors' });
+        location.href = `${origin}/#settings/dev`;
+        return;
+      } catch (_) { /* not up yet */ }
+    }
+    portApplying = false;
+    alertDialog(t('Breakfast did not answer on port {port}. If the change failed, the old port is still in use.', { port }));
+  }
+
+  async function applyPort() {
+    const port = Number(portInput);
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+      alertDialog(PORT_MESSAGES.invalid());
+      return;
+    }
+    if (!await confirmDialog(t('Move Breakfast to port {port}? The container restarts and this page opens at the new address.', { port }) + runningNote())) return;
+    const res = await fetch('/api/web-port', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port }),
+    }).then((r) => r.json()).catch((err) => ({ ok: false, error: String(err) }));
+    if (!res.ok) {
+      alertDialog(PORT_MESSAGES[res.code]?.(port) ?? t('Could not change the port: {error}', { error: res.error || t('unknown error') }));
+      return;
+    }
+    await waitForPort(port);
   }
 
   // Self-update. checkForUpdate()/applyUpdate() talk to the
@@ -555,12 +658,23 @@
     return '';
   });
 </script>
-
 <PageHeader title={t('Settings')} />
+
+{#if $gameState.running_game}
+  <a class="back-to-game" href="#tv" onclick={openTv}>← {t('Back to game')}</a>
+{/if}
 
 {#if banner}
   <div class="settings-banner" class:ok={banner.kind === 'ok'} class:warn={banner.kind === 'warn'} class:error={banner.kind === 'error'}>
     {banner.text}
+  </div>
+{/if}
+
+{#if $pendingRestart.length}
+  <div class="settings-banner warn restart-banner">
+    <span>{t('Restart required to apply: {settings}', { settings: $pendingRestart.map(labelOf).join(', ') })}</span>
+    <button type="button" class="btn btn-stop" onclick={restartApp}>{t('Restart Breakfast')}</button>
+    <button type="button" class="btn-icon" title={t('Dismiss')} aria-label={t('Dismiss')} onclick={() => pendingRestart.set([])}>×</button>
   </div>
 {/if}
 
@@ -570,20 +684,317 @@
 
 <div class="tab-row">
   {#each tabs as tk (tk.id)}
-    <button type="button" class="tab-chip" class:active={activeTab === tk.id} onclick={() => (activeTab = tk.id)}>
+    <button type="button" class="tab-chip" class:active={activeTab === tk.id} onclick={() => openTab(tk.id)}>
       {tk.label}
     </button>
   {/each}
 </div>
 
-{#if activeTab === 'achievements'}
+{#if activeTab === 'audio'}
+  <div class="tab-row sub">
+    {#each AUDIO_TABS as tk (tk.id)}
+      <button type="button" class="tab-chip" class:active={audioTab === tk.id} onclick={() => openAudioTab(tk.id)}>
+        {tk.label}
+      </button>
+    {/each}
+  </div>
+{/if}
+
+{#if activeTab === 'audio' && audioTab === 'achievements'}
   <AchievementSounds />
 {/if}
 
-<form onsubmit={save} hidden={activeTab === 'achievements'}>
-  {#if activeTab === 'general'}
+<form onsubmit={save} hidden={activeTab === 'audio' && audioTab === 'achievements'}>
+  {#if activeTab === 'appearance'}
     <div class="settings-section">
-      <div class="settings-section-title">{t('Logging')} <span class="badge runtime">{t('applies instantly')}</span></div>
+      <div class="settings-section-title">{t('Display')}</div>
+      <div class="settings-row">
+        <label for="sWebLanguage">{t('Language')}</label>
+        <select id="sWebLanguage" bind:value={cfg.web.language}>
+          <option value="en">{t('English')}</option>
+          <option value="de">{t('Deutsch')}</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label for="sWebJoke">{t('Joke of the day')}</label>
+        <input type="checkbox" id="sWebJoke" bind:checked={cfg.web.joke_of_the_day}>
+      </div>
+    </div>
+
+    <div class="settings-section look">
+      <div class="settings-section-title">{t('Theme')}</div>
+      <div class="settings-section-title sub">{t('Glass')}</div>
+      {#each GLASS_SLIDERS as [key, label, low, high, step]}
+        <div class="settings-row">
+          <label for={'s_' + key}>{label}</label>
+          <span class="range-pair">
+            <input type="range" id={'s_' + key} min={low} max={high} {step} bind:value={cfg.web[key]} oninput={previewLook}>
+            <output>{cfg.web[key]} %</output>
+          </span>
+        </div>
+      {/each}
+
+      <div class="settings-section-title sub">{t('Aurora')}</div>
+      <div class="settings-row">
+        <label for="sWebAurora">{t('Animate the background')}</label>
+        <input type="checkbox" id="sWebAurora" bind:checked={cfg.web.aurora_animation} onchange={previewLook}>
+      </div>
+      <div class="settings-row">
+        <label for="sLookStreaks">{t('Streaks')}</label>
+        <input type="checkbox" id="sLookStreaks" bind:checked={cfg.web.aurora_streaks} onchange={previewLook}>
+      </div>
+      {#each AURORA_SLIDERS as [key, label, low, high, step]}
+        <div class="settings-row">
+          <label for={'s_' + key}>{label}</label>
+          <span class="range-pair">
+            <input type="range" id={'s_' + key} min={low} max={high} {step} bind:value={cfg.web[key]} oninput={previewLook}>
+            <output>{cfg.web[key]} %</output>
+          </span>
+        </div>
+      {/each}
+      <div class="settings-row">
+        <label for="sLookIdle">{t('Pause after (minutes)')}</label>
+        <input type="number" id="sLookIdle" min="0" max="240" bind:value={cfg.web.aurora_pause_idle} oninput={previewLook}>
+      </div>
+      <p class="note">{t('Saves power: the aurora also stops while the page is hidden. With a number of minutes it stops after that long without a key or mouse movement and moves again on the next one; 0 never stops it.')}</p>
+
+      <div class="settings-section-title sub">{t('Palette and colors')}</div>
+      <div class="settings-row">
+        <label for="sLookPalette">{t('Palette')}</label>
+        <select id="sLookPalette" bind:value={cfg.web.aurora_palette} onchange={choosePalette}>
+          <option value="">{t('Default')}</option>
+          {#each PALETTES as [id, name] (id)}
+            <option value={id}>{name}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="aurora-colors">
+        {#each AURORA_COLORS as c (c.key)}
+          <div class="settings-row">
+            <label for={'s_' + c.key}>{c.label}</label>
+            <ColorField id={'s_' + c.key} label={c.label} value={cfg.web[c.key]} fallback={presetColor(c.key, lookTick)}
+                        onchange={(v) => { cfg.web[c.key] = v; previewLook(); }} />
+          </div>
+        {/each}
+      </div>
+      <div class="settings-row"><label for="sWebAccent">{t('Custom accent color')}</label><input type="text" id="sWebAccent" placeholder="#FFFFFF" bind:value={cfg.web.accent_color}></div>
+      <button type="button" class="btn btn-add" onclick={resetLook}>{t('Reset')}</button>
+    </div>
+
+  {:else if activeTab === 'audio'}
+    {#if audioTab === 'caller'}
+      <div class="settings-section">
+        <div class="settings-section-title">{t('Voice pack')}</div>
+        {#if vpPacks.length}
+          <div class="settings-row">
+            <label for="sVpPackGen">{t('Pack')}</label>
+            <select id="sVpPackGen" bind:value={vpPack} onchange={onVpPackChange}>
+              {#each vpPacks as pk (pk.name)}
+                <option value={pk.name}>{pk.name} ({pk.voice})</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+        <div class="settings-row"><label for="sVoicepackForce">{t('Force full regeneration')}</label><input type="checkbox" id="sVoicepackForce" bind:checked={voicepackForce}></div>
+        <button type="button" class="btn btn-add" style="width:100%" onclick={regenerateVoicepack} disabled={vp?.running || !vpPack}>{t('Regenerate voice pack')}</button>
+        <p class="note">{t('Generates any missing sound files for the voice-pack')}</p>
+        <div class="voicepack-progress">{vpText}</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">{t('Voice caller')} <span class="badge restart">{t('needs a restart')}</span></div>
+        <div class="settings-row"><label for="sAudioDir">{t('Sounds directory')}</label><input type="text" id="sAudioDir" placeholder={t('/path/to/sounds')} bind:value={cfg.audio.dir}></div>
+        <div class="settings-row">
+          <label for="sAudioProfile">{t('Voice Profile')}</label>
+          <select id="sAudioProfile" bind:value={cfg.audio.profile}>
+            <option value="">{t('(own sounds only)')}</option>
+            {#each voicePackProfiles as p}
+              <option value={p}>{p}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings-row"><label for="sCallerEnabled">{t('Caller enabled')}</label><input type="checkbox" id="sCallerEnabled" bind:checked={cfg.caller.enabled}></div>
+        <div class="settings-row"><label for="sCallerPerDart">{t('Call every dart')}</label><input type="checkbox" id="sCallerPerDart" bind:checked={cfg.caller.per_dart}></div>
+        <div class="settings-row"><label for="sCallerMisses">{t('Call a Miss')}</label><input type="checkbox" id="sCallerMisses" bind:checked={cfg.caller.call_misses}></div>
+        <div class="settings-row"><label for="sCallerTotal">{t('Call turn total')}</label><input type="checkbox" id="sCallerTotal" bind:checked={cfg.caller.turn_total}></div>
+        <div class="settings-row"><label for="sCallerCheckout">{t('Repeat same Checkout limit')}</label><input type="number" id="sCallerCheckout" min="0" step="1" bind:value={cfg.caller.checkout_limit}></div>
+        <div class="settings-row"><label for="sCallerChange">{t('Call player change')}</label><input type="checkbox" id="sCallerChange" bind:checked={cfg.caller.announce_change}></div>
+        <div class="settings-row"><label for="sCallerPlayer">{t('Call player names')}</label><input type="checkbox" id="sCallerPlayer" bind:checked={cfg.caller.call_player}></div>
+        <div class="settings-row"><label for="sCallerAmbient">{t('Ambient volume (0 = off)')}</label><input type="number" id="sCallerAmbient" min="0" max="1" step="0.1" bind:value={cfg.caller.ambient_volume}></div>
+      </div>
+    {:else if audioTab === 'voicepack'}
+      <div class="settings-section">
+        <div class="settings-section-title">{t('Pack')}</div>
+        {#if vpPacks.length}
+          <div class="settings-row">
+            <label for="sVpPack">{t('Pack')}</label>
+            <select id="sVpPack" bind:value={vpPack} onchange={onVpPackChange}>
+              {#each vpPacks as pk (pk.name)}
+                <option value={pk.name}>{pk.name} ({pk.voice})</option>
+              {/each}
+            </select>
+          </div>
+          <p class="note">{t('Edits the plan {plan}. A downloaded pack without a plan file is not listed.', { plan: 'tools/' + vpPlan })}</p>
+        {:else}
+          <p class="note">{t('No voice-pack plan found.')}</p>
+        {/if}
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">{t('Group')}</div>
+        <div class="settings-row">
+          <label for="sVpGroup">{t('Group')}</label>
+          <select id="sVpGroup" bind:value={vpSelectedGroup} onchange={onVpGroupChange}>
+            {#each vpGroups as g (g.name)}
+              <option value={g.name}>{g.name}{g.is_range ? ' ' + t('(numbers)') : ''}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">{t('Add / edit entry')}</div>
+        <p class="note">{t('Key: a player-roster name, a phrase key, or a number (for a numbers group). Add one or more variant texts — spelled however makes the voice say it right — preview each, then save. Saving (re)writes the .mp3 file(s) for this key and updates the plan; an existing key with the same name is replaced entirely.')}</p>
+        <div class="settings-row">
+          <label for="sVpKey">{t('Key')}</label>
+          <input type="text" id="sVpKey" bind:value={vpFormKey} placeholder={t('e.g. peter, close, 21')}>
+        </div>
+        {#each vpFormVariants as _, i}
+          <div class="vp-variant-row">
+            <input type="text" bind:value={vpFormVariants[i]} placeholder={t('variant text')}>
+            <button type="button" class="btn-icon" onclick={() => previewVpVariant(vpFormVariants[i])}>▶</button>
+            <button type="button" class="btn-icon remove" onclick={() => removeVpVariantRow(i)}>×</button>
+          </div>
+        {/each}
+        <button type="button" class="btn btn-add" onclick={addVpVariantRow}>{t('+ Add variant')}</button>
+        <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem"
+                onclick={saveVpEntry} disabled={vpSaving}>{vpSaving ? t('Saving…') : t('💾 Save entry')}</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">{t('Existing entries')}{vpEntriesLoading ? ' — ' + t('Loading…') : ''}</div>
+        {#if !vpEntries.length && !vpEntriesLoading}
+          <p class="note">{t('No entries generated yet in this group.')}</p>
+        {/if}
+        {#each vpEntries as entry (entry.key)}
+          <div class="vp-entry">
+            <div class="vp-entry-header">
+              <span class="vp-entry-key">{entry.key}</span>
+              <button type="button" class="btn-icon" onclick={() => editVpEntry(entry)}>{t('Edit')}</button>
+            </div>
+            {#each entry.variants as v (v.index)}
+              <div class="vp-variant-row">
+                <span class="vp-variant-text">{v.text}</span>
+                <button type="button" class="btn-icon" disabled={!v.has_file}
+                        title={v.has_file ? t('Play variant') : t('Not generated yet')}
+                        onclick={() => playVpFile(v.filename)}>▶</button>
+                <button type="button" class="btn-icon remove" title={t('Delete this variant')}
+                        onclick={() => deleteVpVariant(entry.key, v.index)}>×</button>
+              </div>
+            {/each}
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {:else if activeTab === 'connections'}
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Board data source')} <span class="badge restart">{t('needs a restart')}</span></div>
+      <div class="settings-row"><label for="sDirEmail">{t('Email')}</label><input type="text" id="sDirEmail" bind:value={cfg.direct.email}></div>
+      <div class="settings-row"><label for="sDirPass">{t('Password')}</label><input type="password" id="sDirPass" bind:value={cfg.direct.password}></div>
+      <div class="settings-row"><label for="sDirBoard">{t('Board ID')}</label><input type="text" id="sDirBoard" bind:value={cfg.direct.board_id}></div>
+      <div class="settings-row"><label for="sDirBoardWs">{t('Board WebSocket URL')}</label><input type="text" id="sDirBoardWs" placeholder={t('ws://localhost:3180/api/events')} bind:value={cfg.direct.board_ws_url}></div>
+      <div class="settings-row"><label for="sDirBoardMgr">{t('Board manager URL')}</label><input type="text" id="sDirBoardMgr" placeholder={t('(auto-resolved from Autodarts cloud)')} bind:value={cfg.direct.board_manager_url}></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">{t('MQTT')} <span class="badge restart">{t('needs a restart')}</span></div>
+      <p class="note">{t('Optional - feeds Home Assistant / ESPHome / LED displays.')}</p>
+      <div class="settings-row"><label for="sMqttEnabled">{t('Enabled')}</label><input type="checkbox" id="sMqttEnabled" bind:checked={cfg.mqtt.enabled}></div>
+      <div class="settings-row"><label for="sMqttHost">{t('Host')}</label><input type="text" id="sMqttHost" placeholder="e.g. 192.168.1.100" bind:value={cfg.mqtt.host}></div>
+      <div class="settings-row"><label for="sMqttPort">{t('Port')}</label><input type="number" id="sMqttPort" min="1" max="65535" placeholder="1883" bind:value={cfg.mqtt.port}></div>
+      <div class="settings-row"><label for="sMqttUser">{t('Username')}</label><input type="text" id="sMqttUser" bind:value={cfg.mqtt.username}></div>
+      <div class="settings-row"><label for="sMqttPass">{t('Password')}</label><input type="password" id="sMqttPass" bind:value={cfg.mqtt.password}></div>
+      <div class="settings-row"><label for="sMqttTopic">{t('Base topic')}</label><input type="text" id="sMqttTopic" placeholder={t('autodarts')} bind:value={cfg.mqtt.base_topic}></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Online Elimination')}</div>
+      <div class="settings-row"><label for="sOnlineRelay">{t('Relay address')}</label><input type="text" id="sOnlineRelay" placeholder={t('wss://breakfast-relay.example.workers.dev')} bind:value={cfg.online.relay_url}></div>
+      <div class="settings-row"><label for="sOnlineSite">{t('This site\'s name')}</label><input type="text" id="sOnlineSite" placeholder={t('e.g. Home')} maxlength="24" bind:value={cfg.online.site_name}></div>
+    </div>
+  {:else if activeTab === 'system'}
+    <div class="settings-section" id="updates-panel">
+      <div class="settings-section-title">{t('Updates')}</div>
+      <div class="settings-row">
+        <label for="sUpdateCheck">{t('Look for a new release every day')}</label>
+        <input type="checkbox" id="sUpdateCheck" bind:checked={cfg.updates.check}>
+      </div>
+      <div class="settings-row">
+        <label for="sAutoInstall">{t('Install updates automatically')}</label>
+        <input type="checkbox" id="sAutoInstall" bind:checked={cfg.updates.auto_install} disabled={!cfg.updates.check}>
+      </div>
+      <p class="note">{t('Installs a newer patch or minor release after the start and at 04:00, never while a game is running. A new major version is only announced.')}</p>
+      {#if updateApplying}
+        <p class="note">{updatePhaseText}</p>
+      {:else}
+        <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={checkForUpdate} disabled={updateChecking}>
+          {updateChecking ? t('Checking…') : t('Check for update')}
+        </button>
+
+        {#if updateInfo?.error}
+          <p class="note update-error">{updateInfo.error}</p>
+        {:else if updateInfo?.update_available}
+          <p class="note">{t('Version {latest} is available (current: {current}).', { latest: updateInfo.latest, current: updateInfo.current })}</p>
+          <button type="button" class="btn btn-save" style="width:100%; margin-top:0.5rem" onclick={applyUpdate}>{t('Update now')}</button>
+        {:else if updateInfo}
+          <p class="note">{t('Up to date — version {current} is the latest.', { current: updateInfo.current })}</p>
+        {/if}
+
+        {#if dbBackup}
+          <p class="note">{t('Last backup of the statistics: v{version}, {time}', { version: dbBackup.version, time: new Date(dbBackup.at).toLocaleString() })}</p>
+        {/if}
+
+        <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={showWhatsNew}>{t("What's new in this version")}</button>
+
+        {#if updateOutcome === 'rolled_back'}
+          <p class="note update-error">{t('Update failed and was automatically rolled back')}{updateOutcomeDetail ? `: ${updateOutcomeDetail}` : '.'} {t('Contact whoever maintains this app if it keeps happening.')}</p>
+        {:else if updateOutcome === 'timeout'}
+          <p class="note update-error">{t('The app didn\'t come back after the update. It may still be starting — try reloading in a minute, or contact whoever maintains this app.')}</p>
+        {/if}
+      {/if}
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Usage reports')}</div>
+      <div class="settings-row">
+        <label for="sTelemetryOn">{t('Send anonymous usage and error reports')}</label>
+        <input type="checkbox" id="sTelemetryOn" bind:checked={cfg.telemetry.enabled}>
+      </div>
+      <div class="settings-row"><label for="sTelemetryUrl">{t('Report address')}</label><input type="text" id="sTelemetryUrl" bind:value={cfg.telemetry.url} oninput={() => (reportFollowsRelay = false)}></div>
+      <p class="note">{t('Off by default. Sends the version, the platform, the game modes played with their duration and the errors that occur, under a random installation ID. No player names, scores or addresses.')}</p>
+      <button type="button" class="btn btn-add" onclick={toggleReportPreview}>{reportPreview ? t('Hide') : t('Show what is sent')}</button>
+      {#if reportPreview}
+        <p class="note">{t('Installation ID')}: {reportPreview.install_id || t('Not created yet')}</p>
+        <p class="note">{t('Waiting to be sent')}</p>
+        <pre class="report-preview">{reportPreview.queued.length ? JSON.stringify(reportPreview.queued, null, 1) : t('Nothing')}</pre>
+        <p class="note">{t('Sent lately')}</p>
+        <pre class="report-preview">{reportPreview.sent.length ? JSON.stringify(reportPreview.sent, null, 1) : t('Nothing')}</pre>
+      {/if}
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Statistics')} <span class="badge restart">{t('needs a restart')}</span></div>
+      <div class="settings-row"><label for="sStatsDb">{t('Database file')}</label><input type="text" id="sStatsDb" placeholder={t('stats.db')} bind:value={cfg.stats.db}></div>
+      <div class="settings-row"><label for="sStatsTimezone">{t('Time zone')}</label><input type="text" id="sStatsTimezone" placeholder={t('UTC')} bind:value={cfg.stats.timezone} oninput={() => (timezoneSuggested = false)}></div>
+      {#if timezoneSuggested}
+        <p class="note">{t('No time zone is set, so UTC applies. This one is taken from your browser: save to use it.')}</p>
+      {:else}
+        <p class="note">{t('An IANA name such as Europe/Zurich. It sets the local days and hours used for achievements.')}</p>
+      {/if}
+    </div>
+  {:else if activeTab === 'dev'}
+    <div class="settings-section">
+      <div class="settings-section-title">{t('Logging')}</div>
       <div class="settings-row">
         <label for="sLogLevel">{t('Level')}</label>
         <select id="sLogLevel" bind:value={cfg.logging.level}>
@@ -604,276 +1015,41 @@
     </div>
 
     <div class="settings-section">
-      <div class="settings-section-title">{t('Web UI')} <span class="badge runtime">{t('applies instantly')}</span></div>
-      <div class="settings-row">
-        <label for="sWebPort">{t('Port')}</label>
-        <input type="number" id="sWebPort" readonly value={cfg.web.port}>
-      </div>
-      <p class="note">{t('Port is read-only — changing it would disconnect the current session.')}</p>
-      <div class="settings-row">
-        <label for="sWebTheme">{t('Theme')}</label>
-        <select id="sWebTheme" bind:value={cfg.web.theme}>
-          <option value="default">{t('Default')}</option>
-          <option value="ocean">{t('Ocean')}</option>
-          <option value="sunset">{t('Sunset')}</option>
-          <option value="forest">{t('Forest')}</option>
-        </select>
-      </div>
-      <div class="settings-row">
-        <label for="sWebLanguage">{t('Language')}</label>
-        <select id="sWebLanguage" bind:value={cfg.web.language}>
-          <option value="en">{t('English')}</option>
-          <option value="de">{t('Deutsch')}</option>
-        </select>
-      </div>
-      <p class="note">{t('One language for the whole installation, the TV included. Other open pages show it after a reload.')}</p>
-      <div class="settings-row"><label for="sWebAccent">{t('Custom accent color')}</label><input type="text" id="sWebAccent" placeholder={t('#7c6aff (overrides theme)')} bind:value={cfg.web.accent_color}></div>
-      <div class="settings-row">
-        <label for="sWebJoke">{t('Joke of the day')}</label>
-        <input type="checkbox" id="sWebJoke" bind:checked={cfg.web.joke_of_the_day}>
-      </div>
-      <p class="note">{t('The About page fetches the joke from icanhazdadjoke.com. Switch it off to make no outbound request.')}</p>
-      <div class="settings-row">
-        <label for="sWebBeatHint">{t('Elimination: mark the fields that beat the target')}</label>
-        <input type="checkbox" id="sWebBeatHint" bind:checked={cfg.web.elimination_beat_hint}>
-      </div>
-      <p class="note">{t('On the TV view the board marks every field that is still enough to beat the target. It can also be switched during a match with the Hint button.')}</p>
-    </div>
-
-    <div class="settings-section look">
-      <div class="settings-section-title">{t('Aurora and glass')} <span class="badge runtime">{t('applies instantly')}</span></div>
-      <div class="settings-row">
-        <label for="sWebAurora">{t('Animate the background')}</label>
-        <input type="checkbox" id="sWebAurora" bind:checked={cfg.web.aurora_animation} onchange={previewLook}>
-      </div>
-      <p class="note">{t('The slowly moving color areas in the background. Switch it off to save power and heat, the background then stands still.')}</p>
-      <div class="settings-row">
-        <label for="sLookStreaks">{t('Streaks')}</label>
-        <input type="checkbox" id="sLookStreaks" bind:checked={cfg.web.aurora_streaks} onchange={previewLook}>
-      </div>
-      {#each LOOK_SLIDERS as [key, label, low, high, step]}
-        <div class="settings-row">
-          <label for={'s_' + key}>{label}</label>
-          <span class="range-pair">
-            <input type="range" id={'s_' + key} min={low} max={high} {step} bind:value={cfg.web[key]} oninput={previewLook}>
-            <output>{cfg.web[key]} %</output>
-          </span>
-        </div>
-      {/each}
-      <div class="settings-row">
-        <label for="sLookIdle">{t('Pause after (minutes)')}</label>
-        <input type="number" id="sLookIdle" min="0" max="240" bind:value={cfg.web.aurora_pause_idle} oninput={previewLook}>
-      </div>
-      <p class="note">{t('Saves power: the aurora also stops while the page is hidden. With a number of minutes it stops after that long without a key or mouse movement and moves again on the next one; 0 never stops it.')}</p>
-
-      <div class="settings-section-title">{t('Aurora colors')}</div>
-      <div class="settings-row">
-        <label for="sLookPalette">{t('Palette')}</label>
-        <select id="sLookPalette" bind:value={cfg.web.aurora_palette} onchange={choosePalette}>
-          <option value="">{t('From the theme')}</option>
-          {#each PALETTES as [id, name] (id)}
-            <option value={id}>{name}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="aurora-colors">
-        {#each AURORA_COLORS as c (c.key)}
+      <div class="settings-section-title">{t('Web UI port')} {#if portInfo?.mode === 'config'}<span class="badge restart">{t('needs a restart')}</span>{/if}</div>
+      {#if !portInfo}
+        <p class="note">{t('Loading…')}</p>
+      {:else if portInfo.mode === 'docker'}
+        {#if portInfo.error}
+          <p class="note update-error">{portInfo.error}</p>
+        {:else if !portInfo.supported}
+          <p class="note">{t('This installation has no port setting yet. Install the latest update first.')}</p>
+        {:else}
           <div class="settings-row">
-            <label for={'s_' + c.key}>{c.label}</label>
-            <ColorField id={'s_' + c.key} label={c.label} value={cfg.web[c.key]} fallback={presetColor(c.key, lookTick)}
-                        onchange={(v) => { cfg.web[c.key] = v; previewLook(); }} />
+            <label for="sWebPort">{t('Port')}</label>
+            <input type="number" id="sWebPort" min="1024" max="65535" bind:value={portInput}>
           </div>
-        {/each}
-      </div>
-      <p class="note">{t('Choosing a palette clears the colors you picked. Dark colors work best, the text on top is light. A color you do not set stays the one of the palette or theme.')}</p>
-      <button type="button" class="btn btn-add" onclick={resetLook}>{t('Reset the look to the defaults')}</button>
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Online Elimination')} <span class="badge runtime">{t('applies instantly')}</span></div>
-      <div class="settings-row"><label for="sOnlineRelay">{t('Relay address')}</label><input type="text" id="sOnlineRelay" placeholder={t('wss://breakfast-relay.example.workers.dev')} bind:value={cfg.online.relay_url}></div>
-      <div class="settings-row"><label for="sOnlineSite">{t('This site\'s name')}</label><input type="text" id="sOnlineSite" placeholder={t('e.g. Home')} maxlength="24" bind:value={cfg.online.site_name}></div>
-      <p class="note">{t('Play one Elimination match with Breakfast installations elsewhere, through a relay. Without an address, online play stays off.')}</p>
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Update check')} <span class="badge runtime">{t('applies instantly')}</span></div>
-      <div class="settings-row">
-        <label for="sUpdateCheck">{t('Look for a new release every day')}</label>
-        <input type="checkbox" id="sUpdateCheck" bind:checked={cfg.updates.check}>
-      </div>
-      <p class="note">{t('Shows a notice when a newer release is available. Switch it off if this installation should not contact the internet by itself.')}</p>
-      <div class="settings-row">
-        <label for="sAutoInstall">{t('Install updates automatically')}</label>
-        <input type="checkbox" id="sAutoInstall" bind:checked={cfg.updates.auto_install} disabled={!cfg.updates.check}>
-      </div>
-      <p class="note">{t('Installs a newer patch or minor release after the start and at 04:00, never while a game is running. A new major version is only announced.')}</p>
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Usage reports')} <span class="badge runtime">{t('applies instantly')}</span></div>
-      <div class="settings-row">
-        <label for="sTelemetryOn">{t('Send anonymous usage and error reports')}</label>
-        <input type="checkbox" id="sTelemetryOn" bind:checked={cfg.telemetry.enabled}>
-      </div>
-      <div class="settings-row"><label for="sTelemetryUrl">{t('Report address')}</label><input type="text" id="sTelemetryUrl" placeholder={t('Same as the relay address')} bind:value={cfg.telemetry.url}></div>
-      <p class="note">{t('Off by default. Sends the version, the platform, the game modes played with their duration and the errors that occur, under a random installation ID. No player names, scores or addresses.')}</p>
-      <button type="button" class="btn btn-add" onclick={toggleReportPreview}>{reportPreview ? t('Hide') : t('Show what is sent')}</button>
-      {#if reportPreview}
-        <p class="note">{t('Installation ID')}: {reportPreview.install_id || t('Not created yet')}</p>
-        <p class="note">{t('Waiting to be sent')}</p>
-        <pre class="report-preview">{reportPreview.queued.length ? JSON.stringify(reportPreview.queued, null, 1) : t('Nothing')}</pre>
-        <p class="note">{t('Sent lately')}</p>
-        <pre class="report-preview">{reportPreview.sent.length ? JSON.stringify(reportPreview.sent, null, 1) : t('Nothing')}</pre>
-      {/if}
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Statistics')} <span class="badge restart">{t('restart to apply')}</span></div>
-      <div class="settings-row"><label for="sStatsDb">{t('Database file')}</label><input type="text" id="sStatsDb" placeholder={t('stats.db')} bind:value={cfg.stats.db}></div>
-      <div class="settings-row"><label for="sStatsTimezone">{t('Time zone')}</label><input type="text" id="sStatsTimezone" placeholder={t('UTC')} bind:value={cfg.stats.timezone} oninput={() => (timezoneSuggested = false)}></div>
-      {#if timezoneSuggested}
-        <p class="note">{t('No time zone is set, so UTC applies. This one is taken from your browser: save to use it.')}</p>
+          <p class="note">{t('The port Breakfast is published on at this machine. Inside the container it stays on 8080.')}</p>
+          {#if portInfo.phase === 'failed'}
+            <p class="note update-error">{t('The last port change failed: {detail}', { detail: portInfo.detail || t('unknown error') })}</p>
+          {/if}
+          <button type="button" class="btn btn-add" onclick={applyPort}
+                  disabled={portApplying || !!$gameState.running_game || Number(portInput) === portInfo.port}>
+            {portApplying ? t('Waiting for the new port…') : t('Apply port')}
+          </button>
+          {#if $gameState.running_game}<p class="note">{t('Not available while a game is running.')}</p>{/if}
+        {/if}
       {:else}
-        <p class="note">{t('An IANA name such as Europe/Zurich. It sets the local days and hours used for achievements.')}</p>
-      {/if}
-    </div>
-  {:else if activeTab === 'mqtt'}
-    <div class="settings-section">
-      <div class="settings-section-title">{t('MQTT')} <span class="badge restart">{t('restart to apply')}</span></div>
-      <p class="note">{t('Fully optional — Elimination, the scoreboard, and the voice caller all work with MQTT off; this only feeds Home Assistant / ESPHome / LED displays.')}</p>
-      <div class="settings-row"><label for="sMqttEnabled">{t('Enabled')}</label><input type="checkbox" id="sMqttEnabled" bind:checked={cfg.mqtt.enabled}></div>
-      <div class="settings-row"><label for="sMqttHost">{t('Host')}</label><input type="text" id="sMqttHost" placeholder="e.g. 192.168.1.100" bind:value={cfg.mqtt.host}></div>
-      <div class="settings-row"><label for="sMqttPort">{t('Port')}</label><input type="number" id="sMqttPort" min="1" max="65535" placeholder="1883" bind:value={cfg.mqtt.port}></div>
-      <div class="settings-row"><label for="sMqttUser">{t('Username')}</label><input type="text" id="sMqttUser" bind:value={cfg.mqtt.username}></div>
-      <div class="settings-row"><label for="sMqttPass">{t('Password')}</label><input type="password" id="sMqttPass" bind:value={cfg.mqtt.password}></div>
-      <div class="settings-row"><label for="sMqttTopic">{t('Base topic')}</label><input type="text" id="sMqttTopic" placeholder={t('autodarts')} bind:value={cfg.mqtt.base_topic}></div>
-    </div>
-  {:else if activeTab === 'source'}
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Source: Direct mode')} <span class="badge restart">{t('restart to apply')}</span></div>
-      <div class="settings-row"><label for="sDirEmail">{t('Email')}</label><input type="text" id="sDirEmail" bind:value={cfg.direct.email}></div>
-      <div class="settings-row"><label for="sDirPass">{t('Password')}</label><input type="password" id="sDirPass" bind:value={cfg.direct.password}></div>
-      <div class="settings-row"><label for="sDirBoard">{t('Board ID')}</label><input type="text" id="sDirBoard" bind:value={cfg.direct.board_id}></div>
-      <div class="settings-row"><label for="sDirBoardWs">{t('Board WebSocket URL')}</label><input type="text" id="sDirBoardWs" placeholder={t('ws://localhost:3180/api/events')} bind:value={cfg.direct.board_ws_url}></div>
-      <div class="settings-row"><label for="sDirBoardMgr">{t('Board manager URL')}</label><input type="text" id="sDirBoardMgr" placeholder={t('(auto-resolved from Autodarts cloud)')} bind:value={cfg.direct.board_manager_url}></div>
-    </div>
-  {:else if activeTab === 'voice'}
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Voice caller')} <span class="badge restart">{t('restart to apply')}</span></div>
-      <div class="settings-row"><label for="sAudioDir">{t('Sounds directory')}</label><input type="text" id="sAudioDir" placeholder={t('/path/to/sounds')} bind:value={cfg.audio.dir}></div>
-      <div class="settings-row">
-        <label for="sAudioProfile">{t('Voice-pack profile')}</label>
-        <select id="sAudioProfile" bind:value={cfg.audio.profile}>
-          <option value="">{t('(own sounds only)')}</option>
-          {#each voicePackProfiles as p}
-            <option value={p}>{p}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings-row"><label for="sCallerEnabled">{t('Caller enabled')}</label><input type="checkbox" id="sCallerEnabled" bind:checked={cfg.caller.enabled}></div>
-      <div class="settings-row"><label for="sCallerPerDart">{t('Call every dart')}</label><input type="checkbox" id="sCallerPerDart" bind:checked={cfg.caller.per_dart}></div>
-      <div class="settings-row"><label for="sCallerMisses">{t('Announce misses ("outside")')}</label><input type="checkbox" id="sCallerMisses" bind:checked={cfg.caller.call_misses}></div>
-      <div class="settings-row"><label for="sCallerTotal">{t('Call turn total')}</label><input type="checkbox" id="sCallerTotal" bind:checked={cfg.caller.turn_total}></div>
-      <div class="settings-row"><label for="sCallerCheckout">{t('Checkout call repeat limit (0 = off)')}</label><input type="number" id="sCallerCheckout" min="0" step="1" bind:value={cfg.caller.checkout_limit}></div>
-      <div class="settings-row"><label for="sCallerChange">{t('Announce player change')}</label><input type="checkbox" id="sCallerChange" bind:checked={cfg.caller.announce_change}></div>
-      <div class="settings-row"><label for="sCallerPlayer">{t('Call player names')}</label><input type="checkbox" id="sCallerPlayer" bind:checked={cfg.caller.call_player}></div>
-      <div class="settings-row"><label for="sCallerAmbient">{t('Ambient volume (0 = off)')}</label><input type="number" id="sCallerAmbient" min="0" max="1" step="0.1" bind:value={cfg.caller.ambient_volume}></div>
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Voice pack')}</div>
-      {#if vpPacks.length}
         <div class="settings-row">
-          <label for="sVpPackGen">{t('Pack')}</label>
-          <select id="sVpPackGen" bind:value={vpPack} onchange={onVpPackChange}>
-            {#each vpPacks as pk (pk.name)}
-              <option value={pk.name}>{pk.name} ({pk.voice})</option>
-            {/each}
-          </select>
+          <label for="sWebPort">{t('Port')}</label>
+          <input type="number" id="sWebPort" min="1024" max="65535" bind:value={cfg.web.port}>
         </div>
+        <p class="note">{t('Saved with the form and taken at the next restart.')}</p>
       {/if}
-      <p class="note">{t('Generates any missing sound files for the voice-pack plan {plan} via edge-tts. Check "force" to also re-generate files that already exist — needed after editing existing phrases, takes several minutes for the whole pack.', { plan: 'tools/' + vpPlan })}</p>
-      <div class="settings-row"><label for="sVoicepackForce">{t('Force full regeneration')}</label><input type="checkbox" id="sVoicepackForce" bind:checked={voicepackForce}></div>
-      <button type="button" class="btn btn-add" style="width:100%" onclick={regenerateVoicepack} disabled={vp?.running || !vpPack}>{t('Regenerate voice pack')}</button>
-      <div class="voicepack-progress">{vpText}</div>
-    </div>
-  {:else if activeTab === 'voicepack'}
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Pack')}</div>
-      {#if vpPacks.length}
-        <div class="settings-row">
-          <label for="sVpPack">{t('Pack')}</label>
-          <select id="sVpPack" bind:value={vpPack} onchange={onVpPackChange}>
-            {#each vpPacks as pk (pk.name)}
-              <option value={pk.name}>{pk.name} ({pk.voice})</option>
-            {/each}
-          </select>
-        </div>
-        <p class="note">{t('Edits the plan {plan}. A downloaded pack without a plan file is not listed.', { plan: 'tools/' + vpPlan })}</p>
-      {:else}
-        <p class="note">{t('No voice-pack plan found.')}</p>
-      {/if}
+      <p class="note">{t('Changing the port moves this page to a new address. Bookmarks, the TV and other devices need the new one.')}</p>
     </div>
 
     <div class="settings-section">
-      <div class="settings-section-title">{t('Group')}</div>
-      <div class="settings-row">
-        <label for="sVpGroup">{t('Group')}</label>
-        <select id="sVpGroup" bind:value={vpSelectedGroup} onchange={onVpGroupChange}>
-          {#each vpGroups as g (g.name)}
-            <option value={g.name}>{g.name}{g.is_range ? ' ' + t('(numbers)') : ''}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Existing entries')}{vpEntriesLoading ? ' — ' + t('Loading…') : ''}</div>
-      {#if !vpEntries.length && !vpEntriesLoading}
-        <p class="note">{t('No entries generated yet in this group.')}</p>
-      {/if}
-      {#each vpEntries as entry (entry.key)}
-        <div class="vp-entry">
-          <div class="vp-entry-header">
-            <span class="vp-entry-key">{entry.key}</span>
-            <button type="button" class="btn-icon" onclick={() => editVpEntry(entry)}>{t('Edit')}</button>
-          </div>
-          {#each entry.variants as v (v.index)}
-            <div class="vp-variant-row">
-              <span class="vp-variant-text">{v.text}</span>
-              <button type="button" class="btn-icon" disabled={!v.has_file}
-                      title={v.has_file ? t('Play variant') : t('Not generated yet')}
-                      onclick={() => playVpFile(v.filename)}>▶</button>
-              <button type="button" class="btn-icon remove" title={t('Delete this variant')}
-                      onclick={() => deleteVpVariant(entry.key, v.index)}>×</button>
-            </div>
-          {/each}
-        </div>
-      {/each}
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Add / edit entry')}</div>
-      <p class="note">{t('Key: a player-roster name, a phrase key, or a number (for a numbers group). Add one or more variant texts — spelled however makes the voice say it right — preview each, then save. Saving (re)writes the .mp3 file(s) for this key and updates the plan; an existing key with the same name is replaced entirely.')}</p>
-      <div class="settings-row">
-        <label for="sVpKey">{t('Key')}</label>
-        <input type="text" id="sVpKey" bind:value={vpFormKey} placeholder={t('e.g. peter, close, 21')}>
-      </div>
-      {#each vpFormVariants as _, i}
-        <div class="vp-variant-row">
-          <input type="text" bind:value={vpFormVariants[i]} placeholder={t('variant text')}>
-          <button type="button" class="btn-icon" onclick={() => previewVpVariant(vpFormVariants[i])}>▶</button>
-          <button type="button" class="btn-icon remove" onclick={() => removeVpVariantRow(i)}>×</button>
-        </div>
-      {/each}
-      <button type="button" class="btn btn-add" onclick={addVpVariantRow}>{t('+ Add variant')}</button>
-      <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem"
-              onclick={saveVpEntry} disabled={vpSaving}>{vpSaving ? t('Saving…') : t('💾 Save entry')}</button>
-    </div>
-  {:else if activeTab === 'dev'}
-    <div class="settings-section">
-      <div class="settings-section-title">{t('Recording')} <span class="badge restart">{t('restart to apply')}</span></div>
+      <div class="settings-section-title">{t('Recording')} <span class="badge restart">{t('needs a restart')}</span></div>
       <p class="note">{t('Records every incoming board event to a JSONL file — useful for building a new fixture for the demo below, or for `replay` mode. Only active in direct mode; leave blank to disable.')}</p>
       <div class="settings-row"><label for="sRecordFile">{t('Recording file')}</label><input type="text" id="sRecordFile" placeholder={t('data/sessions/session.jsonl')} bind:value={cfg.record.file}></div>
     </div>
@@ -881,8 +1057,9 @@
     <div class="settings-section">
       <div class="settings-section-title">{t('Simulate a match')}</div>
       <p class="note">{t('Plays out a full X01 leg or Elimination match at runtime, live on the TV view — no physical board needed. Refuses to start while a real match is already in progress.')}</p>
-      <button type="button" class="btn btn-add" style="width:100%" onclick={() => startDemo('x01')} disabled={devDemo?.running}>{t('▶ Simulate X01 leg')}</button>
-      <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={() => startDemo('elimination')} disabled={devDemo?.running}>{t('▶ Simulate Elimination match')}</button>
+      <button type="button" class="btn btn-add" style="width:100%" onclick={() => startDemo('x01')} disabled={devDemo?.running || !!$gameState.running_game}>{t('▶ Simulate X01 leg')}</button>
+      <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={() => startDemo('elimination')} disabled={devDemo?.running || !!$gameState.running_game}>{t('▶ Simulate Elimination match')}</button>
+      {#if $gameState.running_game}<p class="note">{t('Not available while a game is running.')}</p>{/if}
       <div class="voicepack-progress">{devDemo?.running ? t('Running… ({mode})', { mode: devDemo.mode }) : ''}</div>
     </div>
   {/if}
@@ -890,43 +1067,10 @@
   <button type="submit" class="btn btn-save">{t('Save')}</button>
 </form>
 
-{#if activeTab === 'general'}
+{#if activeTab === 'system'}
 <div class="settings-section maintenance">
   <div class="settings-section-title">{t('Application')}</div>
-  <p class="note">{t('Restarts the whole Breakfast process — needed to apply any "restart to apply" setting above. Relies on the container\'s restart policy (or your process supervisor) to bring it back up; if you\'re running it bare (no supervisor), it just stops.')}</p>
   <button type="button" class="btn btn-stop" style="width:100%" onclick={restartApp}>{t('Restart Breakfast')}</button>
-</div>
-
-<div class="settings-section maintenance" id="updates-panel">
-  <div class="settings-section-title">{t('Updates')}</div>
-  {#if updateApplying}
-    <p class="note">{updatePhaseText}</p>
-  {:else}
-    <button type="button" class="btn btn-add" style="width:100%" onclick={checkForUpdate} disabled={updateChecking}>
-      {updateChecking ? t('Checking…') : t('Check for update')}
-    </button>
-
-    {#if updateInfo?.error}
-      <p class="note update-error">{updateInfo.error}</p>
-    {:else if updateInfo?.update_available}
-      <p class="note">{t('Version {latest} is available (current: {current}).', { latest: updateInfo.latest, current: updateInfo.current })}</p>
-      <button type="button" class="btn btn-save" style="width:100%; margin-top:0.5rem" onclick={applyUpdate}>{t('Update now')}</button>
-    {:else if updateInfo}
-      <p class="note">{t('Up to date — version {current} is the latest.', { current: updateInfo.current })}</p>
-    {/if}
-
-    {#if dbBackup}
-      <p class="note">{t('Last backup of the statistics: v{version}, {time}', { version: dbBackup.version, time: new Date(dbBackup.at).toLocaleString() })}</p>
-    {/if}
-
-    <button type="button" class="btn btn-add" style="width:100%; margin-top:0.5rem" onclick={showWhatsNew}>{t("What's new in this version")}</button>
-
-    {#if updateOutcome === 'rolled_back'}
-      <p class="note update-error">{t('Update failed and was automatically rolled back')}{updateOutcomeDetail ? `: ${updateOutcomeDetail}` : '.'} {t('Contact whoever maintains this app if it keeps happening.')}</p>
-    {:else if updateOutcome === 'timeout'}
-      <p class="note update-error">{t('The app didn\'t come back after the update. It may still be starting — try reloading in a minute, or contact whoever maintains this app.')}</p>
-    {/if}
-  {/if}
 </div>
 {/if}
 
@@ -940,6 +1084,13 @@
     border-radius: 16px; padding: 1.25rem 1.4rem; margin-bottom: 1.25rem;
   }
   .settings-section.maintenance { margin-top: 1.5rem; }
+  .settings-section-title.sub { margin-top: 1.4rem; }
+  .settings-section-title.sub:first-child { margin-top: 0; }
+  .back-to-game {
+    display: inline-block; margin-bottom: 1rem; padding: 0.45rem 1rem; border-radius: 999px; border: 1px solid var(--accent);
+    background: var(--glass); color: var(--accent); font-size: 0.9rem; font-weight: 600; text-decoration: none;
+  }
+  .back-to-game:hover { background: var(--accent); color: #0c0c0f; }
   .settings-section-title {
     font-size: 0.78rem; color: var(--muted); font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 1rem;
@@ -949,9 +1100,9 @@
     font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 20px;
     text-transform: none; letter-spacing: 0; font-weight: 500;
   }
-  .badge.runtime { background: rgba(74,222,128,0.12); color: var(--green); }
   .badge.restart { background: rgba(251,191,36,0.12); color: var(--yellow); }
   .tab-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
+  .tab-row.sub { margin-top: -0.5rem; }
   .tab-chip {
     background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     border-radius: 999px; padding: 0.45rem 1.1rem; font-size: 0.85rem; font-weight: 600;
@@ -973,7 +1124,7 @@
   }
   .settings-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
   .settings-row input[readonly] { opacity: 0.45; cursor: not-allowed; }
-  .settings-row input[type="checkbox"] { justify-self: start; width: 1.2rem; height: 1.2rem; accent-color: var(--accent); cursor: pointer; }
+  .settings-row input[type="checkbox"] { justify-self: end; width: 1.2rem; height: 1.2rem; accent-color: var(--accent); cursor: pointer; }
   .settings-row select {
     background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border);
     border-radius: 10px; color: var(--text); padding: 0.45rem 0.75rem; font-size: 0.9rem; font-family: inherit;
@@ -993,6 +1144,8 @@
   .settings-banner.ok { background: rgba(74,222,128,0.1); border-color: var(--green); color: var(--green); }
   .settings-banner.warn { background: rgba(251,191,36,0.1); border-color: var(--yellow); color: var(--yellow); }
   .settings-banner.error { background: rgba(248,113,113,0.1); border-color: var(--red); color: var(--red); }
+  .restart-banner { display: flex; align-items: center; gap: 0.75rem; }
+  .restart-banner span { flex: 1; }
   .btn { border: none; border-radius: 12px; padding: 0.7rem 1.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: default; }

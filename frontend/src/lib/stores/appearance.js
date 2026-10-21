@@ -37,11 +37,9 @@ export function applyLook(look = {}) {
   auroraPauseIdle.set(Number.isFinite(look.pause_idle) ? look.pause_idle : 0);
 }
 
-// What the installation looks like (`[web]`): theme, accent color, aurora, glass. Every page applies it at start.
+// What the installation looks like (`[web]`): palette, accent color, aurora, glass. Every page applies it at start.
 export function applyAppearance(a) {
   const root = document.documentElement;
-  if (a.theme) root.dataset.theme = a.theme;
-  else delete root.dataset.theme;
   if (a.accent_color) root.style.setProperty('--accent', a.accent_color);
   else root.style.removeProperty('--accent');
   applyAuroraColors(a.aurora);

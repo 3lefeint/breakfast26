@@ -10,6 +10,7 @@
   import AppHeader from '../lib/components/AppHeader.svelte';
   import Aurora from '../lib/components/Aurora.svelte';
   import { createPlayer } from '../lib/audioPlayer.js';
+  import { loadAppearance } from '../lib/stores/appearance.js';
 
   let unlocked = $state(false);
   let connOk = $state(false);
@@ -57,18 +58,8 @@
     };
   }
 
-  async function applyTheme() {
-    try {
-      const cfg = await fetch('/api/config').then((r) => r.json());
-      if (cfg.web?.theme) document.documentElement.dataset.theme = cfg.web.theme;
-      if (cfg.web?.accent_color) document.documentElement.style.setProperty('--accent', cfg.web.accent_color);
-    } catch (_) {
-      // no config yet — keep default theme
-    }
-  }
-
   onMount(() => {
-    applyTheme();
+    loadAppearance();
     connect();
   });
 </script>

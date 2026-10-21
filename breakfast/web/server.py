@@ -368,7 +368,7 @@ SUPPORTED_LANGUAGES = ("en", "de")
 
 _AURORA_KEYS = ("aurora_base", "aurora_1", "aurora_2", "aurora_3")
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
-AURORA_PALETTES = ("northern", "ember", "lavender", "graphite", "sakura")
+AURORA_PALETTES = ("ocean", "sunset", "forest", "northern", "ember", "lavender", "graphite", "sakura")
 # [web] settings of the look that are whole numbers: (lowest, highest, default)
 _LOOK_NUMBERS = {
     "aurora_speed": (25, 300, 100),         # % of the normal speed of the drift
@@ -378,6 +378,14 @@ _LOOK_NUMBERS = {
     "glass_strength": (50, 200, 100),       # % of the normal milkiness of the glass panels
     "bar_opacity": (50, 100, 92),           # % the top bar covers the page that scrolls under it
 }
+
+
+def _palette(web: dict) -> str | None:
+    """The palette in use: the chosen one, else the theme of an older config (the themes became palettes)."""
+    for key in ("aurora_palette", "theme"):
+        if web.get(key) in AURORA_PALETTES:
+            return web[key]
+    return None
 
 
 def _look_number(web: dict, key: str) -> int:
@@ -405,15 +413,14 @@ def _bad_look_value(key: str, value):
 
 @app.get("/api/appearance")
 async def get_appearance():
-    """The look every page applies at start: the theme and the accent color, the colors of the
-    aurora (None = the one of the theme) and whether the aurora moves."""
+    """The look every page applies at start: the palette (None = the default one) and the accent color, the
+    colors of the aurora (None = the one of the palette) and whether the aurora moves."""
     web = (cfg_mod.load(_config_path) if _config_path else {}).get("web", {})
     return {
-        "theme": web.get("theme", "default"),
         "accent_color": web.get("accent_color"),
         "aurora_animation": bool(web.get("aurora_animation", True)),
         "aurora": {key.removeprefix("aurora_"): (web.get(key) or None) for key in _AURORA_KEYS},
-        "palette": web.get("aurora_palette") if web.get("aurora_palette") in AURORA_PALETTES else None,
+        "palette": _palette(web),
         "streaks": bool(web.get("aurora_streaks", True)),
         "speed": _look_number(web, "aurora_speed"),
         "intensity": _look_number(web, "aurora_intensity"),
@@ -1708,13 +1715,12 @@ async def get_config():
         },
         "web": {
             "port":         web.get("port", 8080),
-            "theme":        web.get("theme", "default"),
             "accent_color": web.get("accent_color"),
             "joke_of_the_day": web.get("joke_of_the_day", True),
             "language":     web.get("language", "en"),
             "aurora_animation": bool(web.get("aurora_animation", True)),
             **{key: web.get(key) for key in _AURORA_KEYS},
-            "aurora_palette": web.get("aurora_palette") if web.get("aurora_palette") in AURORA_PALETTES else "",
+            "aurora_palette": _palette(web) or "",
             "aurora_streaks": bool(web.get("aurora_streaks", True)),
             "elimination_beat_hint": web.get("elimination_beat_hint") is True,
             **{key: _look_number(web, key) for key in _LOOK_NUMBERS},
@@ -1777,6 +1783,7 @@ async def patch_config(body: dict):
     updates: dict = {}
     changed_keys: list[str] = []
     changed_non_runtime: list[str] = []
+    current = cfg_mod.load(_config_path)
 
     for section, values in body.items():
         if not isinstance(values, dict):
@@ -1785,10 +1792,13 @@ async def patch_config(body: dict):
         if not cleaned:
             continue
         updates[section] = cleaned
-        for key in cleaned:
-            flat = key if section == "logging" else f"{section}.{key}"
+        stored = current.get(section, {})
+        for key, value in cleaned.items():
+            flat = f"{section}.{key}"
             changed_keys.append(flat)
-            if key not in cfg_mod.RUNTIME_FIELDS:
+            # A restart is only needed for a value that differs from the one in the file (None removes the key).
+            differs = key in stored if value is None else stored.get(key) != value
+            if differs and key not in cfg_mod.RUNTIME_FIELDS and flat not in cfg_mod.RUNTIME_FIELDS:
                 changed_non_runtime.append(flat)
 
     # Key names only, never values — matches the masking discipline
@@ -1800,6 +1810,8 @@ async def patch_config(body: dict):
         if problem:
             return {"saved": False, "error": problem}
 
+    if "aurora_palette" in updates.get("web", {}) and "theme" in current.get("web", {}):
+        updates["web"]["theme"] = None   # the palette replaces the theme of an older config
     cfg_mod.write(_config_path, updates)
     cfg_mod.apply_runtime(updates.get("logging", {}))
     global _elim_beat_hint
@@ -2425,8 +2437,8 @@ def _updater_get(path: str) -> dict:
     return r.json()
 
 
-def _updater_post(path: str) -> dict:
-    r = requests.post(f"{_UPDATER_URL}{path}", timeout=10)
+def _updater_post(path: str, body: dict | None = None) -> dict:
+    r = requests.post(f"{_UPDATER_URL}{path}", json=body, timeout=10)
     r.raise_for_status()
     return r.json()
 
@@ -2489,6 +2501,46 @@ async def updates_status():
     except Exception as e:
         log.warning("Updater unreachable on /status: %s", e)
         return {"error": f"updater unreachable: {e}"}
+
+
+# ── REST: web UI port ────────────────────────────────────────────────────────
+
+WEB_PORT_MIN, WEB_PORT_MAX = 1024, 65535
+
+
+def _in_docker() -> bool:
+    return not frozen.is_frozen() and Path("/.dockerenv").exists()
+
+
+@app.get("/api/web-port")
+async def web_port_get():
+    """Where the port is set: in Docker the port published at the host (the updater service keeps it in `.env`),
+    elsewhere `[web] port` of the config. `{mode, port}`, in Docker also `supported` and the state of a change."""
+    if not _in_docker():
+        raw = cfg_mod.load(_config_path) if _config_path else {}
+        return {"mode": "config", "port": raw.get("web", {}).get("port", 8080)}
+    try:
+        return {"mode": "docker", **await asyncio.to_thread(_updater_get, "/port")}
+    except Exception as e:
+        log.warning("Updater unreachable on /port: %s", e)
+        return {"mode": "docker", "error": f"updater unreachable: {e}"}
+
+
+@app.post("/api/web-port")
+async def web_port_set(body: dict):
+    """Docker only: the updater checks that the port is free at the host, writes it to `.env` and recreates the
+    container. Elsewhere the port is part of the config (PATCH /api/config) and needs a restart."""
+    port = body.get("port")
+    if not isinstance(port, int) or isinstance(port, bool) or not WEB_PORT_MIN <= port <= WEB_PORT_MAX:
+        return {"ok": False, "code": "invalid", "error": "the port must be a number from 1024 to 65535"}
+    if not _in_docker():
+        return {"ok": False, "code": "not_docker", "error": "the port is set in the config outside Docker"}
+    log.info("Web UI port change requested via UI: %s", port)
+    try:
+        return await asyncio.to_thread(_updater_post, "/port", {"port": port})
+    except Exception as e:
+        log.warning("Updater unreachable on /port: %s", e)
+        return {"ok": False, "error": f"updater unreachable: {e}"}
 
 
 # ── REST: players ─────────────────────────────────────────────────────────────

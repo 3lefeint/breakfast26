@@ -1,9 +1,10 @@
 <script>
   import { t } from '../i18n.js';
-  // A color as a swatch, a hex field and, when the swatch is clicked, three sliders (hue, saturation,
+  // A color as a swatch and, when the swatch is clicked, a hex field and three sliders (hue, saturation,
   // brightness) with the color range drawn on each track. The browser's own color dialog hides the
   // brightness, which is what matters for the dark colors of the aurora. `value` is a hex color or ''
-  // (not set: `fallback` is shown); every change calls `onchange` with the new hex string.
+  // (not set: `fallback` is shown, also in the hex field); a color that is set keeps its hex field visible.
+  // Every change calls `onchange` with the new hex string.
   let { value = '', fallback = '#000000', id = undefined, label = '', onchange = () => {} } = $props();
 
   const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -55,8 +56,10 @@
 <div class="color-field">
   <button type="button" class="swatch" style:background={shown} aria-label={label} aria-expanded={open}
           onclick={() => (open = !open)}></button>
-  <input type="text" class="hex" {id} placeholder={t('from the theme')} maxlength="7" {value}
-         oninput={(e) => onchange(e.currentTarget.value)}>
+  {#if open || value}
+    <input type="text" class="hex" {id} maxlength="7" value={value || fallback}
+           oninput={(e) => onchange(e.currentTarget.value)}>
+  {/if}
   {#if open}
     <div class="sliders">
       <label><span>{t('Hue')}</span>

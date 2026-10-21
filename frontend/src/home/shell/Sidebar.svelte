@@ -18,7 +18,7 @@
     { id: 'board', label: t('Board'), icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
     { id: 'autodarts', label: 'Autodarts', icon: 'external', href: 'https://play.autodarts.com/', external: true },
   ]);
-  let settingsActive = $derived(route === 'settings');
+  let settingsActive = $derived(route === 'settings' || route.startsWith('settings/'));
 </script>
 
 <nav class="sidebar" aria-label={t('Main')}>
@@ -84,7 +84,7 @@
   @media (max-width: 800px) {
     .sidebar {
       position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; height: calc(var(--nav-h, 4.2rem) + env(safe-area-inset-bottom)); box-sizing: border-box; grid-row: auto; grid-column: auto;
-      border-right: none; border-top: 1px solid var(--glass-border);
+      border-right: none; border-top: 1px solid var(--glass-border); background: var(--glass-bar);
     }
     .inner {
       position: static; height: 100%; flex-direction: row; align-items: center; padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom)); overflow: visible;

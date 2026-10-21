@@ -8,10 +8,12 @@ from pathlib import Path
 _DEFAULT_PATH = Path("config.toml")
 
 # Fields that can be changed at runtime without restarting the service.
-RUNTIME_FIELDS = {"log_level", "language", "aurora_animation", "theme", "accent_color",
+RUNTIME_FIELDS = {"log_level", "level", "language", "aurora_animation", "accent_color",
                   "aurora_base", "aurora_1", "aurora_2", "aurora_3", "aurora_palette", "aurora_speed",
                   "aurora_intensity", "aurora_blur", "aurora_streaks", "aurora_pause_idle",
-                  "glass_strength", "bar_opacity", "elimination_beat_hint", "check", "auto_install"}
+                  "glass_strength", "bar_opacity", "elimination_beat_hint", "check", "auto_install",
+                  # `section.key` for a key whose name also exists in a section that needs a restart
+                  "online.relay_url", "online.site_name", "telemetry.enabled", "telemetry.url", "web.joke_of_the_day"}
 
 
 def load(path: str | Path | None = None) -> dict:

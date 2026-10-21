@@ -1,3 +1,7 @@
+import asyncio
+
+import pytest
+
 from updater.app import _is_update_available, _parse_semver, _pick_latest_tag
 
 
@@ -174,3 +178,70 @@ class TestApplyWithDatabase:
         assert updater_app._state["phase"] == "done"
         assert sqlite3.connect(db).execute("SELECT v FROM t").fetchall() == [(1,), (2,)]
         assert len(list((tmp_path / "backups").iterdir())) == 1
+
+
+class TestPublishedPort:
+    @pytest.fixture
+    def env(self, tmp_path, monkeypatch):
+        from updater import app as updater_app
+
+        monkeypatch.setattr(updater_app, "ENV_FILE", tmp_path / ".env")
+        monkeypatch.setattr(updater_app, "COMPOSE_FILE", tmp_path / "docker-compose.yml")
+        (tmp_path / "docker-compose.yml").write_text('ports:\n  - "${BREAKFAST_PORT:-8080}:8080"\n')
+        monkeypatch.setitem(updater_app._port_state, "phase", "idle")
+        return updater_app
+
+    @staticmethod
+    def inline_threads():
+        """The port change runs in a thread; here it runs where it is started."""
+        import types
+        return types.SimpleNamespace(Thread=lambda target, args, daemon: types.SimpleNamespace(start=lambda: target(*args)))
+
+    def test_the_port_defaults_and_is_read_from_env(self, env):
+        assert env._env_port(None) == 8080
+        assert env._env_port(["UPDATER_LOG_LEVEL=DEBUG", "BREAKFAST_PORT=9000"]) == 9000
+        assert env._env_port(["BREAKFAST_PORT=abc"]) == 8080
+
+    def test_writing_keeps_the_other_lines(self, env):
+        env._write_env_port(["UPDATER_LOG_LEVEL=DEBUG", "BREAKFAST_PORT=9000"], 9100)
+        assert env.ENV_FILE.read_text() == "UPDATER_LOG_LEVEL=DEBUG\nBREAKFAST_PORT=9100\n"
+        env._restore_env(None)
+        assert not env.ENV_FILE.exists()
+
+    def test_a_compose_file_without_the_variable_is_not_supported(self, env):
+        env.COMPOSE_FILE.write_text('ports:\n  - "8080:8080"\n')
+        assert env._compose_has_port_variable() is False
+
+    def test_a_taken_port_is_refused_and_nothing_is_written(self, env, monkeypatch):
+        monkeypatch.setattr(env, "_port_free", lambda port: False)
+        res = asyncio.run(env.set_port({"port": 9000}))
+        assert res["code"] == "in_use" and not env.ENV_FILE.exists()
+
+    def test_a_free_port_is_written_and_the_container_recreated(self, env, monkeypatch):
+        calls = []
+        monkeypatch.setattr(env, "_port_free", lambda port: True)
+        monkeypatch.setattr(env, "_run", lambda *args, timeout=120: calls.append(args))
+        monkeypatch.setattr(env, "threading", self.inline_threads())
+        assert asyncio.run(env.set_port({"port": 9000})) == {"ok": True}
+        assert env.ENV_FILE.read_text() == "BREAKFAST_PORT=9000\n"
+        assert calls == [("docker", "compose", "up", "-d", "breakfast")]
+        assert env._port_state["phase"] == "done"
+
+    def test_a_failed_recreate_puts_the_old_port_back(self, env, monkeypatch):
+        import subprocess
+
+        calls = []
+
+        def run(*args, timeout=120):
+            calls.append(args)
+            if len(calls) == 1:
+                raise subprocess.CalledProcessError(1, args, stderr="port is already allocated")
+
+        monkeypatch.setattr(env, "_port_free", lambda port: None)
+        monkeypatch.setattr(env, "_run", run)
+        monkeypatch.setattr(env, "threading", self.inline_threads())
+        env.ENV_FILE.write_text("BREAKFAST_PORT=8081\n")
+        assert asyncio.run(env.set_port({"port": 9000})) == {"ok": True}
+        assert env.ENV_FILE.read_text() == "BREAKFAST_PORT=8081\n"
+        assert len(calls) == 2
+        assert env._port_state["phase"] == "failed" and "already allocated" in env._port_state["detail"]

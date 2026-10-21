@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- The web UI port can be changed in Settings → Dev: in Docker the updater service checks that the port is free, stores it as `BREAKFAST_PORT` in an untracked `.env` file and recreates the container, elsewhere it is saved to the config and taken at the next restart; the page opens at the new address. (#73)
+
+### Changed
+- The settings are grouped into the tabs Appearance, Audio & Voice (sub-tabs Caller, Voice Pack, Achievements), Connections (board data source, MQTT, online play), System (updates, usage reports, statistics) and Dev (logging, web UI port, recording, demo runs); every tab and sub-tab has its own address (`#settings/audio`), the update notice opens System, the data source of the board is called board data source, Achievements no longer need the Dev tab and the Voice Pack editor lists Add / edit entry before the existing entries. (#73)
+- The theme setting is gone: Ocean, Sunset and Forest are palettes next to the others (Default is the green look), a palette sets the accent color together with the aurora colors, and a `[web] theme` of an older config is read as the palette until one is chosen. The hex field of a palette color shows only while the color is changed. (#73)
+- Saving settings only asks for a restart for settings that changed and need one; the notice names them, stays until it is dismissed or the app was restarted and has a Restart button. (#73)
+- Settings stay available while a game runs, with a link back to the game; Apply port and the demo runs are disabled until the game is over; Restart and Install update warn whether the game is saved or lost. (#73)
+
+### Fixed
+- Saving unchanged settings no longer reports a restart as required, and the log level, the relay address, the site name, usage reports and the joke of the day no longer ask for one. (#73)
+
 ## [1.6.0] - 2026-10-20
 
 ### Added

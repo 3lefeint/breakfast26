@@ -107,15 +107,20 @@ port = 8080
 The other sections (`[audio]`, `[mqtt]`, `[stats]`, `[online]`, `[telemetry]`, `[updates]`, `[logging]` and more) are described in
 `config.toml.example`. MQTT and statistics can be switched off (`[mqtt] enabled = false`, `[stats] db = "none"`).
 
+With Docker the port is the one the host publishes, `BREAKFAST_PORT` in an untracked `.env` file next to
+`docker-compose.yml` (default 8080); Settings → Dev sets it, checks that it is free and recreates the container.
+
 ## Using Breakfast
 
 ### Web UI
 
 Open `http://<host>:8080` from any device on your network. **Play** sets up and starts the games and drills,
 **Players** lists the players with their profiles and achievements and merges a player that was created twice (for example after a name change) into another one, **Stats** shows the statistics, and
-**Settings** edits everything in `config.toml` without touching the file. Settings also holds the voice-pack
-editor, the update check and the look of the interface: language, theme, accent color and an animated
-background. The TV view (`/#tv`) and the `/audio` page are described below.
+**Settings** edits everything in `config.toml` without touching the file, in tabs: **Appearance** (language,
+palette with its accent color, animated background), **Audio & Voice** (caller, voice-pack editor, achievement
+sounds), **Connections** (board data source, MQTT, online play) and **System** (updates, usage reports, statistics).
+It stays available while a game runs, with a link back to the game. A setting that needs a restart is listed in a
+notice with a Restart button. The TV view (`/#tv`) and the `/audio` page are described below.
 
 <table>
 <tr>
@@ -218,7 +223,7 @@ python tools/generate_voicepack.py tools/voicepack_ryan.toml --out <audio dir>/p
 # then set [audio] profile = "ryan"; your own files stay as fallback
 ```
 
-To change a single entry, use **Settings → Voice Pack**: pick a group, enter a key and one or more variants,
+To change a single entry, use **Settings → Audio & Voice → Voice Pack**: pick a group, enter a key and one or more variants,
 listen to a preview and save. [VOICE_PACKS.md](VOICE_PACKS.md) lists every call key, explains where the
 names of your players are kept, and shows how to record a pack of your own.
 
@@ -257,7 +262,7 @@ Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](rela
 ### Usage reports
 
 Breakfast can report errors and basic usage anonymously, to help find problems on setups other than the
-developer's. It is off by default; switch it on under Settings → **Usage reports**. A report holds the
+developer's. It is off by default; switch it on under Settings → System → **Usage reports**. A report holds the
 version, the platform, the game modes played with their duration, and the errors that occur (type and code
 location), sent under a random installation ID. It never holds player names, scores, IP addresses or error
 messages. **Show what is sent** lists the queued and the recently sent reports. The reports go to the relay
@@ -278,28 +283,28 @@ works without it. All topics are published under a base topic (default `autodart
 
 ## Updates
 
-- **Windows**: Settings → **Updates** checks for a newer GitHub release, downloads it, verifies its SHA-256
+- **Windows**: Settings → System → **Updates** checks for a newer GitHub release, downloads it, verifies its SHA-256
   checksum and installs it. The old version is kept until the new one passes its health check, and is
   restored if it does not.
 - **Docker**: the `updater` service in `docker-compose.yml` provides the same function under Settings →
-  **Updates**: it pulls the newest release tag, rebuilds, restarts and rolls back if the new build is not
+  System → **Updates**: it pulls the newest release tag, rebuilds, restarts and rolls back if the new build is not
   healthy. Remove the service if you do not want self-update.
 
 Breakfast looks for a newer release once after the start and then every 24 hours: a dot on the Settings button, a
 "vX.Y.Z available" chip at the top of Settings and a one-time notice in the corner (not in the TV view, not while a game
 is running, not again for a version you dismissed). Installing stays manual. `[updates] check = false` (or Settings →
-Update check) switches the automatic check off.
+System → Updates) switches the automatic check off.
 
-With `[updates] auto_install = true` (or Settings → Update check → Install updates automatically, off by default) a newer
+With `[updates] auto_install = true` (or Settings → System → Updates → Install updates automatically, off by default) a newer
 patch or minor release is installed by itself after the start and at 04:00 every day (in the `[stats]` time zone, else the
 server's). It is skipped while a game is running, a new major version is only announced, and a version that was tried
 before is not tried again automatically.
 
 Before every update the statistics database is copied to a `backups` folder next to it (the last three are kept), and a
-rollback puts that copy back; Settings → Updates shows when the latest one was made.
+rollback puts that copy back; Settings → System → Updates shows when the latest one was made.
 
 After an update the changes of the new version are shown once in a dialog (once per browser, not in the TV view, not
-while a game is running); Settings → Updates reopens them.
+while a game is running); Settings → System → Updates reopens them.
 
 A match of X01, a tournament, Elimination or Killer that is in play is saved after every change. After a restart or an
 update the Home app offers to **Resume** it or to **Discard** it; nothing resumes by itself, and the match goes on at

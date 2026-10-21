@@ -101,7 +101,7 @@
   function closeToast(view) {
     try { localStorage.setItem(DISMISSED_KEY, toastVersion); } catch (_) { /* not remembered */ }
     toastVersion = null;
-    if (view) location.hash = '#settings';
+    if (view) location.hash = '#settings/system';
   }
 
   // After an update the changes of the installed version are shown once per browser: not in the TV view, not while a
@@ -217,7 +217,7 @@
             <Profile name={decodeURIComponent($route.slice('profile/'.length))} />
           {:else if $route === 'stats'}
             <Stats />
-          {:else if $route === 'settings'}
+          {:else if $route === 'settings' || $route.startsWith('settings/')}
             <Settings />
           {:else if $route === 'about'}
             <About />

@@ -11,6 +11,7 @@ tests/
 sessions/
 players.json
 config.toml
+.env
 *.db
 
 # Docs, not needed inside the image
