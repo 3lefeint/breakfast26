@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-21
+
 ### Added
 - The web UI port can be changed in Settings → Dev: in Docker the updater service checks that the port is free, stores it as `BREAKFAST_PORT` in an untracked `.env` file and recreates the container, elsewhere it is saved to the config and taken at the next restart; the page opens at the new address. (#73)
 
