@@ -84,3 +84,19 @@ class TestWebPort:
         monkeypatch.setattr(server, "_updater_post", lambda path, body=None: calls.append((path, body)) or {"ok": True})
         assert asyncio.run(server.web_port_set({"port": 9000})) == {"ok": True}
         assert calls == [("/port", {"port": 9000})]
+
+
+class TestStartBoard:
+    def test_the_cloud_client_starts_the_board(self, monkeypatch):
+        from breakfast import autodarts_client
+
+        calls = []
+        client = object.__new__(autodarts_client.AutodartsCloudClient)
+        monkeypatch.setattr(client, "_get_board_address", lambda: "http://10.0.0.5:3180", raising=False)
+        monkeypatch.setattr(autodarts_client.requests, "put", lambda url, timeout: calls.append(url))
+        client.start_board()
+        assert calls == ["http://10.0.0.5:3180/api/start"]
+
+    def test_the_route_needs_cloud_control(self):
+        server.wire(None, None)
+        assert asyncio.run(server.control_start_board()) == {"error": "cloud control not available"}

@@ -728,6 +728,7 @@ export default {
   'Add player': 'Spieler hinzufügen',
   'Abort tournament': 'Turnier abbrechen',
   'Abort the tournament? The matches played and their statistics stay.': 'Das Turnier abbrechen? Die gespielten Matches und ihre Statistik bleiben erhalten.',
+  'Start': 'Start',
   'Start next match': 'Nächstes Match starten',
   'Start now': 'Jetzt starten',
   'Finish the tournament': 'Turnier beenden',

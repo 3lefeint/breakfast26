@@ -132,6 +132,7 @@
     // backend (breakfast/board_status.py), this is what actually arrives
     // for most events now.
     'Throw': 'green',
+    'Stopped': 'red',
     'Takeout': 'yellow',
     'Takeout in progress': 'yellow',
     // Fallback event-name-based strings, used only for events that don't

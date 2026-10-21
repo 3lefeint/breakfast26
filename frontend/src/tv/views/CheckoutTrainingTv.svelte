@@ -11,6 +11,7 @@
   import { rangeLabel, finishRun, stopRun, undoAttempt, percent, fieldName } from '../../lib/checkoutTraining.js';
   import Icon from '../../lib/components/Icon.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
+  import { isBoardStopped } from '../../lib/util.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import RouteChips from '../../lib/components/RouteChips.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
@@ -47,6 +48,13 @@
 
   async function resetBoard() {
     await api('POST', '/api/control/reset-board');
+  }
+
+  // The board stopped (camera standby): Start brings it back, until then there is nothing to reset.
+  let boardStopped = $derived(isBoardStopped($gameState.game?.board_status));
+
+  async function startBoard() {
+    await api('POST', '/api/control/start-board');
   }
 
   // Ends the turn by hand, like pulling the darts.
@@ -87,7 +95,11 @@
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
         <button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>
-        <button class="btn-end-game danger" disabled={!$gameState.has_cloud_control} onclick={resetBoard}><Icon name="board" size={20} />{t('Reset')}</button>
+        {#if boardStopped}
+          <button class="btn-end-game start" disabled={!$gameState.has_cloud_control} onclick={startBoard}><Icon name="board" size={20} />{t('Start')}</button>
+        {:else}
+          <button class="btn-end-game danger" disabled={!$gameState.has_cloud_control} onclick={resetBoard}><Icon name="board" size={20} />{t('Reset')}</button>
+        {/if}
         <button class="btn-end-game" onclick={finish}>{t('⏹ Finish')}</button>
       </div>
   </div>
@@ -177,6 +189,7 @@
   .btn-end-game:disabled { opacity: 0.35; cursor: default; }
   .btn-end-game:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
   .btn-end-game.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+  .btn-end-game.start { border-color: var(--green); color: var(--green); }
 
   .players-section { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 1.2vw 1.6vw; min-height: 0; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
   /* Absolutely placed, so the content never makes the card taller: it fills what the player card leaves and

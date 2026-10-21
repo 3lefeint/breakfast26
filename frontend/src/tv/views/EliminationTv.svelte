@@ -7,7 +7,7 @@
   // plain DartsRow, so they're inlined here rather than reusing that
   // component. Reuses TargetDisplay/FreipassBadge/WinBadge/LivesDisplay
   // from Step 2/5 for the parts that are visually identical.
-  import { cap } from '../../lib/util.js';
+  import { cap, isBoardStopped } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { flip } from 'svelte/animate';
   import WinBadge from '../../lib/components/WinBadge.svelte';
@@ -71,6 +71,13 @@
     await api('POST', '/api/control/reset-board');
   }
 
+  // The board stopped (camera standby): Start brings it back, until then there is nothing to reset.
+  let boardStopped = $derived(isBoardStopped($gameState.game?.board_status));
+
+  async function startBoard() {
+    await api('POST', '/api/control/start-board');
+  }
+
   async function undo() {
     if (!await confirmDialog(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/elimination/undo');
@@ -107,7 +114,11 @@
   <div class="elim-endgame-row">
     {#if !online}<button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>{/if}
     <button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>
-    <button class="btn-end-game danger" disabled={!$gameState.has_cloud_control} onclick={resetBoard}><Icon name="board" size={20} />{t('Reset')}</button>
+    {#if boardStopped}
+      <button class="btn-end-game start" disabled={!$gameState.has_cloud_control} onclick={startBoard}><Icon name="board" size={20} />{t('Start')}</button>
+    {:else}
+      <button class="btn-end-game danger" disabled={!$gameState.has_cloud_control} onclick={resetBoard}><Icon name="board" size={20} />{t('Reset')}</button>
+    {/if}
   </div>
 </div>
 
@@ -204,6 +215,7 @@
   .btn-end-game.on { border-color: var(--accent); color: var(--accent); }
   .btn-end-game:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
   .btn-end-game.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+  .btn-end-game.start { border-color: var(--green); color: var(--green); }
   .players-section { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 1.2vw 1.6vw; min-height: 0; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
   /* The rows share the height of the card, up to a limit, and sit in the middle of it: a few players
      get big rows, many players fill it. */

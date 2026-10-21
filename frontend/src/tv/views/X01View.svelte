@@ -7,7 +7,7 @@
   // throw-correction row, abandoned-match warning + force-clear) — the
   // Scoreboard tab itself goes away entirely per the decided
   // navigation redesign; the TV view is now the only place X01 controls live.
-  import { cap } from '../../lib/util.js';
+  import { cap, isBoardStopped } from '../../lib/util.js';
   import { getCheckout } from '../../lib/checkout.js';
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
@@ -28,6 +28,8 @@
   let inTournament = $derived(!!(tournament && tournament.active && tournament.current));
 
   let cur = $derived(game.current || {});
+  // The board stopped (camera standby): Start brings it back, until then there is nothing to reset.
+  let boardStopped = $derived(isBoardStopped(game.board_status));
   let isX01 = $derived(game.game_mode && (game.game_mode.includes('01') || game.game_mode === 'Random Checkout'));
   let rem = $derived(parseInt(cur.remaining));
   let checkoutHint = $derived.by(() => {
@@ -136,10 +138,12 @@
       <div class="control-bar">
         <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('undo')}>{t('↩ Undo')}</button>
         <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('next-player')}>{t('⏭ Next')}</button>
-        {#if ownMatch}
-          <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}><Icon name="board" size={20} />{t('Reset')}</button>
-        {:else}
+        {#if !ownMatch}
           <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
+        {/if}
+        {#if boardStopped}
+          <button class="btn-ctrl start" disabled={!hasCloudControl} onclick={() => ctrl('start-board')}><Icon name="board" size={20} />{t('Start')}</button>
+        {:else}
           <button class="btn-ctrl danger" disabled={!hasCloudControl} onclick={() => ctrl('reset-board')}><Icon name="board" size={20} />{t('Reset')}</button>
         {/if}
       </div>
@@ -249,6 +253,7 @@
   .btn-ctrl:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
   .btn-ctrl:disabled { opacity: 0.35; cursor: default; transform: none; }
   .btn-ctrl.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn-ctrl.start { border-color: var(--green); color: var(--green); }
   .x01-layout { flex: 1; display: flex; gap: 1.5vw; padding: 1.3vw 2vw; min-height: 0; }
   .x01-main { flex: 3 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1.2vw; min-height: 0; }
   .x01-board {

@@ -11,3 +11,6 @@ export function formatDateTime(iso) {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   }).replace(', ', ' ');
 }
+
+// The board manager's status when the board stopped (camera standby time): the raw one, or the one made from the event.
+export const isBoardStopped = (status) => status === 'Stopped' || status === 'Board Stopped';

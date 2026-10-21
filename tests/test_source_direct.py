@@ -203,3 +203,38 @@ class TestX01Routing:
         _handle_board_message(
             {"numThrows": 1, "throws": [_throw(20, 3)]}, state, mqtt_pub, elim, audio, prev_count=0, x01_ctrl=x01)
         assert x01.board_state_calls == [] and elim.board_state_calls == [(1, [_throw(20, 3)])]
+
+
+class TestBoardStatusAtConnect:
+    def test_the_state_url_sits_next_to_the_event_stream(self):
+        from breakfast.source_direct import _board_state_url
+        assert _board_state_url("ws://10.0.0.5:3180/api/events") == "http://10.0.0.5:3180/api/state"
+        assert _board_state_url("wss://board.example/api/events") == "https://board.example/api/state"
+
+    def test_a_board_that_stopped_before_the_start_is_known(self, monkeypatch):
+        from breakfast import source_direct
+        from breakfast.web import server
+
+        asked = []
+
+        class Reply:
+            def json(self):
+                return {"connected": True, "running": False, "status": "Stopped", "numThrows": 0}
+
+        monkeypatch.setattr(source_direct.requests, "get", lambda url, timeout: asked.append(url) or Reply())
+        monkeypatch.setattr(server, "push", lambda: None)
+        state = GameState()
+        source_direct._fetch_board_status(state, "ws://10.0.0.5:3180/api/events")
+        assert asked == ["http://10.0.0.5:3180/api/state"]
+        assert state.board_status == "Stopped"
+
+    def test_an_unreachable_board_manager_changes_nothing(self, monkeypatch):
+        from breakfast import source_direct
+
+        def boom(url, timeout):
+            raise ConnectionError("refused")
+
+        monkeypatch.setattr(source_direct.requests, "get", boom)
+        state = GameState()
+        source_direct._fetch_board_status(state, "ws://10.0.0.5:3180/api/events")
+        assert state.board_status is None

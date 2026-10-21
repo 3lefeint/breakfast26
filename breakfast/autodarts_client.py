@@ -381,6 +381,18 @@ class AutodartsCloudClient:
         except Exception as e:
             log.error("Board reset failed: %s", e)
 
+    def start_board(self):
+        """Start the board (its cameras), which stops by itself after the inactivity time set in the board manager."""
+        addr = self._get_board_address()
+        if not addr:
+            log.warning("Board address unknown, cannot start")
+            return
+        try:
+            requests.put(f"{addr}/api/start", timeout=5)
+            log.info("Board start sent")
+        except Exception as e:
+            log.error("Board start failed: %s", e)
+
     def _match_post(self, path: str):
         with self._match_lock:
             mid = self._current_match

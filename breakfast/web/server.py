@@ -548,6 +548,15 @@ async def control_reset_board():
     return {"ok": True}
 
 
+@app.post("/api/control/start-board")
+async def control_start_board():
+    log.debug("Start board requested")
+    if not _cloud_client:
+        return {"error": "cloud control not available"}
+    _run_in_thread(_cloud_client.start_board)
+    return {"ok": True}
+
+
 @app.post("/api/control/force-clear-match")
 async def control_force_clear_match():
     """Manually unblock Elimination/freeplay when a match on the Autodarts

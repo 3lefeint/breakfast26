@@ -9,7 +9,7 @@
   // in the color of its owner. Beside it: the players with number, lives and status, the darts of the
   // turn (tap one to correct it) and what they did.
   import { flip } from 'svelte/animate';
-  import { cap } from '../../lib/util.js';
+  import { cap, isBoardStopped } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { dartLabel, eventText, boardZones, phaseLabel } from '../../lib/killer.js';
   import LivesDisplay from '../../lib/components/LivesDisplay.svelte';
@@ -51,6 +51,13 @@
 
   async function resetBoard() {
     await api('POST', '/api/control/reset-board');
+  }
+
+  // The board stopped (camera standby): Start brings it back, until then there is nothing to reset.
+  let boardStopped = $derived(isBoardStopped($gameState.game?.board_status));
+
+  async function startBoard() {
+    await api('POST', '/api/control/start-board');
   }
 
   // Ends the turn by hand, like pulling the darts.
@@ -98,7 +105,11 @@
     <div class="endgame-row">
       <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
       {#if killer.phase === 'playing'}<button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>{/if}
-      <button class="btn-end-game danger" disabled={!$gameState.has_cloud_control} onclick={resetBoard}><Icon name="board" size={20} />{t('Reset')}</button>
+      {#if boardStopped}
+        <button class="btn-end-game start" disabled={!$gameState.has_cloud_control} onclick={startBoard}><Icon name="board" size={20} />{t('Start')}</button>
+      {:else}
+        <button class="btn-end-game danger" disabled={!$gameState.has_cloud_control} onclick={resetBoard}><Icon name="board" size={20} />{t('Reset')}</button>
+      {/if}
     </div>
   </div>
 
@@ -193,6 +204,7 @@
   .btn-end-game:disabled { opacity: 0.35; cursor: default; }
   .btn-end-game:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
   .btn-end-game.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+  .btn-end-game.start { border-color: var(--green); color: var(--green); }
 
   .players-section { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 1.2vw 1.6vw; min-height: 0; border-radius: 24px; background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
   /* Absolutely placed, so the list never makes the card taller: it fills what the player card leaves and

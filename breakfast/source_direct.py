@@ -2,7 +2,9 @@ import json
 import logging
 import threading
 import time
+from urllib.parse import urlsplit
 
+import requests
 import websocket
 
 from breakfast import board_status
@@ -104,6 +106,25 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
     return count
 
 
+def _board_state_url(board_ws_url):
+    """The board manager's `/api/state` next to its event stream (ws://host:3180/api/events)."""
+    parts = urlsplit(board_ws_url)
+    return f"{'https' if parts.scheme == 'wss' else 'http'}://{parts.netloc}/api/state"
+
+
+def _fetch_board_status(state, board_ws_url):
+    """The event stream says nothing when it opens, so a board that stopped before Breakfast started (camera standby)
+    would stay unknown: ask for its status once."""
+    try:
+        status = requests.get(_board_state_url(board_ws_url), timeout=5).json().get("status")
+    except Exception as e:
+        log.debug("Board status not available: %s", e)
+        return
+    if status and state.update({"event": "Board Status", "data": {"status": status}}):
+        from breakfast.web import server as web
+        web.push()
+
+
 def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None,
                     tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None,
                     wu_ctrl=None):
@@ -126,6 +147,8 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
         if state.board_darts.set_connected(connected):
             from breakfast.web import server as web
             web.push()
+        if connected:
+            threading.Thread(target=_fetch_board_status, args=(state, board_ws_url), daemon=True).start()
 
     def run():
         while True:
