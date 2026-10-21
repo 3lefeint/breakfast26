@@ -47,8 +47,8 @@ mqtt:
     - topic: autodarts/events/dart
       then:
         - lambda: |-
-            bool miss = x.find("\"miss\":true") != std::string::npos;
-            bool player_changed = x.find("\"player_changed\":true") != std::string::npos;
+            bool miss = x.find("\"miss\": true") != std::string::npos;
+            bool player_changed = x.find("\"player_changed\": true") != std::string::npos;
             uint32_t now = millis();
 
             if (player_changed) {
@@ -244,6 +244,588 @@ mqtt:
             id: autodarts_strip
             effect: "Win Celebrate"
 
+    # ── Games with their own topics: Field Training, Black Belt, Warm-up, Checkout Training, Target Battle, Killer ──
+    # One shared set of globals (g_*) and one mode (g_mode) show whichever of them is running. A run that ended stays on
+    # the display for a minute (g_end_ms), a run that was stopped without an end goes back to idle at once.
+
+    # The status of the board. Stopped (camera standby time): the strip pulses red, the displays show it.
+    - topic: autodarts/board/status
+      then:
+        - lambda: |-
+            bool stopped = (x == "Stopped" || x == "Board Stopped");
+            if (stopped && !id(board_stopped)) {
+              id(board_stopped) = true;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Board Stopped");
+              call.perform();
+            } else if (!stopped && id(board_stopped)) {
+              id(board_stopped) = false;
+              if (id(g_mode) == 6 && id(g_active)) {
+                auto call = id(autodarts_strip).turn_on();
+                call.set_effect("Killer Lives");
+                call.perform();
+              } else if (id(elim_active)) {
+                auto call = id(autodarts_strip).turn_on();
+                call.set_effect("Elimination Lives");
+                call.perform();
+              } else {
+                auto call = id(autodarts_strip).turn_off();
+                call.perform();
+              }
+            }
+
+    # ── Field Training ──────────────────────────────────────────────────────────
+    - topic: autodarts/field_training/active
+      then:
+        - lambda: |-
+            if (x == "true") {
+              id(g_mode) = 1;
+              id(g_active) = true;
+              id(g_end_ms) = 0;
+              id(g_belt) = false;
+              id(g_dart1) = -1;
+              id(g_dart2) = -1;
+              id(g_dart3) = -1;
+            } else if (id(g_mode) == 1) {
+              id(g_active) = false;
+              if (id(g_end_ms) == 0) {
+                id(g_mode) = 0;
+              }
+            }
+    - topic: autodarts/field_training/current/dart1
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart1) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v > 0) id(matrix_last_hit_ms) = now;
+              else id(matrix_last_miss_ms) = now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 1 Orange");
+              call.perform();
+            } else if (v < 0 && (id(g_end_ms) == 0 || millis() - id(g_end_ms) > 10000)) {
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+            }
+    - topic: autodarts/field_training/current/dart2
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart2) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v > 0) id(matrix_last_hit_ms) = now;
+              else id(matrix_last_miss_ms) = now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 2 Yellow");
+              call.perform();
+            }
+    - topic: autodarts/field_training/current/dart3
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart3) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v > 0) id(matrix_last_hit_ms) = now;
+              else id(matrix_last_miss_ms) = now;
+              id(led_effect_start_ms) = (int)now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 3 Sequence");
+              call.perform();
+            }
+
+    # ── Black Belt ──────────────────────────────────────────────────────────
+    - topic: autodarts/black_belt/active
+      then:
+        - lambda: |-
+            if (x == "true") {
+              id(g_mode) = 2;
+              id(g_active) = true;
+              id(g_end_ms) = 0;
+              id(g_belt) = false;
+              id(g_dart1) = -1;
+              id(g_dart2) = -1;
+              id(g_dart3) = -1;
+            } else if (id(g_mode) == 2) {
+              id(g_active) = false;
+              if (id(g_end_ms) == 0) {
+                id(g_mode) = 0;
+              }
+            }
+    - topic: autodarts/black_belt/current/dart1
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart1) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 1 Orange");
+              call.perform();
+            } else if (v < 0 && (id(g_end_ms) == 0 || millis() - id(g_end_ms) > 10000)) {
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+            }
+    - topic: autodarts/black_belt/current/dart2
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart2) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 2 Yellow");
+              call.perform();
+            }
+    - topic: autodarts/black_belt/current/dart3
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart3) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              id(led_effect_start_ms) = (int)now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 3 Sequence");
+              call.perform();
+            }
+
+    # ── Warm-up ──────────────────────────────────────────────────────────
+    - topic: autodarts/warm_up/active
+      then:
+        - lambda: |-
+            if (x == "true") {
+              id(g_mode) = 3;
+              id(g_active) = true;
+              id(g_end_ms) = 0;
+              id(g_belt) = false;
+              id(g_dart1) = -1;
+              id(g_dart2) = -1;
+              id(g_dart3) = -1;
+            } else if (id(g_mode) == 3) {
+              id(g_active) = false;
+              if (id(g_end_ms) == 0) {
+                id(g_mode) = 0;
+              }
+            }
+    - topic: autodarts/warm_up/current/dart1
+      then:
+        - lambda: |-
+            if (id(g_mode) != 3) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart1) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v == 0) id(matrix_last_miss_ms) = now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 1 Orange");
+              call.perform();
+            } else if (v < 0 && (id(g_end_ms) == 0 || millis() - id(g_end_ms) > 10000)) {
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+            }
+    - topic: autodarts/warm_up/current/dart2
+      then:
+        - lambda: |-
+            if (id(g_mode) != 3) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart2) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v == 0) id(matrix_last_miss_ms) = now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 2 Yellow");
+              call.perform();
+            }
+    - topic: autodarts/warm_up/current/dart3
+      then:
+        - lambda: |-
+            if (id(g_mode) != 3) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart3) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v == 0) id(matrix_last_miss_ms) = now;
+              id(led_effect_start_ms) = (int)now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 3 Sequence");
+              call.perform();
+            }
+
+    # ── Checkout Training ──────────────────────────────────────────────────────────
+    - topic: autodarts/checkout_training/active
+      then:
+        - lambda: |-
+            if (x == "true") {
+              id(g_mode) = 4;
+              id(g_active) = true;
+              id(g_end_ms) = 0;
+              id(g_belt) = false;
+              id(g_dart1) = -1;
+              id(g_dart2) = -1;
+              id(g_dart3) = -1;
+            } else if (id(g_mode) == 4) {
+              id(g_active) = false;
+              if (id(g_end_ms) == 0) {
+                id(g_mode) = 0;
+              }
+            }
+    - topic: autodarts/checkout_training/current/dart1
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart1) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 1 Orange");
+              call.perform();
+            } else if (v < 0 && (id(g_end_ms) == 0 || millis() - id(g_end_ms) > 10000)) {
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+            }
+    - topic: autodarts/checkout_training/current/dart2
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart2) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 2 Yellow");
+              call.perform();
+            }
+    - topic: autodarts/checkout_training/current/dart3
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart3) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              id(led_effect_start_ms) = (int)now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 3 Sequence");
+              call.perform();
+            }
+
+    # ── Target Battle ──────────────────────────────────────────────────────────
+    - topic: autodarts/target_battle/active
+      then:
+        - lambda: |-
+            if (x == "true") {
+              id(g_mode) = 5;
+              id(g_active) = true;
+              id(g_end_ms) = 0;
+              id(g_belt) = false;
+              id(g_dart1) = -1;
+              id(g_dart2) = -1;
+              id(g_dart3) = -1;
+            } else if (id(g_mode) == 5) {
+              id(g_active) = false;
+              if (id(g_end_ms) == 0) {
+                id(g_mode) = 0;
+              }
+            }
+    - topic: autodarts/target_battle/current/dart1
+      then:
+        - lambda: |-
+            if (id(g_mode) != 5) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart1) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v > 0) id(matrix_last_hit_ms) = now;
+              else id(matrix_last_miss_ms) = now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 1 Orange");
+              call.perform();
+            } else if (v < 0 && (id(g_end_ms) == 0 || millis() - id(g_end_ms) > 10000)) {
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+            }
+    - topic: autodarts/target_battle/current/dart2
+      then:
+        - lambda: |-
+            if (id(g_mode) != 5) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart2) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v > 0) id(matrix_last_hit_ms) = now;
+              else id(matrix_last_miss_ms) = now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 2 Yellow");
+              call.perform();
+            }
+    - topic: autodarts/target_battle/current/dart3
+      then:
+        - lambda: |-
+            if (id(g_mode) != 5) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart3) = v;
+            if (v >= 0 && !id(board_stopped)) {
+              uint32_t now = millis();
+              if (v > 0) id(matrix_last_hit_ms) = now;
+              else id(matrix_last_miss_ms) = now;
+              id(led_effect_start_ms) = (int)now;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Dart 3 Sequence");
+              call.perform();
+            }
+
+    # ── Killer ──────────────────────────────────────────────────────────
+    - topic: autodarts/killer/active
+      then:
+        - lambda: |-
+            if (x == "true") {
+              id(g_mode) = 6;
+              id(g_active) = true;
+              id(g_end_ms) = 0;
+              id(g_belt) = false;
+              id(g_dart1) = -1;
+              id(g_dart2) = -1;
+              id(g_dart3) = -1;
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Killer Lives");
+              call.perform();
+            } else if (id(g_mode) == 6) {
+              id(g_active) = false;
+              if (id(g_end_ms) == 0) {
+                id(g_mode) = 0;
+              auto call = id(autodarts_strip).turn_off();
+              call.perform();
+              }
+            }
+    - topic: autodarts/killer/current/dart1
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart1) = v;
+    - topic: autodarts/killer/current/dart2
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart2) = v;
+    - topic: autodarts/killer/current/dart3
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            int v = x.empty() ? -1 : atoi(x.c_str());
+            id(g_dart3) = v;
+    - topic: autodarts/field_training/field
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            id(g_target) = atoi(x.c_str());
+    - topic: autodarts/field_training/darts
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            id(g_total) = atoi(x.c_str());
+    - topic: autodarts/field_training/thrown
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            id(g_thrown) = atoi(x.c_str());
+    - topic: autodarts/field_training/points
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            id(g_points) = atoi(x.c_str());
+    - topic: autodarts/field_training/events/finished
+      then:
+        - lambda: |-
+            if (id(g_mode) != 1) return;
+            id(g_end_ms) = millis();
+            if (x.find("\"completed\": true") != std::string::npos) {
+              id(matrix_last_win_ms) = millis();
+              id(led_effect_start_ms) = (int)millis();
+              {
+                auto call = id(autodarts_strip).turn_on();
+                call.set_effect("Win Celebrate");
+                call.perform();
+              }
+            }
+    - topic: autodarts/black_belt/target
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            id(g_target) = atoi(x.c_str());
+    - topic: autodarts/black_belt/fields_done
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            int v = atoi(x.c_str());
+            if (v > id(g_done)) id(matrix_last_hit_ms) = millis();
+            id(g_done) = v;
+    - topic: autodarts/black_belt/restarts
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            int v = atoi(x.c_str());
+            if (v > id(g_restarts)) id(matrix_last_miss_ms) = millis();
+            id(g_restarts) = v;
+    - topic: autodarts/black_belt/events/finished
+      then:
+        - lambda: |-
+            if (id(g_mode) != 2) return;
+            id(g_end_ms) = millis();
+            if (x.find("\"belt\": true") != std::string::npos) {
+              id(g_belt) = true;
+              id(matrix_last_win_ms) = millis();
+              id(led_effect_start_ms) = (int)millis();
+              {
+                auto call = id(autodarts_strip).turn_on();
+                call.set_effect("Win Celebrate");
+                call.perform();
+              }
+            }
+    - topic: autodarts/warm_up/target
+      then:
+        - lambda: |-
+            if (id(g_mode) != 3) return;
+            // "<kind> <number>": big, small, double, triple, bull (25), eye (50)
+            auto sp = x.find(' ');
+            if (sp == std::string::npos) return;
+            id(g_kind) = x.substr(0, sp);
+            id(g_target) = atoi(x.c_str() + sp + 1);
+    - topic: autodarts/warm_up/fields_done
+      then:
+        - lambda: |-
+            if (id(g_mode) != 3) return;
+            int v = atoi(x.c_str());
+            if (v > id(g_done)) id(matrix_last_hit_ms) = millis();
+            id(g_done) = v;
+    - topic: autodarts/warm_up/events/finished
+      then:
+        - lambda: |-
+            if (id(g_mode) != 3) return;
+            id(g_end_ms) = millis();
+            if (x.find("\"complete\": true") != std::string::npos) {
+              id(matrix_last_win_ms) = millis();
+              id(led_effect_start_ms) = (int)millis();
+              {
+                auto call = id(autodarts_strip).turn_on();
+                call.set_effect("Win Celebrate");
+                call.perform();
+              }
+            }
+    - topic: autodarts/checkout_training/remaining
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            id(g_remaining) = x.empty() ? 0 : atoi(x.c_str());
+    - topic: autodarts/checkout_training/attempt
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            id(g_attempt) = atoi(x.c_str());
+    - topic: autodarts/checkout_training/events/attempt_end
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            if (x.find("\"success\": true") != std::string::npos) id(matrix_last_hit_ms) = millis();
+            else id(matrix_last_miss_ms) = millis();
+    - topic: autodarts/checkout_training/events/finished
+      then:
+        - lambda: |-
+            if (id(g_mode) != 4) return;
+            id(g_end_ms) = millis();
+            id(matrix_last_win_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            {
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Win Celebrate");
+              call.perform();
+            }
+    - topic: autodarts/target_battle/target
+      then:
+        - lambda: |-
+            if (id(g_mode) != 5) return;
+            id(g_target) = atoi(x.c_str());
+    - topic: autodarts/target_battle/round
+      then:
+        - lambda: |-
+            if (id(g_mode) != 5) return;
+            id(g_round) = atoi(x.c_str());
+    - topic: autodarts/target_battle/events/game_won
+      then:
+        - lambda: |-
+            if (id(g_mode) != 5) return;
+            id(g_end_ms) = millis();
+            id(matrix_last_win_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            {
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Win Celebrate");
+              call.perform();
+            }
+    - topic: autodarts/killer/current_number
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(g_target) = x.empty() ? 0 : atoi(x.c_str());
+    - topic: autodarts/killer/current_lives
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(g_lives) = atoi(x.c_str());
+    - topic: autodarts/killer/current_killer
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(g_killer) = (x == "true");
+    - topic: autodarts/killer/alive
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(g_alive) = atoi(x.c_str());
+    - topic: autodarts/killer/events/killer
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(matrix_last_hit_ms) = millis();
+    - topic: autodarts/killer/events/hit
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(matrix_last_hit_ms) = millis();
+    - topic: autodarts/killer/events/own_goal
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(matrix_last_miss_ms) = millis();
+    - topic: autodarts/killer/events/out
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(matrix_last_miss_ms) = millis();
+    - topic: autodarts/killer/events/game_won
+      then:
+        - lambda: |-
+            if (id(g_mode) != 6) return;
+            id(g_end_ms) = millis();
+            id(matrix_last_win_ms) = millis();
+            id(led_effect_start_ms) = (int)millis();
+            {
+              auto call = id(autodarts_strip).turn_on();
+              call.set_effect("Win Celebrate");
+              call.perform();
+            }
+
 spi:
   clk_pin: GPIO6
   mosi_pin: GPIO7
@@ -433,6 +1015,114 @@ globals:
     restore_value: no
     initial_value: '0'
 
+  # ── Games with their own topics (see the handlers above) ─────────────────────
+  # g_mode: 0 none, 1 Field Training, 2 Black Belt, 3 Warm-up, 4 Checkout Training, 5 Target Battle, 6 Killer
+
+  - id: g_mode
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: g_end_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_belt
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: g_dart1
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: g_dart2
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: g_dart3
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+  - id: g_target
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_kind
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+  - id: g_total
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_thrown
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_points
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_done
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_restarts
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_round
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_remaining
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_attempt
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_lives
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: g_killer
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: g_alive
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: board_stopped
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
 # ─── Displays ─────────────────────────────────────────────────────────────────
 
 display:
@@ -510,6 +1200,83 @@ display:
       auto draw_idle_center = [&]() {
         px(3, 3); px(4, 3); px(3, 4); px(4, 4);
       };
+
+      // ── Stopped board ─────────────────────────────────────────────────────
+
+      if (id(board_stopped)) {
+        for (int i = 2; i <= 5; i++) {
+          for (int j = 2; j <= 5; j++) px(i, j);
+        }
+        return;
+      }
+
+      // ── Games with their own topics: the target as a number, the animations of the events ─────
+
+      int mode = id(g_mode);
+      if (mode != 0 && !id(g_active) && id(g_end_ms) != 0 && now - id(g_end_ms) >= 60000) {
+        id(g_mode) = 0;          // the end was on the display for a minute
+        mode = 0;
+      }
+      if (mode != 0) {
+        if (now - id(matrix_last_win_ms) < 2000) {
+          bool on = ((now / 250) % 2) == 0;
+          if (on) {
+            it.rectangle(0, 0, 8, 8, COLOR_ON);
+          } else {
+            it.rectangle(1, 1, 6, 6, COLOR_ON);
+          }
+          return;
+        }
+        if (now - id(matrix_last_miss_ms) < 1200) {
+          bool on = ((now / 140) % 2) == 0;
+          if (on) draw_miss_x();
+          return;
+        }
+        if (now - id(matrix_last_hit_ms) < 1200) {
+          uint32_t dt = now - id(matrix_last_hit_ms);
+          if (dt < 300) {
+            draw_hit_center();
+          } else if (dt < 600) {
+            draw_hit_center();
+            draw_ring(3, 3, 2);
+          } else if (dt < 900) {
+            draw_ring(3, 3, 3);
+          } else {
+            draw_hit_center();
+          }
+          return;
+        }
+
+        // Idle: the target (a field or a number) as two small digits, the bull as a ring.
+        int n = id(g_target);
+        bool bull = (mode == 1 || mode == 2) ? (n == 25) : (mode == 3 && (id(g_kind) == "bull" || id(g_kind) == "eye"));
+        if (mode == 4 || n < 1 || n > 99) {
+          draw_idle_center();
+        } else if (bull) {
+          draw_ring(3, 3, 2);
+          draw_hit_center();
+        } else {
+          // 3x5 digits, the left bit is the left column
+          static const uint8_t FONT[10][5] = {
+            {7,5,5,5,7}, {2,6,2,2,7}, {7,1,7,4,7}, {7,1,7,1,7}, {5,5,7,1,1},
+            {7,4,7,1,7}, {7,4,7,5,7}, {7,1,1,1,1}, {7,5,7,5,7}, {7,5,7,1,7},
+          };
+          auto draw_digit = [&](int d, int x0) {
+            for (int r = 0; r < 5; r++) {
+              for (int c = 0; c < 3; c++) {
+                if (FONT[d][r] & (4 >> c)) px(x0 + c, 1 + r);
+              }
+            }
+          };
+          if (n >= 10) {
+            draw_digit(n / 10, 0);
+            draw_digit(n % 10, 4);
+          } else {
+            draw_digit(n, 2);
+          }
+        }
+        return;
+      }
 
       // ── Elimination mode ──────────────────────────────────────────────────
 
@@ -637,6 +1404,20 @@ display:
     intensity: 5
     update_interval: 200ms
     lambda: |-
+      if (id(board_stopped)) {
+        it.print("   -");
+        return;
+      }
+
+      if (id(g_mode) != 0) {
+        char buf[5];
+        int v = id(g_dart1);
+        if (v < 0) strcpy(buf, "   -");
+        else snprintf(buf, sizeof(buf), "%4d", v);
+        it.print(buf);
+        return;
+      }
+
       if (id(elim_active)) {
         char buf[5];
         int v = id(elim_dart1);
@@ -683,6 +1464,20 @@ display:
     intensity: 5
     update_interval: 200ms
     lambda: |-
+      if (id(board_stopped)) {
+        it.print("   -");
+        return;
+      }
+
+      if (id(g_mode) != 0) {
+        char buf[5];
+        int v = id(g_dart2);
+        if (v < 0) strcpy(buf, "   -");
+        else snprintf(buf, sizeof(buf), "%4d", v);
+        it.print(buf);
+        return;
+      }
+
       if (id(elim_active)) {
         char buf[5];
         int v = id(elim_dart2);
@@ -729,6 +1524,20 @@ display:
     intensity: 5
     update_interval: 200ms
     lambda: |-
+      if (id(board_stopped)) {
+        it.print("   -");
+        return;
+      }
+
+      if (id(g_mode) != 0) {
+        char buf[5];
+        int v = id(g_dart3);
+        if (v < 0) strcpy(buf, "   -");
+        else snprintf(buf, sizeof(buf), "%4d", v);
+        it.print(buf);
+        return;
+      }
+
       if (id(elim_active)) {
         char buf[5];
         int v = id(elim_dart3);
@@ -777,6 +1586,56 @@ display:
     intensity: 5
     update_interval: 200ms
     lambda: |-
+      if (id(board_stopped) || id(g_mode) != 0) {
+        // The six digits as left | right, by game:
+        //   Field Training   darts left | points          Black Belt   field up | fields done (bELt: the belt)
+        //   Warm-up          field up | fields done        Checkout     score left | attempt
+        //   Target Battle    t<target> | r<round>          Killer       n<number> | players left
+        char normal[7];
+        char left[4];
+        char right[4];
+        strcpy(left, "---");
+        strcpy(right, "---");
+        int mode = id(g_mode);
+        if (id(board_stopped)) {
+          strcpy(left, "Sto");
+          strcpy(right, "P  ");
+        } else if (mode == 1) {
+          snprintf(left, sizeof(left), "%03d", std::max(0, std::min(999, id(g_total) - id(g_thrown))));
+          snprintf(right, sizeof(right), "%03d", std::min(999, id(g_points)));
+        } else if (mode == 2 && id(g_belt)) {
+          strcpy(left, "bEL");
+          strcpy(right, "t  ");
+        } else if (mode == 2) {
+          if (id(g_target) == 25) strcpy(left, "bUL");
+          else snprintf(left, sizeof(left), "d%02d", id(g_target) % 100);
+          snprintf(right, sizeof(right), "%03d", std::min(999, id(g_done)));
+        } else if (mode == 3) {
+          std::string k = id(g_kind);
+          if (k == "bull") strcpy(left, "bUL");
+          else if (k == "eye") strcpy(left, "d50");
+          else snprintf(left, sizeof(left), "%c%02d", k == "big" ? 'b' : k == "small" ? 'S' : k == "double" ? 'd' : 't', id(g_target) % 100);
+          snprintf(right, sizeof(right), "%03d", std::min(999, id(g_done)));
+        } else if (mode == 4) {
+          snprintf(left, sizeof(left), "%03d", std::max(0, std::min(999, id(g_remaining))));
+          snprintf(right, sizeof(right), "%03d", std::min(999, id(g_attempt)));
+        } else if (mode == 5) {
+          snprintf(left, sizeof(left), "t%02d", id(g_target) % 100);
+          snprintf(right, sizeof(right), "r%02d", id(g_round) % 100);
+        } else if (mode == 6) {
+          snprintf(left, sizeof(left), "n%02d", id(g_target) % 100);
+          snprintf(right, sizeof(right), "%03d", std::min(999, id(g_alive)));
+        }
+        snprintf(normal, sizeof(normal), "%s%s", left, right);
+        // Physical wiring reverses digit order — swap within each 3-digit group.
+        char out[7];
+        out[0] = normal[2]; out[1] = normal[1]; out[2] = normal[0];
+        out[3] = normal[5]; out[4] = normal[4]; out[5] = normal[3];
+        out[6] = '\0';
+        it.print(out);
+        return;
+      }
+
       if (id(elim_active)) {
         // passes = score > target, so target itself isn't enough to beat
         // it — show the actual minimum passing score.
@@ -985,6 +1844,26 @@ light:
               } else {
                 it[i] = Color(0, 0, 0);
               }
+            }
+
+      # Board stopped (camera standby time): all LEDs pulse red until the board runs again
+      - addressable_lambda:
+          name: "Board Stopped"
+          update_interval: 100ms
+          lambda: |-
+            bool on = ((millis() / 500) % 2) == 0;
+            it.all() = on ? Color(200, 0, 0) : Color(30, 0, 0);
+
+      # Lives of the player up in Killer: N lit LEDs, yellow until he is a killer, red as a killer
+      - addressable_lambda:
+          name: "Killer Lives"
+          update_interval: 300ms
+          lambda: |-
+            int lives = id(g_lives);
+            Color c = id(g_killer) ? Color(200, 0, 0) : Color(220, 180, 0);
+            int n = it.size();
+            for (int i = 0; i < n; i++) {
+              it[i] = (i < lives) ? c : Color(0, 0, 0);
             }
 
       - addressable_rainbow:

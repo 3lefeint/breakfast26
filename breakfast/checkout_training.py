@@ -225,6 +225,13 @@ class CheckoutTrainingGame(TurnGame):
             "result": self.result,
         }
 
+    def _publish_turn(self, reset=False):
+        """The darts of the attempt and what is left of its score (the score again after a bust)."""
+        super()._publish_turn(reset)
+        fields = [] if reset else self._fields(list(self._last_throws))
+        rest = routes.after_darts(self.score, fields)["rest"] if self.score else ""
+        self.client.publish(self._topic("remaining"), str(rest), retain=True)
+
     def _publish_state(self):
         state = {
             "state": self.state, "player": self.player, "low": self.low, "high": self.high,

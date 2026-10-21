@@ -3,9 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- The LED display (`ESPHome/esp.yaml`) shows Field Training, Black Belt, Warm-up, Checkout Training, Target Battle and Killer: the darts of the turn, the figures of the game on the six digits, the target as two small digits on the matrix with hit, miss and win animations, the dart count or the lives of a Killer on the strip. A stopped board makes the strip pulse red and shows `StoP`. (#75)
+- Home Assistant entities for the games with their own topics and for Elimination: their state, an Active sensor each and Stop and Undo buttons for their command topics (`ESPHome/mqtt/`). (#75)
+- New MQTT topics `field_training/darts`, `killer/current_number`, `current_lives`, `current_killer`, `alive` and `checkout_training/remaining`. (#75)
 - The TV views of all games show a Start button instead of Reset while the board is stopped (camera standby time) and start it again.
 
 ### Fixed
+- The LED display shows a missed dart and a change of player: the dart event was searched without the space the JSON has after the colon, so every dart counted as a hit and the arrow never showed. (#75)
+- The board status of the local board connection is published to MQTT when it changes and once when the connection opens; before, it was only published together with another event. (#75)
 - Resuming a match after the start opens the TV view, where the match goes on; the question is also asked when the page is open on the TV view.
 - The top bar turns red when the board has stopped, also when it stopped before Breakfast started: the board status is asked once when the connection to the board opens.
 

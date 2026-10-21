@@ -625,6 +625,11 @@ class KillerGame(TurnGame):
         }
         self.client.publish(self._topic("state"), json.dumps(state, ensure_ascii=False), retain=True)
         self.client.publish(self._topic("active"), "true" if self.state == "playing" else "false", retain=True)
+        cur = self.current_player
+        self.client.publish(self._topic("current_number"), str(self.numbers.get(cur) or ""), retain=True)
+        self.client.publish(self._topic("current_lives"), str(self.lives.get(cur, 0)), retain=True)
+        self.client.publish(self._topic("current_killer"), "true" if cur in self.killers else "false", retain=True)
+        self.client.publish(self._topic("alive"), str(len(self.active)), retain=True)
         self._changed()
 
 

@@ -52,8 +52,11 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
     # never fires during Freeplay/Elimination at all.
     new_status = board_status.resolve(data.get("event", ""), data.get("status"))
     if new_status:
+        changed = new_status != state.board_status
         evt = state.update({"event": "Board Status", "data": {"status": new_status}})
         if evt:
+            if mqtt_pub and changed:
+                mqtt_pub.publish_board_status(evt)
             from breakfast.web import server as web
             web.push()
 
@@ -112,7 +115,7 @@ def _board_state_url(board_ws_url):
     return f"{'https' if parts.scheme == 'wss' else 'http'}://{parts.netloc}/api/state"
 
 
-def _fetch_board_status(state, board_ws_url):
+def _fetch_board_status(state, board_ws_url, mqtt_pub=None):
     """The event stream says nothing when it opens, so a board that stopped before Breakfast started (camera standby)
     would stay unknown: ask for its status once."""
     try:
@@ -120,7 +123,10 @@ def _fetch_board_status(state, board_ws_url):
     except Exception as e:
         log.debug("Board status not available: %s", e)
         return
-    if status and state.update({"event": "Board Status", "data": {"status": status}}):
+    evt = status and state.update({"event": "Board Status", "data": {"status": status}})
+    if evt:
+        if mqtt_pub:
+            mqtt_pub.publish_board_status(evt)
         from breakfast.web import server as web
         web.push()
 
@@ -148,7 +154,7 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
             from breakfast.web import server as web
             web.push()
         if connected:
-            threading.Thread(target=_fetch_board_status, args=(state, board_ws_url), daemon=True).start()
+            threading.Thread(target=_fetch_board_status, args=(state, board_ws_url, mqtt_pub), daemon=True).start()
 
     def run():
         while True:

@@ -133,3 +133,119 @@ sensor:
 - name: "Autodarts Throw Seq"
   unique_id: "b2d8c8d3-0d86-49a4-9f6a-77b9cf0cb3a1"
   state_topic: "autodarts/current/throw_seq"
+
+- name: "Autodarts Elimination Number"
+  unique_id: autodarts_elimination_current_number
+  state_topic: "autodarts/elimination/current_number"
+
+- name: "Autodarts Elimination Lives"
+  unique_id: autodarts_elimination_current_lives
+  state_topic: "autodarts/elimination/current_lives"
+
+- name: "Autodarts Elimination Lives Max"
+  unique_id: autodarts_elimination_lives_max
+  state_topic: "autodarts/elimination/lives_max"
+
+- name: "Autodarts Elimination Target"
+  unique_id: autodarts_elimination_target
+  state_topic: "autodarts/elimination/target"
+
+- name: "Autodarts Elimination Turn Total"
+  unique_id: autodarts_elimination_current_total
+  state_topic: "autodarts/elimination/current/total"
+
+- name: "Autodarts Target Battle Round"
+  unique_id: autodarts_target_battle_round
+  state_topic: "autodarts/target_battle/round"
+
+- name: "Autodarts Target Battle Rounds"
+  unique_id: autodarts_target_battle_rounds
+  state_topic: "autodarts/target_battle/rounds"
+
+- name: "Autodarts Target Battle Target"
+  unique_id: autodarts_target_battle_target
+  state_topic: "autodarts/target_battle/target"
+
+- name: "Autodarts Target Battle Turn Total"
+  unique_id: autodarts_target_battle_current_total
+  state_topic: "autodarts/target_battle/current/total"
+
+- name: "Autodarts Field Training Field"
+  unique_id: autodarts_field_training_field
+  state_topic: "autodarts/field_training/field"
+
+- name: "Autodarts Field Training Darts"
+  unique_id: autodarts_field_training_darts
+  state_topic: "autodarts/field_training/darts"
+
+- name: "Autodarts Field Training Thrown"
+  unique_id: autodarts_field_training_thrown
+  state_topic: "autodarts/field_training/thrown"
+
+- name: "Autodarts Field Training Points"
+  unique_id: autodarts_field_training_points
+  state_topic: "autodarts/field_training/points"
+
+- name: "Autodarts Field Training Turn Total"
+  unique_id: autodarts_field_training_current_total
+  state_topic: "autodarts/field_training/current/total"
+
+- name: "Autodarts Black Belt Target"
+  unique_id: autodarts_black_belt_target
+  state_topic: "autodarts/black_belt/target"
+
+- name: "Autodarts Black Belt Fields Done"
+  unique_id: autodarts_black_belt_fields_done
+  state_topic: "autodarts/black_belt/fields_done"
+
+- name: "Autodarts Black Belt Restarts"
+  unique_id: autodarts_black_belt_restarts
+  state_topic: "autodarts/black_belt/restarts"
+
+- name: "Autodarts Black Belt Turn Total"
+  unique_id: autodarts_black_belt_current_total
+  state_topic: "autodarts/black_belt/current/total"
+
+- name: "Autodarts Warm-up Target"
+  unique_id: autodarts_warm_up_target
+  state_topic: "autodarts/warm_up/target"
+
+- name: "Autodarts Warm-up Fields Done"
+  unique_id: autodarts_warm_up_fields_done
+  state_topic: "autodarts/warm_up/fields_done"
+
+- name: "Autodarts Warm-up Turn Total"
+  unique_id: autodarts_warm_up_current_total
+  state_topic: "autodarts/warm_up/current/total"
+
+- name: "Autodarts Killer Number"
+  unique_id: autodarts_killer_current_number
+  state_topic: "autodarts/killer/current_number"
+
+- name: "Autodarts Killer Lives"
+  unique_id: autodarts_killer_current_lives
+  state_topic: "autodarts/killer/current_lives"
+
+- name: "Autodarts Killer Players Left"
+  unique_id: autodarts_killer_alive
+  state_topic: "autodarts/killer/alive"
+
+- name: "Autodarts Killer Turn Total"
+  unique_id: autodarts_killer_current_total
+  state_topic: "autodarts/killer/current/total"
+
+- name: "Autodarts Checkout Training Score"
+  unique_id: autodarts_checkout_training_score
+  state_topic: "autodarts/checkout_training/score"
+
+- name: "Autodarts Checkout Training Attempt"
+  unique_id: autodarts_checkout_training_attempt
+  state_topic: "autodarts/checkout_training/attempt"
+
+- name: "Autodarts Checkout Training Remaining"
+  unique_id: autodarts_checkout_training_remaining
+  state_topic: "autodarts/checkout_training/remaining"
+
+- name: "Autodarts Checkout Training Turn Total"
+  unique_id: autodarts_checkout_training_current_total
+  state_topic: "autodarts/checkout_training/current/total"

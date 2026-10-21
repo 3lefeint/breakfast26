@@ -243,3 +243,29 @@ def test_next_ends_an_attempt_without_a_dart_as_failed():
     g = game(score=40, attempts=3)
     assert g.next_turn() is True
     assert len(g.results) == 1 and g.results[0]["success"] is False
+
+
+class TestRemaining:
+    def last(self, g):
+        return g.client.last("autodarts/checkout_training/remaining")
+
+    def test_the_score_left_follows_the_darts_of_the_attempt(self):
+        g = game(score=100)
+        g.announce_start()
+        assert self.last(g) == "100"
+        g.on_board_state(1, [th("T20")])
+        assert self.last(g) == "40"
+        g.on_board_state(2, [th("T20"), th("S5")])
+        assert self.last(g) == "35"
+
+    def test_a_bust_shows_the_score_of_the_attempt_again(self):
+        g = game(score=40)
+        g.announce_start()
+        g.on_board_state(1, [th("T20")])           # below zero
+        assert self.last(g) == "40"
+
+    def test_the_next_attempt_starts_with_its_score(self):
+        g = game(score=40)
+        g.announce_start()
+        attempt(g, "D20")
+        assert self.last(g) == str(g.score)

@@ -268,6 +268,7 @@ class FieldTrainingGame(TurnGame):
         self.client.publish(self._topic("state"), json.dumps(state, ensure_ascii=False), retain=True)
         self.client.publish(self._topic("active"), "true" if self.state == "playing" else "false", retain=True)
         self.client.publish(self._topic("field"), str(self.field), retain=True)
+        self.client.publish(self._topic("darts"), str(self.darts), retain=True)
         self.client.publish(self._topic("thrown"), str(self.thrown), retain=True)
         self.client.publish(self._topic("points"), str(self.points), retain=True)
         self._changed()

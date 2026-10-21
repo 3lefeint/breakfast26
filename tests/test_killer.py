@@ -387,6 +387,17 @@ class TestMqtt:
         assert state["players"]["ana"] == {"number": 20, "lives": 3, "killer": False}
         assert client.last("autodarts/killer/active") == "true"
 
+    def test_the_player_up_is_published_for_the_display(self):
+        game, client = new_game(("ana", "bo", "cy"))
+        assert [client.last(f"autodarts/killer/{t}") for t in ("current_number", "current_lives", "current_killer", "alive")] \
+            == ["20", "3", "false", "3"]
+        play(game, hit(20, 2))                      # ana becomes a killer, bo is up next
+        assert [client.last(f"autodarts/killer/{t}") for t in ("current_number", "current_killer")] == ["5", "false"]
+        play(game, hit(20, 1))                      # bo throws away, cy is up
+        play(game, MISS)                            # ana is up again, a killer
+        assert client.last("autodarts/killer/current_number") == "20"
+        assert client.last("autodarts/killer/current_killer") == "true"
+
     def test_the_controller_starts_a_game_from_a_command(self):
         pub = FakeMqttPub()
         ctrl = KillerController(pub, "autodarts")

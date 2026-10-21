@@ -22,3 +22,45 @@ binary_sensor:
   state_topic: "autodarts/current/turn_active"
   payload_on: "true"
   payload_off: "false"
+
+- name: "Autodarts Elimination Active"
+  unique_id: autodarts_elimination_active
+  state_topic: "autodarts/elimination/active"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Target Battle Active"
+  unique_id: autodarts_target_battle_active
+  state_topic: "autodarts/target_battle/active"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Field Training Active"
+  unique_id: autodarts_field_training_active
+  state_topic: "autodarts/field_training/active"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Black Belt Active"
+  unique_id: autodarts_black_belt_active
+  state_topic: "autodarts/black_belt/active"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Warm-up Active"
+  unique_id: autodarts_warm_up_active
+  state_topic: "autodarts/warm_up/active"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Killer Active"
+  unique_id: autodarts_killer_active
+  state_topic: "autodarts/killer/active"
+  payload_on: "true"
+  payload_off: "false"
+
+- name: "Autodarts Checkout Training Active"
+  unique_id: autodarts_checkout_training_active
+  state_topic: "autodarts/checkout_training/active"
+  payload_on: "true"
+  payload_off: "false"

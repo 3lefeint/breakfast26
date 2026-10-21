@@ -9,6 +9,10 @@ def _throw(number, multiplier):
 class FakeMqttPub:
     def __init__(self):
         self.freeplay_calls = []
+        self.board_status_events = []
+
+    def publish_board_status(self, event):
+        self.board_status_events.append(event)
 
     def publish_freeplay(self, count, throws):
         self.freeplay_calls.append((count, list(throws)))
@@ -238,3 +242,32 @@ class TestBoardStatusAtConnect:
         state = GameState()
         source_direct._fetch_board_status(state, "ws://10.0.0.5:3180/api/events")
         assert state.board_status is None
+
+
+class TestBoardStatusToMqtt:
+    def test_a_status_of_the_local_board_is_published(self):
+        mqtt_pub = FakeMqttPub()
+        state = GameState()
+        _handle_board_message({"status": "Stopped", "numThrows": 0}, state, mqtt_pub, None, None, 0)
+        assert mqtt_pub.board_status_events == [{"type": "board_status", "status": "Stopped"}]
+
+    def test_the_same_status_is_published_once(self):
+        mqtt_pub = FakeMqttPub()
+        state = GameState()
+        for _ in range(2):
+            _handle_board_message({"status": "Throw", "numThrows": 0}, state, mqtt_pub, None, None, 0)
+        assert len(mqtt_pub.board_status_events) == 1
+
+    def test_the_status_found_at_connect_is_published_too(self, monkeypatch):
+        from breakfast import source_direct
+        from breakfast.web import server
+
+        class Reply:
+            def json(self):
+                return {"status": "Stopped"}
+
+        monkeypatch.setattr(source_direct.requests, "get", lambda url, timeout: Reply())
+        monkeypatch.setattr(server, "push", lambda: None)
+        mqtt_pub = FakeMqttPub()
+        source_direct._fetch_board_status(GameState(), "ws://10.0.0.5:3180/api/events", mqtt_pub)
+        assert mqtt_pub.board_status_events == [{"type": "board_status", "status": "Stopped"}]

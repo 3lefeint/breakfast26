@@ -271,13 +271,13 @@ messages. **Show what is sent** lists the queued and the recently sent reports. 
 ### MQTT
 
 Breakfast can publish its state to an MQTT broker, for example to drive ESPHome LED strips or to feed Home
-Assistant (configured in `[mqtt]`; ESPHome examples are in `ESPHome/`). MQTT is optional, everything else
+Assistant (configured in `[mqtt]`; the ESPHome config for the LED display and the Home Assistant entities are in `ESPHome/`). MQTT is optional, everything else
 works without it. All topics are published under a base topic (default `autodarts`):
 
 | Topic | Value |
 |-------|-------|
 | `autodarts/current/...`, `autodarts/match/...`, `autodarts/players/<index>/...`, `autodarts/board/status` | the active player and their darts, the match, the remaining score of each player and the board status |
-| `autodarts/<game>/active`, `.../state` | for `elimination`, `target_battle`, `killer`, `field_training`, `black_belt` and `checkout_training`: whether the game is running, and its full state as retained JSON |
+| `autodarts/<game>/active`, `.../state` | for `elimination`, `target_battle`, `killer`, `field_training`, `black_belt`, `warm_up` and `checkout_training`: whether the game is running, and its full state as retained JSON |
 | `autodarts/<game>/current/...`, `.../last_turn/...`, `.../events/...` | the turn in progress, the last finished turn and one-time events of the game |
 | `autodarts/<game>/command` | Breakfast listens here: JSON `{"action": ...}` to start, stop, undo or correct a game |
 

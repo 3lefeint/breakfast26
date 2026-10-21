@@ -102,6 +102,12 @@ class MqttPublisher:
         payload = json.dumps(event, ensure_ascii=False)
         self.client.publish(topic, payload, retain=False)
 
+    def publish_board_status(self, event):
+        """The status of the board from the local connection (`{"type": "board_status", "status": ...}`): the event and
+        the retained topic, without waiting for another event to publish the whole state."""
+        self.publish_event(event)
+        _publish(self.client, f"{self.base_topic}/board/status", event.get("status"))
+
     def publish_state(self, snapshot):
         """Publish retained state topics for Home Assistant sensors."""
         base = self.base_topic
@@ -222,6 +228,9 @@ class NullMqttPublisher:
         pass
 
     def publish_event(self, event):
+        pass
+
+    def publish_board_status(self, event):
         pass
 
     def publish_state(self, snapshot):

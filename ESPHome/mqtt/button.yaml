@@ -28,3 +28,73 @@ button:
   unique_id: autodarts_all_services_restart
   command_topic: "autodarts/notebook/cmd"
   payload_press: "restart_all_autodarts_services"
+
+- name: "Autodarts Elimination Stop"
+  unique_id: autodarts_elimination_stop
+  command_topic: "autodarts/elimination/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Elimination Undo"
+  unique_id: autodarts_elimination_undo
+  command_topic: "autodarts/elimination/command"
+  payload_press: '{"action": "undo"}'
+
+- name: "Autodarts Target Battle Stop"
+  unique_id: autodarts_target_battle_stop
+  command_topic: "autodarts/target_battle/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Target Battle Undo"
+  unique_id: autodarts_target_battle_undo
+  command_topic: "autodarts/target_battle/command"
+  payload_press: '{"action": "undo"}'
+
+- name: "Autodarts Field Training Stop"
+  unique_id: autodarts_field_training_stop
+  command_topic: "autodarts/field_training/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Field Training Undo"
+  unique_id: autodarts_field_training_undo
+  command_topic: "autodarts/field_training/command"
+  payload_press: '{"action": "undo"}'
+
+- name: "Autodarts Black Belt Stop"
+  unique_id: autodarts_black_belt_stop
+  command_topic: "autodarts/black_belt/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Black Belt Undo"
+  unique_id: autodarts_black_belt_undo
+  command_topic: "autodarts/black_belt/command"
+  payload_press: '{"action": "undo"}'
+
+- name: "Autodarts Warm-up Stop"
+  unique_id: autodarts_warm_up_stop
+  command_topic: "autodarts/warm_up/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Warm-up Undo"
+  unique_id: autodarts_warm_up_undo
+  command_topic: "autodarts/warm_up/command"
+  payload_press: '{"action": "undo"}'
+
+- name: "Autodarts Killer Stop"
+  unique_id: autodarts_killer_stop
+  command_topic: "autodarts/killer/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Killer Undo"
+  unique_id: autodarts_killer_undo
+  command_topic: "autodarts/killer/command"
+  payload_press: '{"action": "undo"}'
+
+- name: "Autodarts Checkout Training Stop"
+  unique_id: autodarts_checkout_training_stop
+  command_topic: "autodarts/checkout_training/command"
+  payload_press: '{"action": "stop"}'
+
+- name: "Autodarts Checkout Training Undo"
+  unique_id: autodarts_checkout_training_undo
+  command_topic: "autodarts/checkout_training/command"
+  payload_press: '{"action": "undo"}'

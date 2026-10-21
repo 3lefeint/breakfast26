@@ -205,3 +205,8 @@ def test_next_in_the_last_turn_takes_only_the_darts_that_are_left():
     game.next_turn()
     game.next_turn()
     assert game.thrown == 4 and game.state == "finished"
+
+
+def test_the_number_of_darts_is_published_for_the_display():
+    game = new_game(darts=6)
+    assert game.client.last("autodarts/field_training/darts") == "6"
