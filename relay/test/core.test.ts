@@ -521,3 +521,43 @@ describe("ready", () => {
     expect(r.last("c", "rejected")).toMatchObject({ for: "lobby_set_ready" });
   });
 });
+
+describe("voice tickets", () => {
+  it("a site gets one with its match token, and it opens the voice room for that site only", async () => {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club");
+    const ticket = (await r.core.issueVoiceTicket("Club", r.token("c"))) as string;
+    expect(ticket).toHaveLength(32);
+    expect(await r.core.voiceTicketOk("Club", ticket)).toBe(true);
+    expect(await r.core.voiceTicketOk("Home", ticket)).toBe(false);
+    expect(await r.core.voiceTicketOk("Club", "f".repeat(32))).toBe(false);
+    expect(JSON.stringify(r.core.s)).not.toContain(ticket);           // only its hash is kept
+  });
+
+  it("a new ticket replaces the old one", async () => {
+    await r.hello("h", "create", "Home");
+    const first = (await r.core.issueVoiceTicket("Home", r.token("h"))) as string;
+    const second = (await r.core.issueVoiceTicket("Home", r.token("h"))) as string;
+    expect(await r.core.voiceTicketOk("Home", first)).toBe(false);
+    expect(await r.core.voiceTicketOk("Home", second)).toBe(true);
+  });
+
+  it("is refused for a wrong token, an unknown site or a match that is over, and wrong tries count", async () => {
+    await r.hello("h", "create", "Home");
+    expect(await r.core.issueVoiceTicket("Home", "nope")).toBeNull();
+    expect(await r.core.issueVoiceTicket("Nobody", r.token("h"))).toBeNull();
+    expect(r.core.s.failedHellos).toBe(2);
+    const ticket = (await r.core.issueVoiceTicket("Home", r.token("h"))) as string;
+    await r.send("h", { type: "leave" });
+    expect(await r.core.voiceTicketOk("Home", ticket)).toBe(false);   // the lobby ended with its host
+    expect(await r.core.issueVoiceTicket("Home", r.token("h"))).toBeNull();
+  });
+
+  it("locks after too many wrong tokens", async () => {
+    await r.hello("h", "create", "Home");
+    for (let i = 0; i < LIMITS.MAX_FAILED_HELLOS; i++) await r.core.issueVoiceTicket("Home", "nope");
+    expect(await r.core.issueVoiceTicket("Home", r.token("h"))).toBeNull();
+    r.advance(LIMITS.LOCK_MS + 1);
+    expect(await r.core.issueVoiceTicket("Home", r.token("h"))).not.toBeNull();
+  });
+});

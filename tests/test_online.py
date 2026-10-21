@@ -96,9 +96,13 @@ class Harness:
         self.sleeps = []
         self.session = OnlineSession(self.ctrl, connect=self._connect, post=self._post, sleep=self.sleeps.append)
         self.next_frames = [WELCOME]
+        self.ticket = "t" * 32
+        self.voice_status = 200
 
     def _post(self, url, body, headers=None):
         self.posts.append((url, body) if headers is None else (url, body, headers))
+        if url.endswith("/voice-ticket"):
+            return SimpleNamespace(status_code=self.voice_status, json=lambda: {"ticket": self.ticket})
         return SimpleNamespace(status_code=200, json=lambda: {"code": "K7M2QX", "expires_in_s": 600})
 
     def _connect(self, url):
@@ -145,6 +149,21 @@ class TestLobby:
         h.next_frames = [{**WELCOME, "site": "Club", "host": False}]
         h.session.join("ws://relay", "k7m2qx", "Club", ticket="t" * 32)
         assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 2, "mode": "join", "site": "Club", "ticket": "t" * 32}
+
+    def test_the_voice_address_carries_a_ticket_for_this_site(self, h):
+        h.session.create("wss://relay.example", "Home", "pw")
+        h.ticket = "t" * 32
+        url = h.session.voice_url("de")
+        assert h.posts[-1] == ("https://relay.example/api/matches/K7M2QX/voice-ticket", {"site": "Home", "token": "tok"})
+        assert url == "https://relay.example/voice#code=K7M2QX&site=Home&ticket=" + "t" * 32 + "&lang=de"
+
+    def test_the_voice_address_needs_an_open_match_and_reports_a_refusal(self, h):
+        with pytest.raises(RelayError, match="no online match"):
+            h.session.voice_url()
+        h.session.create("ws://relay", "Home", "pw")
+        h.voice_status = 401
+        with pytest.raises(RelayError, match="The relay answered 401"):
+            h.session.voice_url()
 
     def test_ready_goes_to_the_relay(self, h):
         h.session.create("ws://relay", "Home", "pw")

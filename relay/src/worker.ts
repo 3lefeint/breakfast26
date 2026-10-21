@@ -1,23 +1,31 @@
 // The Cloudflare side: an HTTP/WebSocket front door, one MatchRoom Durable Object per join
 // code (it holds a MatchCore and keeps it in storage), and a small RateLimiter Durable
-// Object per client address and purpose. The locations (src/locations.ts) live in D1.
+// Object per client address and purpose. The locations (src/locations.ts) live in D1; the voice chat signaling
+// (src/voice.ts, a VoiceRoom per match code) and its page (src/voicePage.ts) are served here as well.
 
 import { DurableObject } from "cloudflare:workers";
 import { Deps, MatchCore, MatchState, Out } from "./core";
 import { CLOSE, LIMITS, PROTOCOL_VERSION, validName } from "./protocol";
 import { authenticate, handleLocations, Rooms } from "./locations";
+import { iceServers, validateVoiceFrame, VOICE_CLOSE, VOICE_LIMITS } from "./voice";
+import { VOICE_HTML, VOICE_JS } from "./voicePage";
 import { TELEMETRY_LIMITS, TELEMETRY_VERSION, validateTelemetry } from "./telemetry";
 
 export interface Env {
   MATCH: DurableObjectNamespace;
   LIMITER: DurableObjectNamespace;
+  VOICE: DurableObjectNamespace;
   DB?: D1Database;
+  TURN_KEY_ID?: string;          // Worker secrets of a Cloudflare TURN key; without them the voice chat gets STUN only
+  TURN_KEY_API_TOKEN?: string;
 }
 
 const CREATE_LIMIT = { limit: 10, windowMs: 60_000 };
 const JOIN_LIMIT = { limit: 30, windowMs: 60_000 };
 const TELEMETRY_IP_LIMIT = { limit: 240, windowMs: 3_600_000 };
 const TELEMETRY_INSTALL_LIMIT = { limit: 120, windowMs: 3_600_000 };
+const VOICE_TICKET_LIMIT = { limit: 30, windowMs: 60_000 };
+const VOICE_JOIN_LIMIT = { limit: 60, windowMs: 60_000 };
 
 const deps: Deps = {
   now: () => Date.now(),
@@ -98,6 +106,33 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/telemetry") return telemetry(request, env);
 
+    if (request.method === "GET" && url.pathname === "/voice") {
+      return new Response(VOICE_HTML, { headers: {
+        "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self' wss:; media-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "referrer-policy": "no-referrer",
+      } });
+    }
+    if (request.method === "GET" && url.pathname === "/voice.js") {
+      return new Response(VOICE_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff" } });
+    }
+
+    const ticket = url.pathname.match(/^\/api\/matches\/([A-Z0-9]{6})\/voice-ticket$/);
+    if (request.method === "POST" && ticket) {
+      if (await limited(env, request, "voice-ticket", VOICE_TICKET_LIMIT)) return json({ error: "too many requests" }, 429);
+      const raw = await request.text();
+      if (raw.length > 1024) return json({ error: "too large" }, 413);
+      const res = await env.MATCH.get(env.MATCH.idFromName(ticket[1])).fetch("https://room/voice-ticket", { method: "POST", body: raw });
+      return new Response(res.status === 200 ? await res.text() : JSON.stringify({ error: "not allowed" }), { status: res.status === 200 ? 200 : 401, headers: { "content-type": "application/json" } });
+    }
+
+    const voice = url.pathname.match(/^\/voice\/([A-Z0-9]{6})$/);
+    if (request.method === "GET" && voice) {
+      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("expected a websocket", { status: 426 });
+      if (await limited(env, request, "voice-join", VOICE_JOIN_LIMIT)) return json({ error: "too many requests" }, 429);
+      return env.VOICE.get(env.VOICE.idFromName(voice[1])).fetch(request);
+    }
+
     const located = await handleLocations(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key), rooms(env));
     if (located) return located;
 
@@ -154,6 +189,19 @@ export class MatchRoom extends DurableObject<Env> {
       return new Response("ok");
     }
 
+    if (url.pathname === "/voice-ticket" && request.method === "POST") {
+      let body: { site?: unknown; token?: unknown } = {};
+      try { body = await request.json(); } catch { /* refused below */ }
+      const ticket = this.core && typeof body.site === "string" && typeof body.token === "string" ? await this.core.issueVoiceTicket(body.site, body.token) : null;
+      await this.save();
+      return ticket ? Response.json({ ticket }) : new Response("no", { status: 401 });
+    }
+    if (url.pathname === "/voice-auth" && request.method === "POST") {
+      let body: { site?: unknown; ticket?: unknown } = {};
+      try { body = await request.json(); } catch { /* refused below */ }
+      const ok = this.core && typeof body.site === "string" && typeof body.ticket === "string" && await this.core.voiceTicketOk(body.site, body.ticket);
+      return new Response(ok ? "ok" : "no", { status: ok ? 200 : 401 });
+    }
     if (url.pathname === "/status") {
       return this.core && this.core.phase !== "reserved" ? Response.json(this.core.status()) : new Response("none", { status: 404 });
     }
@@ -242,6 +290,104 @@ export class MatchRoom extends DurableObject<Env> {
     const wake = this.core.nextWake();
     if (wake === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(Math.max(wake, Date.now() + 1));
+  }
+}
+
+/** The signaling of the voice chat of one match: who is in the room, and the offers, answers and ICE candidates
+ *  they pass to each other. Entering needs the voice ticket of a site of the match. */
+interface VoicePeer { peer: string | null; site: string | null; muted: boolean; since: number }
+
+export class VoiceRoom extends DurableObject<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const code = new URL(request.url).pathname.split("/").pop() ?? "";
+    await this.ctx.storage.put("code", code);
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ peer: null, site: null, muted: false, since: Date.now() } satisfies VoicePeer);
+    await this.ctx.storage.setAlarm(Date.now() + VOICE_LIMITS.JOIN_TIMEOUT_MS);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    const me = ws.deserializeAttachment() as VoicePeer;
+    const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+    if (text.length > VOICE_LIMITS.FRAME_BYTES) return this.refuse(ws, VOICE_CLOSE.BAD_REQUEST, "frame too large");
+    let frame: Record<string, unknown>;
+    try { frame = JSON.parse(text); } catch { return this.refuse(ws, VOICE_CLOSE.BAD_REQUEST, "not JSON"); }
+    const bad = validateVoiceFrame(frame);
+    if (bad) return this.refuse(ws, VOICE_CLOSE.BAD_REQUEST, bad);
+
+    if (frame.type === "join") {
+      if (me.peer) return this.refuse(ws, VOICE_CLOSE.BAD_REQUEST, "already joined");
+      return this.join(ws, me, frame.site as string, frame.ticket as string);
+    }
+    if (!me.peer) return this.refuse(ws, VOICE_CLOSE.BAD_REQUEST, "join first");
+    if (frame.type === "mute") {
+      me.muted = frame.muted as boolean;
+      ws.serializeAttachment(me);
+      this.others(ws, { type: "mute", peer: me.peer, muted: me.muted });
+      return;
+    }
+    const target = this.ctx.getWebSockets().find((w) => (w.deserializeAttachment() as VoicePeer).peer === frame.to);
+    if (target) target.send(JSON.stringify({ type: "signal", from: me.peer, data: frame.data }));
+  }
+
+  async webSocketClose(ws: WebSocket): Promise<void> {
+    this.left(ws);
+    try { ws.close(); } catch { /* already closed */ }
+  }
+
+  async webSocketError(ws: WebSocket): Promise<void> {
+    this.left(ws);
+  }
+
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    for (const ws of this.ctx.getWebSockets()) {
+      const p = ws.deserializeAttachment() as VoicePeer;
+      if (!p.peer && now - p.since >= VOICE_LIMITS.JOIN_TIMEOUT_MS) this.refuse(ws, VOICE_CLOSE.BAD_REQUEST, "join timeout");
+    }
+  }
+
+  private async join(ws: WebSocket, me: VoicePeer, site: string, ticket: string): Promise<void> {
+    const code = (await this.ctx.storage.get<string>("code")) ?? "";
+    const auth = await this.env.MATCH.get(this.env.MATCH.idFromName(code)).fetch("https://room/voice-auth", { method: "POST", body: JSON.stringify({ site, ticket }) });
+    if (auth.status !== 200) return this.refuse(ws, VOICE_CLOSE.UNAUTHORIZED, "not allowed");
+    for (const w of this.ctx.getWebSockets()) {          // the same site joining again replaces its older connection
+      if (w !== ws && (w.deserializeAttachment() as VoicePeer).site === site) this.refuse(w, VOICE_CLOSE.CONFLICT, "replaced by a new connection");
+    }
+    const others = this.ctx.getWebSockets().filter((w) => w !== ws && (w.deserializeAttachment() as VoicePeer).peer);
+    if (others.length >= VOICE_LIMITS.MAX_PEERS) return this.refuse(ws, VOICE_CLOSE.CONFLICT, "the voice chat is full");
+    me.peer = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    me.site = site;
+    ws.serializeAttachment(me);
+    const peers = others.map((w) => { const p = w.deserializeAttachment() as VoicePeer; return { peer: p.peer, site: p.site, muted: p.muted }; });
+    ws.send(JSON.stringify({ type: "joined", peer: me.peer, peers, ice: await iceServers(this.env) }));
+    this.others(ws, { type: "peer-joined", peer: me.peer, site });
+  }
+
+  private left(ws: WebSocket): void {
+    const p = ws.deserializeAttachment() as VoicePeer | null;
+    if (p?.peer) this.others(ws, { type: "peer-left", peer: p.peer });
+  }
+
+  private others(ws: WebSocket, frame: Record<string, unknown>): void {
+    const text = JSON.stringify(frame);
+    for (const w of this.ctx.getWebSockets()) {
+      if (w === ws || !(w.deserializeAttachment() as VoicePeer).peer) continue;
+      try { w.send(text); } catch { /* the socket is gone */ }
+    }
+  }
+
+  private refuse(ws: WebSocket, code: number, message: string): void {
+    try {
+      ws.send(JSON.stringify({ type: "error", code, message }));
+      const p = ws.deserializeAttachment() as VoicePeer | null;
+      ws.serializeAttachment({ ...(p ?? {}), peer: null });   // a refused socket is no longer in the room
+      if (p?.peer) this.others(ws, { type: "peer-left", peer: p.peer });
+      ws.close(code, message.slice(0, 120));
+    } catch { /* already closed */ }
   }
 }
 

@@ -55,6 +55,21 @@ locally, `migrations apply ... --local` and `npm run dev` give a database to try
 
 The same database holds the locations (`0002_locations.sql`) and the matches they open for their links (`0003_open_matches.sql`, see PROTOCOL.md, "Locations"): registering, invitations, links and joining through a link need the `DB` binding and the migrations applied.
 
+## Voice chat
+
+The relay also serves the voice chat page (`/voice`) and the signaling of a match (see PROTOCOL.md, "Voice chat"). It
+needs the Durable Object `VOICE` (class `VoiceRoom`) and the migration `v2` in the config you deploy with (both are in
+`wrangler.jsonc`; copy them into your own config). STUN works without anything else. For participants whose browsers cannot
+reach each other directly (mobile networks, strict firewalls) create a TURN key in the Cloudflare dashboard (Realtime ->
+TURN) and give the Worker its two values as secrets:
+
+```bash
+npx wrangler secret put TURN_KEY_ID -c <your config>
+npx wrangler secret put TURN_KEY_API_TOKEN -c <your config>
+```
+
+Without them the voice chat gets STUN only. The key stays in the Worker; the browsers get credentials that run out after a day.
+
 ## Try it by hand
 
 Two Breakfast installations on one machine, each with its own `config.toml` and database:

@@ -117,3 +117,31 @@ of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and 
 
 Only the hash of a token is stored. An unknown, used or expired token answers 404 without telling which. Registering,
 inviting, redeeming and reading are limited per IP address or per location. Links have a `kind` (`play` for now).
+
+## Voice chat
+
+Browsers of the sites talk to each other directly (WebRTC, Opus); the relay serves the page and passes on the
+signaling. The audio never goes through it.
+
+- `GET /voice` and `GET /voice.js`: the voice chat page (no external libraries, strict content security policy). It reads
+  `code`, `site`, `ticket` and `lang` from the part of its address after `#`, which never reaches a server. It lives here
+  because a browser gives the microphone only to a secure page.
+- `POST /api/matches/<code>/voice-ticket` `{site, token}`: `token` is the match token of the site from `welcome`. Answers
+  `{ticket}` (401 for a wrong token; wrong tries count towards the lock of the code). A new ticket replaces the old one; it
+  lasts as long as the match.
+- `GET /voice/<code>`: WebSocket to the signaling room of the match (a Durable Object per code). The first frame must be
+  `join` within 10 seconds.
+
+| Direction | type | fields | notes |
+|-----------|------|--------|-------|
+| client | `join` | `site`, `ticket` | refused with 4401 unless the ticket is the current one of that site; the same site joining again replaces its older connection (4409) |
+| client | `signal` | `to` (peer), `data` (`{description}` or `{candidate}`) | passed on to that peer |
+| client | `mute` | `muted` (bool) | passed on to the others |
+| relay | `joined` | `peer`, `peers` (list of `{peer, site, muted}`), `ice` (ICE servers) | the new peer then sends the offers |
+| relay | `peer-joined` / `peer-left` | `peer` (and `site`) | |
+| relay | `signal` | `from`, `data` | |
+| relay | `mute` | `peer`, `muted` | |
+| relay | `error` | `code`, `message` | followed by the close (4400 bad frame, 4401 not allowed, 4409 replaced or full) |
+
+At most 6 peers, frames up to 16 KB. `ice` is STUN (`stun.cloudflare.com`); with the Worker secrets `TURN_KEY_ID` and
+`TURN_KEY_API_TOKEN` of a Cloudflare TURN key it also carries TURN servers with credentials that run out after a day.

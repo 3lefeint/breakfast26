@@ -53,6 +53,7 @@ export interface MatchState {
   failedHellos: number;
   lockedUntil: number;
   tickets: Record<string, number>;
+  voice: Record<string, string>;
 }
 
 export interface Out {
@@ -89,7 +90,8 @@ function sameText(a: string, b: string): boolean {
 
 export class MatchCore {
   constructor(public s: MatchState, private deps: Deps) {
-    s.tickets ??= {};   // a room stored before the tickets existed
+    s.tickets ??= {};   // a room stored before the tickets and the voice tickets existed
+    s.voice ??= {};
     for (const x of Object.values(s.sites)) x.ready ??= false;
   }
 
@@ -100,7 +102,7 @@ export class MatchCore {
       passwordSalt: null, passwordHash: null, host: null, sites: {}, pending: {}, conns: {},
       lives: 0, order: [], active: [], eliminated: [], current: null, owners: {},
       seq: 0, log: [], acks: {}, matchId: null, rejoinDeadline: null, decisionSent: false,
-      failedHellos: 0, lockedUntil: 0, tickets: {},
+      failedHellos: 0, lockedUntil: 0, tickets: {}, voice: {},
     }, deps);
   }
 
@@ -462,6 +464,27 @@ export class MatchCore {
     const ticket = this.deps.randomHex(16);
     s.tickets[await sha256(ticket)] = now + LIMITS.TICKET_TTL_MS;
     return ticket;
+  }
+
+  /** A ticket for the voice page of `site`, which proves itself with the match token of that site; null when the token is wrong. */
+  async issueVoiceTicket(site: string, token: string): Promise<string | null> {
+    const s = this.s;
+    const x = s.sites[site];
+    if (this.isOver() || this.deps.now() < s.lockedUntil) return null;
+    if (!x || x.left || !sameText(x.tokenHash, await sha256(token))) {
+      s.failedHellos++;
+      if (s.failedHellos >= LIMITS.MAX_FAILED_HELLOS) s.lockedUntil = this.deps.now() + LIMITS.LOCK_MS;
+      return null;
+    }
+    const ticket = this.deps.randomHex(16);
+    s.voice[site] = await sha256(ticket);
+    return ticket;
+  }
+
+  /** Whether `ticket` is the current voice ticket of `site`; it lasts as long as the match. */
+  async voiceTicketOk(site: string, ticket: string): Promise<boolean> {
+    const hash = this.s.voice[site];
+    return !!hash && !this.isOver() && sameText(hash, await sha256(ticket));
   }
 
   /** What the list of open matches shows. */

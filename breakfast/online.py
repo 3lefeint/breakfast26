@@ -12,6 +12,7 @@ import logging
 import secrets
 import threading
 import time
+from urllib.parse import urlencode
 
 import requests
 import websocket
@@ -341,6 +342,24 @@ class OnlineSession:
         self.ticket = ticket
         self.code = code.strip().upper()
         self._open("join")
+
+    def voice_url(self, lang="en"):
+        """The address of the voice chat page of the open match, with a ticket for this site. The page lives
+        on the relay (HTTPS, so the browser allows the microphone); the ticket sits after the `#` and never
+        reaches a server."""
+        with self._lock:
+            if self.phase not in ("lobby", "playing", "paused") or not (self.code and self.token and self.relay_url):
+                raise RelayError("There is no online match open")
+            relay_url, code, site, token = self.relay_url, self.code, self.site, self.token
+        base = _http_base(relay_url)
+        try:
+            res = self._post(f"{base}/api/matches/{code}/voice-ticket", {"site": site, "token": token})
+        except requests.RequestException as e:
+            raise RelayError(f"The relay is not reachable: {e}") from None
+        if res.status_code != 200:
+            raise RelayError(self._http_error(res))
+        query = urlencode({"code": code, "site": site, "ticket": res.json()["ticket"], "lang": lang})
+        return f"{base}/voice#{query}"
 
     def set_ready(self, ready):
         self._send({"type": "lobby_set_ready", "ready": bool(ready)})

@@ -256,7 +256,7 @@ When a match ends, the TV announces what was earned:
 Play one Elimination match together with players at other locations, each on their own Breakfast
 installation. One site hosts the match; the others join with its join code and a shared password, or, if
 the sites are linked, with one click. Each site adds its own players and says it is ready, and the host sets the
-lives and the order.
+lives and the order. A voice chat for the sites of a match opens in its own browser tab (*Voice chat* in the lobby and on the TV view): it runs on the relay's secure page, directly between the browsers, and a headset avoids echo.
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off.
 

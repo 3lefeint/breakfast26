@@ -8,6 +8,7 @@
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
+  import { openVoiceChat } from '../../lib/voice.js';
 
   let configured = $state(true);
   let site = $state('');
@@ -63,6 +64,15 @@
   const join = () => run('/api/online/join', { code, site, password: joinPassword });
   const joinLinked = (match) => run('/api/online/join-linked', { code: match.code, site });
   const leave = () => run('/api/online/leave');
+
+  let voiceUrl = $state('');
+  async function voice() {
+    error = '';
+    voiceUrl = '';
+    const res = await openVoiceChat();
+    if (res.error) error = explain(res.error);
+    else if (res.blocked) voiceUrl = res.url;
+  }
 
   let mine = $derived($online?.lobby.sites.find((s) => s.site === $online.site)?.players ?? []);
   let everyone = $derived(($online?.lobby.sites ?? []).flatMap((s) => s.players));
@@ -206,6 +216,11 @@
       <button class="btn ready-btn" class:btn-start={!meReady} class:btn-add={meReady} disabled={busy || !mine.length} onclick={setReady}>{meReady ? t('Not ready') : t('Ready')}</button>
       <p class="note">{t('Waiting for the host to start the match…')}</p>
     {/if}
+    <div class="voice-row">
+      <button class="btn btn-add" onclick={voice}>{t('🎧 Voice chat')}</button>
+      <span class="hint">{t('Opens in a new tab. Keep it open while you play.')}</span>
+      {#if voiceUrl}<a href={voiceUrl} target="_blank" rel="noopener">{t('Open the voice chat')}</a>{/if}
+    </div>
     <button class="btn-link" onclick={leave}>{t('Leave')}</button>
 
   {:else if $online.phase === 'ended'}
@@ -237,6 +252,8 @@
   .box-title { font-size: 0.85rem; font-weight: 600; }
   .open-box { margin-bottom: 0.75rem; align-items: stretch; }
   .open-match { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+  .voice-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0 0.5rem; }
+  .voice-row a { color: var(--accent); font-size: 0.85rem; }
   .ready-btn { margin-top: 0.75rem; }
   .code-input { text-transform: uppercase; letter-spacing: 0.25em; font-family: monospace; width: 10rem; }
   .code-row { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }

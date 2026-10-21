@@ -1544,6 +1544,20 @@ async def online_join_linked(body: OnlineLinkedJoinBody):
     return await _online_call(join)
 
 
+@app.post("/api/online/voice")
+async def online_voice():
+    """The address of the voice chat of the open match (a page on the relay, to open in a tab)."""
+    if not _online:
+        return {"error": "online play is not available"}
+    raw = cfg_mod.load(_config_path) if _config_path else {}
+    language = raw.get("web", {}).get("language", "en")
+    try:
+        url = await asyncio.to_thread(_online.voice_url, language if language in SUPPORTED_LANGUAGES else "en")
+    except online_mod.RelayError as e:
+        return {"error": str(e)}
+    return {"ok": True, "url": url}
+
+
 @app.post("/api/online/ready")
 async def online_ready(body: OnlineReadyBody):
     return await _online_call(_online.set_ready, body.ready)

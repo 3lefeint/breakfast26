@@ -32,6 +32,10 @@ class FakeSession:
         if password == "bad":
             raise online_mod.RelayError("wrong password")
 
+    def voice_url(self, lang="en"):
+        self.calls.append(("voice", lang))
+        return "https://relay/voice#code=K7M2QX"
+
     def set_ready(self, ready):
         self.calls.append(("ready", ready))
 
@@ -182,3 +186,11 @@ def test_without_a_registered_location_there_is_no_list_and_no_linked_join(wired
     assert "register" in res["error"]
     res = run(server.online_join(server.OnlineJoinBody(code="K7M2QX", site="Club")))
     assert "password" in res["error"]
+
+
+def test_the_voice_address_is_asked_in_the_language_of_the_interface(wired, tmp_path):
+    assert run(server.online_voice()) == {"ok": True, "url": "https://relay/voice#code=K7M2QX"}
+    assert server._online.calls[-1] == ("voice", "en")
+    cfg_mod.write(str(server._config_path), {"online": {"relay_url": "ws://relay"}, "web": {"language": "de"}})
+    run(server.online_voice())
+    assert server._online.calls[-1] == ("voice", "de")
