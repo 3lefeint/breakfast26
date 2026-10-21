@@ -6,6 +6,7 @@
 - The TV views of all games show a Start button instead of Reset while the board is stopped (camera standby time) and start it again.
 
 ### Fixed
+- Resuming a match after the start opens the TV view, where the match goes on; the question is also asked when the page is open on the TV view.
 - The top bar turns red when the board has stopped, also when it stopped before Breakfast started: the board status is asked once when the connection to the board opens.
 
 ## [1.7.0] - 2026-10-21

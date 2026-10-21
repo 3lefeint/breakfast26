@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import { connect, wsStatus, gameState } from '../lib/stores/gameState.js';
   import { health, startHealthPolling } from '../lib/stores/health.js';
-  import { route } from '../lib/router.js';
+  import { route, openTv } from '../lib/router.js';
   import TvApp from '../tv/App.svelte';
   import Aurora from '../lib/components/Aurora.svelte';
   import Sidebar from './shell/Sidebar.svelte';
@@ -68,12 +68,13 @@
       .then((r) => r.json())
       .catch((e) => ({ error: String(e) }));
     if (res.error) alertDialog(t('Could not resume the match: {error}', { error: t(res.error) }));
+    else if (answer) openTv();   // the match goes on in the TV view
   }
 
   $effect(() => {
     const offers = $gameState.resume ?? [];
     if (offerOpen && !offers.some((o) => o.key === offerOpen)) answerConfirm(null);
-    if ($route === 'tv' || offerOpen) return;
+    if (offerOpen) return;
     const next = offers.find((o) => !offered.has(o.key));
     if (next) {
       offered.add(next.key);
