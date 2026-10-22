@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS players (
     name       TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
     hidden     INTEGER NOT NULL DEFAULT 0,
-    color      TEXT
+    color      TEXT,
+    guest      INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS elimination_results (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -405,6 +406,7 @@ class StatsDB:
             self._migrate_misread()
             self._migrate_warm_up_kinds()
             self._migrate_player_color()
+            self._migrate_player_guest()
             self._migrate_backfill_x01_winner()
             self._migrate_drop_in_roster()
             self._migrate_lowercase_names()
@@ -508,6 +510,11 @@ class StatsDB:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(players)")}
         if "color" not in cols:
             self._conn.execute("ALTER TABLE players ADD COLUMN color TEXT")
+
+    def _migrate_player_guest(self):
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(players)")}
+        if "guest" not in cols:
+            self._conn.execute("ALTER TABLE players ADD COLUMN guest INTEGER NOT NULL DEFAULT 0")
 
     def local_time(self, iso: str) -> datetime:
         """A stored UTC time as a datetime in the configured timezone."""
@@ -730,8 +737,22 @@ class StatsDB:
         return [r["name"] for r in rows]
 
     def listed_hidden_players(self) -> list:
-        """The hidden players the Players tab offers to unhide: not the placeholders of deleted players."""
-        return [n for n in self.hidden_players() if not _DELETED_NAME.match(n)]
+        """The hidden players the Players tab offers to unhide: not the placeholders of deleted players and not the
+        guests of other sites."""
+        with self._lock:
+            guests = {r["name"] for r in self._conn.execute("SELECT name FROM players WHERE guest = 1")}
+        return [n for n in self.hidden_players() if n not in guests and not _DELETED_NAME.match(n)]
+
+    def guest_name(self, player: str, origin: str | None) -> str:
+        """The name a player of another site is stored under, `player@origin`: a guest of this installation. It is a
+        hidden player, so rankings, the Players tab and achievements leave it out, and its name cannot be the name of a
+        local player. The player row is made on the first call."""
+        name = normalize(f"{player}@{origin or 'unknown'}")
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO players (name, created_at, hidden, guest) VALUES (?, ?, 1, 1)", (name, _now_iso()))
+            self._conn.commit()
+        return name
 
     def hidden_players(self) -> list:
         """Names excluded from leaderboard()/all_players_stats() — the

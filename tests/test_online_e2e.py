@@ -123,15 +123,18 @@ def test_two_sites_play_a_whole_match(relay_url):
     throw("Home", 1, 1)         # anna 3 against 3 is not enough: out, ben wins
     assert _wait(lambda: home.session.status()["phase"] == "ended" and club.session.status()["phase"] == "ended")
     settle(4)
-    for s in sites.values():
+    # each site stores the players of the other site as guests, name@site
+    stored = {"Home": {"ben": "ben", "anna": "anna", "carl": "carl@club"},
+              "Club": {"ben": "ben@home", "anna": "anna@home", "carl": "carl"}}
+    for name, s in sites.items():
         assert s.ctrl.game.state == "finished" and s.ctrl.game.winner == "ben"
         result = s.session.status()["result"]
         assert result["reason"] == "finished"
         assert [(p["player"], p["placement"]) for p in result["placements"]] == [("ben", 1), ("anna", 2), ("carl", 3)]
         rows = s.db._conn.execute("SELECT player, placement FROM elimination_results ORDER BY placement").fetchall()
-        assert [(r["player"], r["placement"]) for r in rows] == [("ben", 1), ("anna", 2), ("carl", 3)]
+        assert [(r["player"], r["placement"]) for r in rows] == [(stored[name][p], n) for p, n in (("ben", 1), ("anna", 2), ("carl", 3))]
         turns = s.db._conn.execute("SELECT player FROM elimination_turns ORDER BY id").fetchall()
-        assert [t["player"] for t in turns] == ["anna", "carl", "ben", "anna"]
+        assert [t["player"] for t in turns] == [stored[name][p] for p in ("anna", "carl", "ben", "anna")]
     assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
 
 

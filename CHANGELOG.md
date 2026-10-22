@@ -6,6 +6,7 @@
 - The result page of a finished match, on the TV and in the Home app, lists the achievements earned in it, grouped by player; a click opens the description. The list is also in the details of a match in the Stats page. `GET /api/stats/match/{match_id}/achievements` returns it, and the game snapshots carry their `match_id`. (#83)
 
 ### Changed
+- The players of other sites in an online match are stored as guests (`name@site`) instead of ordinary players: they stay visible in the match, but have no entry in the Players tab, no place in the rankings and earn no achievements, and they never merge with a local player of the same name. (#79)
 - The achievement banner during a game is about 1.5 times larger. (#83)
 - Player names are stored in lower case and shown in upper case, whatever the spelling when the player was created; the voice file of a player is `<name>.mp3`, so the name on the screen and the key in the Voice Pack tab no longer differ in case. Names of an older database are changed once at the start (a copy of `stats.db` is made first, players that differ only in case are merged, a pair that played in the same match is left alone and logged), and so are the keys and voice files of the private voice-pack files. (#82)
 

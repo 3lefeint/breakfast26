@@ -222,13 +222,13 @@ class EliminationGame(TurnGame):
             return
         placements = []
         if self.winner:
-            placements.append((self.winner, 1, self.lives[self.winner]))
+            placements.append((self._stored(self.winner), 1, self.lives[self.winner]))
         placements += [
-            (name, i + 2 if self.winner else i + 1, None)
+            (self._stored(name), i + 2 if self.winner else i + 1, None)
             for i, name in enumerate(reversed(self.elimination_order))
         ]
         self.stats_db.record_elimination_result(self.match_id, placements)
-        self.stats_db.set_winner(self.match_id, self.winner)
+        self.stats_db.set_winner(self.match_id, self._stored(self.winner) if self.winner else None)
         self.stats_db.close_match(self.match_id)
 
     def _snapshot_state(self, player):
@@ -303,6 +303,14 @@ class EliminationGame(TurnGame):
     def is_local(self, player):
         return self.local_players is None or player in self.local_players
 
+    def _stored(self, player):
+        """The name a player is stored under in the statistics: a player at another site is a guest here, stored as
+        `name@site` (see StatsDB.guest_name), so that he never counts as, or merges with, a local player."""
+        if self.is_local(player) or not self.stats_db:
+            return player
+        owners = ((getattr(self.online, "match", None) or {}).get("owners")) or {}
+        return self.stats_db.guest_name(player, owners.get(player))
+
     # ── online: what comes in from the relay ─────────────────────────────────────
 
     def remote_dart(self, player, throws):
@@ -362,7 +370,7 @@ class EliminationGame(TurnGame):
         """The relay's result is the one every site stores."""
         if self.stats_db and placements:
             self.stats_db.replace_elimination_results(self.match_id, [
-                (x["player"], x["placement"], self.lives.get(x["player"]) if x["placement"] == 1 else None)
+                (self._stored(x["player"]), x["placement"], self.lives.get(x["player"]) if x["placement"] == 1 else None)
                 for x in placements])
 
     def _record_turn(self, player, score, darts_count):
@@ -372,7 +380,7 @@ class EliminationGame(TurnGame):
             return
         to_beat = 0 if self.freipass else self.target
         self.stats_db.insert_elimination_turn(
-            self.match_id, player, darts_count, score=score, target=to_beat,
+            self.match_id, self._stored(player), darts_count, score=score, target=to_beat,
             freipass=self.freipass, passed=score > to_beat, lives_before=self.lives[player],
             positions=dart_positions(self._last_throws))
 
@@ -453,7 +461,7 @@ class EliminationGame(TurnGame):
         self.elimination_order = list(snap["elimination_order"])
         if self.stats_db:
             self.stats_db.correct_last_elimination_turn(
-                self.match_id, snap["player"], new_total,
+                self.match_id, self._stored(snap["player"]), new_total,
                 new_total > (0 if self.freipass else self.target))
         self._apply_turn(snap["player"], new_total, silent=True)
         log.info("Turn corrected: total=%d", new_total)
@@ -524,7 +532,7 @@ class EliminationGame(TurnGame):
             self.stats_db.set_winner(self.match_id, None)
             self.stats_db.reopen_match(self.match_id)
         if snap["turn_recorded"]:
-            self.stats_db.delete_last_elimination_turn(self.match_id, snap["player"])
+            self.stats_db.delete_last_elimination_turn(self.match_id, self._stored(snap["player"]))
 
     def correct_current_dart(self, dart_index, field, point=None):
         if self.online and not self.is_local(self.current_player):

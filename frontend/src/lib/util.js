@@ -4,11 +4,14 @@ import { t } from './i18n.js';
 export const storedName = (s) => s.trim().toLowerCase();
 
 // A player name as the interface shows it: in upper case, names are stored in lower case. The placeholder of a deleted
-// player ("deleted player", "deleted player 2") is translated.
+// player ("deleted player", "deleted player 2") is translated, a guest of another site ("name@site") shows the site in
+// brackets.
 export function shownName(s) {
   if (!s) return s;
   const deleted = /^deleted player( \d+)?$/.exec(s);
-  return (deleted ? t('Deleted player') + (deleted[1] ?? '') : s).toUpperCase();
+  if (deleted) return (t('Deleted player') + (deleted[1] ?? '')).toUpperCase();
+  const guest = /^(.+)@([^@]+)$/.exec(s);
+  return (guest ? `${guest[1]} (${guest[2]})` : s).toUpperCase();
 }
 
 // A date and time as dd/mm/yyyy hh:mm in the 24-hour format, whatever the locale of the browser.

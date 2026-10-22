@@ -296,7 +296,7 @@ class TestMatch:
         game = h.ctrl.game
         assert game.lives == {"anna": 2, "carl": 1} and game.current_player == "anna"
         rows = h.db._conn.execute("SELECT player, score FROM elimination_turns ORDER BY id").fetchall()
-        assert [(r["player"], r["score"]) for r in rows] == [("anna", 180), ("carl", 3)]
+        assert [(r["player"], r["score"]) for r in rows] == [("anna", 180), ("carl@club", 3)]
         assert conn.sent[-1]["type"] == "ack" and conn.sent[-1]["seq"] == 2
 
     def test_a_replayed_turn_is_applied_once(self, h):
@@ -327,7 +327,7 @@ class TestMatch:
         conn.push({"type": "ended", "reason": "finished", "placements": [{"player": "anna", "placement": 1}, {"player": "carl", "placement": 2}]})
         assert _wait(lambda: h.session.status()["phase"] == "ended")
         rows = h.db._conn.execute("SELECT player, placement FROM elimination_results WHERE match_id = 'm-online' ORDER BY placement").fetchall()
-        assert [(r["player"], r["placement"]) for r in rows] == [("anna", 1), ("carl", 2)]
+        assert [(r["player"], r["placement"]) for r in rows] == [("anna", 1), ("carl@club", 2)]
 
     def _finish(self, h):
         conn = self._start(h)
@@ -505,10 +505,14 @@ def test_two_sites_play_a_match_and_agree():
         assert game.current_player == "anna" and game.lives == {"anna": 2, "carl": 1, "ben": 2}
         assert game.match_id == "m-hub"
     assert sites["Home"].ctrl.game.state_hash() == sites["Club"].ctrl.game.state_hash()
-    # everything of everyone is in both databases, remote players are ordinary players
-    for s in sites.values():
+    # everything of everyone is in both databases: the players of the other site are guests, stored as name@site
+    expected = {"Home": [("anna", 180), ("carl@club", 3), ("ben", 15)],
+                "Club": [("anna@home", 180), ("carl", 3), ("ben@home", 15)]}
+    for name, s in sites.items():
         rows = s.db._conn.execute("SELECT player, score FROM elimination_turns ORDER BY id").fetchall()
-        assert [(r["player"], r["score"]) for r in rows] == [("anna", 180), ("carl", 3), ("ben", 15)]
-        assert {p["name"] for p in s.db._conn.execute("SELECT name FROM players").fetchall()} >= {"anna", "carl", "ben"}
+        assert [(r["player"], r["score"]) for r in rows] == expected[name]
+        hidden = {p["name"] for p in s.db._conn.execute("SELECT name FROM players WHERE hidden = 1 AND guest = 1")}
+        assert hidden == {n for n, _ in expected[name] if "@" in n}
+        assert s.db.list_players() == sorted(n for n, _ in expected[name] if "@" not in n)
     for s in sites.values():
         s.session.leave()
