@@ -24,6 +24,7 @@ export interface TurnRecord {
   eliminated: string[];
   winner: string | null;
   site: string;
+  total?: number;           // the turn's total was corrected to this; `throws` are the darts as they were thrown
 }
 
 export interface MatchState {
@@ -139,6 +140,7 @@ export class MatchCore {
       case "dart": return this.dart(site, m);
       case "turn": return this.turn(conn, site, m);
       case "undo": return this.undo(conn, site, m);
+      case "turn_corrected": return this.corrected(conn, site, m);
       case "ack": return this.ack(site, m);
       case "decision": return this.decision(conn, site, m);
       case "leave": return this.leave(conn, site);
@@ -356,28 +358,41 @@ export class MatchCore {
     return this.toAll({ ...m, site }, site);
   }
 
+  /** Why turn `m` is not a valid turn for the state given (the players that are active, who is up, the seq before it), or null. */
+  private checkTurn(m: Frame, site: string, active: string[], current: string | null, baseSeq: number): string | null {
+    const s = this.s;
+    const player = m.player as string;
+    if (s.owners[player] !== site) return "that player is not yours";
+    if (player !== current) return "it is not that player's turn";
+    if (m.seq !== baseSeq + 1) return `expected seq ${baseSeq + 1}`;
+    const eliminated = m.eliminated as string[];
+    if (new Set(eliminated).size !== eliminated.length || eliminated.some((p) => !active.includes(p))) return "eliminated lists a player that is not active";
+    const remaining = active.filter((p) => !eliminated.includes(p));
+    const winner = m.winner as string | null;
+    const next = m.next_player as string | null;
+    if (winner !== null) {
+      if (remaining.length !== 1 || remaining[0] !== winner) return "the winner must be the only player left";
+      if (next !== null) return "next_player must be null when there is a winner";
+    } else {
+      if (remaining.length < 2) return "a single player left must be named the winner";
+      if (next === null || !remaining.includes(next)) return "next_player must be an active player";
+    }
+    return null;
+  }
+
   private turn(conn: string, site: string, m: Frame): Out[] {
     const s = this.s;
     const seq = m.seq as number;
     const no = (reason: string) => [{ to: conn, frame: { type: "turn_rejected", seq, reason } }];
     if (s.phase === "paused") return no("the match is paused");
     if (s.phase !== "playing") return no("the match is not being played");
+    const bad = this.checkTurn(m, site, s.active, s.current, s.seq);
+    if (bad) return no(bad);
     const player = m.player as string;
-    if (s.owners[player] !== site) return no("that player is not yours");
-    if (player !== s.current) return no("it is not that player's turn");
-    if (seq !== s.seq + 1) return no(`expected seq ${s.seq + 1}`);
     const eliminated = m.eliminated as string[];
-    if (new Set(eliminated).size !== eliminated.length || eliminated.some((p) => !s.active.includes(p))) return no("eliminated lists a player that is not active");
     const remaining = s.active.filter((p) => !eliminated.includes(p));
     const winner = m.winner as string | null;
     const next = m.next_player as string | null;
-    if (winner !== null) {
-      if (remaining.length !== 1 || remaining[0] !== winner) return no("the winner must be the only player left");
-      if (next !== null) return no("next_player must be null when there is a winner");
-    } else {
-      if (remaining.length < 2) return no("a single player left must be named the winner");
-      if (next === null || !remaining.includes(next)) return no("next_player must be an active player");
-    }
     const record: TurnRecord = { seq, player, throws: m.throws as Throw[], next_player: next, eliminated, winner, site };
     s.snaps.push({ active: [...s.active], eliminated: [...s.eliminated] });
     s.log.push(record);
@@ -386,6 +401,43 @@ export class MatchCore {
     s.active = remaining;
     s.current = next;
     const out: Out[] = [{ to: conn, frame: { type: "turn_ok", seq } }, ...this.toAll({ type: "turn", ...record }, site)];
+    if (winner !== null) out.push(...this.finish(winner));
+    return out;
+  }
+
+  /** The site that threw the last turn replaces it with a corrected one (other darts, or another total), also the turn that ended the match. */
+  private corrected(conn: string, site: string, m: Frame): Out[] {
+    const s = this.s;
+    const seq = m.seq as number;
+    const no = (reason: string) => [{ to: conn, frame: { type: "turn_rejected", seq, reason } }];
+    if (s.phase === "paused") return no("the match is paused");
+    if (s.phase !== "playing" && s.phase !== "finished") return no("the match is not being played");
+    const last = s.log[s.log.length - 1];
+    const before = s.snaps[s.snaps.length - 1];
+    if (!last || !before || seq !== s.seq || last.seq !== seq) return no("only the last turn can be corrected");
+    if (last.site !== site) return no("only the site that threw the turn can correct it");
+    if (s.droppedAtSeq === seq) return no("sites were dropped after that turn");
+    if (m.player !== last.player) return no("the corrected turn is of another player");
+    const bad = this.checkTurn(m, site, before.active, last.player, seq - 1);
+    if (bad) return no(bad);
+    const wasFinished = s.phase === "finished";
+    const eliminated = m.eliminated as string[];
+    const winner = m.winner as string | null;
+    const next = m.next_player as string | null;
+    const record: TurnRecord = { seq, player: last.player, throws: m.throws as Throw[], next_player: next, eliminated, winner, site };
+    if (typeof m.total === "number") record.total = m.total;
+    s.log[s.log.length - 1] = record;
+    s.active = before.active.filter((p) => !eliminated.includes(p));
+    s.eliminated = [...before.eliminated, ...eliminated];
+    s.current = next;
+    delete s.acks[String(seq)];
+    s.epoch++;
+    if (wasFinished) {
+      s.phase = "playing";
+      s.endedAt = null;
+    }
+    const out: Out[] = [{ to: conn, frame: { type: "turn_ok", seq, epoch: s.epoch } },
+      ...this.toAll({ type: "turn_corrected", ...record, epoch: s.epoch }, site)];
     if (winner !== null) out.push(...this.finish(winner));
     return out;
   }

@@ -45,6 +45,7 @@ puts the match into `paused` until it rejoins or the host decides. A `finished` 
 | `lobby_start` | `lives` (1 to 10), `order` (all lobby players once) | host only; at least 2 players, at most 12 players and 6 sites |
 | `dart` | `seq`, `player`, `throws` | live darts of the turn in progress, informational, relayed as is |
 | `turn` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner` | the finished turn, authoritative |
+| `turn_corrected` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner`, optional `total` | the site that threw the last turn replaces it (other darts, or with `total` another total for the same darts, 0 to 180), also the turn that ended the match; checked like a turn against the state before it; refused while paused and after sites were dropped |
 | `undo` | `seq` | take the last turn back (`seq` is that turn); only the site that threw it may, also after the turn that ended the match; refused while paused and after sites were dropped |
 | `ack` | `seq`, `hash` | the sender applied turn `seq` and its game state has this hash |
 | `decision` | `choice` (`continue` \| `abort`) | host only, after `decision_needed` |
@@ -69,9 +70,10 @@ match is over), `turn.eliminated` the players that lost their last life with thi
 | `rematch` | | the host asked for a rematch; followed by a `lobby` whose `order` is that of a local rematch (the first eliminated starts, the winner is last), without sites that are gone |
 | `dart` | as received, plus `site` | forwarded to the other sites |
 | `turn` | as received, plus `site` | forwarded to the other sites, in `seq` order |
-| `turn_ok` | `seq` | to the sender: its turn was accepted |
+| `turn_ok` | `seq`, `epoch` (only after a correction) | to the sender: its turn or correction was accepted |
 | `turn_rejected` | `seq`, `reason` | not the sender's player, not that player's turn, or a wrong `seq` |
 | `rejected` | `for` (the frame type), `reason` | a lobby frame was refused (name taken, not the host, ...); the connection stays open |
+| `turn_corrected` | as received, plus `site` and `epoch` | forwarded to the other sites: the last turn was replaced, they play it again; a match that was finished is `playing` again unless the corrected turn ends it, in which case `ended` follows. A turn with a corrected total comes again as `turn` (with `total`) in a replay after `resync` |
 | `undone` | `seq`, `player`, `site`, `epoch` | to every site, the sender included: turn `seq` was taken back, `player` is up again and every site walks its game back (a match that was finished is `playing` again); `epoch` counts the take-backs of the match |
 | `undo_rejected` | `seq`, `reason` | to the sender: not the last turn, not its turn, paused, not being played, or sites were dropped after that turn |
 | `resync` | | to a site that rejoins with an old `epoch`: it missed a take-back, so it starts the match again from the log that follows (`started`, then every turn) |

@@ -269,3 +269,47 @@ def test_a_turn_and_the_turn_that_ended_the_match_are_taken_back_on_both_sites(r
     assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
     for s in sites.values():
         s.session.leave()
+
+
+def test_a_dart_and_a_total_are_corrected_on_both_sites(relay_url):
+    home, club = _site(["anna", "ben"]), _site(["carl"])
+    sites = {"Home": home, "Club": club}
+    code = home.session.create(relay_url, "Home", "pw")
+    club.session.join(relay_url, code, "Club", "pw")
+    home.session.set_players(home.players)
+    club.session.set_players(club.players)
+    assert _wait(lambda: sum(len(s["players"]) for s in home.session.status()["lobby"]["sites"]) == 3)
+    home.session.start(2, ["anna", "carl", "ben"])
+    assert _wait(lambda: home.ctrl.game and club.ctrl.game)
+
+    def throw(site, number, multiplier):
+        ctrl = sites[site].ctrl
+        for n in (1, 2, 3):
+            ctrl.on_board_state(n, _throws(number, multiplier, n))
+        ctrl.on_board_state(0, [])
+
+    def settle(seq):
+        assert _wait(lambda: home.ctrl.game.turn_seq == seq and club.ctrl.game.turn_seq == seq)
+
+    def scores(site, player):
+        rows = sites[site].db._conn.execute("SELECT score FROM elimination_turns WHERE player = ? ORDER BY id", (player,)).fetchall()
+        return [r["score"] for r in rows]
+
+    throw("Home", 20, 3)                      # anna 180
+    settle(1)
+    assert home.ctrl.game.correct_last_dart(0, "S1") is True      # the first dart was a single 1: 1 + 60 + 60
+    assert _wait(lambda: scores("Club", "anna@home") == [121])
+    assert scores("Home", "anna") == [121]
+    settle(1)
+    assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
+    throw("Club", 1, 1)                       # carl 3 against 121: a life lost
+    settle(2)
+    assert club.ctrl.game.lives["carl"] == 1
+    club.ctrl.game.correct_turn(150)          # carl's total was 150: he passes
+    assert _wait(lambda: home.ctrl.game.lives["carl"] == 2)
+    for s in sites.values():
+        assert s.ctrl.game.lives["carl"] == 2 and s.ctrl.game.current_player == "ben"
+    assert scores("Club", "carl") == [150] and scores("Home", "carl@club") == [150]
+    assert _wait(lambda: home.ctrl.game.state_hash() == club.ctrl.game.state_hash())
+    for s in sites.values():
+        s.session.leave()

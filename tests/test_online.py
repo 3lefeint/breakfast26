@@ -414,13 +414,12 @@ class TestMatch:
         conn.push({"type": "resumed", "site": "Club"})
         assert _wait(lambda: h.session.status()["phase"] == "playing" and h.session.status()["decision"] is None)
 
-    def test_corrections_are_not_available_online_and_a_local_undo_changes_nothing(self, h):
+    def test_a_local_undo_changes_nothing_online(self, h):
         self._start(h)
         h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
         h.ctrl.on_board_state(0, [])
         assert h.ctrl.game.undo() is False
-        h.ctrl.game.correct_turn(10)
-        assert h.ctrl.game.turn_seq == 1 and h.ctrl.game.lives["anna"] == 2
+        assert h.ctrl.game.turn_seq == 1
 
     def _turns(self, h, conn, upto):
         """anna 180 (seq 1, thrown here), carl 3 (seq 2, remote), and for upto 4 anna 180 and carl out (the match ends)."""
@@ -435,6 +434,118 @@ class TestMatch:
             conn.push({"type": "turn", "seq": 4, "player": "carl", "throws": [_w(1, 1)] * 3,
                        "next_player": None, "eliminated": ["carl"], "winner": "anna", "site": "Club"})
             assert _wait(lambda: h.ctrl.game.state == "finished")
+
+    def _small_turns(self, h, conn, upto):
+        """anna 3 (seq 1, thrown here), carl 3 (seq 2, remote, loses a life); for upto 4 anna 3 again and carl 3, out."""
+        h.ctrl.on_board_state(3, [_t(1, 1)] * 3)
+        h.ctrl.on_board_state(0, [])
+        conn.push({"type": "turn", "seq": 2, "player": "carl", "throws": [_w(1, 1)] * 3,
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club"})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 2)
+        if upto >= 4:
+            h.ctrl.on_board_state(3, [_t(1, 1)] * 3)
+            h.ctrl.on_board_state(0, [])
+            conn.push({"type": "turn", "seq": 4, "player": "carl", "throws": [_w(1, 1)] * 3,
+                       "next_player": None, "eliminated": ["carl"], "winner": "anna", "site": "Club"})
+            assert _wait(lambda: h.ctrl.game.state == "finished")
+
+    def _corrections(self, conn):
+        return [f for f in conn.sent if f["type"] == "turn_corrected"]
+
+    def test_the_total_of_the_last_turn_is_corrected_here_and_goes_to_the_relay(self, h):
+        conn = self._start(h)
+        h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
+        h.ctrl.on_board_state(0, [])
+        h.ctrl.game.correct_turn(0)                                # 0 does not pass the freipass: anna loses a life
+        game = h.ctrl.game
+        assert game.lives == {"anna": 1, "carl": 2} and game.turn_seq == 1 and game.current_player == "carl"
+        frame = self._corrections(conn)[-1]
+        assert frame["seq"] == 1 and frame["player"] == "anna" and frame["total"] == 0
+        assert frame["next_player"] == "carl" and frame["eliminated"] == [] and frame["winner"] is None
+        assert len(frame["throws"]) == 3 and conn.sent[-1]["type"] == "ack"
+        assert h.db._conn.execute("SELECT score, passed FROM elimination_turns").fetchone()[:] == (0, 0)
+
+    def test_a_dart_of_the_last_turn_is_corrected_here_and_goes_to_the_relay(self, h):
+        conn = self._start(h)
+        h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
+        h.ctrl.on_board_state(0, [])
+        assert h.ctrl.game.correct_last_dart(0, "S1") is True
+        game = h.ctrl.game
+        assert game.turn_seq == 1 and game.current_player == "carl"
+        frame = self._corrections(conn)[-1]
+        assert frame["seq"] == 1 and "total" not in frame and [t["number"] for t in frame["throws"]] == [1, 20, 20]
+        assert [f["type"] for f in conn.sent].count("turn") == 1          # the turn was sent once, the correction replaces it
+        rows = h.db._conn.execute("SELECT score FROM elimination_turns").fetchall()
+        assert [r["score"] for r in rows] == [121]                       # one row, with the corrected darts
+
+    def test_a_turn_thrown_at_another_site_cannot_be_corrected_here(self, h):
+        conn = self._start(h)
+        self._small_turns(h, conn, 2)
+        h.ctrl.game.correct_turn(15)
+        assert h.ctrl.game.correct_last_dart(0, "S5") is False
+        assert self._corrections(conn) == [] and h.ctrl.game.lives["carl"] == 1
+
+    def test_a_dart_corrected_at_another_site_replaces_the_turn_here(self, h):
+        conn = self._start(h)
+        self._small_turns(h, conn, 2)
+        assert h.ctrl.game.lives["carl"] == 1 and h.ctrl.game.current_player == "anna"
+        conn.push({"type": "turn_corrected", "seq": 2, "player": "carl", "throws": [_w(5, 1)] * 3, "next_player": "anna",
+                   "eliminated": [], "winner": None, "site": "Club", "epoch": 1})
+        assert _wait(lambda: h.ctrl.game.lives["carl"] == 2)
+        game = h.ctrl.game
+        assert game.turn_seq == 2 and game.current_player == "anna"
+        rows = h.db._conn.execute("SELECT player, score, passed FROM elimination_turns ORDER BY id").fetchall()
+        assert [(r["player"], r["score"], r["passed"]) for r in rows] == [("anna", 3, 1), ("carl@club", 15, 1)]
+        assert conn.sent[-1]["type"] == "ack" and conn.sent[-1]["seq"] == 2
+        assert h.session.epoch == 1
+
+    def test_a_total_corrected_at_another_site_is_applied_here(self, h):
+        conn = self._start(h)
+        self._small_turns(h, conn, 2)
+        conn.push({"type": "turn_corrected", "seq": 2, "player": "carl", "throws": [_w(1, 1)] * 3, "total": 15,
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club", "epoch": 1})
+        assert _wait(lambda: h.ctrl.game.lives["carl"] == 2)
+        rows = h.db._conn.execute("SELECT player, score, passed FROM elimination_turns ORDER BY id").fetchall()
+        assert [(r["player"], r["score"], r["passed"]) for r in rows] == [("anna", 3, 1), ("carl@club", 15, 1)]
+        assert conn.sent[-1]["type"] == "ack"
+
+    def test_a_replayed_turn_with_a_total_is_applied_with_the_total(self, h):
+        conn = self._start(h)
+        h.ctrl.on_board_state(3, [_t(1, 1)] * 3)
+        h.ctrl.on_board_state(0, [])
+        conn.push({"type": "turn", "seq": 2, "player": "carl", "throws": [_w(1, 1)] * 3, "total": 15,
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club"})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 2)
+        assert h.ctrl.game.lives["carl"] == 2
+        rows = h.db._conn.execute("SELECT score FROM elimination_turns ORDER BY id").fetchall()
+        assert [r["score"] for r in rows] == [3, 15]
+
+    def test_a_correction_that_lets_the_match_go_on_takes_the_result_back(self, h):
+        conn = self._start(h)
+        self._small_turns(h, conn, 4)
+        conn.push({"type": "ended", "reason": "finished", "placements": [{"player": "anna", "placement": 1}, {"player": "carl", "placement": 2}]})
+        assert _wait(lambda: h.session.status()["phase"] == "ended")
+        conn.push({"type": "turn_corrected", "seq": 4, "player": "carl", "throws": [_w(5, 1)] * 3, "next_player": "anna",
+                   "eliminated": [], "winner": None, "site": "Club", "epoch": 1})
+        assert _wait(lambda: h.session.status()["phase"] == "playing")
+        assert h.session.status()["result"] is None and h.ctrl.game.state == "playing"
+        assert h.ctrl.game.current_player == "anna" and h.ctrl.game.lives["carl"] == 1
+        assert h.db._conn.execute("SELECT COUNT(*) FROM elimination_results").fetchone()[0] == 0
+
+    def test_a_correction_made_here_after_the_end_goes_on_with_the_match(self, h):
+        conn = self._start(h)
+        h.ctrl.on_board_state(3, [_t(1, 1)] * 3)
+        h.ctrl.on_board_state(0, [])
+        conn.push({"type": "turn", "seq": 2, "player": "carl", "throws": [_w(1, 1)] * 3,
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club"})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 2)
+        h.ctrl.on_board_state(3, [_t(1, 1)] * 3)                      # anna 3 against 3: a life lost
+        h.ctrl.on_board_state(0, [])
+        conn.push({"type": "turn", "seq": 4, "player": "carl", "throws": [_w(1, 1)] * 3,
+                   "next_player": None, "eliminated": ["carl"], "winner": "anna", "site": "Club"})
+        assert _wait(lambda: h.ctrl.game.state == "finished")
+        # the turn that ended the match was carl's, at the other site: it cannot be corrected here
+        assert h.ctrl.game.correct_last_dart(0, "S5") is False
 
     def test_undo_is_asked_of_the_relay_and_walked_back_when_it_answers(self, h):
         conn = self._start(h)

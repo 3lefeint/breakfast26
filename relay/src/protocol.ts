@@ -98,7 +98,8 @@ export function validateClientFrame(m: unknown): string | null {
       if (!isInt(m.seq, 1, 1_000_000)) return "seq must be a positive integer";
       if (!validName(m.player)) return "player must be a name";
       return validThrows(m.throws);
-    case "turn": {
+    case "turn":
+    case "turn_corrected": {
       if (!isInt(m.seq, 1, 1_000_000)) return "seq must be a positive integer";
       if (!validName(m.player)) return "player must be a name";
       const e = validThrows(m.throws);
@@ -106,6 +107,7 @@ export function validateClientFrame(m: unknown): string | null {
       if (m.next_player !== null && !validName(m.next_player)) return "next_player must be a name or null";
       if (!Array.isArray(m.eliminated) || !m.eliminated.every(validName)) return "eliminated must be a list of names";
       if (m.winner !== null && !validName(m.winner)) return "winner must be a name or null";
+      if ("total" in m && !isInt(m.total, 0, 180)) return "total must be 0 to 180";
       return null;
     }
     case "ack":
@@ -148,7 +150,10 @@ export function validateServerFrame(m: unknown): string | null {
       return validateClientFrame({ ...m, type: "dart" }) ?? (validName(m.site) ? null : "site must be a name");
     case "turn":
       return validateClientFrame({ ...m, type: "turn" }) ?? (validName(m.site) ? null : "site must be a name");
+    case "turn_corrected":
+      return validateClientFrame({ ...m, type: "turn_corrected" }) ?? (validName(m.site) && isInt(m.epoch, 1, 1_000_000) ? null : "turn_corrected needs site and epoch");
     case "turn_ok":
+      if ("epoch" in m && !isInt(m.epoch, 1, 1_000_000)) return "epoch must be a positive integer";
       return isInt(m.seq, 1, 1_000_000) ? null : "seq must be a positive integer";
     case "turn_rejected":
       return isInt(m.seq, 0, 1_000_000) && isStr(m.reason) ? null : "turn_rejected needs seq and reason";

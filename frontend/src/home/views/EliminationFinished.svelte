@@ -20,6 +20,8 @@
 
   let lastDarts = $derived($elimination?.last_turn?.darts || []);
   let correctingIndex = $state(null);
+  // The last turn is corrected at the site that threw it; a local match is all local.
+  let ownLastTurn = $derived(!$online || !!($online.match && $online.match.owners[$elimination?.last_turn?.player] === $online.site));
   let showModal = $state(false);
   let rematchPlayers = $state([]);
   let rematchNewInsertIdx = $state(0);
@@ -109,7 +111,7 @@
   <div class="trophy">🏆</div>
   <div class="winner-name">{shownName($elimination?.winner || '')}</div>
   <div class="winner-label">{t('Winner')}</div>
-  {#if lastDarts.length && !$online}
+  {#if lastDarts.length && ownLastTurn}
     <div class="last">
       <span class="last-label">{t('Last turn, {name}', { name: shownName($elimination.last_turn.player) })}</span>
       {#each lastDarts as d, i}

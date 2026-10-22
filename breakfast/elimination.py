@@ -47,6 +47,7 @@ class EliminationGame(TurnGame):
         # are thrown at this site's board; None means every player is local.
         self.online = online
         self.show_remote_darts = None      # set by the controller: shows the darts of a remote player on the board
+        self._sending_correction = False   # the turn being played again is a correction: it goes to the relay as such
         self.local_players = set(local_players) if local_players is not None else None
         self.turn_seq = 0          # finished turns of this match, local and remote
         self._remote = False       # True while a remote turn is being replayed
@@ -284,11 +285,11 @@ class EliminationGame(TurnGame):
             return
         if not self._remote:
             finished = self.state == "finished"
-            self.online.send_turn(
-                self.turn_seq, player, throws,
-                next_player=None if finished else self.current_player,
-                eliminated=list(self.elimination_order[eliminated_before:]),
-                winner=self.winner if finished else None)
+            send = self.online.send_corrected if self._sending_correction else self.online.send_turn
+            send(self.turn_seq, player, throws,
+                 next_player=None if finished else self.current_player,
+                 eliminated=list(self.elimination_order[eliminated_before:]),
+                 winner=self.winner if finished else None)
         self.online.send_ack(self.turn_seq, self.state_hash())
 
     def state_hash(self):
@@ -454,14 +455,39 @@ class EliminationGame(TurnGame):
                     # enough — announce the actual minimum passing score.
                     self.audio.play(str(self.target + 1))
 
+    def _may_correct_online(self):
+        """An online match lets the site that threw the last turn correct it, while the match is played or after it
+        ended normally."""
+        if self.turn_seq < 1 or not self._last_turn_player:
+            log.warning("No turn to correct")
+            return False
+        if not self.is_local(self._last_turn_player):
+            log.warning("The last turn was thrown at another site, it is corrected there")
+            return False
+        if not self.online.can_correct():
+            log.warning("The match cannot be corrected now")
+            return False
+        return True
+
     def correct_turn(self, new_total):
-        if self.online:
-            log.warning("Correcting a finished turn is not available in an online match yet")
+        if self.online and not self._may_correct_online():
             return
         snap = self._turn_snapshot
         if not snap:
             log.warning("No turn to correct")
             return
+        self._apply_total_correction(snap, new_total)
+        if self.online:
+            finished = self.state == "finished"
+            self.online.send_corrected(
+                self.turn_seq, snap["player"], list(self._last_turn_throws),
+                next_player=None if finished else self.current_player,
+                eliminated=list(self.elimination_order[len(snap["elimination_order"]):]),
+                winner=self.winner if finished else None, total=new_total)
+            self.online.send_ack(self.turn_seq, self.state_hash())
+
+    def _apply_total_correction(self, snap, new_total):
+        """Play the last turn again with another total, from the state before it."""
         self.lives = dict(snap["lives"])
         self.active = list(snap["active"])
         self.current_idx = snap["current_idx"]
@@ -476,6 +502,23 @@ class EliminationGame(TurnGame):
                 new_total > (0 if self.freipass else self.target))
         self._apply_turn(snap["player"], new_total, silent=True)
         log.info("Turn corrected: total=%d", new_total)
+
+    def correct_online(self, throws, total=None):
+        """The last turn was corrected at the site that threw it: replace it here too, from the corrected darts or the
+        corrected total, and tell the relay the state hash."""
+        if not self.online or self.turn_seq < 1:
+            return False
+        if total is not None:
+            snap = self._turn_snapshot
+            if not snap:
+                return False
+            self._apply_total_correction(snap, total)
+            self.online.send_ack(self.turn_seq, self.state_hash())
+            return True
+        if not self._history:
+            return False
+        self._replace_last_turn(list(throws), remote=True)      # the turn that is done sends the ack
+        return True
 
     def undo(self) -> bool:
         """Walk back the most recently completed turn, see TurnGame.undo(). In an online match the relay decides:
@@ -507,8 +550,7 @@ class EliminationGame(TurnGame):
         """Correct one dart of the last finished turn, also after it ended the match: the game goes
         back to before that turn and plays it again with the corrected dart. Returns False when there
         is no such turn."""
-        if self.online:
-            log.warning("Correcting a finished turn is not available in an online match yet")
+        if self.online and not self._may_correct_online():
             return False
         if not self._history or not self._last_turn_throws or dart_index not in (0, 1, 2):
             log.warning("No turn to correct")
@@ -516,12 +558,19 @@ class EliminationGame(TurnGame):
         if self.state == "playing" and self._current_darts:
             log.warning("The next turn has begun, the last one can no longer be corrected")
             return False
-        snap = self._history.pop()
-        was_finished = self.state == "finished"
         throws = list(self._last_turn_throws)
         while len(throws) <= dart_index:
             throws.append({"segment": {"number": 0, "multiplier": 0}})
         throws[dart_index] = parse_field(field, point)
+        self._replace_last_turn(throws)
+        log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
+        return True
+
+    def _replace_last_turn(self, throws, remote=False):
+        """Go back to before the last turn and play it again with these darts. Online it replaces the turn at the relay
+        (`remote`: a correction made at another site, that is only applied here)."""
+        snap = self._history.pop()
+        was_finished = self.state == "finished"
         if self.stats_db:
             self._forget_stored_turn(snap, was_finished)
         self._restore(snap)
@@ -532,12 +581,14 @@ class EliminationGame(TurnGame):
         self._prev_count = 0
         self._await_pull = self._board_count > 0
         self._silent = True
+        if self.online:
+            self.turn_seq -= 1                  # the turn is replaced, it does not count twice
+            self._remote, self._sending_correction = remote, not remote
         try:
             self._end_turn()
         finally:
             self._silent = False
-        log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
-        return True
+            self._remote = self._sending_correction = False
 
     def _restore(self, snap):
         self.lives = dict(snap["lives"])
@@ -696,6 +747,11 @@ class EliminationController(TurnGameController):
         with self._lock:
             if self.game:
                 self.game.remote_turn(player, throws)
+
+    def remote_correct(self, player, throws, total=None):
+        with self._lock:
+            if self.game:
+                self.game.correct_online(throws, total)
 
     def reset_online(self):
         """The match starts again from the relay's log: what this site stored for it, finished or not, goes."""

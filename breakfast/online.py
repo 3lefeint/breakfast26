@@ -111,9 +111,9 @@ def validate_client_frame(m):
         if not _is_int(m.get("seq"), 1, 1_000_000) or not _is_name(m.get("player")):
             return "dart needs seq and player"
         return _throws_error(m.get("throws"))
-    if t == "turn":
+    if t in ("turn", "turn_corrected"):
         if not _is_int(m.get("seq"), 1, 1_000_000) or not _is_name(m.get("player")):
-            return "turn needs seq and player"
+            return f"{t} needs seq and player"
         e = _throws_error(m.get("throws"))
         if e:
             return e
@@ -125,6 +125,8 @@ def validate_client_frame(m):
             return "eliminated must be a list of names"
         if m.get("winner") is not None and not _is_name(m.get("winner")):
             return "winner must be a name or null"
+        if "total" in m and not _is_int(m.get("total"), 0, 180):
+            return "total must be 0 to 180"
         return None
     if t == "ack":
         if not _is_int(m.get("seq"), 1, 1_000_000):
@@ -173,7 +175,14 @@ def validate_server_frame(m):
         return None if isinstance(m.get("owners"), dict) else "owners must be an object"
     if t in ("dart", "turn"):
         return validate_client_frame({**m, "type": t}) or (None if _is_name(m.get("site")) else "site must be a name")
+    if t == "turn_corrected":
+        problem = validate_client_frame({**m, "type": t})
+        if problem:
+            return problem
+        return None if _is_name(m.get("site")) and _is_int(m.get("epoch"), 1, 1_000_000) else "turn_corrected needs site and epoch"
     if t == "turn_ok":
+        if "epoch" in m and not _is_int(m.get("epoch"), 1, 1_000_000):
+            return "epoch must be a positive integer"
         return None if _is_int(m.get("seq"), 1, 1_000_000) else "seq must be a positive integer"
     if t == "turn_rejected":
         return None if _is_int(m.get("seq"), 0, 1_000_000) and _is_text(m.get("reason")) else "turn_rejected needs seq and reason"
@@ -422,6 +431,24 @@ class OnlineSession:
         self._send({"type": "turn", "seq": seq, "player": player, "throws": [throw_to_wire(t) for t in throws],
                     "next_player": next_player, "eliminated": eliminated, "winner": winner})
 
+    def can_correct(self):
+        """True when the last turn may be corrected: connected, and the match is played or was finished normally."""
+        with self._lock:
+            return self.connected and (self.phase == "playing" or (
+                self.phase == "ended" and (self.result or {}).get("reason") == "finished"))
+
+    def send_corrected(self, seq, player, throws, next_player, eliminated, winner, total=None):
+        """The last turn was corrected here: the corrected turn replaces it at the relay and at the other sites."""
+        frame = {"type": "turn_corrected", "seq": seq, "player": player, "throws": [throw_to_wire(t) for t in throws],
+                 "next_player": next_player, "eliminated": eliminated, "winner": winner}
+        if total is not None:
+            frame["total"] = total
+        with self._lock:
+            if winner is None and self.phase == "ended":
+                self.phase, self.result = "playing", None       # the correction means the match goes on
+        self._send(frame)
+        self._changed()
+
     def undo(self):
         """Ask the relay to take the last turn back on every site; the answer is the `undone` frame, or a message."""
         with self._lock:
@@ -622,10 +649,27 @@ class OnlineSession:
         game = self.controller.game
         if game is not None and f["seq"] <= game.turn_seq:
             return          # a turn we already applied, replayed after a rejoin
-        self.controller.remote_turn(f["player"], [throw_from_wire(t) for t in f["throws"]])
+        throws = [throw_from_wire(t) for t in f["throws"]]
+        self.controller.remote_turn(f["player"], throws)
+        if f.get("total") is not None:
+            self.controller.remote_correct(f["player"], throws, f["total"])      # a turn whose total was corrected
         game = self.controller.game
         if game is not None and game.state == "playing" and f.get("next_player") != game.current_player:
             log.warning("Turn %s: the relay expects %s up next, this site has %s", f["seq"], f.get("next_player"), game.current_player)
+
+    def _on_turn_ok(self, f):
+        if f.get("epoch") is not None:
+            with self._lock:
+                self.epoch = f["epoch"]         # this site's correction was accepted
+
+    def _on_turn_corrected(self, f):
+        """The site that threw the last turn corrected it: the turn is replaced here too."""
+        with self._lock:
+            self.epoch = f["epoch"]
+            if f.get("winner") is None and self.phase == "ended" and (self.result or {}).get("reason") == "finished":
+                self.phase, self.result = "playing", None
+            self.message = None
+        self.controller.remote_correct(f["player"], [throw_from_wire(t) for t in f["throws"]], f.get("total"))
 
     def _on_turn_rejected(self, f):
         with self._lock:

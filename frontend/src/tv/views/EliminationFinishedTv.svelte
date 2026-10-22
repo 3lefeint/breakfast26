@@ -22,6 +22,8 @@
   let rows = $derived([elimination.winner, ...[...(elimination.elimination_order || [])].reverse()].filter(Boolean)
     .map((name) => ({ name, lives: (elimination.players || []).find((p) => p.name === name)?.lives || 0 })));
   let correctingIndex = $state(null);
+  // The last turn is corrected at the site that threw it; a local match is all local.
+  let ownLastTurn = $derived(!online || !!(online.match && online.match.owners[elimination.last_turn?.player] === online.site));
 
   let showModal = $state(false);
   let rematchPlayers = $state([]);
@@ -117,7 +119,7 @@
       </li>
     {/each}
   </ul>
-  {#if lastDarts.length && !online}
+  {#if lastDarts.length && ownLastTurn}
     <div class="last">
       <span class="last-label">{t('Last turn, {name}', { name: shownName(elimination.last_turn.player) })}</span>
       {#each lastDarts as d, i}

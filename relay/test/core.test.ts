@@ -353,6 +353,89 @@ describe("undo", () => {
   });
 });
 
+describe("correcting a turn", () => {
+  const corrected = (seq: number, player: string, next: string | null, extra: Record<string, unknown> = {}): Frame => ({
+    type: "turn_corrected", seq, player, throws: [S1], next_player: next, eliminated: [], winner: null, ...extra,
+  });
+
+  it("replaces the last turn on every other site and the sender hears that it was accepted", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben"));
+    await r.send("c", corrected(2, "carl", "ben", { eliminated: ["carl"] }));
+    expect(r.last("c", "turn_ok")).toMatchObject({ seq: 2, epoch: 1 });
+    expect(r.last("h", "turn_corrected")).toMatchObject({ seq: 2, player: "carl", site: "Club", epoch: 1, eliminated: ["carl"] });
+    expect(r.frames("c", "turn_corrected")).toHaveLength(0);
+    expect(r.core.s).toMatchObject({ seq: 2, current: "ben", epoch: 1 });
+    expect(r.core.s.active).toEqual(["anna", "ben"]);
+    expect(r.core.s.eliminated).toEqual(["carl"]);
+    expect(r.core.s.log).toHaveLength(2);
+    await r.send("h", turn(3, "ben", "anna"));                      // the match goes on from the corrected state
+    expect(r.last("h", "turn_ok")).toMatchObject({ seq: 3 });
+  });
+
+  it("keeps the total of a corrected turn and brings it back with the turn", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("h", corrected(1, "anna", "carl", { total: 7 }));
+    expect(r.last("c", "turn_corrected")).toMatchObject({ seq: 1, total: 7 });
+    expect(r.core.s.log[0]).toMatchObject({ total: 7 });
+    const token = r.token("c");
+    r.drop("c");
+    r.inbox["c2"] = [];
+    await r.hello("c2", "rejoin", "Club", { token, last_seq: 1, epoch: 0 });
+    expect(r.frames("c2", "resync")).toHaveLength(1);
+    expect(r.frames("c2", "turn")[0]).toMatchObject({ seq: 1, total: 7 });
+  });
+
+  it("opens a finished match again when the corrected turn does not end it, and ends it again differently", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben", { eliminated: ["carl"] }));
+    await r.send("h", turn(3, "ben", null, { winner: "ben", eliminated: ["anna"] }));
+    expect(r.core.phase).toBe("finished");
+    await r.send("h", corrected(3, "ben", "anna", { eliminated: [] }));
+    expect(r.core.phase).toBe("playing");
+    expect(r.core.s).toMatchObject({ current: "anna", endedAt: null });
+    expect(r.core.s.active).toEqual(["anna", "ben"]);
+    await r.send("h", turn(4, "anna", null, { winner: "anna", eliminated: ["ben"] }));
+    expect(r.last("h", "ended").placements).toEqual([
+      { player: "anna", placement: 1 }, { player: "ben", placement: 2 }, { player: "carl", placement: 3 }]);
+    await r.send("h", corrected(4, "anna", null, { winner: "anna", eliminated: ["ben"], throws: [T20] }));
+    expect(r.frames("h", "ended")).toHaveLength(3);                // the first end, the second end and the result after the correction
+    expect(r.core.phase).toBe("finished");
+  });
+
+  it("a correction that ends the match tells everybody the result", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben", { eliminated: ["carl"] }));
+    await r.send("h", turn(3, "ben", "anna"));
+    await r.send("h", corrected(3, "ben", null, { winner: "ben", eliminated: ["anna"] }));
+    expect(r.core.phase).toBe("finished");
+    for (const conn of ["h", "c"]) expect(r.last(conn, "ended")).toMatchObject({ reason: "finished" });
+  });
+
+  it("is refused for another site, another turn, a wrong outcome, a paused match and after dropped sites", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", corrected(1, "anna", "carl"));
+    expect(r.last("c", "turn_rejected").reason).toContain("site that threw");
+    await r.send("h", corrected(2, "anna", "carl"));
+    expect(r.last("h", "turn_rejected").reason).toContain("last turn");
+    await r.send("h", corrected(1, "ben", "carl"));
+    expect(r.last("h", "turn_rejected").reason).toContain("another player");
+    await r.send("h", corrected(1, "anna", "nobody"));
+    expect(r.last("h", "turn_rejected").reason).toContain("next_player");
+    await r.send("h", corrected(1, "anna", "carl", { eliminated: ["zoe"] }));
+    expect(r.last("h", "turn_rejected").reason).toContain("not active");
+    expect(r.core.s.epoch).toBe(0);
+    r.drop("c");
+    await r.send("h", corrected(1, "anna", "carl"));
+    expect(r.last("h", "turn_rejected").reason).toContain("paused");
+  });
+});
+
 describe("rematch", () => {
   it("opens the lobby again like a local rematch: the first eliminated starts, the winner is last", async () => {
     await finishedMatch();
