@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-22
+
 ### Added
 - The circle can catch up on the past: Settings → Connections → Circle of friends has Send all matches, which queues every finished match the circle does not have yet (the outbox sends them in rounds and waits for an hour when the relay says it is too many, so a large history takes some days), and the Sites tab of the admin area has Fetch again, which makes a site fetch all the records meant for it again after a rule or mapping changed (`relay/migrations/0005_circle_refetch.sql`). A match in which no player is a player of the circle is no longer sent. (#95)
 - A match imported from another site counts for the achievements of the local players in it, like a match played here, but nothing is announced: no banner and no sound. Matches that started before the achievements start of this installation still do not count. (#26)
