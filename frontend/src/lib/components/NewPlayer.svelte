@@ -3,12 +3,13 @@
   import { t } from '../i18n.js';
   // Creates a new player and hands the name to the setup page, which puts it into its game.
   import { apiJson } from '../api.js';
+  import { storedName } from '../util.js';
 
   let { onadded } = $props();
   let name = $state('');
 
   async function add() {
-    const n = name.trim();
+    const n = storedName(name);
     if (!n) return;
     const res = await apiJson('POST', '/api/players', { name: n });
     if (res.error) { alertDialog(t(res.error)); return; }

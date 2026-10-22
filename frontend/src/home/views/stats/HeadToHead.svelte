@@ -4,7 +4,7 @@
   // which the row player finished ahead of the column player. Green = the row
   // player leads, red = trails, neutral = even; every cell also carries the
   // numbers, so the colour is never the only signal.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
 
   let { pairs = [], order = [] } = $props();
 
@@ -48,10 +48,10 @@
        role="table" aria-label={t('Head to head: how often the row player finished ahead of the column player')}>
     <div class="corner"></div>
     {#each names as col}
-      <div class="col-head" title={cap(col)}>{cap(col)}</div>
+      <div class="col-head" title={shownName(col)}>{shownName(col)}</div>
     {/each}
     {#each names as row}
-      <div class="row-head" title={cap(row)}>{cap(row)}</div>
+      <div class="row-head" title={shownName(row)}>{shownName(row)}</div>
       {#each names as col}
         {#if row === col}
           <div class="cell self"></div>
@@ -60,12 +60,12 @@
           {@const l = look(cell)}
           {#if l}
             <div class="cell" style:background={l.background}
-                 title={t('{row} finished ahead of {col} in {ahead} of {games} games ({pct}%)', { row: cap(row), col: cap(col), ahead: cell.ahead, games: cell.games, pct: l.percent })}>
+                 title={t('{row} finished ahead of {col} in {ahead} of {games} games ({pct}%)', { row: shownName(row), col: shownName(col), ahead: cell.ahead, games: cell.games, pct: l.percent })}>
               <span class="pct">{l.percent}%</span>
               <span class="count">{cell.ahead}/{cell.games}</span>
             </div>
           {:else}
-            <div class="cell none" title={t('{row} and {col} have not played together', { row: cap(row), col: cap(col) })}>·</div>
+            <div class="cell none" title={t('{row} and {col} have not played together', { row: shownName(row), col: shownName(col) })}>·</div>
           {/if}
         {/if}
       {/each}

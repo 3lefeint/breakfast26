@@ -10,7 +10,7 @@
   import { stepLabel, finishRun, stopRun, undoTurn } from '../../lib/blackBelt.js';
   import Icon from '../../lib/components/Icon.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
-  import { isBoardStopped } from '../../lib/util.js';
+  import { isBoardStopped, shownName } from '../../lib/util.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import BlackBeltLadder from '../../lib/components/BlackBeltLadder.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
@@ -69,7 +69,7 @@
     <div class="name-row">
       <div class="who">
         <span class="swatch"><Avatar name={bb.player || ''} color={bb.color} size={100} /></span>
-        <span class="name">{bb.player}</span>
+        <span class="name">{shownName(bb.player)}</span>
         <span class="turn">{t('Attempt {n}', { n: attempt })}{bb.backwards ? ' · ' + t('backwards') : ''}</span>
       </div>
       <div class="target">

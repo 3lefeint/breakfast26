@@ -44,7 +44,7 @@ def test_a_match_only_the_player_played_is_deleted(pdb):
 def test_a_shared_match_keeps_its_numbers_under_a_placeholder(pdb):
     _x01(pdb, "m1", ["ana", "ben"], winner="ana")
     pdb.delete_player("ana")
-    assert _names(pdb, "turns", "m1") == [DELETED_PLAYER, "ben"]
+    assert _names(pdb, "turns", "m1") == sorted([DELETED_PLAYER, "ben"])
     row = pdb._conn.execute("SELECT winner, players FROM matches WHERE match_id = 'm1'").fetchone()
     assert row["winner"] == DELETED_PLAYER
     assert DELETED_PLAYER in json.loads(row["players"]) and "ana" not in json.loads(row["players"])
@@ -58,7 +58,7 @@ def test_several_deleted_players_in_one_match_get_numbers(pdb):
     _x01(pdb, "m1", ["ana", "ben", "carl"])
     pdb.delete_player("ana")
     pdb.delete_player("ben")
-    assert _names(pdb, "turns", "m1") == [DELETED_PLAYER, f"{DELETED_PLAYER} 2", "carl"]
+    assert _names(pdb, "turns", "m1") == sorted([DELETED_PLAYER, f"{DELETED_PLAYER} 2", "carl"])
 
 
 def test_the_placeholder_is_left_out_of_rankings_and_the_hidden_list(pdb):
@@ -87,7 +87,7 @@ def test_elimination_results_and_achievements_follow(pdb):
     pdb._conn.commit()
     result = pdb.delete_player("ana")
     assert result["achievements"] == 1
-    assert _names(pdb, "elimination_results", "e1") == [DELETED_PLAYER, "ben"]
+    assert _names(pdb, "elimination_results", "e1") == sorted([DELETED_PLAYER, "ben"])
     assert _count(pdb, "achievements_earned", "player = 'ana'") == 0
     assert _count(pdb, "achievements_earned", "player = 'ben'") == 1
 

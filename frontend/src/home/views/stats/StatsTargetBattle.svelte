@@ -2,7 +2,7 @@
   import { t } from '../../../lib/i18n.js';
   // Target Battle half of the Stats tab. The chips pick the scoring profile, since points are only
   // comparable under the same rules; everything below counts only games of that profile.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { SCORING_SHORT } from '../../../lib/targetBattle.js';
   import RecentMatches from './RecentMatches.svelte';
   import Panel from '../../../lib/components/Panel.svelte';
@@ -72,14 +72,14 @@
       <div class="stat-tile-label">{t('Best game')}</div>
       <div class="stat-tile-value">{records.best_game?.score ?? '—'}</div>
       <div class="record-sub">
-        {#if records.best_game}{records.best_game.rounds} {records.best_game.rounds === 1 ? t('round') : t('rounds')} · {cap(records.best_game.player)} · {dateOf(records.best_game.date)}{/if}
+        {#if records.best_game}{records.best_game.rounds} {records.best_game.rounds === 1 ? t('round') : t('rounds')} · {shownName(records.best_game.player)} · {dateOf(records.best_game.date)}{/if}
       </div>
     </div>
     <div class="record">
       <div class="stat-tile-label">{t('Best turn')}</div>
       <div class="stat-tile-value">{records.best_turn?.score ?? '—'}</div>
       <div class="record-sub">
-        {#if records.best_turn}{cap(records.best_turn.player)} · {dateOf(records.best_turn.date)}{/if}
+        {#if records.best_turn}{shownName(records.best_turn.player)} · {dateOf(records.best_turn.date)}{/if}
       </div>
     </div>
   </div>

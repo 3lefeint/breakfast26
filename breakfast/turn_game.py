@@ -17,6 +17,7 @@ import threading
 import uuid
 
 from . import known_players as kp
+from . import names
 from .dartboard import field_centers
 
 log = logging.getLogger(__name__)
@@ -467,6 +468,9 @@ class TurnGameController:
             cmd = json.loads(payload)
         except Exception:
             return
+        if not isinstance(cmd, dict):
+            return
+        names.normalize_command(cmd)
         action = cmd.get("action", "")
         if action == "start":
             try:

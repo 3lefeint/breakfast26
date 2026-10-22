@@ -4,7 +4,7 @@
   // finishes compared with chance, recent Elimination matches and per-player
   // activity.
   import { onMount } from 'svelte';
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import Dashboard from '../Dashboard.svelte';
   import RecentMatches from './RecentMatches.svelte';
   import Panel from '../../../lib/components/Panel.svelte';
@@ -36,7 +36,7 @@
   function recordSub(r, showTarget) {
     if (!r) return '';
     const date = new Date(r.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${showTarget ? `${t('had to beat {n}', { n: r.target })} · ` : ''}${cap(r.player)} · ${date}`;
+    return `${showTarget ? `${t('had to beat {n}', { n: r.target })} · ` : ''}${shownName(r.player)} · ${date}`;
   }
 
   function duration(minutes) {

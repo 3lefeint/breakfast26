@@ -3,7 +3,7 @@
   // Killer half of the Stats tab: the overview with the records, who wins and how it compares to
   // chance, the form of the last games, head to head, and what each player did.
   import { onMount } from 'svelte';
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import RecentMatches from './RecentMatches.svelte';
   import Panel from '../../../lib/components/Panel.svelte';
   import PlacementRows from './PlacementRows.svelte';
@@ -48,17 +48,17 @@
     <div class="record">
       <div class="stat-tile-label">{t('Most lives taken in a game')}</div>
       <div class="stat-tile-value">{records.most_lives_taken?.count ?? '—'}</div>
-      <div class="record-sub">{#if records.most_lives_taken}{cap(records.most_lives_taken.player)} · {dateOf(records.most_lives_taken.date)}{/if}</div>
+      <div class="record-sub">{#if records.most_lives_taken}{shownName(records.most_lives_taken.player)} · {dateOf(records.most_lives_taken.date)}{/if}</div>
     </div>
     <div class="record">
       <div class="stat-tile-label">{t('Most knockouts in a game')}</div>
       <div class="stat-tile-value">{records.most_knockouts?.count ?? '—'}</div>
-      <div class="record-sub">{#if records.most_knockouts}{cap(records.most_knockouts.player)} · {dateOf(records.most_knockouts.date)}{/if}</div>
+      <div class="record-sub">{#if records.most_knockouts}{shownName(records.most_knockouts.player)} · {dateOf(records.most_knockouts.date)}{/if}</div>
     </div>
     <div class="record">
       <div class="stat-tile-label">{t('Fastest killer')}</div>
       <div class="stat-tile-value">{records.fastest_killer ? `${records.fastest_killer.turns} ${records.fastest_killer.turns === 1 ? t('turn') : t('turns')}` : '—'}</div>
-      <div class="record-sub">{#if records.fastest_killer}{cap(records.fastest_killer.player)}{/if}</div>
+      <div class="record-sub">{#if records.fastest_killer}{shownName(records.fastest_killer.player)}{/if}</div>
     </div>
   </div>
 

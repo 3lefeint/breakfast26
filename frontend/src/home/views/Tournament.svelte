@@ -5,7 +5,7 @@
   // with the controls. The matches themselves are played in the TV view.
   import { onMount } from 'svelte';
   import { tournament } from '../../lib/stores/tournament.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { apiJson } from '../../lib/api.js';
   import { nextMatch, abortTournament, closeTournament } from '../../lib/tournament.js';
   import TournamentSetup from './TournamentSetup.svelte';
@@ -43,7 +43,7 @@
 {#if snap && snap.active}
   <div class="section">
     {#if snap.phase === 'finished'}
-      <div class="heading">{t('{name} wins the tournament', { name: cap(snap.winner || '') })}</div>
+      <div class="heading">{t('{name} wins the tournament', { name: shownName(snap.winner || '') })}</div>
     {/if}
     <TournamentBracket {snap} />
     <div class="actions">
@@ -70,7 +70,7 @@
         {#each history as h (h.id)}
           <li>
             <span class="when">{dateOf(h.created_at)}</span>
-            <span class="who">{h.winner ? t('{name} wins', { name: cap(h.winner) }) : (STATUS[h.status] ? STATUS[h.status]() : h.status)}</span>
+            <span class="who">{h.winner ? t('{name} wins', { name: shownName(h.winner) }) : (STATUS[h.status] ? STATUS[h.status]() : h.status)}</span>
             <span class="meta">{h.players.length} {t('players')} · {h.config.start}</span>
             <span class="status" class:aborted={h.status === 'aborted'}>{STATUS[h.status] ? STATUS[h.status]() : ''}</span>
           </li>

@@ -1,5 +1,6 @@
 <script>
   import { t } from '../i18n.js';
+  import { shownName } from '../util.js';
   // The result of a finished Checkout Training run: how many attempts worked, and every attempt
   // with its score and the standard route, so the ones that did not work show what to practise.
   // Shown on Home and on the TV.
@@ -16,7 +17,7 @@
   <div class="headline">
     <div class="rate">{r.successes}<span class="of">&nbsp;/&nbsp;{r.attempts}</span><span class="pct">{percent(r.rate)}</span></div>
     <div class="meta">
-      {co.player} · {rangeLabel(co.low, co.high)} · {t('{n} attempts', { n: r.attempts })}
+      {shownName(co.player)} · {rangeLabel(co.low, co.high)} · {t('{n} attempts', { n: r.attempts })}
       {#if !r.completed}· <span class="badge">{t('Ended early')}</span>{/if}
     </div>
   </div>

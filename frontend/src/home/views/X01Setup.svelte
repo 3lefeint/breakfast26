@@ -11,7 +11,7 @@
   import Toggle from '../../lib/components/Toggle.svelte';
   import NewPlayer from '../../lib/components/NewPlayer.svelte';
   import BotAdder from '../../lib/components/BotAdder.svelte';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { START_SCORES, MODES, MAX_LEGS, MAX_ROUNDS_CHOICES, botStageName } from '../../lib/x01.js';
 
   let gamePlayers = $state([]);
@@ -104,7 +104,7 @@
       <div class="section-title">{t('Choose Players')}</div>
       <div class="known-chips">
         {#each $players.known as name (name)}
-          <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{cap(name)}</button>
+          <button type="button" class="chip" class:in-game={gamePlayers.includes(name)} onclick={() => toggle(name)}>{shownName(name)}</button>
         {/each}
       </div>
       <NewPlayer onadded={added} />
@@ -117,7 +117,7 @@
       <ul class="game-players">
         {#each gamePlayers as name, i (name)}
           <li>
-            <span class="player-name-text">{cap(name)}{#if bots[name]} <span class="bot-tag">{t('Computer')} {botStageName(bots[name])}</span>{/if}</span>
+            <span class="player-name-text">{shownName(name)}{#if bots[name]} <span class="bot-tag">{t('Computer')} {botStageName(bots[name])}</span>{/if}</span>
             <button class="btn-icon remove" onclick={() => removeFromGame(i)}>×</button>
           </li>
         {/each}

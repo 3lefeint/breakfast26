@@ -17,7 +17,7 @@
   import { warmUp } from '../lib/stores/warmUp.js';
   import { checkoutTraining } from '../lib/stores/checkoutTraining.js';
   import { online } from '../lib/stores/online.js';
-  import { cap } from '../lib/util.js';
+  import { shownName } from '../lib/util.js';
   import { startAudio, stopAudio, toggleAudio, audioOn, locked, primeAutoplay } from './lib/audio.js';
   import TopBar from '../home/shell/TopBar.svelte';
   import Aurora from '../lib/components/Aurora.svelte';

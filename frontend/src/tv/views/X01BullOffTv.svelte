@@ -7,7 +7,7 @@
   // shown (tap it to correct it, or to enter one the board did not see); the next player is up when the
   // darts are pulled, or with Next. When the order is set the match starts.
   import { flip } from 'svelte/animate';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { dartLabel } from '../../lib/killer.js';
   import { ruleChips } from '../../lib/x01.js';
@@ -52,7 +52,7 @@
 <div class="stage">
   <div class="bar">
     <div class="turn">
-      <span class="turn-name">{starting ? t('Match starts …') : cap(x.current_player || '—')}</span>
+      <span class="turn-name">{starting ? t('Match starts …') : shownName(x.current_player || '—')}</span>
       {#if !starting}<span class="turn-hint">{x.pull_darts ? t('Pull the darts') : t('Bull-off: one dart at the bull')}</span>{/if}
       {#if x.tiebreak}<span class="turn-hint">{t('Max Rounds reached: the Bull-Off decides the leg')}</span>{/if}
     </div>
@@ -73,7 +73,7 @@
         {#each x.players as p, i (p.name)}
           <li class:current-row={p.current && !starting} animate:flip={{ duration: 300 }}>
             <span class="place">{p.placed ? i + 1 : ''}</span>
-            <span class="name">{cap(p.name)}</span>
+            <span class="name">{shownName(p.name)}</span>
             <span class="num">{p.bull_off_mm != null ? `${p.bull_off_mm} mm` : ''}</span>
           </li>
         {/each}
@@ -81,14 +81,14 @@
 
       <div class="darts-row">
         <button type="button" class="dart-box" disabled={starting} onclick={() => (correcting = true)}>
-          <span class="dlabel">{x.pull_darts ? `${t('Last throw')} · ${cap(x.last_turn?.player || '')}` : t('Enter a dart')}</span>
+          <span class="dlabel">{x.pull_darts ? `${t('Last throw')} · ${shownName(x.last_turn?.player || '')}` : t('Enter a dart')}</span>
           <span class="dval">{x.pull_darts && lastThrow ? dartLabel(lastThrow) : '—'}</span>
         </button>
       </div>
 
       {#if lastTurn.length}
         <div class="last-turn">
-          <span class="dlabel">{t('Last turn, {name}', { name: cap(x.last_turn.player) })}</span>
+          <span class="dlabel">{t('Last turn, {name}', { name: shownName(x.last_turn.player) })}</span>
           {#each lastTurn as d, i}
             <button type="button" class="dart-chip" onclick={() => (correctingLast = i)}>{dartLabel(d)}</button>
           {/each}

@@ -46,7 +46,7 @@
   /* The three values share the columns of the header row. */
   .stats { display: contents; }
   .avatar { display: flex; align-items: center; justify-content: center; }
-  .pname { color: var(--text); text-decoration: none; font-size: 1.05rem; text-transform: capitalize; }
+  .pname { color: var(--text); text-decoration: none; font-size: 1.05rem; text-transform: uppercase; }
   a.pname:hover { color: var(--accent); }
   .pwins { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--text) 75%, transparent); font-size: 0.95rem; }
   .pwins :global(svg) { color: var(--accent); }

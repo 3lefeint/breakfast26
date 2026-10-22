@@ -12,7 +12,7 @@
   // every round with its target and what each player scored in it.
   import { untrack, tick } from 'svelte';
   import { flip } from 'svelte/animate';
-  import { cap, isBoardStopped } from '../../lib/util.js';
+  import { shownName, isBoardStopped } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { SEGMENT_ORDER } from '../../lib/dartboard.js';
   import { ranked, boardDarts, stopGame } from '../../lib/targetBattle.js';
@@ -122,7 +122,7 @@
     <div class="name-row">
       <div class="turn">
         <span class="swatch" style="{me ? ringStyle(me) : ''}"><Avatar name={me?.name || ''} color={me?.color} size={100} /></span>
-        <span class="turn-name">{cap(me?.name || '—')}</span>
+        <span class="turn-name">{shownName(me?.name || '—')}</span>
       </div>
       <div class="target">
         <span class="target-label">{t('Target')}</span>
@@ -158,7 +158,7 @@
         <li class:current-row={p.current} animate:flip={{ duration: 300 }}>
           <span class="row-name">
             <span class="swatch" style="{ringStyle(p)}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
-            <span class="name">{cap(p.name)}</span>
+            <span class="name">{shownName(p.name)}</span>
             {#if tb.tiebreak && !tb.contenders.includes(p.name)}<span class="out">{t('out')}</span>{/if}
           </span>
           <span class="chips">
@@ -178,7 +178,7 @@
             <tr>
               <th>{t('Round')}</th><th>{t('Target')}</th>
               {#each tb.order as name}
-                <th class="who">{cap(name)}</th>
+                <th class="who">{shownName(name)}</th>
               {/each}
             </tr>
           </thead>

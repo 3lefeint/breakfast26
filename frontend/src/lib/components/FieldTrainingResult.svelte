@@ -1,5 +1,6 @@
 <script>
   import { t } from '../i18n.js';
+  import { shownName } from '../util.js';
   // The result of a finished Field Training run: the points, the hit rate and the share of singles,
   // doubles and triples, the rating and the personal best of a run that counts, the points of every
   // turn and where the darts landed. Shown on Home and on the TV.
@@ -20,7 +21,7 @@
   <div class="headline">
     <div class="points">{r.points}<span class="unit">{t('points')}</span></div>
     <div class="meta">
-      {ft.player} · {fieldLabel(ft.field)} · {t('{n} of {total} darts', { n: r.darts, total: ft.darts })}
+      {shownName(ft.player)} · {fieldLabel(ft.field)} · {t('{n} of {total} darts', { n: r.darts, total: ft.darts })}
     </div>
     <div class="badges">
       {#if r.counts && r.rating}<span class="badge rating {r.rating}">{RATING_LABELS[r.rating]}</span>{/if}

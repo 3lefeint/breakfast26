@@ -4,7 +4,7 @@
   // performance tiles, the spread of the turn scores, win/loss and the average
   // per match, the checkout % per match, the doubles, the fastest legs and the highest
   // checkouts.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import ActivityBars from './ActivityBars.svelte';
   import Histogram from './Histogram.svelte';
   import Donut from './Donut.svelte';
@@ -63,7 +63,7 @@
 <div class="controls">
   <label for="x01PlayerSelect">{t('Player')}</label>
   <select id="x01PlayerSelect" bind:value={selected}>
-    {#each names as name}<option value={name}>{cap(name)}</option>{/each}
+    {#each names as name}<option value={name}>{shownName(name)}</option>{/each}
   </select>
 </div>
 

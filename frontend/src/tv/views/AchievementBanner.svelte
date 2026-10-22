@@ -3,14 +3,14 @@
   // The unlock banner, like a console achievement: it slides in at the top, stays a few
   // seconds and slides out again. Several earned at once are shown one after the other.
   import { achievementQueue, achievementShown } from '../../lib/stores/achievementQueue.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { localized } from '../../lib/achievements.js';
   import Badge from '../../lib/components/Badge.svelte';
 
   let current = $derived($achievementQueue[0]);
 
   function byline(item) {
-    return item.tiers ? `${cap(item.player)} · ${t('tier {tier} of {count}', { tier: item.tier, count: item.tiers.length })}` : cap(item.player);
+    return item.tiers ? `${shownName(item.player)} · ${t('tier {tier} of {count}', { tier: item.tier, count: item.tiers.length })}` : shownName(item.player);
   }
 </script>
 

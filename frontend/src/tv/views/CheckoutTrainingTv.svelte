@@ -11,7 +11,7 @@
   import { rangeLabel, finishRun, stopRun, undoAttempt, percent, fieldName } from '../../lib/checkoutTraining.js';
   import Icon from '../../lib/components/Icon.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
-  import { isBoardStopped } from '../../lib/util.js';
+  import { isBoardStopped, shownName } from '../../lib/util.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import RouteChips from '../../lib/components/RouteChips.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
@@ -73,7 +73,7 @@
     <div class="name-row">
       <div class="who">
         <span class="swatch"><Avatar name={co.player || ''} color={co.color} size={100} /></span>
-        <span class="name">{co.player}</span>
+        <span class="name">{shownName(co.player)}</span>
         <span class="turn">{t('Attempt {n} of {total}', { n: co.attempt, total: co.attempts })}</span>
         <span class="range">{rangeLabel(co.low, co.high)}</span>
       </div>

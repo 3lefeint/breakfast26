@@ -3,7 +3,7 @@
   // The per-player section of the Elimination view: player selector, activity
   // tiles, records and the activity charts, one bundled fetch per player via
   // /api/stats/dashboard/{name}.
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import ActivityBars from './stats/ActivityBars.svelte';
   import PositionHeatmap from './stats/PositionHeatmap.svelte';
 
@@ -44,7 +44,7 @@
   <label for="dashPlayerSelect">{t('Player')}</label>
   <select id="dashPlayerSelect" bind:value={selected}>
     {#each sortedNames as name}
-      <option value={name}>{cap(name)}</option>
+      <option value={name}>{shownName(name)}</option>
     {/each}
   </select>
 </div>

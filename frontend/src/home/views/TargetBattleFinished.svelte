@@ -7,7 +7,7 @@
   // players and options, a new setup, or undoing the turn that ended the game.
   import { targetBattle } from '../../lib/stores/targetBattle.js';
   import { api } from '../../lib/api.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { rematch, stopGame, SCORING_LABELS } from '../../lib/targetBattle.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
 
@@ -29,7 +29,7 @@
   {#if !solo}<ConfettiBurst />{/if}
   <div class="section finished">
     <div class="heading">
-      {#if solo}{t('Finished')}{:else if tb.winners.length > 1}{t('{names} win', { names: tb.winners.map(cap).join(t(' and ')) })}{:else}{t('{name} wins', { name: cap(tb.winners[0] || '') })}{/if}
+      {#if solo}{t('Finished')}{:else if tb.winners.length > 1}{t('{names} win', { names: tb.winners.map(shownName).join(t(' and ')) })}{:else}{t('{name} wins', { name: shownName(tb.winners[0] || '') })}{/if}
     </div>
     <div class="meta">{tb.rounds} {tb.rounds === 1 ? t('round') : t('rounds')} · {SCORING_LABELS[tb.scoring] || tb.scoring}</div>
     <ul class="results">
@@ -38,7 +38,7 @@
           <span class="place">{p.placement}</span>
           <span class="who">
             <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
-            {cap(p.name)}
+            {shownName(p.name)}
           </span>
           <span class="score">{p.score}</span>
         </li>

@@ -2,7 +2,7 @@
 // the highlights. Drawn on a canvas instead of copied from the page so the picture does not depend on the glass
 // and blur effects of the screen. `data` carries what the summary component shows: `summary`, `players` (with
 // their `tint`), `legsWon`, `played`, `rows` ({ label, get, show, best, bar }), `isBest`, `barWidth`, `highlights`, and `crown` (the loaded crown image, optional).
-import { cap, formatDateTime } from './util.js';
+import { shownName, formatDateTime } from './util.js';
 import crownUrl from './assets/crown.png';
 
 const WIDTH = 1080, PAD = 48, SCALE = 2;
@@ -96,7 +96,7 @@ export function drawSummary(data) {
     ctx.textAlign = 'center';
     ctx.fillStyle = text;
     ctx.font = font(700, 32);
-    const name = fit(ctx, cap(p.name), boxW - 24);
+    const name = fit(ctx, shownName(p.name), boxW - 24);
     ctx.fillText(name, bx + boxW / 2, y + 56);
     if (crown && p.name === summary.winner) {
       // Over the first letter like on the screen: 1.3 em wide, 0.6 em up and left of the name.
@@ -119,7 +119,7 @@ export function drawSummary(data) {
   ctx.font = font(700, 28);
   players.forEach((p, i) => {
     ctx.fillStyle = p.tint;
-    ctx.fillText(fit(ctx, cap(p.name), colW - 16), colX(i), y + 46);
+    ctx.fillText(fit(ctx, shownName(p.name), colW - 16), colX(i), y + 46);
   });
   rows.forEach((row, r) => {
     const ry = y + headH + r * rowH;
@@ -154,7 +154,7 @@ export function drawSummary(data) {
     const value = `${h.value}${h.unit ? ' ' + h.unit : ''}`;
     ctx.fillText(value, hx + 16, hy + 70);
     ctx.font = font(400, 22); ctx.fillStyle = muted;
-    ctx.fillText(fit(ctx, h.names.map(cap).join(', '), hlW - 32), hx + 16, hy + 104);
+    ctx.fillText(fit(ctx, h.names.map(shownName).join(', '), hlW - 32), hx + 16, hy + 104);
   });
 
   ctx.font = font(600, 22);

@@ -3,7 +3,7 @@
   // Random checkout half of the Stats tab: per player how often an attempt worked overall and by
   // range of scores, which scores work and which do not (with the standard route to practise), and
   // the runs themselves.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { percent, rangeLabel } from '../../../lib/checkoutTraining.js';
   import RouteChips from '../../../lib/components/RouteChips.svelte';
   import RecentMatches from './RecentMatches.svelte';
@@ -36,12 +36,12 @@
     <div class="picker" role="tablist" aria-label={t('Player')}>
       {#each players as p}
         <button type="button" class="pick" class:active={p.player === player.player}
-                onclick={() => (playerName = p.player)}>{cap(p.player)}</button>
+                onclick={() => (playerName = p.player)}>{shownName(p.player)}</button>
       {/each}
     </div>
   {/if}
 
-  <div class="section-title">{cap(player.player)}</div>
+  <div class="section-title">{shownName(player.player)}</div>
   <div class="stat-tiles">
     <div class="stat-tile"><div class="stat-tile-label">{t('Attempts')}</div>
       <div class="stat-tile-value">{player.attempts}</div>

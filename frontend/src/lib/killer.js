@@ -1,6 +1,6 @@
 import { alertDialog } from './confirm.js';
 import { api, apiJson } from './api.js';
-import { cap } from './util.js';
+import { shownName } from './util.js';
 import { t } from './i18n.js';
 
 // Start the game that just finished once more: same players in the same order, same options. Every
@@ -39,8 +39,8 @@ export function dartLabel(dart) {
 
 // One event of a turn as a line of text.
 export function eventText(e) {
-  const who = cap(e.player);
-  const victim = e.victim ? cap(e.victim) : '';
+  const who = shownName(e.player);
+  const victim = e.victim ? shownName(e.victim) : '';
   switch (e.kind) {
     case 'killer': return t('{who} is a killer', { who });
     case 'hit': return t('{who} hits {victim}, {lives} left', { who, victim, lives: e.lives });

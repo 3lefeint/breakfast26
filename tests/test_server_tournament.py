@@ -161,15 +161,15 @@ def test_max_rounds_that_make_no_sense_are_refused(client):
 def test_a_bot_can_play_in_a_tournament(client):
     c, x01, tour, *_ = client
     x01.bots._spawn = lambda fn: None          # no bot plays during this test
-    body = {**START, "seats": ["ana", "Bot 3", "cy", "Bot 5"], "bots": {"Bot 3": 3, "Bot 5": 5}}
+    body = {**START, "seats": ["ana", "bot 3", "cy", "bot 5"], "bots": {"bot 3": 3, "bot 5": 5}}
     assert c.post("/api/tournament/start", json=body).json() == {"ok": True}
-    assert tour.t["config"]["bots"] == {"Bot 3": 3, "Bot 5": 5}
-    assert x01.game.bot_levels == {name: lv for name, lv in {"Bot 3": 3, "Bot 5": 5}.items() if name in x01.game.order}
+    assert tour.t["config"]["bots"] == {"bot 3": 3, "bot 5": 5}
+    assert x01.game.bot_levels == {name: lv for name, lv in {"bot 3": 3, "bot 5": 5}.items() if name in x01.game.order}
     assert x01.bots.levels == x01.game.bot_levels
 
 
 def test_a_tournament_of_bots_alone_is_refused(client):
     c, x01, tour, *_ = client
-    body = {**START, "seats": ["Bot 1", "Bot 3", None, None], "bots": {"Bot 1": 1, "Bot 3": 3}}
+    body = {**START, "seats": ["bot 1", "bot 3", None, None], "bots": {"bot 1": 1, "bot 3": 3}}
     assert c.post("/api/tournament/start", json=body).json() == {"error": "at least one player has to be human"}
     assert not tour.running

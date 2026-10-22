@@ -6,7 +6,7 @@
   // The result of a finished Killer game on the TV: the placements with their numbers, the winner
   // marked with the crown, and the darts of the last turn. A dart tapped here is corrected and the
   // game resumes when that turn did not decide it after all.
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { rematch, stopGame, ruleChips, dartLabel } from '../../lib/killer.js';
   import Crown from '../../lib/components/Crown.svelte';
@@ -33,7 +33,7 @@
 <ConfettiBurst />
 
 <div class="finished">
-  <div class="heading">{t('{name} wins', { name: cap(killer.winner || '') })}</div>
+  <div class="heading">{t('{name} wins', { name: shownName(killer.winner || '') })}</div>
   <div class="meta">{ruleChips(killer).join(' · ')}</div>
   <ul class="results">
     {#each rows as p (p.name)}
@@ -41,7 +41,7 @@
         <span class="place">{p.placement}</span>
         <span class="who">
           <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
-          <span class="name-crown">{#if p.name === killer.winner}<Crown />{/if}{cap(p.name)}</span>
+          <span class="name-crown">{#if p.name === killer.winner}<Crown />{/if}{shownName(p.name)}</span>
           <span class="number">#{p.number}</span>
         </span>
         <span class="lives">{p.lives > 0 ? '❤️'.repeat(p.lives) : '☠️'}</span>
@@ -50,7 +50,7 @@
   </ul>
   {#if lastDarts.length}
     <div class="last">
-      <span class="last-label">{t('Last turn, {name}', { name: cap(killer.last_turn.player) })}</span>
+      <span class="last-label">{t('Last turn, {name}', { name: shownName(killer.last_turn.player) })}</span>
       {#each lastDarts as d, i}
         <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
       {/each}

@@ -3,7 +3,7 @@
   // X01 half of the Stats tab: totals and records, the players compared as bars,
   // recent X01 matches and the per-player section.
   import { onMount } from 'svelte';
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import X01Player from './X01Player.svelte';
   import RecentMatches from './RecentMatches.svelte';
   import RankBars from './RankBars.svelte';
@@ -24,13 +24,13 @@
   });
 
   const date = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  const who = (r) => (r ? `${cap(r.player)} · ${date(r.date)}` : '');
+  const who = (r) => (r ? `${shownName(r.player)} · ${date(r.date)}` : '');
   const hours = (h) => (h < 1 ? `${Math.round(h * 60)} ${t('min')}` : `${h.toFixed(1)} h`);
 
   // Best first; each ranking only lists players it can say something about.
   function ranking(list, value, text, sub) {
     return list
-      .map((p) => ({ name: cap(p.player), value: value(p), text: text(p), sub: sub?.(p) }))
+      .map((p) => ({ name: shownName(p.player), value: value(p), text: text(p), sub: sub?.(p) }))
       .sort((a, b) => b.value - a.value);
   }
   let rankings = $derived({

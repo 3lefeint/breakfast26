@@ -2,7 +2,7 @@
   import { t } from '../../../lib/i18n.js';
   // Killer per player: how often they became a killer and how fast, what they took from others
   // (lives, knockouts), and what they lost (own goals, lives).
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
 
   let { players = [] } = $props();
 
@@ -25,7 +25,7 @@
     <tbody>
       {#each rows as p (p.player)}
         <tr>
-          <td>{cap(p.player)}</td>
+          <td>{shownName(p.player)}</td>
           <td class="num">{p.games}</td>
           <td class="num" title={t('{n} of {games} games', { n: p.killer_games, games: p.games })}>{p.killer_pct != null ? p.killer_pct.toFixed(0) + '%' : '—'}</td>
           <td class="num" title={p.fastest_killer != null ? t('fastest: {n}', { n: p.fastest_killer }) : ''}>{num(p.avg_turns_to_killer)}</td>

@@ -5,7 +5,7 @@
   import Avatar from '../../lib/components/Avatar.svelte';
   // The result of a finished Target Battle on the TV: the placements with their scores, the winners
   // marked with the crown, and the table of every round. Players who tied share a placement and all win.
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { rematch, stopGame } from '../../lib/targetBattle.js';
   import Crown from '../../lib/components/Crown.svelte';
@@ -17,7 +17,7 @@
   let solo = $derived((tb.players || []).length === 1);
   let history = $derived(tb.history || []);
   let heading = $derived(
-    solo ? t('Finished') : tb.winners.length > 1 ? t('{names} win', { names: tb.winners.map(cap).join(t(' and ')) }) : t('{name} wins', { name: cap(tb.winners[0] || '') })
+    solo ? t('Finished') : tb.winners.length > 1 ? t('{names} win', { names: tb.winners.map(shownName).join(t(' and ')) }) : t('{name} wins', { name: shownName(tb.winners[0] || '') })
   );
 
   async function undo() {
@@ -41,7 +41,7 @@
         <span class="place">{p.placement}</span>
         <span class="who">
           <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
-          <span class="name-crown">{#if tb.winners.includes(p.name)}<Crown />{/if}{cap(p.name)}</span>
+          <span class="name-crown">{#if tb.winners.includes(p.name)}<Crown />{/if}{shownName(p.name)}</span>
         </span>
         <span class="score">{p.score}</span>
       </li>
@@ -52,7 +52,7 @@
       <thead>
         <tr>
           <th>{t('Round')}</th><th>{t('Target')}</th>
-          {#each rows as p}<th class="player">{cap(p.name)}</th>{/each}
+          {#each rows as p}<th class="player">{shownName(p.name)}</th>{/each}
         </tr>
       </thead>
       <tbody>

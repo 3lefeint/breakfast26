@@ -21,8 +21,8 @@ def test_new_ws_client_gets_players_added_after_the_last_push(tmp_path):
     db = _wire(tmp_path)
     try:
         server.push()
-        db.upsert_player("Neu")
-        assert _first_ws_payload()["known_players"] == ["Neu"]
+        db.upsert_player("neu")
+        assert _first_ws_payload()["known_players"] == ["neu"]
     finally:
         server.wire(None, None)
 

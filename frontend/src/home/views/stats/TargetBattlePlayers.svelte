@@ -2,7 +2,7 @@
   import { t } from '../../../lib/i18n.js';
   // Target Battle per player: how they throw (points per round, how many darts land on the target,
   // perfect turns, best turn) and, for the player picked, how often they hit each target number.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
 
   let { players = [] } = $props();
 
@@ -31,7 +31,7 @@
     <tbody>
       {#each rows as p (p.player)}
         <tr class:picked={current && p.player === current.player}>
-          <td><button type="button" class="name" onclick={() => (picked = p.player)}>{cap(p.player)}</button></td>
+          <td><button type="button" class="name" onclick={() => (picked = p.player)}>{shownName(p.player)}</button></td>
           <td class="num">{p.turns}</td>
           <td class="num">{num(p.avg_points_per_round, 2)}</td>
           <td class="num" title={t('{hits} of {darts} darts', { hits: p.hits, darts: p.darts })}>{p.hit_pct != null ? p.hit_pct.toFixed(0) + '%' : '—'}</td>
@@ -44,7 +44,7 @@
   </table>
 
   {#if current}
-    <div class="sub">{cap(current.player)} · {t('darts on the target, by target number')}</div>
+    <div class="sub">{shownName(current.player)} · {t('darts on the target, by target number')}</div>
     <div class="bars" role="img" aria-label={t('Share of darts on the target for each target number from 1 to 20')}>
       {#each byTarget as b (b.target)}
         <div class="col" title={b.darts ? t('{target}: {hits} of {darts} darts ({pct}%)', { target: b.target, hits: b.hits, darts: b.darts, pct: pct(b).toFixed(0) }) : t('{target}: not a target yet', { target: b.target })}>

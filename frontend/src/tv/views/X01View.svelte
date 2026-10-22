@@ -7,7 +7,7 @@
   // throw-correction row, abandoned-match warning + force-clear) — the
   // Scoreboard tab itself goes away entirely per the decided
   // navigation redesign; the TV view is now the only place X01 controls live.
-  import { cap, isBoardStopped } from '../../lib/util.js';
+  import { shownName, isBoardStopped } from '../../lib/util.js';
   import { getCheckout } from '../../lib/checkout.js';
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
@@ -110,7 +110,7 @@
       <div class="name-row">
         <div class="who">
           <span class="swatch"><Avatar name={game.active_player_name || ''} color={$gameState.player_colors?.[game.active_player_name] || null} size={100} /></span>
-          <div class="player-name">{cap(game.active_player_name || '—')}</div>
+          <div class="player-name">{shownName(game.active_player_name || '—')}</div>
         </div>
         <div id="coHint">
           {#if checkoutHint}{checkoutHint}{:else if isBogey}<span class="bogey-badge">{t('Bogey — no checkout')}</span>{/if}
@@ -158,7 +158,7 @@
           {#each rows as r (r.idx)}
             {@const ps = sessionStats[r.name] || {}}
             <tr class:current-row={r.idx === game.active_player_index}>
-              <td>{cap(r.name || '—')}</td>
+              <td>{shownName(r.name || '—')}</td>
               <td class="num-cell">{r.score}</td>
               <td class="num-cell muted">{r.legs_won}</td>
               <td class="num-cell muted">{ps.avg3 != null ? ps.avg3.toFixed(1) : '—'}</td>

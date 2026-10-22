@@ -213,10 +213,10 @@ class TestPlayersTable:
         db.upsert_player("alice", hidden=False)
         assert db.hidden_players() == []
 
-    def test_list_players_is_alphabetical_case_insensitive(self, db):
+    def test_list_players_is_alphabetical_and_stored_in_lower_case(self, db):
         for name in ["charlie", "Alice", "bob"]:
             db.upsert_player(name)
-        assert db.list_players() == ["Alice", "bob", "charlie"]
+        assert db.list_players() == ["alice", "bob", "charlie"]
 
 
 class TestElimination:

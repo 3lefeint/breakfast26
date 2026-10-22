@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Player names are stored in lower case and shown in upper case, whatever the spelling when the player was created; the voice file of a player is `<name>.mp3`, so the name on the screen and the key in the Voice Pack tab no longer differ in case. Names of an older database are changed once at the start (a copy of `stats.db` is made first, players that differ only in case are merged, a pair that played in the same match is left alone and logged), and so are the keys and voice files of the private voice-pack files. (#82)
+
 ### Fixed
 - The automatic update crashed the update check with `'str' object has no attribute 'parent'` before it could install.
 

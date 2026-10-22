@@ -8,7 +8,7 @@
   import { x01Own } from '../../lib/stores/x01Own.js';
   import { gameState } from '../../lib/stores/gameState.js';
   import { api } from '../../lib/api.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { dartLabel } from '../../lib/killer.js';
   import { rematch, stopGame, ruleChips } from '../../lib/x01.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
@@ -33,12 +33,12 @@
 {#if x}
   <ConfettiBurst />
   <div class="section finished">
-    <div class="heading">{t('{name} wins', { name: cap(x.winner || '') })}</div>
+    <div class="heading">{t('{name} wins', { name: shownName(x.winner || '') })}</div>
     <div class="meta">{[x.rules.start, ...ruleChips(x)].join(' · ')}</div>
     <ul class="results">
       {#each rows as p (p.name)}
         <li class:winner={p.name === x.winner}>
-          <span class="who">{cap(p.name)}</span>
+          <span class="who">{shownName(p.name)}</span>
           <span class="avg">{stats[p.name]?.avg3 != null ? `${t('Avg')} ${stats[p.name].avg3.toFixed(1)}` : ''}</span>
           <span class="legs">{p.legs_won} {t('Legs')}</span>
         </li>
@@ -46,7 +46,7 @@
     </ul>
     {#if lastDarts.length}
       <div class="last">
-        <span class="last-label">{t('Last turn, {name}', { name: cap(x.last_turn.player) })}</span>
+        <span class="last-label">{t('Last turn, {name}', { name: shownName(x.last_turn.player) })}</span>
         {#each lastDarts as d, i}
           <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
         {/each}

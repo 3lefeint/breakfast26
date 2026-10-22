@@ -2,7 +2,7 @@
   import { t } from '../../lib/i18n.js';
   // A player's profile: the achievements with their badges, in sections by game mode, each
   // split into earned and still to earn. Secret ones that are not earned yet come last.
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { localized, isEarned, groupAchievements, progressText, rarityText } from '../../lib/achievements.js';
   import Badge from '../../lib/components/Badge.svelte';
   import PageHeader from '../../lib/components/PageHeader.svelte';
@@ -51,7 +51,7 @@
   }
 </script>
 
-<PageHeader title={cap(name)} back="#players">
+<PageHeader title={shownName(name)} back="#players">
   {#snippet lead()}<Avatar {name} {color} size={64} />{/snippet}
 </PageHeader>
 

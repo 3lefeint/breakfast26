@@ -5,7 +5,7 @@
   // Ports #elimFinished + #rematchModal of the former tv.html — same default-order
   // rematch logic as Home's EliminationFinished.svelte, plus the
   // TV-only "Done" button — stops the game server-side and navigates to Home's Elimination tab.
-  import { cap } from '../../lib/util.js';
+  import { shownName, storedName } from '../../lib/util.js';
   import { api, apiJson } from '../../lib/api.js';
   import { players } from '../../lib/stores/players.js';
   import Avatar from '../../lib/components/Avatar.svelte';
@@ -59,7 +59,7 @@
   }
 
   async function addNewRematchPlayer() {
-    const name = newPlayerName.trim();
+    const name = storedName(newPlayerName);
     if (!name) return;
     if (!$players.known.includes(name)) {
       await api('POST', '/api/players', { name });
@@ -103,14 +103,14 @@
 <ConfettiBurst />
 
 <div class="finished">
-  <div class="heading">{t('{name} wins', { name: cap(elimination.winner || '') })}</div>
+  <div class="heading">{t('{name} wins', { name: shownName(elimination.winner || '') })}</div>
   <ul class="results">
     {#each rows as p, i (p.name)}
       <li class:winner={p.name === elimination.winner}>
         <span class="place">{i + 1}</span>
         <span class="who">
           <span class="swatch"><Avatar name={p.name || ''} color={$gameState.player_colors?.[p.name] || null} size={100} /></span>
-          <span class="name-crown">{#if p.name === elimination.winner}<Crown />{/if}{cap(p.name)}</span>
+          <span class="name-crown">{#if p.name === elimination.winner}<Crown />{/if}{shownName(p.name)}</span>
         </span>
         <span class="lives">{p.lives > 0 ? '❤️'.repeat(p.lives) : '☠️'}</span>
       </li>
@@ -118,7 +118,7 @@
   </ul>
   {#if lastDarts.length && !online}
     <div class="last">
-      <span class="last-label">{t('Last turn, {name}', { name: cap(elimination.last_turn.player) })}</span>
+      <span class="last-label">{t('Last turn, {name}', { name: shownName(elimination.last_turn.player) })}</span>
       {#each lastDarts as d, i}
         <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
       {/each}
@@ -156,7 +156,7 @@
       <ul class="game-players">
         {#each rematchPlayers as name, i (name + i)}
           <li>
-            <span class="player-name-text">{cap(name)}</span>
+            <span class="player-name-text">{shownName(name)}</span>
             <button class="btn-icon" onclick={() => moveRematchPlayer(i, -1)} disabled={i === 0}>↑</button>
             <button class="btn-icon" onclick={() => moveRematchPlayer(i, +1)} disabled={i === rematchPlayers.length - 1}>↓</button>
             <button class="btn-icon remove" onclick={() => removeFromRematch(i)}>×</button>
@@ -173,7 +173,7 @@
       <div class="elim-section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
       <div class="known-chips">
         {#each $players.known as name (name)}
-          <button type="button" class="chip" class:in-game={rematchPlayers.includes(name)} onclick={() => toggleRematchPlayer(name)}>{cap(name)}</button>
+          <button type="button" class="chip" class:in-game={rematchPlayers.includes(name)} onclick={() => toggleRematchPlayer(name)}>{shownName(name)}</button>
         {/each}
       </div>
 

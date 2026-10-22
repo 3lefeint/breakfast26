@@ -3,7 +3,7 @@
   // How long games take, one row per lives setting. Every finished game is a
   // dot on a shared minutes axis and the average is a tick, so a handful of
   // games is shown as it is instead of being squeezed into one bar.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
 
   let { games = [] } = $props();
 
@@ -48,7 +48,7 @@
 
   function describe(g) {
     const date = new Date(g.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${date} · ${g.minutes.toFixed(1)} ${t('min')} · ${t('{n} players', { n: g.size })}${g.winner ? ' · ' + t('won by {name}', { name: cap(g.winner) }) : ''}`;
+    return `${date} · ${g.minutes.toFixed(1)} ${t('min')} · ${t('{n} players', { n: g.size })}${g.winner ? ' · ' + t('won by {name}', { name: shownName(g.winner) }) : ''}`;
   }
   const livesLabel = (n) => `${n} ${n === 1 ? t('life') : t('lives')}`;
 </script>

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from breakfast import telemetry
+from breakfast.names import normalize, normalize_all
 from breakfast.dartboard import field_centers
 from breakfast.checkout_routes import standard_route as checkout_route
 from breakfast.field_training import rating as field_training_rating, scaled_points, standard_darts
@@ -342,16 +343,39 @@ def _position(game: dict):
 
 def _safe_name(raw) -> str | None:
     if isinstance(raw, str):
-        return raw
+        return normalize(raw)
     if isinstance(raw, dict):
-        return raw.get("name") or str(raw)
-    return str(raw) if raw is not None else None
+        return normalize(raw.get("name") or str(raw))
+    return normalize(str(raw)) if raw is not None else None
+
+
+def _json_strings(node):
+    """Every string in a parsed JSON document."""
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _json_strings(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _json_strings(v)
+
+
+def _json_rename(node, old, new):
+    """A copy of a parsed JSON document with the strings equal to `old` replaced by `new`."""
+    if isinstance(node, str):
+        return new if node == old else node
+    if isinstance(node, dict):
+        return {k: _json_rename(v, old, new) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_json_rename(v, old, new) for v in node]
+    return node
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
 # What a deleted player is called in the matches that other players keep.
-DELETED_PLAYER = "Deleted player"
+DELETED_PLAYER = "deleted player"
 _DELETED_NAME = re.compile(rf"^{DELETED_PLAYER}( \d+)?$")
 
 
@@ -383,6 +407,7 @@ class StatsDB:
             self._migrate_player_color()
             self._migrate_backfill_x01_winner()
             self._migrate_drop_in_roster()
+            self._migrate_lowercase_names()
             self._conn.commit()
         log.info("Stats DB: %s", path)
 
@@ -398,6 +423,46 @@ class StatsDB:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(legs)")}
         if "decided" not in cols:
             self._conn.execute("ALTER TABLE legs ADD COLUMN decided TEXT")
+
+    def _migrate_lowercase_names(self):
+        """Player names are stored in lower case (names.py): the names of older databases are changed once. A name that
+        exists in lower case too is merged into that player; a pair that played in the same match cannot be merged
+        and stays as it is (it is logged). A copy of the database is made first."""
+        c = self._conn
+        columns = [("players", "name"), ("matches", "winner"), ("legs", "winner"), ("killer_events", "player"),
+                   ("killer_events", "victim"), ("bot_turns", "player"), ("achievements_earned", "player")]
+        columns += [(t, "player") for t in self._MERGE_TABLES + self._MERGE_RESULT_TABLES]
+        found = set()
+        for table, column in columns:
+            found.update(r[0] for r in c.execute(f"SELECT DISTINCT {column} FROM {table}") if r[0])
+        mixed = sorted(n for n in found if n != n.lower())
+        if not mixed:
+            return
+        c.commit()
+        if self.path not in ("", ":memory:"):
+            backup = f"{self.path}.before-lowercase-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+            copy = sqlite3.connect(backup)
+            try:
+                c.backup(copy)
+            finally:
+                copy.close()
+            log.info("Player names to lower case: copy of the database in %s", backup)
+        changed = 0
+        for source in mixed:
+            target = source.lower()
+            if target in found and self._matches_of(source) & self._matches_of(target):
+                log.warning("Player %r and %r played in the same match, they are not merged", source, target)
+                continue
+            try:
+                if target not in found and c.execute("SELECT 1 FROM players WHERE name = ?", (source,)).fetchone():
+                    c.execute("UPDATE players SET name = ? WHERE name = ?", (target, source))
+                self._move_player_rows(source, target)
+                c.commit()
+                changed += 1
+            except Exception:
+                c.rollback()
+                log.exception("Player %r could not be changed to lower case", source)
+        log.info("Player names changed to lower case: %s of %s", changed, len(mixed))
 
     def _migrate_matches_tournament(self):
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
@@ -624,6 +689,7 @@ class StatsDB:
     # ── Players ───────────────────────────────────────────────────────────────
 
     def upsert_player(self, name: str, hidden: bool | None = None):
+        name = normalize(name)
         log.debug("DB write: upsert_player name=%s hidden=%s", name, hidden)
         with self._lock:
             self._ensure_player(name)
@@ -2320,36 +2386,17 @@ class StatsDB:
 
     def _anonymise_in_tournaments(self, player: str):
         """Rename `player` in the stored brackets; the caller holds the lock and commits."""
-        def strings(node):
-            if isinstance(node, str):
-                yield node
-            elif isinstance(node, dict):
-                for v in node.values():
-                    yield from strings(v)
-            elif isinstance(node, list):
-                for v in node:
-                    yield from strings(v)
-
-        def rename(node, name):
-            if isinstance(node, str):
-                return name if node == player else node
-            if isinstance(node, dict):
-                return {k: rename(v, name) for k, v in node.items()}
-            if isinstance(node, list):
-                return [rename(v, name) for v in node]
-            return node
-
         for row in self._conn.execute("SELECT id, data FROM tournaments WHERE data LIKE ?",
                                       (f"%{json.dumps(player)[1:-1]}%",)).fetchall():
             try:
                 data = json.loads(row["data"])
             except ValueError:
                 continue
-            if player not in set(strings(data)):
+            if player not in set(_json_strings(data)):
                 continue
-            name = self._placeholder(set(strings(data)))
+            name = self._placeholder(set(_json_strings(data)))
             self._conn.execute("UPDATE tournaments SET data = ? WHERE id = ?",
-                               (json.dumps(rename(data, name)), row["id"]))
+                               (json.dumps(_json_rename(data, player, name)), row["id"]))
 
     # ── Merging two players ───────────────────────────────────────────────────
 
@@ -2392,6 +2439,54 @@ class StatsDB:
                     "SELECT COUNT(*) FROM achievements_earned WHERE player = ?", (source,)).fetchone()[0],
             }
 
+    def _move_player_rows(self, source: str, target: str):
+        """Everything stored under the name `source` goes to `target`, the player `source` is removed; an
+        achievement both earned is kept once, with the earlier date. The caller holds the lock and commits."""
+        c = self._conn
+        for table in self._MERGE_TABLES + self._MERGE_RESULT_TABLES:
+            c.execute(f"UPDATE {table} SET player = ? WHERE player = ?", (target, source))
+        c.execute("UPDATE killer_events SET player = ? WHERE player = ?", (target, source))
+        c.execute("UPDATE killer_events SET victim = ? WHERE victim = ?", (target, source))
+        c.execute("UPDATE legs SET winner = ? WHERE winner = ?", (target, source))
+        c.execute("UPDATE matches SET winner = ? WHERE winner = ?", (target, source))
+        for row in c.execute("SELECT match_id, players FROM matches WHERE players LIKE ?",
+                             (f"%{json.dumps(source)[1:-1]}%",)).fetchall():
+            try:
+                names = json.loads(row["players"] or "[]")
+            except ValueError:
+                continue
+            if source in names:
+                merged = list(dict.fromkeys(target if n == source else n for n in names))
+                c.execute("UPDATE matches SET players = ? WHERE match_id = ?",
+                          (json.dumps(merged), row["match_id"]))
+        for row in c.execute("SELECT id, achievement_id, tier, earned_at, match_id "
+                             "FROM achievements_earned WHERE player = ?", (source,)).fetchall():
+            twin = c.execute(
+                "SELECT id, earned_at FROM achievements_earned "
+                "WHERE player = ? AND achievement_id = ? AND tier = ?",
+                (target, row["achievement_id"], row["tier"])).fetchone()
+            if twin is None:
+                c.execute("UPDATE achievements_earned SET player = ? WHERE id = ?", (target, row["id"]))
+            else:
+                if row["earned_at"] < twin["earned_at"]:
+                    c.execute("UPDATE achievements_earned SET earned_at = ?, match_id = ? WHERE id = ?",
+                              (row["earned_at"], row["match_id"], twin["id"]))
+                c.execute("DELETE FROM achievements_earned WHERE id = ?", (row["id"],))
+        c.execute("UPDATE players SET created_at = MIN(created_at, COALESCE("
+                  "(SELECT created_at FROM players WHERE name = ?), created_at)) WHERE name = ?", (source, target))
+        c.execute("DELETE FROM players WHERE name = ?", (source,))
+        c.execute("UPDATE bot_turns SET player = ? WHERE player = ?", (target, source))
+        for table, key, column in (("tournaments", "id", "data"), ("running_match", "mode", "data")):
+            for row in c.execute(f"SELECT {key}, {column} FROM {table} WHERE {column} LIKE ?",
+                                 (f"%{json.dumps(source)[1:-1]}%",)).fetchall():
+                try:
+                    data = json.loads(row[column])
+                except ValueError:
+                    continue
+                if source in _json_strings(data):
+                    c.execute(f"UPDATE {table} SET {column} = ? WHERE {key} = ?",
+                              (json.dumps(_json_rename(data, source, target)), row[key]))
+
     def merge_players(self, source, target):
         """Move everything of `source` to `target` and remove `source`. The target keeps its name,
         color and hidden flag; an achievement both earned is kept once, with the earlier date. A copy
@@ -2414,40 +2509,8 @@ class StatsDB:
             finally:
                 copy.close()
             try:
-                c = self._conn
-                for table in self._MERGE_TABLES + self._MERGE_RESULT_TABLES:
-                    c.execute(f"UPDATE {table} SET player = ? WHERE player = ?", (target, source))
-                c.execute("UPDATE killer_events SET player = ? WHERE player = ?", (target, source))
-                c.execute("UPDATE killer_events SET victim = ? WHERE victim = ?", (target, source))
-                c.execute("UPDATE legs SET winner = ? WHERE winner = ?", (target, source))
-                c.execute("UPDATE matches SET winner = ? WHERE winner = ?", (target, source))
-                for row in c.execute("SELECT match_id, players FROM matches WHERE players LIKE ?",
-                                     (f"%{json.dumps(source)[1:-1]}%",)).fetchall():
-                    try:
-                        names = json.loads(row["players"] or "[]")
-                    except ValueError:
-                        continue
-                    if source in names:
-                        merged = list(dict.fromkeys(target if n == source else n for n in names))
-                        c.execute("UPDATE matches SET players = ? WHERE match_id = ?",
-                                  (json.dumps(merged), row["match_id"]))
-                for row in c.execute("SELECT id, achievement_id, tier, earned_at, match_id "
-                                     "FROM achievements_earned WHERE player = ?", (source,)).fetchall():
-                    twin = c.execute(
-                        "SELECT id, earned_at FROM achievements_earned "
-                        "WHERE player = ? AND achievement_id = ? AND tier = ?",
-                        (target, row["achievement_id"], row["tier"])).fetchone()
-                    if twin is None:
-                        c.execute("UPDATE achievements_earned SET player = ? WHERE id = ?", (target, row["id"]))
-                    else:
-                        if row["earned_at"] < twin["earned_at"]:
-                            c.execute("UPDATE achievements_earned SET earned_at = ?, match_id = ? WHERE id = ?",
-                                      (row["earned_at"], row["match_id"], twin["id"]))
-                        c.execute("DELETE FROM achievements_earned WHERE id = ?", (row["id"],))
-                c.execute("UPDATE players SET created_at = MIN(created_at, "
-                          "(SELECT created_at FROM players WHERE name = ?)) WHERE name = ?", (source, target))
-                c.execute("DELETE FROM players WHERE name = ?", (source,))
-                c.commit()
+                self._move_player_rows(source, target)
+                self._conn.commit()
             except Exception:
                 self._conn.rollback()
                 raise
@@ -3619,7 +3682,7 @@ class StatsTracker:
             self._bot_turn_per_player = {}
             self._buf       = None
             self._session_stats = {}
-            self._bots      = set(game.get("bots") or [])
+            self._bots      = set(normalize_all(game.get("bots") or []))
             self._turn_log  = []
             if self._match_id:
                 self._db.open_match(self._match_id, self._game_mode, pts_start, tournament_id)
@@ -3712,7 +3775,7 @@ class StatsTracker:
         self._game_mode = game.get("mode", "")
         self._leg = int(game.get("leg") or 1)
         self._buf = None
-        self._bots = set(game.get("bots") or [])
+        self._bots = set(normalize_all(game.get("bots") or []))
         self._turn_log = []
         if self._match_id:
             self._turn_per_player = self._db.x01_turn_counts(self._match_id, self._leg)
@@ -3752,6 +3815,7 @@ class StatsTracker:
 
     def _human(self, player):
         """The player, or None for one the computer plays: a win of a bot is stored as no winner."""
+        player = normalize(player)
         return None if player in self._bots else player
 
     def _undo_last_turn(self):

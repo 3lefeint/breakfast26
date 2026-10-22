@@ -225,7 +225,8 @@ python tools/generate_voicepack.py tools/voicepack_ryan.toml --out <audio dir>/p
 
 To change a single entry, use **Settings → Audio & Voice → Voice Pack**: pick a group, enter a key and one or more variants,
 listen to a preview and save. [VOICE_PACKS.md](VOICE_PACKS.md) lists every call key, explains where the
-names of your players are kept, and shows how to record a pack of your own.
+names of your players are kept, and shows how to record a pack of your own. Player names are stored in lower case and
+shown in upper case, so the voice file of a player is `<name>.mp3` whatever the spelling when the player was created.
 
 <img src="media/voice-pack-editor.webp" alt="The Voice Pack editor in Settings" width="560">
 

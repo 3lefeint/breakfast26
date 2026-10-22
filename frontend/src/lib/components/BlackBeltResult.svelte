@@ -1,5 +1,6 @@
 <script>
   import { t } from '../i18n.js';
+  import { shownName } from '../util.js';
   // The result of a finished Black Belt run: the belt or how far the player got, the restarts and
   // darts, how far each attempt got and where the darts landed. Shown on Home and on the TV.
   import BlackBeltLadder from './BlackBeltLadder.svelte';
@@ -18,10 +19,10 @@
   <div class="headline">
     {#if r.belt}
       <div class="belt">{t('🥋 Black Belt')}</div>
-      <div class="meta">{bb.player} · {t('{n} darts', { n: r.darts })} · {r.restarts} {r.restarts === 1 ? t('restart') : t('restarts')}{bb.backwards ? ' · ' + t('backwards') : ''}</div>
+      <div class="meta">{shownName(bb.player)} · {t('{n} darts', { n: r.darts })} · {r.restarts} {r.restarts === 1 ? t('restart') : t('restarts')}{bb.backwards ? ' · ' + t('backwards') : ''}</div>
     {:else}
       <div class="points">{r.furthest}<span class="unit">{t('of {total} fields', { total })}</span></div>
-      <div class="meta">{bb.player} · {t('furthest {n}', { n: reached })} · {t('{n} darts', { n: r.darts })} · {r.restarts} {r.restarts === 1 ? t('restart') : t('restarts')}{bb.backwards ? ' · ' + t('backwards') : ''}</div>
+      <div class="meta">{shownName(bb.player)} · {t('furthest {n}', { n: reached })} · {t('{n} darts', { n: r.darts })} · {r.restarts} {r.restarts === 1 ? t('restart') : t('restarts')}{bb.backwards ? ' · ' + t('backwards') : ''}</div>
     {/if}
   </div>
 

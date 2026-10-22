@@ -7,7 +7,7 @@
   // previewed here. The Files section uploads, renames and deletes the files themselves. A change is saved at once into `[achievements.sounds]`
   // of config.toml and applies without a restart.
   import { onMount } from 'svelte';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
 
   const URL = '/api/admin/achievement-sounds';
   const MODES = { general: t('General'), x01: 'X01', elimination: t('Elimination'), killer: t('Killer'),

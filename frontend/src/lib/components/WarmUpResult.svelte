@@ -5,7 +5,7 @@
   // darts and where the darts landed. Shown on Home and on the TV.
   import DartBoard from './DartBoard.svelte';
   import { fieldLabel, modeLabel, runDots, stationName } from '../warmUp.js';
-  import { cap } from '../util.js';
+  import { shownName } from '../util.js';
 
   let { wu, large = false } = $props();
 
@@ -40,7 +40,7 @@
     {:else}
       <div class="points">{r.fields}<span class="unit">{t('of {total} fields', { total })}</span></div>
     {/if}
-    <div class="meta">{cap(wu.player)}{wu.all ? '' : ' · ' + modeLabel(wu.kinds)}{r.complete ? '' : ' · ' + t('{n} darts', { n: r.darts })}</div>
+    <div class="meta">{shownName(wu.player)}{wu.all ? '' : ' · ' + modeLabel(wu.kinds)}{r.complete ? '' : ' · ' + t('{n} darts', { n: r.darts })}</div>
     {#if before}
       <div class="compare">
         {#if r.complete && before.runs && r.darts < before.best}

@@ -2,7 +2,7 @@
   import { t, language } from '../../../lib/i18n.js';
   // One row per player: their last finished games as small squares, oldest to
   // newest, coloured by the place they finished, plus their win streak.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { RANKS, rankForPlace } from './ranks.js';
 
   let { players = [] } = $props();
@@ -18,7 +18,7 @@
   }
   function describe(g) {
     const date = new Date(g.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${date} · ${t('{place} of {size}', { place: ordinal(g.placement), size: g.size })} · ${t('vs {names}', { names: g.opponents.map(cap).join(', ') })}`;
+    return `${date} · ${t('{place} of {size}', { place: ordinal(g.placement), size: g.size })} · ${t('vs {names}', { names: g.opponents.map(shownName).join(', ') })}`;
   }
 </script>
 
@@ -31,8 +31,8 @@
   </div>
   {#each rows as p (p.player)}
     <div class="row" role="img"
-         aria-label={t('{name}, last {count} games: {places}', { name: cap(p.player), count: p.form.games.length, places: p.form.games.map((g) => ordinal(g.placement)).join(', ') })}>
-      <div class="name">{cap(p.player)}</div>
+         aria-label={t('{name}, last {count} games: {places}', { name: shownName(p.player), count: p.form.games.length, places: p.form.games.map((g) => ordinal(g.placement)).join(', ') })}>
+      <div class="name">{shownName(p.player)}</div>
       <div class="squares">
         {#each p.form.games as g (g.match_id)}
           {@const rank = rankForPlace(g.placement)}

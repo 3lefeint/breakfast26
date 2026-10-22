@@ -4,7 +4,7 @@
   // 3rd, with a marker at the win share they would have by chance (a win in a
   // two-player game is worth less than in a three-player game). Bar past the
   // marker = more wins than chance would give.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { RANKS } from './ranks.js';
 
   let { players = [], emptyText = t('No Elimination games yet — play one first.') } = $props();
@@ -37,8 +37,8 @@
 
   {#each rows as p (p.player)}
     <div class="row" role="img"
-         aria-label={t('{name}: {wins} wins in {games} games, {expected} expected by chance', { name: cap(p.player), wins: p.wins, games: p.games, expected: p.expected_wins.toFixed(1) })}>
-      <div class="name">{cap(p.player)}</div>
+         aria-label={t('{name}: {wins} wins in {games} games, {expected} expected by chance', { name: shownName(p.player), wins: p.wins, games: p.games, expected: p.expected_wins.toFixed(1) })}>
+      <div class="name">{shownName(p.player)}</div>
       <div class="bar-wrap">
         <div class="bar">
           {#each p.segments as s}

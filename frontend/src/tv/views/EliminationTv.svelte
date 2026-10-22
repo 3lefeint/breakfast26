@@ -7,7 +7,7 @@
   // plain DartsRow, so they're inlined here rather than reusing that
   // component. Reuses TargetDisplay/FreipassBadge/WinBadge/LivesDisplay
   // from Step 2/5 for the parts that are visually identical.
-  import { cap, isBoardStopped } from '../../lib/util.js';
+  import { shownName, isBoardStopped } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { flip } from 'svelte/animate';
   import WinBadge from '../../lib/components/WinBadge.svelte';
@@ -90,7 +90,7 @@
   <div class="name-row">
     <div class="who">
       <span class="swatch"><Avatar name={elimination.current_player || ''} color={$gameState.player_colors?.[elimination.current_player] || null} size={100} /></span>
-      <div class="player-name">{cap(elimination.current_player || '—')}</div>
+      <div class="player-name">{shownName(elimination.current_player || '—')}</div>
     </div>
     <div class="elim-target-row">
       {#if elimination.freipass}
@@ -129,7 +129,7 @@
         <span class="row-avatar"><Avatar name={p.name || ''} color={$gameState.player_colors?.[p.name] || null} size={100} /></span>
         <span class="name-crown-wrap">
           {#if isTopWinner(p.name)}<Crown />{/if}
-          {cap(p.name || '—')}
+          {shownName(p.name || '—')}
         </span>
         <span class="row-wins"><WinBadge wins={winsFor(p.name)} /></span>
         <span class="row-lives"><LivesDisplay lives={p.lives || 0} {livesMax} /></span>

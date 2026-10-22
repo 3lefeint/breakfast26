@@ -2,7 +2,7 @@
   import { t } from '../../../lib/i18n.js';
   // Black Belt half of the Stats tab: per player the belts earned, the furthest the player got, the
   // fewest darts for a belt, the average darts per run, how far each run got over time and the runs.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import TrendLine from './TrendLine.svelte';
   import RecentMatches from './RecentMatches.svelte';
 
@@ -37,12 +37,12 @@
     <div class="picker" role="tablist" aria-label={t('Player')}>
       {#each players as p}
         <button type="button" class="pick" class:active={p.player === player.player}
-                onclick={() => (playerName = p.player)}>{cap(p.player)}</button>
+                onclick={() => (playerName = p.player)}>{shownName(p.player)}</button>
       {/each}
     </div>
   {/if}
 
-  <div class="section-title">{cap(player.player)}</div>
+  <div class="section-title">{shownName(player.player)}</div>
   <div class="stat-tiles">
     <div class="stat-tile"><div class="stat-tile-label">{t('Runs')}</div><div class="stat-tile-value">{player.runs.length}</div></div>
     <div class="stat-tile"><div class="stat-tile-label">{t('Belts')}</div><div class="stat-tile-value">{player.belts}</div></div>

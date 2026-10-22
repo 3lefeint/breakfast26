@@ -5,7 +5,7 @@
   import { players } from '../../lib/stores/players.js';
   import { gameState } from '../../lib/stores/gameState.js';
   import { api, apiJson } from '../../lib/api.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName, storedName } from '../../lib/util.js';
   import { deleteGuarded } from '../../lib/deleteGuard.js';
   import PlayerCard from '../../lib/components/PlayerCard.svelte';
   import PageHeader from '../../lib/components/PageHeader.svelte';
@@ -15,7 +15,7 @@
   let newPlayerName = $state('');
 
   async function addPlayer() {
-    const name = newPlayerName.trim();
+    const name = storedName(newPlayerName);
     if (!name) return;
     await api('POST', '/api/players', { name });
     newPlayerName = '';
@@ -53,7 +53,7 @@
     confirming = null;
     const res = await apiJson('POST', '/api/players/merge', { source, target });
     if (res.error) { mergeMessage = res.error; return; }
-    mergeMessage = t('{source} was merged into {target}.', { source: cap(source), target: cap(target) });
+    mergeMessage = t('{source} was merged into {target}.', { source: shownName(source), target: shownName(target) });
     mergeSource = '';
     mergeTarget = '';
   }
@@ -78,7 +78,7 @@
     const { name } = deleting;
     deleting = null;
     if (await deleteGuarded(`/api/stats/player/${encodeURIComponent(name)}`, null)) {
-      deleteMessage = t('{name} was deleted.', { name: cap(name) });
+      deleteMessage = t('{name} was deleted.', { name: shownName(name) });
       deleteName = '';
     }
   }
@@ -120,12 +120,12 @@
     <div class="merge-row">
       <select bind:value={mergeSource} aria-label={t('From player')}>
         <option value="">{t('From player')}</option>
-        {#each allPlayers.filter((n) => n !== mergeTarget) as name (name)}<option value={name}>{cap(name)}</option>{/each}
+        {#each allPlayers.filter((n) => n !== mergeTarget) as name (name)}<option value={name}>{shownName(name)}</option>{/each}
       </select>
       <Icon name="arrow" size={18} />
       <select bind:value={mergeTarget} aria-label={t('To player')}>
         <option value="">{t('To player')}</option>
-        {#each allPlayers.filter((n) => n !== mergeSource) as name (name)}<option value={name}>{cap(name)}</option>{/each}
+        {#each allPlayers.filter((n) => n !== mergeSource) as name (name)}<option value={name}>{shownName(name)}</option>{/each}
       </select>
       <button class="btn-add" disabled={!mergeSource || !mergeTarget} onclick={mergePlayers}>{t('Merge')}</button>
     </div>
@@ -138,7 +138,7 @@
     <div class="merge-row">
       <select bind:value={deleteName} aria-label={t('Player')}>
         <option value="">{t('Player')}</option>
-        {#each allPlayers as name (name)}<option value={name}>{cap(name)}</option>{/each}
+        {#each allPlayers as name (name)}<option value={name}>{shownName(name)}</option>{/each}
       </select>
       <button class="btn-add" disabled={!deleteName} onclick={askDelete}>{t('Delete')}</button>
     </div>
@@ -151,7 +151,7 @@
     <ul class="hidden-players-list">
       {#each $players.hidden as name (name)}
         <li>
-          <span class="pname">{cap(name)}</span>
+          <span class="pname">{shownName(name)}</span>
           <button class="btn-hide" onclick={() => unhidePlayer(name)}>{t('Unhide')}</button>
         </li>
       {/each}
@@ -165,9 +165,9 @@
     <div class="modal-box" role="dialog" aria-modal="true">
       <div class="modal-title">{t('Merge players')}</div>
       <p class="confirm-text">
-        <span>{t('Do you want to merge {source} into {target}?', { source: cap(confirming.source), target: cap(confirming.target) })}</span>
+        <span>{t('Do you want to merge {source} into {target}?', { source: shownName(confirming.source), target: shownName(confirming.target) })}</span>
         <span>{t('{matches} matches, {achievements} achievements', { matches: confirming.matches, achievements: confirming.achievements })}</span>
-        <span>{t('{source} will be removed', { source: cap(confirming.source) })}</span>
+        <span>{t('{source} will be removed', { source: shownName(confirming.source) })}</span>
       </p>
       <label class="confirm-label" for="mergeConfirm">{t('Type "merge" to confirm')}</label>
       <!-- svelte-ignore a11y_autofocus -->
@@ -187,7 +187,7 @@
     <div class="modal-box" role="dialog" aria-modal="true">
       <div class="modal-title">{t('Delete player')}</div>
       <p class="confirm-text">
-        <span>{t('Delete {name}?', { name: cap(deleting.name) })}</span>
+        <span>{t('Delete {name}?', { name: shownName(deleting.name) })}</span>
         <span>{t('{n} matches with only this player are deleted', { n: deleting.matches_deleted })}</span>
         <span>{t('{n} matches with other players stay, the player shows as "Deleted player"', { n: deleting.matches_kept })}</span>
         <span>{t('{n} achievements are removed', { n: deleting.achievements })}</span>

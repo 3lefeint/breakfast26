@@ -11,7 +11,7 @@
   import { fieldLabel, finishRun, stopRun, undoTurn, percent } from '../../lib/fieldTraining.js';
   import Icon from '../../lib/components/Icon.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
-  import { isBoardStopped } from '../../lib/util.js';
+  import { isBoardStopped, shownName } from '../../lib/util.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
@@ -72,7 +72,7 @@
     <div class="name-row">
       <div class="who">
         <span class="swatch"><Avatar name={ft.player || ''} color={ft.color} size={100} /></span>
-        <span class="name">{ft.player}</span>
+        <span class="name">{shownName(ft.player)}</span>
         <span class="turn">{t('Turn {n}', { n: ft.turn })}</span>
       </div>
       <div class="target">

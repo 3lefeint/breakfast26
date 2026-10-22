@@ -6,7 +6,7 @@
   // standard route is shown while throwing.
   import { players } from '../../lib/stores/players.js';
   import NewPlayer from '../../lib/components/NewPlayer.svelte';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { RANGES, rangeLabel, startRun } from '../../lib/checkoutTraining.js';
 
   let player = $state(null);
@@ -51,7 +51,7 @@
   <div class="section-title sub">{t('Player')}</div>
   <div class="chips">
     {#each $players.known as name (name)}
-      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{cap(name)}</button>
+      <button type="button" class="chip" class:in-game={player === name} onclick={() => (player = name)}>{shownName(name)}</button>
     {/each}
   </div>
   <NewPlayer onadded={(name) => (player = name)} />

@@ -4,7 +4,7 @@
   // the runs that count, the trend over those runs, the hit rate, where the darts landed and the
   // runs themselves. Points are on the scale of the standard length (100 darts at a number, 50 at
   // the bull), so runs of another length can be compared.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { fieldLabel, RATING_LABELS, percent } from '../../../lib/fieldTraining.js';
   import TrendLine from './TrendLine.svelte';
   import PositionHeatmap from './PositionHeatmap.svelte';
@@ -45,7 +45,7 @@
     <div class="picker" role="tablist" aria-label={t('Player')}>
       {#each players as p}
         <button type="button" class="pick" class:active={p.player === player.player}
-                onclick={() => { playerName = p.player; fieldNumber = null; }}>{cap(p.player)}</button>
+                onclick={() => { playerName = p.player; fieldNumber = null; }}>{shownName(p.player)}</button>
       {/each}
     </div>
   {/if}
@@ -56,7 +56,7 @@
     {/each}
   </div>
 
-  <div class="section-title">{cap(player.player)} · {fieldLabel(field.field)}</div>
+  <div class="section-title">{shownName(player.player)} · {fieldLabel(field.field)}</div>
   <div class="stat-tiles">
     <div class="stat-tile"><div class="stat-tile-label">{t('Runs')}</div>
       <div class="stat-tile-value">{field.runs.length}</div>

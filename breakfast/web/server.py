@@ -9,13 +9,14 @@ import threading
 import time
 import tomllib
 from pathlib import Path
+from typing import Annotated
 
 import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
@@ -26,6 +27,7 @@ from breakfast import config as cfg_mod
 from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
 from breakfast import known_players as kp
+from breakfast import names as names_mod
 from breakfast import tournament as tournament_mod
 from breakfast import locations as locations_mod
 from breakfast import online as online_mod
@@ -117,6 +119,23 @@ def wire(game_state, elim_ctrl,
     _dev_demo = dev_demo
     web_cfg = (cfg_mod.load(config_path) if config_path else {}).get("web", {})
     _elim_beat_hint = web_cfg.get("elimination_beat_hint") is True
+    if config_path:
+        _lowercase_voicepack_names()
+
+
+def _lowercase_voicepack_names():
+    """Player names are stored in lower case (names.py): the keys of the private voice-pack files and the voice
+    files of those keys get the lower-case form too, once."""
+    directory = Path(_config_path).parent / "voicepack"
+    for file in sorted(directory.glob("*.toml")) if directory.is_dir() else []:
+        try:
+            renames = vo.lowercase_keys(file)
+            if renames:
+                moved = vo.rename_sound_files(_voicepack_out_dir(file.stem), renames)
+                log.info("Voice pack %s: %d player keys and %d voice files changed to lower case",
+                         file.stem, len(renames), len(moved))
+        except (OSError, ValueError):
+            log.exception("Player keys of %s could not be changed to lower case", file.name)
 
 
 def _build_payload() -> dict:
@@ -638,10 +657,14 @@ def _x01_guard():
     return None
 
 
+# Player names are stored in lower case (see names.py): every body that carries one normalises it.
+PlayerName = Annotated[str, AfterValidator(names_mod.normalize)]
+
+
 class StartBody(BaseModel):
-    players: list[str]
+    players: list[PlayerName]
     lives: int = 3
-    bots: dict[str, int] = {}   # name -> level of the players the computer plays, see bot.LEVELS
+    bots: dict[PlayerName, int] = {}   # name -> level of the players the computer plays, see bot.LEVELS
 
 
 def _check_bots(players, bots, levels=None):
@@ -784,7 +807,7 @@ async def elim_correct_last_dart(body: CorrectDartBody):
 # ── REST: target battle ───────────────────────────────────────────────────────
 
 class TargetBattleStartBody(BaseModel):
-    players: list[str]
+    players: list[PlayerName]
     rounds: int = 10
     targets: list[int] | None = None     # one target per round, None for a random one each round
     scoring: str = "standard"            # standard, singles, doubles or triples
@@ -872,12 +895,12 @@ async def tb_correct_dart(body: CorrectDartBody):
 # ── REST: killer ──────────────────────────────────────────────────────────────
 
 class KillerStartBody(BaseModel):
-    players: list[str]
+    players: list[PlayerName]
     own_goal: bool = False     # a valid hit on the own number costs an active killer a life
     singles: bool = False      # singles take lives too, not only doubles
     bull_off: bool = True      # the closest dart at the bull starts
     throw_numbers: bool = True # everybody throws a dart for their number, else they are drawn
-    bots: dict[str, int] = {}  # name -> level of the players the computer plays, see bot.LEVELS
+    bots: dict[PlayerName, int] = {}  # name -> level of the players the computer plays, see bot.LEVELS
 
 
 @app.post("/api/killer/start")
@@ -970,14 +993,14 @@ async def killer_correct_last_dart(body: CorrectDartBody):
 # ── REST: X01 played in Breakfast ─────────────────────────────────────────────
 
 class X01StartBody(BaseModel):
-    players: list[str]
+    players: list[PlayerName]
     start: int = 501           # the score to count down from
     in_mode: str = "straight"  # straight, double or master: what the first scoring dart has to be
     out_mode: str = "double"   # straight, double or master: what the finishing dart has to be
     legs: int = 1              # legs to win
     bull_off: bool = True      # the closest dart at the bull throws first, else the order is drawn
     max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
-    bots: dict[str, int] = {}   # name -> stage 1 to 5 of the players the computer plays, see bot.X01_LEVELS
+    bots: dict[PlayerName, int] = {}   # name -> stage 1 to 5 of the players the computer plays, see bot.X01_LEVELS
 
 
 @app.post("/api/x01/start")
@@ -1069,18 +1092,18 @@ async def x01_correct_last_dart(body: CorrectDartBody):
 # ── REST: X01 tournaments ─────────────────────────────────────────────────────
 
 class TournamentDrawBody(BaseModel):
-    players: list[str]
+    players: list[PlayerName]
 
 
 class TournamentStartBody(BaseModel):
-    seats: list[str | None]            # the first round in order, seats 2k and 2k+1 face each other; null is a bye
+    seats: list[PlayerName | None]            # the first round in order, seats 2k and 2k+1 face each other; null is a bye
     start: int = 501
     in_mode: str = "straight"
     out_mode: str = "double"
     legs_by_round: list[int] | None = None     # legs to win per round, first round first; default one leg each
     bull_off: bool = True      # a bull-off decides who throws first in the first leg of a match, else it is drawn
     max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
-    bots: dict[str, int] = {}   # name -> stage 1 to 5 of the seats the computer plays, see bot.X01_LEVELS
+    bots: dict[PlayerName, int] = {}   # name -> stage 1 to 5 of the seats the computer plays, see bot.X01_LEVELS
 
 
 @app.post("/api/tournament/draw")
@@ -1166,7 +1189,7 @@ async def tournament_history():
 # ── REST: field training ──────────────────────────────────────────────────────
 
 class FieldTrainingStartBody(BaseModel):
-    player: str
+    player: PlayerName
     field: int                 # 1 to 20, or 25 for the bull
     darts: int | None = None   # None for the standard number: 100 at a number, 50 at the bull
 
@@ -1253,7 +1276,7 @@ async def ft_correct_dart(body: CorrectDartBody):
 # ── REST: black belt ──────────────────────────────────────────────────────────
 
 class BlackBeltStartBody(BaseModel):
-    player: str
+    player: PlayerName
     backwards: bool = False    # D20 down to D1, the bull's eye still last
 
 
@@ -1338,7 +1361,7 @@ async def bb_correct_dart(body: CorrectDartBody):
 # ── REST: warm-up ───────────────────────────────────────────────────
 
 class WarmUpStartBody(BaseModel):
-    player: str
+    player: PlayerName
     stations: list[str] | None = None    # the kinds of field to go over (big, bull, small, double, eye, triple), none: all
 
 
@@ -1437,7 +1460,7 @@ class OnlineReadyBody(BaseModel):
 
 
 class OnlinePlayersBody(BaseModel):
-    players: list[str]
+    players: list[PlayerName]
 
 
 class OnlineStartBody(BaseModel):
@@ -2297,6 +2320,8 @@ async def voicepack_save_entry(body: VoicepackEntryBody):
     updates the plan (comment-preserving), and prunes any now-stale
     trailing file from a previously longer variant list."""
     key = body.key.strip()
+    if body.group == vo.PLAYER_GROUP:
+        key = names_mod.normalize(key)
     variants = [v.strip() for v in body.variants if v.strip()]
     if not key:
         return {"error": "key is required"}
@@ -2353,7 +2378,8 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
     if plan_path is None:
         return doc
     out_dir = _voicepack_out_dir(ve.profile_dir_name(doc))
-    result = ve.remove_variant(doc, body.group, body.key, body.variant_index)
+    key = names_mod.normalize(body.key) if body.group == vo.PLAYER_GROUP else body.key
+    result = ve.remove_variant(doc, body.group, key, body.variant_index)
     if result is None:
         return {"error": "entry not found"}
 
@@ -2371,7 +2397,7 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
 # ── REST: checkout training ───────────────────────────────────────────────────
 
 class CheckoutTrainingStartBody(BaseModel):
-    player: str
+    player: PlayerName
     range: str | None = None       # low (2 to 40), mid (41 to 100), high (101 to 170) or all
     low: int = 2                   # used when no named range is given
     high: int = 170
@@ -2779,7 +2805,7 @@ async def web_port_set(body: dict):
 # ── REST: players ─────────────────────────────────────────────────────────────
 
 class PlayerBody(BaseModel):
-    name: str
+    name: PlayerName
 
 
 @app.get("/api/players")

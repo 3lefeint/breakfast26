@@ -3,7 +3,7 @@
   // Collapsible list of recent matches for one game mode, each expandable to
   // its per-player detail.
   import { onMount } from 'svelte';
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { SCORING_SHORT } from '../../../lib/targetBattle.js';
   import { fieldLabel, RATING_LABELS, percent } from '../../../lib/fieldTraining.js';
   import { rangeLabel, fieldName } from '../../../lib/checkoutTraining.js';
@@ -75,11 +75,11 @@
     }
     return [m.game_mode, m.points_start ? m.points_start + ' ' + t('pts') : ''].filter(Boolean).join(' ');
   }
-  function matchPlayers(m) { return (m.players || []).map(cap).join(' · '); }
+  function matchPlayers(m) { return (m.players || []).map(shownName).join(' · '); }
   function legsLine(m) {
     const lw = m.legs_won || {};
     const lt = m.legs_total || 0;
-    const parts = Object.entries(lw).map(([n, c]) => `${cap(n)} ${c}`).join(' · ');
+    const parts = Object.entries(lw).map(([n, c]) => `${shownName(n)} ${c}`).join(' · ');
     const suffix = lt > 0 ? `  (${lt === 1 ? t('{n} leg', { n: lt }) : t('{n} legs', { n: lt })})` : '';
     return parts ? parts + suffix : '';
   }
@@ -112,7 +112,7 @@
                 <tbody>
                   {#each matchDetails[m.match_id].players as p}
                     <tr>
-                      <td>{cap(p.player)}</td>
+                      <td>{shownName(p.player)}</td>
                       <td class="num-cell">{ordinal(p.placement)}</td>
                       <td class="num-cell">{p.score}</td>
                     </tr>
@@ -123,7 +123,7 @@
                 <thead>
                   <tr>
                     <th>{t('Round')}</th><th class="num-cell">{t('Target')}</th>
-                    {#each matchDetails[m.match_id].players as p}<th class="num-cell">{cap(p.player)}</th>{/each}
+                    {#each matchDetails[m.match_id].players as p}<th class="num-cell">{shownName(p.player)}</th>{/each}
                   </tr>
                 </thead>
                 <tbody>
@@ -160,7 +160,7 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>{cap(matchDetails[m.match_id].player)}</td>
+                    <td>{shownName(matchDetails[m.match_id].player)}</td>
                     <td class="num-cell">{matchDetails[m.match_id].furthest}</td>
                     <td class="num-cell">{matchDetails[m.match_id].restarts}</td>
                     <td class="num-cell">{matchDetails[m.match_id].darts}</td>
@@ -178,7 +178,7 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>{cap(matchDetails[m.match_id].player)}</td>
+                    <td>{shownName(matchDetails[m.match_id].player)}</td>
                     <td class="num-cell">{matchDetails[m.match_id].fields}/{matchDetails[m.match_id].total}</td>
                     <td class="num-cell">{matchDetails[m.match_id].darts}</td>
                     <td class="num-cell">{matchDetails[m.match_id].complete ? t('Complete') : ''}</td>
@@ -196,7 +196,7 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>{cap(matchDetails[m.match_id].player)}</td>
+                    <td>{shownName(matchDetails[m.match_id].player)}</td>
                     <td class="num-cell">{matchDetails[m.match_id].darts}</td>
                     <td class="num-cell">{matchDetails[m.match_id].points}</td>
                     <td class="num-cell">{percent(matchDetails[m.match_id].hit_rate)}</td>
@@ -220,7 +220,7 @@
                 <tbody>
                   {#each matchDetails[m.match_id].players as p}
                     <tr>
-                      <td>{cap(p.player)}</td>
+                      <td>{shownName(p.player)}</td>
                       <td class="num-cell">{ordinal(p.placement)}</td>
                       <td class="num-cell">{p.number}</td>
                       <td class="num-cell">{p.lives_left ?? '—'}</td>
@@ -238,7 +238,7 @@
                 <tbody>
                   {#each Object.entries(matchDetails[m.match_id]) as [name, s]}
                     <tr>
-                      <td>{cap(name)}</td>
+                      <td>{shownName(name)}</td>
                       <td class="num-cell">{ordinal(s.placement)}</td>
                       <td class="num-cell">{s.lives_left ?? '—'}</td>
                       <td class="num-cell">{s.turns}</td>
@@ -253,7 +253,7 @@
                 <tbody>
                   {#each Object.entries(matchDetails[m.match_id]) as [name, s]}
                     <tr>
-                      <td>{cap(name)}</td>
+                      <td>{shownName(name)}</td>
                       <td class="num-cell">{s.avg3 != null ? s.avg3.toFixed(1) : '—'}</td>
                       <td class="num-cell">{s.s180 ?? '—'}</td>
                       <td class="num-cell">{s.co_attempts ? s.co_pct + '%' : '—'}</td>

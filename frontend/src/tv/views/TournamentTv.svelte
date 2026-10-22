@@ -5,7 +5,7 @@
   // The tournament on the TV between the matches: the whole bracket with the match that is next outlined,
   // and below it what happens now: a result that waits (the next match starts by itself, or at once; an
   // undo is still possible), the pairing that is next after a restart, or the winner of the tournament.
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { nextMatch, abortTournament, closeTournament, roundName } from '../../lib/tournament.js';
   import TournamentBracket from '../../lib/components/TournamentBracket.svelte';
@@ -20,7 +20,7 @@
   let isFinal = $derived(pending && pending.round === rounds - 1);
   let result = $derived.by(() => {
     if (!pending?.legs) return '';
-    return Object.entries(pending.legs).map(([name, n]) => `${cap(name)} ${n}`).join(' : ');
+    return Object.entries(pending.legs).map(([name, n]) => `${shownName(name)} ${n}`).join(' : ');
   });
 
   async function undo() {
@@ -43,11 +43,11 @@
 <div class="stage">
   <div class="top">
     {#if snap.phase === 'finished'}
-      <div class="winner"><Crown />{t('{name} wins the tournament', { name: cap(snap.winner || '') })}</div>
+      <div class="winner"><Crown />{t('{name} wins the tournament', { name: shownName(snap.winner || '') })}</div>
     {:else if pending}
-      <div class="winner">{t('{name} wins', { name: cap(pending.winner) })}<span class="result">{result}</span></div>
+      <div class="winner">{t('{name} wins', { name: shownName(pending.winner) })}<span class="result">{result}</span></div>
     {:else if next}
-      <div class="winner small">{roundName(next.round, rounds)}: {cap(next.a || '')} – {cap(next.b || '')}</div>
+      <div class="winner small">{roundName(next.round, rounds)}: {shownName(next.a || '')} – {shownName(next.b || '')}</div>
     {/if}
   </div>
 

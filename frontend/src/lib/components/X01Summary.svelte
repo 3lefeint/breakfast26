@@ -4,7 +4,7 @@
   // players side by side with the highlights, the legs (the course of the remaining score and every
   // turn next to the others) and the darts on the board. Used on the TV after a match and as a dialog
   // from the match list of the statistics.
-  import { cap, formatDateTime } from '../../lib/util.js';
+  import { shownName, formatDateTime } from '../../lib/util.js';
   import Crown from './Crown.svelte';
   import { saveSummaryImage } from '../summaryImage.js';
   import { alertDialog } from '../confirm.js';
@@ -146,7 +146,7 @@
     <div class="scoreband">
       {#each players as p (p.name)}
         <div class="side" class:winner={p.name === summary.winner} style="--tint:{p.tint}">
-          <div class="who"><span class="name-crown">{#if p.name === summary.winner}<Crown />{/if}{cap(p.name)}</span></div>
+          <div class="who"><span class="name-crown">{#if p.name === summary.winner}<Crown />{/if}{shownName(p.name)}</span></div>
           <div class="legs">{legsWon[p.name]}</div>
         </div>
       {/each}
@@ -160,7 +160,7 @@
 
     {#if tab === 'overview'}
       <div class="compare" style="--cols:{players.length}">
-        <div class="row head"><span></span>{#each players as p (p.name)}<span class="cell" style="color:{p.tint}">{cap(p.name)}</span>{/each}</div>
+        <div class="row head"><span></span>{#each players as p (p.name)}<span class="cell" style="color:{p.tint}">{shownName(p.name)}</span>{/each}</div>
         {#each rows as row (row.label)}
           <div class="row">
             <span class="label">{row.label}</span>
@@ -176,14 +176,14 @@
       {#if highlights.length}
         <div class="highlights">
           {#each highlights as h (h.label)}
-            <div class="hl"><span class="hl-label">{h.label}</span><b>{h.value}{#if h.unit}{' '}{h.unit}{/if}</b><span class="hl-who">{h.names.map(cap).join(', ')}</span></div>
+            <div class="hl"><span class="hl-label">{h.label}</span><b>{h.value}{#if h.unit}{' '}{h.unit}{/if}</b><span class="hl-who">{h.names.map(shownName).join(', ')}</span></div>
           {/each}
         </div>
       {/if}
     {:else if tab === 'legs'}
       <div class="legchips">
         {#each summary.legs as l (l.leg)}
-          <button type="button" class:on={leg === l.leg} onclick={() => (leg = l.leg)}>{t('Leg {n}', { n: l.leg })}{#if l.winner}{' · '}{cap(l.winner)}{/if}</button>
+          <button type="button" class:on={leg === l.leg} onclick={() => (leg = l.leg)}>{t('Leg {n}', { n: l.leg })}{#if l.winner}{' · '}{shownName(l.winner)}{/if}</button>
         {/each}
       </div>
       <svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label={t('Remaining score per turn')}>
@@ -197,7 +197,7 @@
         {/each}
       </svg>
       <div class="turns" style="--cols:{players.length}">
-        <div class="trow thead"><span></span>{#each players as p (p.name)}<span style="color:{p.tint}">{cap(p.name)}{#if p.name === starter}<small class="starts">{t('Opener')}</small>{/if}</span>{/each}</div>
+        <div class="trow thead"><span></span>{#each players as p (p.name)}<span style="color:{p.tint}">{shownName(p.name)}{#if p.name === starter}<small class="starts">{t('Opener')}</small>{/if}</span>{/each}</div>
         {#each turnNumbers as n (n)}
           <div class="trow">
             <span class="n">{n}</span>
@@ -214,7 +214,7 @@
       <div class="heat">
         {#each players as p (p.name)}
           <section>
-            <div class="hwho" style="color:{p.tint}">{cap(p.name)}</div>
+            <div class="hwho" style="color:{p.tint}">{shownName(p.name)}</div>
             <PositionHeatmap darts={p.darts} caption={false} />
           </section>
         {/each}

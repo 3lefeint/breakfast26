@@ -10,7 +10,7 @@
   import { fieldLabel, finishRun, ringName, stopRun, undoTurn, zonesFor } from '../../lib/warmUp.js';
   import Icon from '../../lib/components/Icon.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
-  import { isBoardStopped } from '../../lib/util.js';
+  import { isBoardStopped, shownName } from '../../lib/util.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import WarmUpProgress from '../../lib/components/WarmUpProgress.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
@@ -70,7 +70,7 @@
     <div class="name-row">
       <div class="who">
         <span class="swatch"><Avatar name={wu.player || ''} color={wu.color} size={100} /></span>
-        <span class="name">{wu.player}</span>
+        <span class="name">{shownName(wu.player)}</span>
         <span class="turn">{t('Turn {n}', { n: wu.turn })}</span>
       </div>
       <div class="target">

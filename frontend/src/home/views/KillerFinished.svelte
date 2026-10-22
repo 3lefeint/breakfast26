@@ -8,7 +8,7 @@
   // by mistake resumes after a correction or an undo.
   import { killer } from '../../lib/stores/killer.js';
   import { api } from '../../lib/api.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { rematch, stopGame, ruleChips, dartLabel } from '../../lib/killer.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from '../../tv/views/DartCorrectModal.svelte';
@@ -31,7 +31,7 @@
 {#if k}
   <ConfettiBurst />
   <div class="section finished">
-    <div class="heading">{t('{name} wins', { name: cap(k.winner || '') })}</div>
+    <div class="heading">{t('{name} wins', { name: shownName(k.winner || '') })}</div>
     <div class="meta">{ruleChips(k).join(' · ')}</div>
     <ul class="results">
       {#each rows as p (p.name)}
@@ -39,7 +39,7 @@
           <span class="place">{p.placement}</span>
           <span class="who">
             <span class="swatch" style="{p.ring ? `outline: 3px ${p.ring.dash ? 'dashed' : 'solid'} ${p.ring.color}; outline-offset: 1px;` : ''}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
-            {cap(p.name)} <span class="number">#{p.number}</span>
+            {shownName(p.name)} <span class="number">#{p.number}</span>
           </span>
           <span class="lives">{p.lives > 0 ? '❤️'.repeat(p.lives) : '☠️'}</span>
         </li>
@@ -47,7 +47,7 @@
     </ul>
     {#if lastDarts.length}
       <div class="last">
-        <span class="last-label">{t('Last turn, {name}', { name: cap(k.last_turn.player) })}</span>
+        <span class="last-label">{t('Last turn, {name}', { name: shownName(k.last_turn.player) })}</span>
         {#each lastDarts as d, i}
           <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
         {/each}

@@ -3,7 +3,7 @@
   // The bracket of a tournament: one column per round, a card per match with both players. The winner of
   // a match is marked, the match in play and the pairing that is next are outlined. A seat without a
   // player is a bye.
-  import { cap } from '../util.js';
+  import { shownName } from '../util.js';
   import { roundName, legsLabel } from '../tournament.js';
 
   // `editable`: the seats of the first round can be clicked (`onSeat(seat)`, `picked` is the one that is selected),
@@ -45,11 +45,11 @@
               {#if editable && r === 0}
                 <button type="button" class="seat clickable" class:picked={picked === 2 * i + side} class:empty={!name}
                         onclick={() => onSeat(2 * i + side)}>
-                  <span class="name">{name ? cap(name) : t('Bye')}</span>
+                  <span class="name">{name ? shownName(name) : t('Bye')}</span>
                 </button>
               {:else}
                 <div class="seat" class:winner={win && name === win} class:lost={win && name && name !== win} class:empty={!name}>
-                  <span class="name">{#if name}{cap(name)}{:else if m.bye || r === 0}{t('Bye')}{:else}…{/if}</span>
+                  <span class="name">{#if name}{shownName(name)}{:else if m.bye || r === 0}{t('Bye')}{:else}…{/if}</span>
                   <span class="score">{name ? legsOf(m, name) : ''}</span>
                 </div>
               {/if}

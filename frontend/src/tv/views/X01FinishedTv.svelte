@@ -5,7 +5,7 @@
   // The result of a finished X01 match on the TV: the winner marked with the crown, the legs won and
   // the average of each player, and the darts of the last turn. A dart tapped here is corrected and
   // the match resumes when that turn did not decide it after all.
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { dartLabel } from '../../lib/killer.js';
   import { rematch, stopGame, ruleChips } from '../../lib/x01.js';
@@ -53,7 +53,7 @@
 <ConfettiBurst />
 
 <div class="finished">
-  <div class="heading">{t('{name} wins', { name: cap(x.winner || '') })}</div>
+  <div class="heading">{t('{name} wins', { name: shownName(x.winner || '') })}</div>
   <div class="meta">{[x.rules.start, ...ruleChips(x)].join(' · ')}</div>
   <ul class="results">
     {#each rows as p (p.name)}
@@ -61,7 +61,7 @@
         <span class="place">{place(p)}</span>
         <span class="who">
           <span class="swatch"><Avatar name={p.name || ''} color={$gameState.player_colors?.[p.name] || null} size={100} /></span>
-          <span class="name-crown">{#if p.name === x.winner}<Crown />{/if}{cap(p.name)}</span>
+          <span class="name-crown">{#if p.name === x.winner}<Crown />{/if}{shownName(p.name)}</span>
         </span>
         <span class="avg">{sessionStats[p.name]?.avg3 != null ? `${t('Avg')} ${sessionStats[p.name].avg3.toFixed(1)}` : ''}</span>
         <span class="legs">{p.legs_won} {t('Legs')}</span>
@@ -70,7 +70,7 @@
   </ul>
   {#if lastDarts.length}
     <div class="last">
-      <span class="last-label">{t('Last turn, {name}', { name: cap(x.last_turn.player) })}</span>
+      <span class="last-label">{t('Last turn, {name}', { name: shownName(x.last_turn.player) })}</span>
       {#each lastDarts as d, i}
         <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
       {/each}

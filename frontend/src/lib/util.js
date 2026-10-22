@@ -1,11 +1,14 @@
 import { t } from './i18n.js';
 
-// Mirrors the cap() helper of the former index.html and tv.html — capitalizes the first
-// letter. Svelte auto-escapes interpolated text, so no esc() equivalent
-// is needed here. The placeholder of a deleted player ("Deleted player", "Deleted player 2") is translated.
-export function cap(s) {
-  if (s && /^Deleted player( \d+)?$/.test(s)) return s.replace('Deleted player', t('Deleted player'));
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+// The stored form of a name typed by the user: names are stored in lower case (names.py in the backend).
+export const storedName = (s) => s.trim().toLowerCase();
+
+// A player name as the interface shows it: in upper case, names are stored in lower case. The placeholder of a deleted
+// player ("deleted player", "deleted player 2") is translated.
+export function shownName(s) {
+  if (!s) return s;
+  const deleted = /^deleted player( \d+)?$/.exec(s);
+  return (deleted ? t('Deleted player') + (deleted[1] ?? '') : s).toUpperCase();
 }
 
 // A date and time as dd/mm/yyyy hh:mm in the 24-hour format, whatever the locale of the browser.

@@ -7,7 +7,7 @@
   import { online } from '../../lib/stores/online.js';
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName } from '../../lib/util.js';
   import { openVoiceChat } from '../../lib/voice.js';
 
   let configured = $state(true);
@@ -176,7 +176,7 @@
           {#if s.site === $online.lobby.host}<span class="tag">{t('host')}</span>{/if}
           {#if s.site === $online.site}<span class="tag">{t('you')}</span>{/if}
           {#if s.site !== $online.lobby.host}<span class="tag" class:ok={s.ready}>{s.ready ? t('ready') : t('not ready')}</span>{/if}
-          <span class="site-players">{s.players.length ? s.players.map(cap).join(', ') : t('no players yet')}</span>
+          <span class="site-players">{s.players.length ? s.players.map(shownName).join(', ') : t('no players yet')}</span>
         </div>
       {/each}
     </div>
@@ -185,7 +185,7 @@
     <div class="known-chips">
       {#each $players.known as name (name)}
         <button type="button" class="chip" class:in-game={mine.includes(name)} disabled={everyone.includes(name) && !mine.includes(name)}
-                onclick={() => toggle(name)}>{cap(name)}{#if everyone.includes(name) && !mine.includes(name)} <span class="hint">· {ownerOf(name)}</span>{/if}</button>
+                onclick={() => toggle(name)}>{shownName(name)}{#if everyone.includes(name) && !mine.includes(name)} <span class="hint">· {ownerOf(name)}</span>{/if}</button>
       {/each}
     </div>
 
@@ -195,7 +195,7 @@
         {#each order as name, i (name)}
           <li>
             <span class="num">{i + 1}</span>
-            <span class="player-name-text">{cap(name)} <span class="hint">· {ownerOf(name)}</span></span>
+            <span class="player-name-text">{shownName(name)} <span class="hint">· {ownerOf(name)}</span></span>
             <button class="btn-icon" onclick={() => move(i, -1)} disabled={i === 0}>↑</button>
             <button class="btn-icon" onclick={() => move(i, +1)} disabled={i === order.length - 1}>↓</button>
           </li>
@@ -226,7 +226,7 @@
   {:else if $online.phase === 'ended'}
     {#if $online.result?.placements?.length}
       <ol class="result">
-        {#each $online.result.placements as p}<li>{cap(p.player)}</li>{/each}
+        {#each $online.result.placements as p}<li>{shownName(p.player)}</li>{/each}
       </ol>
     {:else}
       <p class="note">{t('The match ended without a result.')}</p>

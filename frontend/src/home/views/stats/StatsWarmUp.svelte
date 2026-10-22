@@ -3,7 +3,7 @@
   // Warm-up half of the Stats tab: per player and per set of stations (never mixed) the complete runs, the fewest and
   // the average darts, how the darts of a run developed over time, the fields that needed the most darts on average
   // and the runs.
-  import { cap } from '../../../lib/util.js';
+  import { shownName } from '../../../lib/util.js';
   import { fieldLabel, modeLabel } from '../../../lib/warmUp.js';
   import TrendLine from './TrendLine.svelte';
   import RecentMatches from './RecentMatches.svelte';
@@ -43,7 +43,7 @@
     <div class="picker" role="tablist" aria-label={t('Player')}>
       {#each players as p}
         <button type="button" class="pick" class:active={p.player === player.player}
-                onclick={() => { playerName = p.player; modeKey = null; }}>{cap(p.player)}</button>
+                onclick={() => { playerName = p.player; modeKey = null; }}>{shownName(p.player)}</button>
       {/each}
     </div>
   {/if}
@@ -56,7 +56,7 @@
     </div>
   {/if}
 
-  <div class="section-title">{cap(player.player)}</div>
+  <div class="section-title">{shownName(player.player)}</div>
   <div class="stat-tiles">
     <div class="stat-tile"><div class="stat-tile-label">{t('Runs')}</div><div class="stat-tile-value">{mode.runs.length}</div></div>
     <div class="stat-tile"><div class="stat-tile-label">{t('Complete')}</div><div class="stat-tile-value">{mode.complete_runs}</div></div>

@@ -9,7 +9,7 @@
   // in the color of its owner. Beside it: the players with number, lives and status, the darts of the
   // turn (tap one to correct it) and what they did.
   import { flip } from 'svelte/animate';
-  import { cap, isBoardStopped } from '../../lib/util.js';
+  import { shownName, isBoardStopped } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { dartLabel, eventText, boardZones, phaseLabel } from '../../lib/killer.js';
   import LivesDisplay from '../../lib/components/LivesDisplay.svelte';
@@ -76,7 +76,7 @@
     <div class="name-row">
       <div class="turn">
         <span class="swatch" style="{me ? ringStyle(me) : ''}"><Avatar name={me?.name || ''} color={me?.color} size={100} /></span>
-        <span class="turn-name">{cap(killer.current_player || '—')}</span>
+        <span class="turn-name">{shownName(killer.current_player || '—')}</span>
       </div>
       {#if phaseLabel(killer)}<span class="turn-hint">{phaseLabel(killer)}</span>{/if}
     </div>
@@ -84,7 +84,7 @@
     {#if preGame}
       <div class="darts-row single">
         <button type="button" class="dart-box" disabled={lastThrow == null} onclick={() => (correctingLast = true)}>
-          <span class="dlabel">{t('Last throw')}{thrower ? ` · ${cap(thrower.name)}` : ''}</span>
+          <span class="dlabel">{t('Last throw')}{thrower ? ` · ${shownName(thrower.name)}` : ''}</span>
           <span class="dval">{lastThrow ? dartLabel(lastThrow) : '—'}</span>
           <span class="dsub"></span>
         </button>
@@ -125,7 +125,7 @@
         <li class:current-row={p.current} class:out={p.out} animate:flip={{ duration: 300 }}>
           <span class="row-name">
             <span class="swatch" style="{ringStyle(p)}"><Avatar name={p.name || ''} color={p.color} size={100} /></span>
-            <span class="name">{cap(p.name)}</span>
+            <span class="name">{shownName(p.name)}</span>
           </span>
           <span class="slot">
             {#if p.out}

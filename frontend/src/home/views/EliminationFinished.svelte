@@ -12,7 +12,7 @@
   import { players } from '../../lib/stores/players.js';
   import { online } from '../../lib/stores/online.js';
   import { api, apiJson } from '../../lib/api.js';
-  import { cap } from '../../lib/util.js';
+  import { shownName, storedName } from '../../lib/util.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import { dartLabel } from '../../lib/killer.js';
   import DartCorrectModal from '../../tv/views/DartCorrectModal.svelte';
@@ -58,7 +58,7 @@
   }
 
   async function addNewRematchPlayer() {
-    const name = newPlayerName.trim();
+    const name = storedName(newPlayerName);
     if (!name) return;
     if (!$players.known.includes(name)) {
       await api('POST', '/api/players', { name });
@@ -106,11 +106,11 @@
 
 <div class="elim-section finished">
   <div class="trophy">🏆</div>
-  <div class="winner-name">{cap($elimination?.winner || '')}</div>
+  <div class="winner-name">{shownName($elimination?.winner || '')}</div>
   <div class="winner-label">{t('Winner')}</div>
   {#if lastDarts.length && !$online}
     <div class="last">
-      <span class="last-label">{t('Last turn, {name}', { name: cap($elimination.last_turn.player) })}</span>
+      <span class="last-label">{t('Last turn, {name}', { name: shownName($elimination.last_turn.player) })}</span>
       {#each lastDarts as d, i}
         <button type="button" class="dart-chip" onclick={() => (correctingIndex = i)}>{dartLabel(d)}</button>
       {/each}
@@ -148,7 +148,7 @@
       <ul class="game-players">
         {#each rematchPlayers as name, i (name + i)}
           <li>
-            <span class="player-name-text">{cap(name)}</span>
+            <span class="player-name-text">{shownName(name)}</span>
             <button class="btn-icon" onclick={() => moveRematchPlayer(i, -1)} disabled={i === 0}>↑</button>
             <button class="btn-icon" onclick={() => moveRematchPlayer(i, +1)} disabled={i === rematchPlayers.length - 1}>↓</button>
             <button class="btn-icon remove" onclick={() => removeFromRematch(i)}>×</button>
@@ -165,7 +165,7 @@
       <div class="elim-section-title">{t('Known players')} <span class="hint">{t('(click to add/remove)')}</span></div>
       <div class="known-chips">
         {#each $players.known as name (name)}
-          <button type="button" class="chip" class:in-game={rematchPlayers.includes(name)} onclick={() => toggleRematchPlayer(name)}>{cap(name)}</button>
+          <button type="button" class="chip" class:in-game={rematchPlayers.includes(name)} onclick={() => toggleRematchPlayer(name)}>{shownName(name)}</button>
         {/each}
       </div>
 

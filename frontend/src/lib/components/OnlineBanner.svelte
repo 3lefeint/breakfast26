@@ -3,7 +3,7 @@
   // What an online match needs to say on the TV: who is playing where, that the match waits for
   // a site, the host's decision once it is gone for good, and anything that went wrong.
   import { onDestroy } from 'svelte';
-  import { cap } from '../util.js';
+  import { shownName } from '../util.js';
   import { api } from '../api.js';
   import { openVoiceChat } from '../voice.js';
 
@@ -62,7 +62,7 @@
     <div class="banner err">{online.message}</div>
   {/if}
   {#if remote && online.phase === 'playing'}
-    <div class="remote">{t('{name} plays at {site}', { name: cap(currentPlayer), site: owner })}</div>
+    <div class="remote">{t('{name} plays at {site}', { name: shownName(currentPlayer), site: owner })}</div>
   {/if}
 {/if}
 
