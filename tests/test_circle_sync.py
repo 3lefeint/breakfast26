@@ -130,3 +130,30 @@ def test_the_api_shows_the_state_and_switches_the_sync(tmp_path):
         assert client.post("/api/circle/sync").json()["ok"] is True
     finally:
         server.wire(None, None)
+
+
+def test_an_imported_match_earns_achievements_silently(tmp_path):
+    from breakfast import achievements as ach
+    from breakfast.match_record import export_record
+    far = StatsDB(str(tmp_path / "far.db"))
+    far.open_match("m-1", "X01", 501)
+    far.insert_turn("m-1", "ana", 1, 1, 501, 120, False, False, [("S20", 20, 481), ("50", 50, 431), ("S1", 1, 430)])
+    far.insert_turn("m-1", "bo", 1, 2, 501, 20, False, False, [("S20", 20, 481)])
+    far.record_leg_win("m-1", 1, "ana")
+    far.set_winner("m-1", "ana")
+    far.close_match("m-1")
+    record = export_record(far, "m-1", {"id": "far-id", "name": "Far"})
+
+    home = StatsDB(str(tmp_path / "home.db"))
+    home.set_achievements_start("2000-01-01T00:00:00+00:00")
+    earned = []
+    ach.AchievementEngine(home, definitions=(ach.BY_ID["bullseye"],), on_earned=earned.append).attach()
+    relay = Relay()
+    sync = CircleSync(home, relay, tmp_path / "config.toml", "1.9.0")
+    config = {"site_mappings": [{"location_id": "far-id", "location_name": "Far", "local_name": "ana", "player_id": "p1"}],
+              "mappings": [{"local_name": "anna", "player_id": "p1"}]}
+    relay.call = lambda method, path, body=None: {"record": record}
+    sync._import({"match_id": "m-1", "origin": {"id": "far-id"}}, config, {})
+    assert {(r["player"], r["achievement_id"]) for r in home._conn.execute("SELECT player, achievement_id FROM achievements_earned")} == {("anna", "bullseye")}
+    assert earned == []                                       # nothing is announced
+    assert home._conn.execute("SELECT COUNT(*) FROM achievements_earned WHERE player = 'bo@far'").fetchone()[0] == 0

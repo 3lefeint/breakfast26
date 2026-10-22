@@ -274,6 +274,11 @@ class CircleSync:
             raise
         if result["status"] in ("imported", "replaced", "deleted"):
             self._update(pulled=self._load().get("pulled", 0) + 1)
+        if result["status"] in ("imported", "replaced") and getattr(self._db, "achievement_engine", None):
+            try:
+                self._db.achievement_engine.evaluate_imported(result["match_id"])
+            except Exception:
+                log.exception("CircleSync: the achievements of match %s could not be evaluated", result["match_id"])
             log.info("CircleSync: match %s %s", result["match_id"], result["status"])
 
     @staticmethod
