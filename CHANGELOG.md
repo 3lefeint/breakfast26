@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- A finished X01 or Elimination match can be turned into a record, a self-contained JSON document, and stored again from one (`breakfast/match_record.py`): its format is independent of the database tables, a `revision` of the match rises with every close, an imported match carries its origin, its players become guests unless mapped to local players, and it is never exported again. There is no button for it yet. (#85)
 - The result page of a finished match, on the TV and in the Home app, lists the achievements earned in it, grouped by player; a click opens the description. The list is also in the details of a match in the Stats page. `GET /api/stats/match/{match_id}/achievements` returns it, and the game snapshots carry their `match_id`. (#83)
 
 ### Changed

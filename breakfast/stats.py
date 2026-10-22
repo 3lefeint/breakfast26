@@ -9,6 +9,7 @@ import logging
 import re
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -400,6 +401,7 @@ class StatsDB:
             self._migrate_matches_winner()
             self._migrate_matches_has_bot()
             self._migrate_matches_tournament()
+            self._migrate_matches_record()
             self._migrate_legs_decided()
             self._migrate_elimination_turn_details()
             self._migrate_turn_times()
@@ -465,6 +467,18 @@ class StatsDB:
                 c.rollback()
                 log.exception("Player %r could not be changed to lower case", source)
         log.info("Player names changed to lower case: %s of %s", changed, len(mixed))
+
+    def _migrate_matches_record(self):
+        """The columns of the match record (match_record.py): `revision` rises with every close of the match,
+        `origin_id` and `origin_name` name the location an imported match was played at (NULL for a match played here).
+        A match that was finished before keeps revision 1."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
+        if "revision" not in cols:
+            self._conn.execute("ALTER TABLE matches ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
+            self._conn.execute("UPDATE matches SET revision = 1 WHERE ended_at IS NOT NULL")
+        for column in ("origin_id", "origin_name"):
+            if column not in cols:
+                self._conn.execute(f"ALTER TABLE matches ADD COLUMN {column} TEXT")
 
     def _migrate_matches_tournament(self):
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(matches)")}
@@ -678,7 +692,7 @@ class StatsDB:
             ]
             log.debug("DB write: close_match match_id=%s players=%s", match_id, players)
             self._conn.execute(
-                "UPDATE matches SET ended_at = ?, players = ? WHERE match_id = ?",
+                "UPDATE matches SET ended_at = ?, players = ?, revision = revision + 1 WHERE match_id = ?",
                 (_now_iso(), json.dumps(players), match_id),
             )
             self._conn.commit()
@@ -747,11 +761,17 @@ class StatsDB:
         """The name a player of another site is stored under, `player@origin`: a guest of this installation. It is a
         hidden player, so rankings, the Players tab and achievements leave it out, and its name cannot be the name of a
         local player. The player row is made on the first call."""
-        name = normalize(f"{player}@{origin or 'unknown'}")
         with self._lock:
-            self._conn.execute(
-                "INSERT OR IGNORE INTO players (name, created_at, hidden, guest) VALUES (?, ?, 1, 1)", (name, _now_iso()))
+            name = self.guest_name_in(self._conn, player, origin)
             self._conn.commit()
+        return name
+
+    @staticmethod
+    def guest_name_in(conn, player: str, origin: str | None) -> str:
+        """guest_name() on a connection whose lock the caller holds, without the commit."""
+        name = normalize(f"{player}@{origin or 'unknown'}")
+        conn.execute("INSERT OR IGNORE INTO players (name, created_at, hidden, guest) VALUES (?, ?, 1, 1)",
+                     (name, _now_iso()))
         return name
 
     def hidden_players(self) -> list:
@@ -1859,6 +1879,18 @@ class StatsDB:
             self._conn.commit()
         self._match_changed(match_id)
 
+    @contextmanager
+    def transaction(self):
+        """Hold the lock for several statements: yields the connection, commits at the end and rolls back on an
+        error. For code that reads or writes a whole match at once (match_record.py)."""
+        with self._lock:
+            try:
+                yield self._conn
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
     # ── Deleting matches ──────────────────────────────────────────────────────
 
     # Every table with a `match_id` column: what deleting a match removes. A test keeps this list complete.
@@ -1870,7 +1902,7 @@ class StatsDB:
                       "dart_positions", "achievements_earned")
     STALE_MATCH_DAYS = 7
 
-    def _delete_match_rows(self, match_id: str):
+    def delete_match_rows(self, match_id: str):
         """The rows of one match in every table; the caller holds the lock and commits."""
         for table in self._DELETE_TABLES:
             self._conn.execute(f"DELETE FROM {table} WHERE match_id = ?", (match_id,))
@@ -1885,7 +1917,7 @@ class StatsDB:
                 return {"error": "unknown match"}
             if row["tournament_id"]:
                 return {"error": "the match belongs to a tournament"}
-            self._delete_match_rows(match_id)
+            self.delete_match_rows(match_id)
             self._conn.commit()
         log.info("Deleted match %s", match_id)
         return {"ok": True}
@@ -1898,7 +1930,7 @@ class StatsDB:
             row = self._conn.execute("SELECT ended_at FROM matches WHERE match_id = ?", (match_id,)).fetchone()
             if row is None or row["ended_at"] is not None:
                 return False
-            self._delete_match_rows(match_id)
+            self.delete_match_rows(match_id)
             self._conn.commit()
         log.info("Discarded unfinished match %s", match_id)
         return True
@@ -1913,7 +1945,7 @@ class StatsDB:
                 "SELECT match_id FROM matches WHERE ended_at IS NULL AND started_at < ?", (cutoff,)).fetchall()
                 if r["match_id"] not in saved]
             for match_id in ids:
-                self._delete_match_rows(match_id)
+                self.delete_match_rows(match_id)
             self._conn.commit()
         if ids:
             log.info("Deleted %s unfinished matches older than %s days", len(ids), days)
@@ -2360,7 +2392,7 @@ class StatsDB:
                     copy.close()
             try:
                 for match_id in solo:
-                    self._delete_match_rows(match_id)
+                    self.delete_match_rows(match_id)
                 for match_id in shared:
                     self._anonymise_in_match(match_id, player)
                 self._anonymise_in_tournaments(player)
