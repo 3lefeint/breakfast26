@@ -1128,4 +1128,17 @@ export default {
   '{n} min ago': 'vor {n} Min.',
   '{n} h ago': 'vor {n} Std.',
   '{n} days ago': 'vor {n} Tagen',
+  // Circle sync (#92)
+  'Circle of friends': 'Freundeskreis',
+  'Your matches go to the friends the admin of the circle named for the players in them, and their matches come here. Which players and sites belong to it is decided at the relay.': 'Deine Matches gehen an die Freunde, die der Admin des Kreises für die beteiligten Spieler bestimmt hat, und ihre Matches kommen hierher. Welche Spieler und Standorte dazugehören, wird am Relay festgelegt.',
+  'Share matches with the circle': 'Matches mit dem Kreis teilen',
+  'Approved by the admin': 'Vom Admin freigegeben',
+  'yes': 'ja',
+  'not yet': 'noch nicht',
+  'Last sent': 'Zuletzt gesendet',
+  'Last fetched': 'Zuletzt geholt',
+  'Waiting to be sent': 'Wartet aufs Senden',
+  'Sent / received': 'Gesendet / empfangen',
+  'Sync now': 'Jetzt abgleichen',
+  'Waiting for the admin to approve this site.': 'Wartet darauf, dass der Admin diesen Standort freigibt.',
 };

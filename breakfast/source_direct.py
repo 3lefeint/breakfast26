@@ -343,6 +343,7 @@ def run_direct(email, password, board_id, record_file=None,
     if web_port:
         web.start(web_port)
         web.start_update_check()
+        web.start_circle_sync()
 
     if client:
         log.info("Connecting to Autodarts cloud (board=%s)", board_id)

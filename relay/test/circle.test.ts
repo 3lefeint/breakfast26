@@ -94,6 +94,8 @@ describe("what a site may do", () => {
     expect(res.body.circle_players.map((p: any) => [p.name, p.sites.map((s: any) => s.name).sort()])).toEqual([
       ["Ashi", ["Ashitaka's Board", "Meierhof", "Streemo's Board"]], ["Peter", ["Meierhof"]], ["Timo", ["Ashitaka's Board", "Streemo's Board"]]]);
     expect(res.body.mappings).toEqual([{ local_name: "ashi", player_id: ashi }, { local_name: "peter", player_id: peter }]);
+    expect(res.body.site_mappings.map((m: any) => [m.location_name, m.local_name, m.player_id])).toEqual([
+      ["Ashitaka's Board", "ashi", ashi], ["Meierhof", "ashi", ashi], ["Meierhof", "peter", peter], ["Streemo's Board", "timo", timo]]);
   });
 
   it("answers 503 while the circle is off or without a bucket", async () => {

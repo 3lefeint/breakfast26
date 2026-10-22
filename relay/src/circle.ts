@@ -117,8 +117,12 @@ export async function handleCircle(request: Request, env: CircleEnv, limited: Li
     const rules = await db.prepare(
       "SELECT ru.player_id, l.id AS location_id, l.name AS location_name FROM circle_rules ru JOIN locations l ON l.id = ru.location_id").all<{ player_id: string; location_id: string; location_name: string }>();
     const mappings = await db.prepare("SELECT local_name, player_id FROM circle_mappings WHERE location_id = ? ORDER BY local_name").bind(site).all<{ local_name: string; player_id: string }>();
+    const all = await db.prepare(
+      "SELECT m.location_id, l.name AS location_name, m.local_name, m.player_id FROM circle_mappings m JOIN locations l ON l.id = m.location_id ORDER BY l.name, m.local_name")
+      .all<{ location_id: string; location_name: string; local_name: string; player_id: string }>();
     return json({
       approved: true,
+      site_mappings: all.results,
       circle_players: players.results.map((p) => ({ ...p, sites: rules.results.filter((r) => r.player_id === p.id).map((r) => ({ id: r.location_id, name: r.location_name })) })),
       mappings: mappings.results,
     });

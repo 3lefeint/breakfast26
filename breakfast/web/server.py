@@ -29,6 +29,7 @@ from breakfast import joke as joke_mod
 from breakfast import known_players as kp
 from breakfast import names as names_mod
 from breakfast import tournament as tournament_mod
+from breakfast import circle_sync as circle_sync_mod
 from breakfast import locations as locations_mod
 from breakfast import online as online_mod
 from breakfast import db_backup
@@ -68,6 +69,7 @@ _bb_ctrl = None
 _wu_ctrl = None
 _online = None
 _locations = None
+_circle = None
 _cloud_client = None
 _stats_tracker = None
 _stats_db = None
@@ -95,7 +97,7 @@ def wire(game_state, elim_ctrl,
          wu_ctrl=None, resume_offers=None):
     global _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online, _locations, _elim_beat_hint
+           _dev_demo, _online, _locations, _circle, _elim_beat_hint
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
@@ -114,6 +116,11 @@ def wire(game_state, elim_ctrl,
     _stats_db = stats_tracker._db if stats_tracker else None
     _mqtt_pub = mqtt_pub
     _config_path = config_path
+    _circle = None
+    if _locations and _stats_db:
+        _circle = circle_sync_mod.CircleSync(_stats_db, _locations, config_path, __version__)
+        _stats_db.on_match_closed = _circle.match_closed
+        _stats_db.on_match_deleted = _circle.match_deleted
     _audio_engine = audio_engine
     _board_manager_url = board_manager_url
     _dev_demo = dev_demo
@@ -1654,6 +1661,34 @@ async def _location_call(fn, *args):
         return {"error": str(e)}
 
 
+@app.get("/api/circle")
+async def circle_status():
+    """The sync with the circle of friends: switch, state of the last round, what is waiting."""
+    if not _circle:
+        return {"available": False}
+    return {"available": True, **_circle.status()}
+
+
+class CircleEnabledBody(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/circle/enabled")
+async def circle_enabled(body: CircleEnabledBody):
+    if not _circle:
+        return {"error": "the sync is not available"}
+    await asyncio.to_thread(_circle.set_enabled, body.enabled)
+    return {"ok": True, **_circle.status()}
+
+
+@app.post("/api/circle/sync")
+async def circle_sync_now():
+    """Run a round now and answer with the state."""
+    if not _circle:
+        return {"error": "the sync is not available"}
+    return {"ok": True, **await asyncio.to_thread(_circle.run_once)}
+
+
 @app.get("/api/locations")
 async def locations_status():
     if not _locations:
@@ -2722,6 +2757,12 @@ def update_check() -> dict:
     except Exception as e:
         log.warning("Updater unreachable on /check: %s", e)
         return {"error": f"updater unreachable: {e}"}
+
+
+def start_circle_sync():
+    """The sync with the circle of friends runs in the background, see circle_sync.py."""
+    if _circle:
+        _circle.start()
 
 
 def start_update_check():

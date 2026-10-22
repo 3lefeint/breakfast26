@@ -36,7 +36,12 @@ CODE_PREFIX = "BF1-"
 
 
 class LocationError(Exception):
-    """Something the user has to be told: wrong PIN, no relay, an invalid invitation, ..."""
+    """Something the user has to be told: wrong PIN, no relay, an invalid invitation, ...
+    `status` is the HTTP status the relay answered, None when it was not reached."""
+
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def _b64(data):
@@ -81,7 +86,7 @@ def _pin_hash(pin, salt):
 
 
 class Locations:
-    def __init__(self, config_path, post=None, get=None, delete=None, patch=None, now=time.time):
+    def __init__(self, config_path, post=None, get=None, delete=None, patch=None, put=None, now=time.time):
         self.path = Path(config_path).parent / "location.json"
         self._now = now
         self._lock = threading.RLock()
@@ -89,6 +94,7 @@ class Locations:
         self._get = get or (lambda url, **kw: requests.get(url, timeout=TIMEOUT_S, **kw))
         self._delete = delete or (lambda url, **kw: requests.delete(url, timeout=TIMEOUT_S, **kw))
         self._patch = patch or (lambda url, **kw: requests.patch(url, timeout=TIMEOUT_S, **kw))
+        self._put = put or (lambda url, **kw: requests.put(url, timeout=TIMEOUT_S, **kw))
 
     # ── the file ──────────────────────────────────────────────────────────────
 
@@ -170,7 +176,7 @@ class Locations:
         headers = self._headers(state, method, path, raw)
         if raw:
             headers["content-type"] = "application/json"
-        fn = {"POST": self._post, "GET": self._get, "DELETE": self._delete, "PATCH": self._patch}[method]
+        fn = {"POST": self._post, "GET": self._get, "DELETE": self._delete, "PATCH": self._patch, "PUT": self._put}[method]
         return self._answer(fn, base + path, data=raw.encode() if raw else None, headers=headers)
 
     def signer_for(self, relay_url):
@@ -195,7 +201,7 @@ class Locations:
         if res.status_code >= 400:
             message = str(data.get("error") or f"the relay answered {res.status_code}")
             log.warning("Locations: %s answered %s: %s", url, res.status_code, message)
-            raise LocationError(message)
+            raise LocationError(message, res.status_code)
         return data
 
     def _registered(self):
@@ -203,6 +209,17 @@ class Locations:
         if "id" not in state:
             raise LocationError("register this location first")
         return state
+
+    def call(self, method, path, body=None):
+        """A signed request of this location to its relay, for the sync of the circle: the answer as JSON. The
+        signature covers the path without its query. The lock is not held while the relay answers."""
+        state = self._registered()
+        raw = json.dumps(body, separators=(",", ":")) if body is not None else ""
+        headers = self._headers(state, method, path.split("?")[0], raw)
+        if raw:
+            headers["content-type"] = "application/json"
+        fn = {"POST": self._post, "GET": self._get, "DELETE": self._delete, "PATCH": self._patch, "PUT": self._put}[method]
+        return self._answer(fn, state["relay"] + path, data=raw.encode() if raw else None, headers=headers)
 
     # ── commands ──────────────────────────────────────────────────────────────
 

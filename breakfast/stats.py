@@ -391,6 +391,8 @@ class StatsDB:
         # Called with a match id after a change that can decide achievements (a match
         # closed or reopened, a turn undone or corrected). See achievements.py.
         self.on_match_changed = None
+        self.on_match_closed = None          # (match_id) after a match was finished, for the sync of the circle
+        self.on_match_deleted = None         # (match_id) after delete_match
         self.on_turn_stored = None          # set by AchievementEngine.attach()
         self.achievement_engine = None      # set by AchievementEngine.attach()
         with self._lock:
@@ -575,6 +577,16 @@ class StatsDB:
             log.info("Stats DB: DROP COLUMN in_roster failed despite sqlite %s, leaving it in place",
                       sqlite3.sqlite_version)
 
+    @staticmethod
+    def _notify(listener, match_id: str):
+        """Tell a listener about a match; like _match_changed() it never reaches the game."""
+        if listener is None:
+            return
+        try:
+            listener(match_id)
+        except Exception:
+            log.exception("match listener failed for %s", match_id)
+
     def _match_changed(self, match_id: str):
         """Tell the listener a match changed. A failing listener must never reach the
         game, so its errors are only logged."""
@@ -698,6 +710,7 @@ class StatsDB:
             self._conn.commit()
         telemetry.record_match_closed(match_id, len(players))
         self._match_changed(match_id)
+        self._notify(self.on_match_closed, match_id)
 
     def set_winner(self, match_id: str, winner: str | None):
         log.debug("DB write: set_winner match_id=%s winner=%s", match_id, winner)
@@ -1920,6 +1933,7 @@ class StatsDB:
             self.delete_match_rows(match_id)
             self._conn.commit()
         log.info("Deleted match %s", match_id)
+        self._notify(self.on_match_deleted, match_id)
         return {"ok": True}
 
     def discard_unfinished(self, match_id: str | None) -> bool:
