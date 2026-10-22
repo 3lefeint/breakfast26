@@ -96,3 +96,13 @@ class TestBoardDarts:
 class TestFieldPoints:
     def test_fields(self):
         assert [_field_points(f) for f in ("S5", "D16", "T20", "25", "50", "0")] == [5, 32, 60, 25, 50, 0]
+
+
+def test_darts_of_a_remote_player_show_without_a_board_stream():
+    darts = BoardDarts()
+    throw = {"segment": {"name": "S5", "number": 5, "multiplier": 1}, "coords": {"x": 0.1, "y": 0.2}}
+    assert darts.snapshot() is None
+    assert darts.update([throw], remote=True) is True
+    assert [(d["field"], d["x"], d["y"]) for d in darts.snapshot()] == [("S5", 0.1, 0.2)]
+    darts.update([])
+    assert darts.snapshot() is None

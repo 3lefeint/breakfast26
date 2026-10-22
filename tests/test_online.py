@@ -284,6 +284,23 @@ class TestMatch:
         h.ctrl.on_board_state(0, [])
         assert len(conn.sent) == sent and h.ctrl.game.current_player == "carl"
 
+    def test_the_darts_of_a_remote_player_go_to_the_board_display_and_leave_with_the_turn(self, h):
+        shown = []
+        h.ctrl.on_remote_darts = lambda throws: shown.append(list(throws))
+        conn = self._start(h)
+        assert h.ctrl.remote_turn_active() is False             # anna, a local player, is up
+        h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
+        h.ctrl.on_board_state(0, [])
+        assert h.ctrl.remote_turn_active() is True              # carl at the other site is up
+        dart = {"number": 5, "multiplier": 1, "name": "S5", "x": 0.1, "y": 0.2}
+        conn.push({"type": "dart", "seq": 2, "player": "carl", "throws": [dart], "site": "Club"})
+        assert _wait(lambda: len(shown) == 1)
+        assert shown[0][0]["coords"] == {"x": 0.1, "y": 0.2} and shown[0][0]["segment"]["name"] == "S5"
+        conn.push({"type": "turn", "seq": 2, "player": "carl", "throws": [dart, _w(1, 1), _w(1, 1)],
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club"})
+        assert _wait(lambda: shown[-1] == [])                   # the turn is over, the darts are pulled
+        assert h.ctrl.remote_turn_active() is False
+
     def test_remote_darts_show_live_and_the_turn_is_applied(self, h):
         conn = self._start(h)
         h.ctrl.on_board_state(3, [_t(20, 3)] * 3)

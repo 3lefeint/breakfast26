@@ -46,6 +46,7 @@ class EliminationGame(TurnGame):
         # state hashes to the relay, `local_players` are the players whose turns
         # are thrown at this site's board; None means every player is local.
         self.online = online
+        self.show_remote_darts = None      # set by the controller: shows the darts of a remote player on the board
         self.local_players = set(local_players) if local_players is not None else None
         self.turn_seq = 0          # finished turns of this match, local and remote
         self._remote = False       # True while a remote turn is being replayed
@@ -318,6 +319,7 @@ class EliminationGame(TurnGame):
         if self.state != "playing" or player != self.current_player or not throws:
             return
         self._replay(throws)
+        self._show_remote_darts(throws)
 
     def remote_turn(self, player, throws):
         """A remote player's finished turn: replay it through the same code a local turn
@@ -328,6 +330,15 @@ class EliminationGame(TurnGame):
             log.warning("Remote turn of %s while %s is up", player, self.current_player)
             return
         self._replay(throws, pull=True)
+        self._show_remote_darts([])         # the turn is over: the darts leave the board
+
+    def _show_remote_darts(self, throws):
+        """Show the darts of a player at another site on the board display, which only the local board feeds."""
+        if self.show_remote_darts:
+            try:
+                self.show_remote_darts(throws)
+            except Exception:
+                log.exception("Showing the remote darts failed")
 
     def _replay(self, throws, pull=False):
         self._remote = True
@@ -609,6 +620,12 @@ class EliminationController(TurnGameController):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._init_bots(aim_elimination, darts_elimination)
+        self.on_remote_darts = None        # called with the darts of the remote player's turn in progress, [] when it ends
+
+    def remote_turn_active(self):
+        """True while a player at another site of an online match is up: the local board shows nothing of his turn."""
+        game = self.game
+        return bool(game and game.online and game.state == "playing" and not game.is_local(game.current_player))
 
     def _dump(self, game):
         """The turn in progress is not kept. An online match cannot be resumed."""
@@ -653,6 +670,7 @@ class EliminationController(TurnGameController):
                 audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
                 match_id=match_id, online=online, local_players=local_players,
             )
+            self.game.show_remote_darts = lambda throws: self.on_remote_darts and self.on_remote_darts(throws)
             self.game.announce_start()
 
     def remote_dart(self, player, throws):

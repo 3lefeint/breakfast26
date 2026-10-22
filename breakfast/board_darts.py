@@ -54,11 +54,12 @@ class BoardDarts:
             self._shown = self._merge()
             return True
 
-    def update(self, throws, bot=False) -> bool:
+    def update(self, throws, bot=False, remote=False) -> bool:
         """Takes the board's `throws` list. Returns True if what is shown changed. *bot*: the darts are thrown by
-        the computer and show also while the board stream is not connected."""
+        the computer, *remote*: by a player at another site of an online match; both show also while the board
+        stream is not connected."""
         with self._lock:
-            self._bot = bool(bot and throws)
+            self._bot = bool((bot or remote) and throws)
             self._darts = [_dart(t) for t in throws]
             self._overrides = {i: d for i, d in self._overrides.items() if i < len(self._darts)}
             return self._refresh()

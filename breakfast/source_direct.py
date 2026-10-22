@@ -63,8 +63,11 @@ def _handle_board_message(data, state, mqtt_pub, elim_ctrl, audio, prev_count, t
     count = data.get("numThrows", 0)
     throws = data.get("throws") or []
 
-    # While a bot throws, the board shows its darts and the real, empty board must not wipe them.
-    if not getattr(getattr(x01_ctrl, "bots", None), "playing", False) and state.board_darts.update(throws if count else []):
+    # While a bot throws, or a player at another site of an online match, the board shows their darts and the real,
+    # empty board must not wipe them.
+    foreign = (getattr(getattr(x01_ctrl, "bots", None), "playing", False)
+               or getattr(elim_ctrl, "remote_turn_active", lambda: False)())
+    if not foreign and state.board_darts.update(throws if count else []):
         from breakfast.web import server as web
         web.push()
 
@@ -260,6 +263,11 @@ def run_direct(email, password, board_id, record_file=None,
         if state.board_darts.update(throws, bot=True):
             web.push()
     x01_ctrl.bots.on_darts = show_bot_darts
+
+    def show_remote_darts(throws):
+        if state.board_darts.update(throws, remote=True):
+            web.push()
+    elim_ctrl.on_remote_darts = show_remote_darts
     tournament_ctrl = TournamentController(x01_ctrl, stats_db=stats_db_instance, on_change=web.push)
     resume_offers = ResumeOffers(
         stats_db_instance, {"X01": x01_ctrl, "Elimination": elim_ctrl, "Killer": killer_ctrl}, tournament=tournament_ctrl,

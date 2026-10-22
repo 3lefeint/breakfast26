@@ -271,3 +271,22 @@ class TestBoardStatusToMqtt:
         mqtt_pub = FakeMqttPub()
         source_direct._fetch_board_status(GameState(), "ws://10.0.0.5:3180/api/events", mqtt_pub)
         assert mqtt_pub.board_status_events == [{"type": "board_status", "status": "Stopped"}]
+
+
+class TestRemoteDartsStayOnTheBoard:
+    """While a player at another site of an online match is up, the empty local board must not wipe his darts."""
+
+    def _run(self, remote_turn):
+        state = GameState()
+        state.board_darts.set_connected(True)
+        state.board_darts.update([{"segment": {"name": "S5", "number": 5, "multiplier": 1}, "coords": {"x": 0.1, "y": 0.2}}], remote=True)
+        elim = FakeElimCtrl(active=True)
+        elim.remote_turn_active = lambda: remote_turn
+        _handle_board_message({"numThrows": 0, "throws": []}, state, FakeMqttPub(), elim, FakeAudio(), 0)
+        return state.board_darts.snapshot()
+
+    def test_the_remote_darts_stay_while_the_remote_player_is_up(self):
+        assert [d["field"] for d in self._run(remote_turn=True)] == ["S5"]
+
+    def test_the_empty_board_clears_them_otherwise(self):
+        assert self._run(remote_turn=False) == []
