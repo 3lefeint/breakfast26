@@ -6,6 +6,7 @@
   // edge. Board opens the board manager of the installation and is disabled when none is configured; Autodarts
   // opens its web app in a new tab.
   import Icon from '../../lib/components/Icon.svelte';
+  import { adminRelay } from '../../lib/admin.js';
 
   let { route, boardAddress = null, version = '', onVersionTap = () => {} } = $props();
 
@@ -17,6 +18,8 @@
     { id: 'stats', label: t('Stats'), icon: 'stats', href: '#stats', active: route === 'stats' },
     { id: 'board', label: t('Board'), icon: 'board', href: boardAddress, external: true, disabled: !boardAddress },
     { id: 'autodarts', label: 'Autodarts', icon: 'external', href: 'https://play.autodarts.com/', external: true },
+    // Only in a browser that knows a relay for the admin: the page itself is reached by its address (#admin).
+    ...($adminRelay ? [{ id: 'admin', label: t('Admin'), icon: 'lock', href: '#admin', active: route === 'admin' }] : []),
   ]);
   let settingsActive = $derived(route === 'settings' || route.startsWith('settings/'));
 </script>
