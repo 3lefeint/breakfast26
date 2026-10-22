@@ -65,6 +65,11 @@ secret `ADMIN_PASSWORD_HASH` and a new `ADMIN_TOKEN_KEY` with `wrangler secret p
 running it again changes the password and ends every open login. Without the `RECORDS` binding the circle routes answer 503,
 without the secrets the admin routes do; `SHARING=off` as a variable switches the circle routes off.
 
+The usage view of the admin page (`GET /admin/usage`) asks the GraphQL Analytics API of Cloudflare how close the relay is to the free
+plan. It needs two secrets, `CF_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` (an API token with the permission Account > Account Analytics >
+Read), and optionally the variables `CF_SCRIPT_NAME` (default `breakfast-relay`), `CF_D1_DATABASE_ID` (without it all D1 databases of the
+account are counted) and `CF_R2_BUCKET` (default `breakfast-records`). Without the secrets the route answers `{"configured": false}`.
+
 The relay also serves the voice chat page (`/voice`) and the signaling of a match (see PROTOCOL.md, "Voice chat"). It
 needs the Durable Object `VOICE` (class `VoiceRoom`) and the migration `v2` in the config you deploy with (both are in
 `wrangler.jsonc`; copy them into your own config). STUN works without anything else. For participants whose browsers cannot

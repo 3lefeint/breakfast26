@@ -10,6 +10,7 @@ let t = NOW;
 let env: AdminEnv & { DB: FakeD1 };
 let refuseLimit = false;
 let limitedCalls: string[] = [];
+let fetcher: (url: string, init: RequestInit) => Promise<Response> = async () => { throw new Error("no network in tests"); };
 const limited = async (purpose: string) => { limitedCalls.push(purpose); return refuseLimit; };
 
 async function login(password = PASSWORD) {
@@ -19,7 +20,7 @@ async function login(password = PASSWORD) {
 async function call(token: string | null, method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = {};
   if (token) headers.authorization = `Bearer ${token}`;
-  const response = await handleAdmin(new Request(`https://relay.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, limited, t);
+  const response = await handleAdmin(new Request(`https://relay.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, limited, t, fetcher);
   return { status: response!.status, body: response!.status === 204 ? null : await response!.json() as Record<string, any>, headers: response!.headers };
 }
 
@@ -181,5 +182,73 @@ describe("sync state and reports", () => {
 
   it("answers 404 for an unknown admin route", async () => {
     expect((await call(token, "GET", "/admin/nothing")).status).toBe(404);
+  });
+});
+
+describe("the usage of the free plan", () => {
+  const answers = (data: Record<string, unknown>) => async (_url: string, init: RequestInit) => {
+    const query = JSON.parse(String(init.body)).query as string;
+    const dataset = Object.keys(data).find((name) => query.includes(name))!;
+    const value = data[dataset];
+    return value instanceof Response ? value : new Response(JSON.stringify({ data: { viewer: { accounts: [{ [dataset]: value }] } } }));
+  };
+
+  it("says that it is not set up while the token or the account is missing", async () => {
+    const res = await call(token, "GET", "/admin/usage");
+    expect(res.body).toMatchObject({ configured: false, limits: { workers_requests_day: 100_000 } });
+    env.ANALYTICS_API_TOKEN = "token";
+    expect((await call(token, "GET", "/admin/usage")).body!.configured).toBe(false);
+  });
+
+  it("asks the API for every figure and adds them up", async () => {
+    env.ANALYTICS_API_TOKEN = "token";
+    env.CF_ACCOUNT_ID = "acc";
+    env.CF_D1_DATABASE_ID = "db-1";
+    const seen: { auth: string | null; variables: Record<string, unknown> }[] = [];
+    fetcher = async (url, init) => {
+      expect(url).toBe("https://api.cloudflare.com/client/v4/graphql");
+      seen.push({ auth: new Headers(init.headers).get("authorization"), variables: JSON.parse(String(init.body)).variables });
+      return answers({
+        workersInvocationsAdaptive: [{ sum: { requests: 120, errors: 2, subrequests: 5 }, quantiles: { cpuTimeP50: 300, cpuTimeP99: 900 } },
+          { sum: { requests: 30, errors: 0, subrequests: 1 }, quantiles: { cpuTimeP50: 100, cpuTimeP99: 1200 } }],
+        d1AnalyticsAdaptiveGroups: [{ sum: { readQueries: 10, writeQueries: 4, rowsRead: 500, rowsWritten: 40 } }],
+        d1StorageAdaptiveGroups: [{ max: { databaseSizeBytes: 90_000 }, dimensions: { date: "2025-10-09" } }, { max: { databaseSizeBytes: 80_000 }, dimensions: { date: "2025-10-08" } }],
+        r2OperationsAdaptiveGroups: [{ sum: { requests: 7 }, dimensions: { actionType: "PutObject" } }, { sum: { requests: 40 }, dimensions: { actionType: "GetObject" } },
+          { sum: { requests: 3 }, dimensions: { actionType: "DeleteObject" } }, { sum: { requests: 1 }, dimensions: { actionType: "Mystery" } }],
+        r2StorageAdaptiveGroups: [{ max: { objectCount: 12, payloadSize: 2000, metadataSize: 100 }, dimensions: { datetime: "x" } }],
+      })(url, init);
+    };
+    const { body } = await call(token, "GET", "/admin/usage");
+    expect(body).toMatchObject({
+      configured: true, day: "2025-10-09", month: "2025-10-01",
+      workers: { data: { requests: 150, errors: 2, subrequests: 6, cpu_p50: 300, cpu_p99: 1200 } },
+      d1: { data: { read_queries: 10, write_queries: 4, rows_read: 500, rows_written: 40 } },
+      d1_size: { data: { bytes: 90_000 } },
+      r2_operations: { data: { class_a: 7, class_b: 40, free: 3, other: 1 } },
+      r2_storage: { data: { bytes: 2100, objects: 12 } },
+    });
+    expect(seen).toHaveLength(5);
+    expect(seen.every((s) => s.auth === "Bearer token" && s.variables.accountTag === "acc")).toBe(true);
+    expect(seen.filter((s) => s.variables.databaseId === "db-1")).toHaveLength(2);
+  });
+
+  it("one figure the API refuses does not take the others away", async () => {
+    env.ANALYTICS_API_TOKEN = "token";
+    env.CF_ACCOUNT_ID = "acc";
+    fetcher = async (url, init) => {
+      const query = JSON.parse(String(init.body)).query as string;
+      if (query.includes("d1StorageAdaptiveGroups")) return new Response(JSON.stringify({ data: null, errors: [{ message: "unknown field databaseSizeBytes" }] }));
+      if (query.includes("r2StorageAdaptiveGroups")) return new Response("{}", { status: 403 });
+      return answers({ workersInvocationsAdaptive: [], d1AnalyticsAdaptiveGroups: [], r2OperationsAdaptiveGroups: [] })(url, init);
+    };
+    const { body } = await call(token, "GET", "/admin/usage");
+    expect(body!.d1_size).toEqual({ error: "unknown field databaseSizeBytes" });
+    expect(body!.r2_storage).toEqual({ error: "Cloudflare answered 403" });
+    expect(body!.workers.data.requests).toBe(0);
+    expect(body!.r2_operations.data).toMatchObject({ class_a: 0, class_b: 0 });
+  });
+
+  it("needs the login like the other routes", async () => {
+    expect((await call(null, "GET", "/admin/usage")).status).toBe(401);
   });
 });

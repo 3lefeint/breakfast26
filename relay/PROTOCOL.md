@@ -166,6 +166,7 @@ tries per 15 minutes per address. Without the secrets the routes answer 503.
 | `PUT /admin/rules` `{player_id, location_ids}` | replace the sites that get the matches of a player |
 | `GET /admin/sync` | per approved site: last seen, version, its state and how many records it sent; the totals |
 | `GET /admin/records` | the newest records without their content: match, origin, mode, the circle players in it, size |
+| `GET /admin/usage` | the usage of the free plan from the GraphQL Analytics API (`readUsage` in `src/usage.ts`): `{configured, generated_at, day, month, limits, workers, d1, d1_size, r2_operations, r2_storage}`; `workers` is today's requests, errors, subrequests and the CPU time quantiles `cpu_p50` and `cpu_p99` (as the API gives them, its unit is not documented), `d1` today's queries and rows read and written, `d1_size` the database size, `r2_operations` this month's operations by `class_a`, `class_b`, `free` and `other` with `by_action`, `r2_storage` bytes and objects of the bucket. Every part is `{data}` or `{error}`, so a figure the API refuses does not hide the others; `{configured: false, limits}` without the secrets `CF_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` |
 | `GET /admin/reports?days=<n>` | the usage reports of the last days (30 by default): counts by type, installations, versions, platforms and the newest events |
 
 ## Voice chat

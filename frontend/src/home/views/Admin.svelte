@@ -12,6 +12,7 @@
   import AdminRules from './admin/AdminRules.svelte';
   import AdminSync from './admin/AdminSync.svelte';
   import AdminReports from './admin/AdminReports.svelte';
+  import AdminUsage from './admin/AdminUsage.svelte';
 
   let address = $state($adminRelay);
   let password = $state('');
@@ -27,6 +28,7 @@
     { id: 'rules', label: t('Rules') },
     { id: 'sync', label: t('Sync') },
     { id: 'reports', label: t('Reports') },
+    { id: 'usage', label: t('Usage') },
   ];
 
   async function signIn() {
@@ -105,6 +107,8 @@
       <AdminRules {approved} {players} {act} />
     {:else if tab === 'sync'}
       <AdminSync />
+    {:else if tab === 'usage'}
+      <AdminUsage />
     {:else}
       <AdminReports />
     {/if}

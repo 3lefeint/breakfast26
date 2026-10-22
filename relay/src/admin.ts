@@ -4,6 +4,7 @@
 // page runs in a browser on any installation, so the routes allow any origin; there are no cookies, the token is the only door.
 
 import { b64urlEncode, Limiter, LocationEnv, sha256Hex } from "./locations";
+import { Fetcher, readUsage, UsageEnv } from "./usage";
 
 export const ADMIN_LIMITS = {
   TOKEN_TTL_MS: 3_600_000,
@@ -14,7 +15,7 @@ export const ADMIN_LIMITS = {
   EVENTS_SHOWN: 50,
 };
 
-export interface AdminEnv extends LocationEnv {
+export interface AdminEnv extends LocationEnv, UsageEnv {
   ADMIN_PASSWORD_HASH?: string;
   ADMIN_TOKEN_KEY?: string;
 }
@@ -83,7 +84,7 @@ async function readBody(request: Request): Promise<Record<string, unknown> | Res
 const parse = <T>(text: string, fallback: T): T => { try { return JSON.parse(text) as T; } catch { return fallback; } };
 
 /** The routes of the admin; null when the request is none of them. */
-export async function handleAdmin(request: Request, env: AdminEnv, limited: Limiter, now = Date.now()): Promise<Response | null> {
+export async function handleAdmin(request: Request, env: AdminEnv, limited: Limiter, now = Date.now(), fetcher: Fetcher = fetch): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
   if (!path.startsWith("/admin/")) return null;
@@ -212,6 +213,8 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
     return json({ days, installs: installs?.n ?? 0, by_type: byType.results, versions: versions.results, platforms: platforms.results,
       recent: recent.results.map((e) => ({ ...e, data: parse(e.data, {}) })) });
   }
+
+  if (method === "GET" && path === "/admin/usage") return json(await readUsage(env, now, fetcher));
 
   return json({ error: "unknown admin route" }, 404);
 }

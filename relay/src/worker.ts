@@ -24,6 +24,11 @@ export interface Env {
   ADMIN_TOKEN_KEY?: string;
   TURN_KEY_ID?: string;          // Worker secrets of a Cloudflare TURN key; without them the voice chat gets STUN only
   TURN_KEY_API_TOKEN?: string;
+  ANALYTICS_API_TOKEN?: string;  // Worker secrets of the usage view of the admin (`data/relay-rollout.sh usage`)
+  CF_ACCOUNT_ID?: string;
+  CF_SCRIPT_NAME?: string;
+  CF_D1_DATABASE_ID?: string;
+  CF_R2_BUCKET?: string;
 }
 
 const CREATE_LIMIT = { limit: 10, windowMs: 60_000 };
