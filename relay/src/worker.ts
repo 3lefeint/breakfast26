@@ -7,6 +7,7 @@ import { DurableObject } from "cloudflare:workers";
 import { Deps, MatchCore, MatchState, Out } from "./core";
 import { CLOSE, LIMITS, PROTOCOL_VERSION, validName } from "./protocol";
 import { authenticate, handleLocations, Rooms } from "./locations";
+import { handleMailboxes } from "./mailboxes";
 import { iceServers, validateVoiceFrame, VOICE_CLOSE, VOICE_LIMITS } from "./voice";
 import { VOICE_HTML, VOICE_JS } from "./voicePage";
 import { TELEMETRY_LIMITS, TELEMETRY_VERSION, validateTelemetry } from "./telemetry";
@@ -16,6 +17,8 @@ export interface Env {
   LIMITER: DurableObjectNamespace;
   VOICE: DurableObjectNamespace;
   DB?: D1Database;
+  RECORDS?: R2Bucket;            // the ciphertext of the match records of the mailboxes; without it the sharing routes answer 503
+  SHARING?: string;              // "off" switches the sharing routes off
   TURN_KEY_ID?: string;          // Worker secrets of a Cloudflare TURN key; without them the voice chat gets STUN only
   TURN_KEY_API_TOKEN?: string;
 }
@@ -135,6 +138,9 @@ export default {
 
     const located = await handleLocations(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key), rooms(env));
     if (located) return located;
+
+    const mailboxes = await handleMailboxes(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
+    if (mailboxes) return mailboxes;
 
     const ws = url.pathname.match(/^\/ws\/([A-Z0-9]{6})$/);
     if (request.method === "GET" && ws) {

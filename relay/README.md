@@ -57,6 +57,11 @@ The same database holds the locations (`0002_locations.sql`) and the matches the
 
 ## Voice chat
 
+The mailboxes of the members of a location (PROTOCOL.md, "Mailboxes") need the migration `0004_mailboxes.sql` and an R2 bucket
+for the ciphertext: create it (`npx wrangler r2 bucket create breakfast-records`) and put the binding
+`"r2_buckets": [{ "binding": "RECORDS", "bucket_name": "breakfast-records" }]` into the config you deploy with (it is in
+`wrangler.jsonc`). Without the binding the routes answer 503; `SHARING=off` as a variable switches them off.
+
 The relay also serves the voice chat page (`/voice`) and the signaling of a match (see PROTOCOL.md, "Voice chat"). It
 needs the Durable Object `VOICE` (class `VoiceRoom`) and the migration `v2` in the config you deploy with (both are in
 `wrangler.jsonc`; copy them into your own config). STUN works without anything else. For participants whose browsers cannot

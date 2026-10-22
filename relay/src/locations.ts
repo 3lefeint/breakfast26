@@ -1,6 +1,8 @@
 // Locations: installations registered at the relay, one-time invitations and the links between two
 // locations (see PROTOCOL.md, "Locations"). Requests are signed with the Ed25519 key of the location.
 
+import { dropMailboxesOf } from "./mailboxes";
+
 export const LOCATION_LIMITS = {
   BODY_BYTES: 2048,
   NAME_MAX: 24,
@@ -58,7 +60,7 @@ export function freshTimestamp(timestamp: string | null, nowMs: number): boolean
   return Math.abs(nowMs / 1000 - Number(timestamp)) <= LOCATION_LIMITS.CLOCK_SKEW_S;
 }
 
-export interface LocationEnv { DB?: D1Database }
+export interface LocationEnv { DB?: D1Database; RECORDS?: R2Bucket }
 /** What the routes need from the match rooms (the Durable Objects), kept out of this file. */
 export interface Rooms {
   status(code: string): Promise<{ phase: string; host: string | null; sites: number; players: number } | null>;
@@ -247,6 +249,7 @@ export async function handleLocations(request: Request, env: LocationEnv, limite
       await db.prepare("UPDATE locations SET name = ? WHERE id = ?").bind(name.trim(), who.id).run();
       return json({ ok: true });
     }
+    await dropMailboxesOf(env, who.id);
     await db.batch([
       db.prepare("DELETE FROM links WHERE location_a = ?1 OR location_b = ?1").bind(who.id),
       db.prepare("DELETE FROM invitations WHERE location_id = ?").bind(who.id),

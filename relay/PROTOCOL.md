@@ -124,6 +124,33 @@ of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and 
 Only the hash of a token is stored. An unknown, used or expired token answers 404 without telling which. Registering,
 inviting, redeeming and reading are limited per IP address or per location. Links have a `kind` (`play` for now).
 
+## Mailboxes
+
+Where the match records of a member travel (sharing, #26): plain HTTP routes, the index in D1 (`migrations/0004_mailboxes.sql`),
+the ciphertext in R2 (binding `RECORDS`, object `<mailbox>/<channel>/<match id>/<revision>`). The relay sees ciphertext and a
+small clear envelope (`envelope_version`, `game_mode`, `match_id`, `revision`, `deleted`, `size`, `hash` of the ciphertext,
+`created_at`), never the content. A mailbox belongs to one member at one location and has two channels: `down` (the location
+writes, the member's devices read) and `up` (a device writes, the location reads; off until the location switches it on).
+
+A location signs as in "Locations". A member device signs the same way with its own Ed25519 key and sends `x-device` (its
+id) instead of `x-location`; the signature covers the path, not the query. Times are epoch milliseconds.
+
+| Route | Signed by | Purpose |
+|---|---|---|
+| `POST /locations/<id>/members` | that location | a mailbox with a one-time invitation for a member; returns `{mailbox_id, token, expires_at}` (valid 7 days, at most 200 mailboxes per location) |
+| `POST /mailboxes/<id>/invitations` | the location of the mailbox | a new invitation for the same mailbox (a lost link), at most 3 open |
+| `POST /mailbox-invitations/redeem` `{token, public_key}` | the new key itself (`x-timestamp`, `x-signature` only) | a device registers its key; returns `{mailbox_id, device_id, up, location: {id, name}}`, at most 5 devices per mailbox |
+| `PATCH /mailboxes/<id>` `{up}` | the location | switch the `up` channel on or off |
+| `DELETE /mailboxes/<id>` | the location | delete the mailbox with its devices, invitations, records and ciphertext at once |
+| `PUT /mailboxes/<id>/<down\|up>/<match id>/<revision>` `{envelope_version, game_mode, deleted, ciphertext}` | the location (`down`), a device (`up`) | put a record (`ciphertext` base64url, at most 256 KB; a deletion has `deleted: true` and no ciphertext); the same record again changes nothing, another content for the same revision is 409, an older revision than the newest is 409; older revisions of the match are removed |
+| `GET /mailboxes/<id>/<down\|up>?since=<cursor>&limit=<n>` | a device (`down`), the location (`up`) | `{records: [{seq, match_id, revision, game_mode, deleted, size, hash, envelope_version, created_at}], next}` after the cursor (at most 100) |
+| `GET /mailboxes/<id>/<down\|up>/<match id>/<revision>` | the same | the record with its `ciphertext` (null for a deletion) |
+
+Limits: a record 256 KB, 200 records per writer and day, 1000 records and 20 MB per mailbox (413 or 429). Only the hash of an
+invitation token is stored, an unknown, used or expired one answers 404. A mailbox of someone else and an unknown mailbox
+both answer 404. The routes answer 503 when the `RECORDS` bucket is missing or the variable `SHARING` is `off`; signing a
+location off deletes its mailboxes.
+
 ## Voice chat
 
 Browsers of the sites talk to each other directly (WebRTC, Opus); the relay serves the page and passes on the

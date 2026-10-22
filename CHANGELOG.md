@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- The relay stores the match records of the members of a location in mailboxes: a location creates a mailbox with a single-use invitation for a member, a member's device registers its own key with it, the location writes into a `down` channel and the device into an `up` channel (off until switched on); the index is in D1 (`relay/migrations/0004_mailboxes.sql`), the encrypted records in R2 (binding `RECORDS`), with limits on the size of a record, the records per day and the contents of a mailbox, and a switch that turns the routes off. (#88)
 - The last turn of an online match can be corrected, a dart of it or its total, also the turn that ended the match: the site that threw it corrects it, the relay replaces the turn and the other sites play it again (the match goes on or ends differently as it does locally). The dart chips on the result page show for the turns thrown at this site. (#87)
 - Undo works in an online match: the site that threw the last turn takes it back on every site, also the turn that ended the match (the match is played on). The Undo buttons show in online matches too. (#86)
 - A finished X01 or Elimination match can be turned into a record, a self-contained JSON document, and stored again from one (`breakfast/match_record.py`): its format is independent of the database tables, a `revision` of the match rises with every close, an imported match carries its origin, its players become guests unless mapped to local players, and it is never exported again. There is no button for it yet. (#85)
