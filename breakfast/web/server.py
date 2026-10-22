@@ -1681,6 +1681,15 @@ async def circle_enabled(body: CircleEnabledBody):
     return {"ok": True, **_circle.status()}
 
 
+@app.post("/api/circle/send-all")
+async def circle_send_all():
+    """Queue every finished match played here that the circle does not have yet; the outbox sends them in rounds."""
+    if not _circle:
+        return {"error": "the sync is not available"}
+    queued = await asyncio.to_thread(_circle.send_all)
+    return {"ok": True, "queued": queued, **_circle.status()}
+
+
 @app.post("/api/circle/sync")
 async def circle_sync_now():
     """Run a round now and answer with the state."""

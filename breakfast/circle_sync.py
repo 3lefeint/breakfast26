@@ -22,6 +22,10 @@ INTERVAL_S = 300
 FIRST_DELAY_S = 20
 PAGE = 100
 MAX_TRIES = 20
+PUSH_ROUND = 200          # records sent in one round, a larger outbox goes on in the next one
+PULL_ROUND = 300          # records fetched in one round
+FAST_S = 10               # the wait before the next round while there is more to do
+PAUSE_S = 3600            # the wait after the relay said "too many" (rate limit, records of the day)
 PERMANENT = {400, 403, 404, 409, 413, 422}     # the relay will not take this record, a retry does not help
 
 
@@ -37,6 +41,7 @@ class CircleSync:
         self._thread = None
         self._running = False
         self._approved = None
+        self._more = False                      # the last round left work that can go on at once
 
     # ── the file ──────────────────────────────────────────────────────────────
 
@@ -72,6 +77,7 @@ class CircleSync:
         registered = self._locations.status()["registered"]
         return {"enabled": state["enabled"], "registered": registered, "approved": self._approved if registered else None,
                 "running": self._running, "pending": len(state["outbox"]),
+                "paused_until": max([u for u in (state.get("push_until"), state.get("pull_until")) if u and u > self._now()], default=None),
                 "last_push": state.get("last_push"), "last_pull": state.get("last_pull"), "last_sync": state.get("last_sync"),
                 "pushed": state.get("pushed", 0), "pulled": state.get("pulled", 0), "error": state.get("error")}
 
@@ -95,6 +101,28 @@ class CircleSync:
                 state["outbox"].pop(match_id, None)
             self._save(state)
         self._wake.set()
+
+    def send_all(self):
+        """Queue every finished match played here that the circle does not have yet (or has in an older revision): the catch-up
+        for the history, for matches whose players were mapped later and for a changed rule. Returns how many were queued."""
+        with self._db.transaction() as c:
+            rows = c.execute("SELECT match_id, revision FROM matches WHERE ended_at IS NOT NULL AND origin_id IS NULL"
+                             " AND game_mode IN (?, ?) ORDER BY ended_at", match_record.MODES).fetchall()
+        with self._state_lock:
+            state = self._load()
+            if not state["enabled"] or not self._locations.status()["registered"]:
+                return 0
+            queued = 0
+            for match_id, revision in rows:
+                sent = state["sent"].get(match_id)
+                if match_id in state["outbox"] or (sent and sent["revision"] >= revision):
+                    continue
+                state["outbox"][match_id] = {"op": "push", "tries": 0}
+                queued += 1
+            self._save(state)
+        if queued:
+            self._wake.set()
+        return queued
 
     def _queue(self, match_id, op):
         with self._state_lock:
@@ -128,7 +156,7 @@ class CircleSync:
         self._stop.wait(FIRST_DELAY_S)
         while not self._stop.is_set():
             self.run_once()
-            self._wake.wait(INTERVAL_S)
+            self._wake.wait(FAST_S if self._more else INTERVAL_S)
             self._wake.clear()
             self._stop.wait(2)                  # a match that just ended is stored before it is read
 
@@ -170,21 +198,38 @@ class CircleSync:
             return
         config = self._locations.call("GET", "/circle/config")
         self._update(error=None)
+        refetch = config.get("refetch", 0)
+        if refetch != self._load().get("refetch_seen", 0):
+            log.info("CircleSync: the admin asked to fetch everything again")
+            self._update(cursor=0, refetch_seen=refetch, pull_until=None)
+        self._more = False
         self._push(origin, config)
         self._pull(origin, config)
         self._update(last_sync=self._now())
 
     def _push(self, origin, config):
+        state = self._load()
+        if (state.get("push_until") or 0) > self._now():
+            return
         origin_record = {"id": origin["id"], "name": origin["name"]}
-        for match_id, entry in list(self._load()["outbox"].items()):
+        taken = 0
+        for match_id, entry in list(state["outbox"].items()):
+            if taken >= PUSH_ROUND:
+                self._more = True
+                return
             try:
-                body = self._outgoing(match_id, entry["op"], origin_record)
+                body = self._outgoing(match_id, entry["op"], origin_record, config)
                 if body is not None:
+                    taken += 1
                     self._locations.call("PUT", f"/circle/records/{match_id}/{body['record']['revision']}", body)
                     self._sent(match_id, entry["op"], body)
             except match_record.RecordError as e:
                 log.debug("CircleSync: match %s is not sent: %s", match_id, e)
             except LocationError as e:
+                if e.status == 429:                 # a limit of the relay: the outbox waits, nothing is lost
+                    log.info("CircleSync: the relay is not taking more records for now: %s", e)
+                    self._update(push_until=self._now() + PAUSE_S)
+                    return
                 if e.status in PERMANENT:
                     log.info("CircleSync: match %s is not taken: %s", match_id, e)
                 else:
@@ -192,8 +237,9 @@ class CircleSync:
                     raise
             self._forget(match_id)
 
-    def _outgoing(self, match_id, op, origin):
-        """The body of the PUT for an entry of the outbox, None when there is nothing to send."""
+    def _outgoing(self, match_id, op, origin, config):
+        """The body of the PUT for an entry of the outbox, None when there is nothing to send (a match in which no player is
+        a player of the circle as far as the mappings say, the relay would refuse it)."""
         state = self._load()
         if op == "delete":
             sent = state["sent"].get(match_id)
@@ -202,8 +248,22 @@ class CircleSync:
             record = match_record.deletion_record(match_id, sent["game_mode"], origin, sent["revision"] + 1)
             return {"game_mode": sent["game_mode"], "deleted": True, "record": record, "participants": sent.get("participants", [])}
         record = match_record.export_record(self._db, match_id, origin)
-        return {"game_mode": record["game_mode"], "deleted": False, "record": record,
-                "participants": self._participants(record["match"].get("players") or [])}
+        participants = self._participants(record["match"].get("players") or [])
+        if not self._in_circle(participants, origin["id"], config):
+            return None
+        return {"game_mode": record["game_mode"], "deleted": False, "record": record, "participants": participants}
+
+    @staticmethod
+    def _in_circle(participants, origin_id, config):
+        """Whether one of the participants is a player of the circle: a local player the admin mapped, a guest of another site
+        through the mapping of that site."""
+        mapped = {(m["location_id"], m["local_name"]) for m in config.get("site_mappings", [])}
+        sites = {m["location_name"].lower(): m["location_id"] for m in config.get("site_mappings", [])}
+        for p in participants:
+            where = sites.get(p["origin"].lower()) if p.get("origin") else origin_id
+            if (where, p["name"].lower()) in mapped:
+                return True
+        return False
 
     def _participants(self, players):
         """The players of a match as the relay wants them: a local player by name, a guest of another site with that
@@ -249,37 +309,63 @@ class CircleSync:
                 self._save(state)
 
     def _pull(self, origin, config):
-        cursor = self._load()["cursor"]
-        while True:
-            page = self._locations.call("GET", f"/circle/records?since={cursor}&limit={PAGE}")
-            for entry in page["records"]:
-                self._import(entry, config, origin)
-                cursor = entry["seq"]
-                self._update(cursor=cursor)
-            if len(page["records"]) < PAGE:
-                break
+        state = self._load()
+        if (state.get("pull_until") or 0) > self._now():
+            return
+        cursor, taken = state["cursor"], 0
+        try:
+            while True:
+                page = self._locations.call("GET", f"/circle/records?since={cursor}&limit={PAGE}")
+                for entry in page["records"]:
+                    taken += self._import(entry, config, origin)
+                    cursor = entry["seq"]
+                    self._update(cursor=cursor)
+                    if taken >= PULL_ROUND:
+                        self._more = True
+                        self._update(last_pull=self._now())
+                        return
+                if len(page["records"]) < PAGE:
+                    break
+        except LocationError as e:
+            if e.status != 429:
+                raise
+            log.info("CircleSync: the relay is not giving more records for now: %s", e)
+            self._update(pull_until=self._now() + PAUSE_S)
+            return
         self._update(cursor=max(cursor, page.get("next", cursor)), last_pull=self._now())
 
+    def _have(self, entry):
+        """Whether this installation has the match in that revision (or a newer one) already: nothing to fetch."""
+        with self._db.transaction() as c:
+            row = c.execute("SELECT revision FROM matches WHERE match_id = ?", (entry.get("match_id"),)).fetchone()
+        if entry.get("deleted"):
+            return row is None
+        return row is not None and isinstance(entry.get("revision"), int) and row[0] >= entry["revision"]
+
     def _import(self, entry, config, origin):
+        """Fetch and import one record; returns 1 when the record was fetched, 0 when it was already here."""
+        if self._have(entry):
+            return 0
         try:
             record = self._locations.call("GET", f"/circle/records/{entry['match_id']}")["record"]
             result = match_record.import_record(self._db, record, self._mapping(record, entry["origin"]["id"], config))
         except (match_record.RecordError, KeyError) as e:
             log.warning("CircleSync: record %s cannot be imported: %s", entry.get("match_id"), e)
-            return
+            return 1
         except LocationError as e:
             if e.status in PERMANENT:
                 log.warning("CircleSync: record %s cannot be fetched: %s", entry.get("match_id"), e)
-                return
+                return 1
             raise
         if result["status"] in ("imported", "replaced", "deleted"):
             self._update(pulled=self._load().get("pulled", 0) + 1)
+            log.info("CircleSync: match %s %s", result["match_id"], result["status"])
         if result["status"] in ("imported", "replaced") and getattr(self._db, "achievement_engine", None):
             try:
                 self._db.achievement_engine.evaluate_imported(result["match_id"])
             except Exception:
                 log.exception("CircleSync: the achievements of match %s could not be evaluated", result["match_id"])
-            log.info("CircleSync: match %s %s", result["match_id"], result["status"])
+        return 1
 
     @staticmethod
     def _mapping(record, origin_id, config):

@@ -107,21 +107,26 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
 
   const body = method === "GET" ? {} : await readBody(request);
   if (body instanceof Response) return body;
-  const site = path.match(/^\/admin\/sites\/([0-9a-f]{32})\/(approve|remove)$/);
+  const site = path.match(/^\/admin\/sites\/([0-9a-f]{32})\/(approve|remove|refetch)$/);
   const player = path.match(/^\/admin\/players\/([0-9a-f]{32})$/);
 
   if (method === "GET" && path === "/admin/sites") {
     const rows = await db.prepare(
-      "SELECT l.id, l.name, l.created_at, s.approved, s.approved_at, s.last_seen, s.version, s.players, s.state " +
+      "SELECT l.id, l.name, l.created_at, s.approved, s.approved_at, s.last_seen, s.version, s.players, s.state, s.refetch " +
       "FROM locations l LEFT JOIN circle_sites s ON s.location_id = l.id ORDER BY l.name").all<Record<string, any>>();
     return json({ sites: rows.results.map((r) => ({
       id: r.id, name: r.name, registered_at: r.created_at, approved: r.approved === 1, approved_at: r.approved_at, last_seen: r.last_seen,
-      version: r.version, players: parse<string[]>(r.players ?? "[]", []), state: parse<Record<string, unknown>>(r.state ?? "{}", {}) })) });
+      version: r.version, refetch: r.refetch ?? 0, players: parse<string[]>(r.players ?? "[]", []), state: parse<Record<string, unknown>>(r.state ?? "{}", {}) })) });
   }
 
   if (method === "POST" && site) {
     const [, id, action] = site;
     if (!(await db.prepare("SELECT id FROM locations WHERE id = ?").bind(id).first())) return json({ error: "unknown site" }, 404);
+    if (action === "refetch") {
+      const changed = await db.prepare("UPDATE circle_sites SET refetch = refetch + 1 WHERE location_id = ? AND approved = 1").bind(id).run();
+      if (!changed.meta.changes) return json({ error: "this site is not approved" }, 409);
+      return json({ ok: true });
+    }
     await db.prepare(
       "INSERT INTO circle_sites (location_id, approved, approved_at) VALUES (?1, ?2, ?3) ON CONFLICT(location_id) DO UPDATE SET approved = ?2, approved_at = ?3")
       .bind(id, action === "approve" ? 1 : 0, action === "approve" ? now : null).run();

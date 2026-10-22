@@ -37,6 +37,21 @@
     }
   }
 
+  let queued = $state(null);
+
+  // Queues the history: every finished match that the circle does not have yet. They go out in rounds, within the daily limit of the relay.
+  async function sendAll() {
+    busy = true; error = ''; queued = null;
+    try {
+      const res = await apiJson('POST', '/api/circle/send-all');
+      if (res.error) error = res.error; else { queued = res.queued; info = { available: true, ...res }; }
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   const when = (seconds) => (seconds ? new Date(seconds * 1000).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : t('never'));
 
   onMount(load);
@@ -58,7 +73,13 @@
       {#if info.approved === false}<p class="note">{t('Waiting for the admin to approve this site.')}</p>
       {:else if info.error}<p class="note error">{info.error}</p>{/if}
       {#if error}<p class="note error">{error}</p>{/if}
-      <button type="button" class="btn" disabled={busy || info.running} onclick={syncNow}>{t('Sync now')}</button>
+      {#if info.paused_until}<p class="note">{t('The relay is not taking more for now, the sync goes on at {time}.', { time: when(info.paused_until) })}</p>{/if}
+      <div class="buttons">
+        <button type="button" class="btn" disabled={busy || info.running} onclick={syncNow}>{t('Sync now')}</button>
+        <button type="button" class="btn" disabled={busy} onclick={sendAll}>{t('Send all matches')}</button>
+      </div>
+      {#if queued !== null}<p class="note">{t('{n} matches are queued.', { n: queued })}</p>{/if}
+      <p class="note">{t('Send all matches puts every finished match the circle does not have yet into the queue, for the history or after the admin mapped a player. A large history takes some days.')}</p>
     {/if}
   </div>
 {/if}
@@ -74,6 +95,7 @@
   .state { display: grid; gap: 0.35rem; margin: 0.25rem 0 0.9rem; font-size: 0.9rem; }
   .state div { display: flex; justify-content: space-between; gap: 1rem; max-width: 26rem; }
   .state span { color: var(--muted); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
   .btn { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; font-family: inherit; cursor: pointer; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: default; }

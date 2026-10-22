@@ -8,6 +8,11 @@
 
   let { sites, act, reload } = $props();
 
+  async function refetch(site) {
+    if (!await confirmDialog(t('Let {name} fetch all its matches from the circle again? Matches it has are skipped.', { name: site.name }))) return;
+    await act('POST', `/admin/sites/${site.id}/refetch`, {});
+  }
+
   async function remove(site) {
     if (!await confirmDialog(t('Take {name} out of the circle? Its mappings stay, it can no longer send or fetch matches.', { name: site.name }))) return;
     await act('POST', `/admin/sites/${site.id}/remove`, {});
@@ -32,6 +37,7 @@
             <td>{site.players.length ? site.players.map(shownName).join(', ') : '—'}</td>
             <td class="num">
               {#if site.approved}
+                <button type="button" class="btn small" onclick={() => refetch(site)}>{t('Fetch again')}</button>
                 <button type="button" class="btn small" onclick={() => remove(site)}>{t('Remove')}</button>
               {:else}
                 <button type="button" class="btn small primary" onclick={() => act('POST', `/admin/sites/${site.id}/approve`, {})}>{t('Approve')}</button>

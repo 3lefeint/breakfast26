@@ -15,6 +15,8 @@ class Relay:
         self.calls = []
         self.fail = None             # a LocationError to raise for PUT /circle/records
         self.records = []
+        self.mappings = [{"location_id": "loc-1", "location_name": "Home", "local_name": "anna", "player_id": "p-1"}]
+        self.refetch = 0
 
     def status(self):
         return {"registered": True, "id": "loc-1", "name": "Home"}
@@ -24,7 +26,7 @@ class Relay:
         if path == "/circle/state":
             return {"approved": True}
         if path == "/circle/config":
-            return {"approved": True, "circle_players": [], "mappings": [], "site_mappings": []}
+            return {"approved": True, "refetch": self.refetch, "circle_players": [], "mappings": [], "site_mappings": self.mappings}
         if method == "PUT" and self.fail:
             raise self.fail
         if method == "PUT":
@@ -128,6 +130,7 @@ def test_the_api_shows_the_state_and_switches_the_sync(tmp_path):
         assert client.post("/api/circle/enabled", json={"enabled": False}).json()["enabled"] is False
         assert client.get("/api/circle").json()["enabled"] is False
         assert client.post("/api/circle/sync").json()["ok"] is True
+        assert client.post("/api/circle/send-all").json()["queued"] == 0         # not registered: nothing to queue
     finally:
         server.wire(None, None)
 
@@ -157,3 +160,97 @@ def test_an_imported_match_earns_achievements_silently(tmp_path):
     assert {(r["player"], r["achievement_id"]) for r in home._conn.execute("SELECT player, achievement_id FROM achievements_earned")} == {("anna", "bullseye")}
     assert earned == []                                       # nothing is announced
     assert home._conn.execute("SELECT COUNT(*) FROM achievements_earned WHERE player = 'bo@far'").fetchone()[0] == 0
+
+
+def test_a_match_without_a_player_of_the_circle_is_not_sent(setup):
+    db, relay, sync = setup
+    relay.mappings = []
+    _finish(db, "m-1")
+    status = sync.run_once()
+    assert status["pending"] == 0 and _puts(relay) == []
+
+
+def test_send_all_queues_the_history_once_and_a_mapping_made_later_gets_it_sent(setup):
+    db, relay, sync = setup
+    relay.mappings = []
+    for n in range(3):
+        _finish(db, f"m-{n}")
+    db.open_match("open", "X01", 501)                     # not finished: not queued
+    sync.run_once()
+    assert sync.status()["pending"] == 0
+    relay.mappings = [{"location_id": "loc-1", "location_name": "Home", "local_name": "anna", "player_id": "p-1"}]
+    assert sync.send_all() == 3
+    assert sync.send_all() == 0                           # already in the outbox
+    status = sync.run_once()
+    assert status["pending"] == 0 and status["pushed"] == 3
+    assert sync.send_all() == 0                           # sent, nothing newer
+
+
+def test_a_limit_of_the_relay_pauses_the_outbox_without_losing_anything(setup):
+    db, relay, sync = setup
+    clock = {"t": 1000.0}
+    sync._now = lambda: clock["t"]
+    for n in range(3):
+        _finish(db, f"m-{n}")
+    relay.fail = LocationError("too many records today", 429)
+    status = sync.run_once()
+    assert status["pending"] == 3 and status["error"] is None and status["paused_until"] == 1000 + 3600
+    assert len(_puts(relay)) == 1                         # one try, then it waits
+    sync.run_once()
+    assert len(_puts(relay)) == 1                         # still waiting
+    relay.fail = None
+    clock["t"] += 3601
+    status = sync.run_once()
+    assert status["pending"] == 0 and status["pushed"] == 3 and status["paused_until"] is None
+
+
+def test_a_large_outbox_goes_out_in_rounds(setup, monkeypatch):
+    import breakfast.circle_sync as module
+    monkeypatch.setattr(module, "PUSH_ROUND", 2)
+    db, relay, sync = setup
+    for n in range(5):
+        _finish(db, f"m-{n}")
+    assert sync.run_once()["pending"] == 3 and sync._more is True
+    assert sync.run_once()["pending"] == 1
+    assert sync.run_once()["pending"] == 0 and sync._more is False
+
+
+def test_the_admin_can_make_a_site_fetch_everything_again(setup):
+    db, relay, sync = setup
+    relay.records = [{"seq": 1, "match_id": "r-1", "revision": 1, "deleted": True, "origin": {"id": "o"}}]
+    sync.run_once()
+    assert sync._load()["cursor"] == 1
+    relay.calls.clear()
+    sync.run_once()
+    assert [c for c in relay.calls if c[1] == "/circle/records"][0][1:] == ("/circle/records", None)
+    relay.refetch = 1
+    sync._update(cursor=7)
+    sync.run_once()
+    assert sync._load()["refetch_seen"] == 1 and sync._load()["cursor"] == 1      # started at 0 again, read the list again
+    paths = [c[1] for c in relay.calls]
+    assert paths.count("/circle/records") >= 2
+
+
+def test_a_record_already_here_is_not_fetched_again(setup):
+    db, relay, sync = setup
+    _finish(db, "m-1")
+    revision = db._conn.execute("SELECT revision FROM matches WHERE match_id = 'm-1'").fetchone()[0]
+    relay.records = [{"seq": 1, "match_id": "m-1", "revision": revision, "deleted": False, "origin": {"id": "o"}},
+                     {"seq": 2, "match_id": "gone", "revision": 1, "deleted": True, "origin": {"id": "o"}}]
+    sync.run_once()
+    assert not [c for c in relay.calls if c[0] == "GET" and c[1].startswith("/circle/records/")]
+
+
+def test_a_limit_while_fetching_pauses_the_fetch(setup):
+    db, relay, sync = setup
+    sync._now = lambda: 5000.0
+    relay.records = [{"seq": 1, "match_id": "r-1", "revision": 1, "deleted": False, "origin": {"id": "o"}}]
+    original = relay.call
+
+    def call(method, path, body=None):
+        if path.startswith("/circle/records/"):
+            raise LocationError("too many requests", 429)
+        return original(method, path, body)
+    relay.call = call
+    status = sync.run_once()
+    assert status["paused_until"] == 5000 + 3600 and status["error"] is None and sync._load()["cursor"] == 0

@@ -252,3 +252,16 @@ describe("the usage of the free plan", () => {
     expect((await call(null, "GET", "/admin/usage")).status).toBe(401);
   });
 });
+
+describe("fetching again", () => {
+  it("raises the counter of an approved site, which its config shows", async () => {
+    const home = await newLocation(env.DB, 1, "Home");
+    expect((await call(token, "POST", `/admin/sites/${home.id}/refetch`, {})).status).toBe(409);       // not approved yet
+    await call(token, "POST", `/admin/sites/${home.id}/approve`, {});
+    expect((await call(token, "GET", "/admin/sites")).body!.sites[0].refetch).toBe(0);
+    expect((await call(token, "POST", `/admin/sites/${home.id}/refetch`, {})).body).toEqual({ ok: true });
+    expect((await call(token, "POST", `/admin/sites/${home.id}/refetch`, {})).body).toEqual({ ok: true });
+    expect((await call(token, "GET", "/admin/sites")).body!.sites[0].refetch).toBe(2);
+    expect((await call(token, "POST", `/admin/sites/${id(9)}/refetch`, {})).status).toBe(404);
+  });
+});

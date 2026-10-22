@@ -1159,4 +1159,11 @@ export default {
   'Worker errors today': 'Worker-Fehler heute',
   'CPU time P50 / P99 (as the API gives it, no unit)': 'CPU-Zeit P50 / P99 (wie die API sie liefert, ohne Einheit)',
   'R2 operations not counted as Class A or B: {n}': 'R2-Vorgänge ohne Klasse A oder B: {n}',
+  // Catch-up (#95)
+  'The relay is not taking more for now, the sync goes on at {time}.': 'Das Relay nimmt vorerst nichts mehr an, der Abgleich geht um {time} weiter.',
+  'Send all matches': 'Alle Matches senden',
+  '{n} matches are queued.': '{n} Matches sind eingereiht.',
+  'Send all matches puts every finished match the circle does not have yet into the queue, for the history or after the admin mapped a player. A large history takes some days.': 'Alle Matches senden reiht jedes beendete Match ein, das der Kreis noch nicht hat, für die Vergangenheit oder nachdem der Admin einen Spieler zugeordnet hat. Eine grosse Historie braucht einige Tage.',
+  'Let {name} fetch all its matches from the circle again? Matches it has are skipped.': '{name} alle seine Matches vom Kreis neu holen lassen? Vorhandene Matches werden übersprungen.',
+  'Fetch again': 'Neu holen',
 };

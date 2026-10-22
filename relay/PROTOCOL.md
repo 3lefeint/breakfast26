@@ -137,7 +137,7 @@ played at. A site signs as in "Locations"; the times are epoch milliseconds.
 | Route | Signed by | Purpose |
 |---|---|---|
 | `PUT /circle/state` `{version?, players, state?}` | any registered location | report the lower-case names of the local players, the version and a small state (at most 4 KB, for the admin's debugging); answers `{approved}`; this is the only circle route an unapproved site may use |
-| `GET /circle/config` | an approved site | `{approved, circle_players: [{id, name, sites: [{id, name}]}], mappings: [{local_name, player_id}], site_mappings: [{location_id, location_name, local_name, player_id}]}` (`mappings` are those of this site, `site_mappings` those of every site: a site needs them to tell which of its players is a name in a record of another site) |
+| `GET /circle/config` | an approved site | `{approved, refetch, circle_players: [{id, name, sites: [{id, name}]}], mappings: [{local_name, player_id}], site_mappings: [{location_id, location_name, local_name, player_id}]}` (`refetch` is a counter the admin raises to make this site fetch all its records again: a site that has seen another value than its own starts again at cursor 0 and skips what it has; `mappings` are those of this site, `site_mappings` those of every site: a site needs them to tell which of its players is a name in a record of another site) |
 | `PUT /circle/records/<match id>/<revision>` `{game_mode, deleted, participants, record}` | the site that played the match | store the record (a JSON object of at most 256 KB whose `match_id`, `revision`, `deleted` and `game_mode` equal the address and the body, see the match record in the app); `participants` is a list of `{name, origin?}`: a local player by name, a guest of another site with `origin` = the name of that site; the circle players are found through the mappings; 422 when none is in the circle |
 | `GET /circle/records?since=<cursor>&limit=<n>` | an approved site | `{records: [{seq, match_id, revision, game_mode, deleted, size, hash, created_at, origin: {id, name}}], next}`: the records meant for this site after the cursor (at most 100) |
 | `GET /circle/records/<match id>` | an approved site | the same with the `record`, 404 unless it is meant for this site |
@@ -161,6 +161,7 @@ tries per 15 minutes per address. Without the secrets the routes answer 503.
 |---|---|
 | `GET /admin/sites` | every registered location with what it reported: `{id, name, registered_at, approved, approved_at, last_seen, version, players, state}` |
 | `POST /admin/sites/<id>/approve` and `/remove` | put a site into the circle or take it out (its mappings and rules stay) |
+| `POST /admin/sites/<id>/refetch` | raise the `refetch` counter of an approved site (409 when it is not approved): it fetches all the records meant for it again, after a rule or a mapping changed |
 | `GET /admin/players`, `POST /admin/players` `{name}`, `DELETE /admin/players/<id>` | the circle players with their mappings and the sites of their rule; delete takes mappings and rules with it |
 | `PUT /admin/mappings` `{location_id, local_name, player_id}` | map a player of a site to a circle player (`player_id: null` removes the mapping) |
 | `PUT /admin/rules` `{player_id, location_ids}` | replace the sites that get the matches of a player |

@@ -120,8 +120,10 @@ export async function handleCircle(request: Request, env: CircleEnv, limited: Li
     const all = await db.prepare(
       "SELECT m.location_id, l.name AS location_name, m.local_name, m.player_id FROM circle_mappings m JOIN locations l ON l.id = m.location_id ORDER BY l.name, m.local_name")
       .all<{ location_id: string; location_name: string; local_name: string; player_id: string }>();
+    const mine = await db.prepare("SELECT refetch FROM circle_sites WHERE location_id = ?").bind(site).first<{ refetch: number }>();
     return json({
       approved: true,
+      refetch: mine?.refetch ?? 0,
       site_mappings: all.results,
       circle_players: players.results.map((p) => ({ ...p, sites: rules.results.filter((r) => r.player_id === p.id).map((r) => ({ id: r.location_id, name: r.location_name })) })),
       mappings: mappings.results,
