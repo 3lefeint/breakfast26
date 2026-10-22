@@ -13,6 +13,7 @@ rolled back and the app starts again, which would otherwise try the same update 
 import logging
 import threading
 import time
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -103,7 +104,7 @@ class UpdateChecker:
     # ── installing by itself ─────────────────────────────────────────────────
 
     def _attempt_path(self):
-        return self._config_path.parent / ATTEMPT_FILE if self._config_path else None
+        return Path(self._config_path).parent / ATTEMPT_FILE if self._config_path else None
 
     def _was_tried(self, version):
         if self._tried == version:

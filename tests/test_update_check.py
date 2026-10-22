@@ -73,7 +73,7 @@ def auto(tmp_path, answer, **kw):
         calls.append(1)
         return {"ok": True} if answer is None else answer
 
-    checker = UpdateChecker(lambda: result, path, install=install, **kw)
+    checker = UpdateChecker(lambda: result, str(path), install=install, **kw)    # the app passes the path as text
     checker.run_once()
     return checker, calls
 

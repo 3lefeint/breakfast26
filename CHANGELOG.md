@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- The automatic update crashed the update check with `'str' object has no attribute 'parent'` before it could install.
+
 ## [1.9.0] - 2026-10-22
 
 ### Added
