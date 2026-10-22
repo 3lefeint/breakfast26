@@ -57,6 +57,14 @@ The same database holds the locations (`0002_locations.sql`) and the matches the
 
 ## Voice chat
 
+The circle (PROTOCOL.md, "Circle" and "Admin") needs the migration `0004_circle.sql`, an R2 bucket for the records
+(`npx wrangler r2 bucket create breakfast-records`) with the binding `"r2_buckets": [{ "binding": "RECORDS", "bucket_name": "breakfast-records" }]`
+in the config you deploy with (it is in `wrangler.jsonc`), and the admin login: `npm run admin-password -- -c <your config>` asks for
+the password (typed hidden, 12 characters at least, take a long one from your password manager), and writes its salted hash as the
+secret `ADMIN_PASSWORD_HASH` and a new `ADMIN_TOKEN_KEY` with `wrangler secret put`; nothing goes to a file or to git, and
+running it again changes the password and ends every open login. Without the `RECORDS` binding the circle routes answer 503,
+without the secrets the admin routes do; `SHARING=off` as a variable switches the circle routes off.
+
 The relay also serves the voice chat page (`/voice`) and the signaling of a match (see PROTOCOL.md, "Voice chat"). It
 needs the Durable Object `VOICE` (class `VoiceRoom`) and the migration `v2` in the config you deploy with (both are in
 `wrangler.jsonc`; copy them into your own config). STUN works without anything else. For participants whose browsers cannot

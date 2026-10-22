@@ -124,6 +124,50 @@ of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and 
 Only the hash of a token is stored. An unknown, used or expired token answers 404 without telling which. Registering,
 inviting, redeeming and reading are limited per IP address or per location. Links have a `kind` (`play` for now).
 
+## Circle
+
+How the installations of a group of friends share their matches (sharing, #26): plain HTTP routes, the index and the rules in D1
+(`migrations/0004_circle.sql`), the records as plain JSON in R2 (binding `RECORDS`, object `circle/<match id>`, the newest revision of a
+match only). The relay can read the records (decided for now: simple and debuggable). The model, in short: a **site** is a registered
+location (see "Locations") that the admin approved; a **circle player** is a person of the circle; a **mapping** says which player of
+a site (by his lower-case name) is which circle player; a **rule** lists the sites that get the matches of a circle player. A finished
+match goes to every site in the rule of a circle player who took part, wherever it was played, and never back to the site it was
+played at. A site signs as in "Locations"; the times are epoch milliseconds.
+
+| Route | Signed by | Purpose |
+|---|---|---|
+| `PUT /circle/state` `{version?, players, state?}` | any registered location | report the lower-case names of the local players, the version and a small state (at most 4 KB, for the admin's debugging); answers `{approved}`; this is the only circle route an unapproved site may use |
+| `GET /circle/config` | an approved site | `{approved, circle_players: [{id, name, sites: [{id, name}]}], mappings: [{local_name, player_id}]}` (the mappings of this site) |
+| `PUT /circle/records/<match id>/<revision>` `{game_mode, deleted, participants, record}` | the site that played the match | store the record (a JSON object of at most 256 KB whose `match_id`, `revision`, `deleted` and `game_mode` equal the address and the body, see the match record in the app); `participants` is a list of `{name, origin?}`: a local player by name, a guest of another site with `origin` = the name of that site; the circle players are found through the mappings; 422 when none is in the circle |
+| `GET /circle/records?since=<cursor>&limit=<n>` | an approved site | `{records: [{seq, match_id, revision, game_mode, deleted, size, hash, created_at, origin: {id, name}}], next}`: the records meant for this site after the cursor (at most 100) |
+| `GET /circle/records/<match id>` | an approved site | the same with the `record`, 404 unless it is meant for this site |
+
+A new revision replaces the record and gets a new place in the order, so a site that follows the cursor sees the change; the same
+record again changes nothing, another content for the same revision and an older revision are 409, a match of another site is 403.
+A deletion record (`deleted: true`) is stored like any other. Limits: 500 records per site and day, 20,000 records and 2 GB in all;
+the routes answer 503 when the `RECORDS` bucket is missing or the variable `SHARING` is `off`. A location that signs off loses its
+place in the circle; the records it sent stay.
+
+## Admin
+
+JSON routes under `/admin` for the admin page in Breakfast (there is no web page on the relay). The page runs in a browser on any
+installation, so the routes allow any origin (`access-control-allow-origin: *`, `OPTIONS` answers 204); there are no cookies.
+`POST /admin/login` `{password}` answers `{token, expires_at}` (the token lasts one hour); every other route takes it as
+`Authorization: Bearer <token>`. The password is stored only as a salted hash in the Worker secret `ADMIN_PASSWORD_HASH`
+(`sha256$<salt>$<hash>`, written by `npm run admin-password`), the token is signed with the secret `ADMIN_TOKEN_KEY`; 5 login
+tries per 15 minutes per address. Without the secrets the routes answer 503.
+
+| Route | Purpose |
+|---|---|
+| `GET /admin/sites` | every registered location with what it reported: `{id, name, registered_at, approved, approved_at, last_seen, version, players, state}` |
+| `POST /admin/sites/<id>/approve` and `/remove` | put a site into the circle or take it out (its mappings and rules stay) |
+| `GET /admin/players`, `POST /admin/players` `{name}`, `DELETE /admin/players/<id>` | the circle players with their mappings and the sites of their rule; delete takes mappings and rules with it |
+| `PUT /admin/mappings` `{location_id, local_name, player_id}` | map a player of a site to a circle player (`player_id: null` removes the mapping) |
+| `PUT /admin/rules` `{player_id, location_ids}` | replace the sites that get the matches of a player |
+| `GET /admin/sync` | per approved site: last seen, version, its state and how many records it sent; the totals |
+| `GET /admin/records` | the newest records without their content: match, origin, mode, the circle players in it, size |
+| `GET /admin/reports?days=<n>` | the usage reports of the last days (30 by default): counts by type, installations, versions, platforms and the newest events |
+
 ## Voice chat
 
 Browsers of the sites talk to each other directly (WebRTC, Opus); the relay serves the page and passes on the

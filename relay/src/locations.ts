@@ -1,6 +1,8 @@
 // Locations: installations registered at the relay, one-time invitations and the links between two
 // locations (see PROTOCOL.md, "Locations"). Requests are signed with the Ed25519 key of the location.
 
+import { dropSite } from "./circle";
+
 export const LOCATION_LIMITS = {
   BODY_BYTES: 2048,
   NAME_MAX: 24,
@@ -247,6 +249,7 @@ export async function handleLocations(request: Request, env: LocationEnv, limite
       await db.prepare("UPDATE locations SET name = ? WHERE id = ?").bind(name.trim(), who.id).run();
       return json({ ok: true });
     }
+    await dropSite(db, who.id);
     await db.batch([
       db.prepare("DELETE FROM links WHERE location_a = ?1 OR location_b = ?1").bind(who.id),
       db.prepare("DELETE FROM invitations WHERE location_id = ?").bind(who.id),
