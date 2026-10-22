@@ -11,6 +11,14 @@
   import StatsWarmUp from './stats/StatsWarmUp.svelte';
   import StatsCheckoutTraining from './stats/StatsCheckoutTraining.svelte';
 
+  // Deleting a match changes the numbers of every view: they are loaded again.
+  let version = $state(0);
+  $effect(() => {
+    const reload = () => version++;
+    window.addEventListener('stats-changed', reload);
+    return () => window.removeEventListener('stats-changed', reload);
+  });
+
   const MODES = [
     { id: 'x01', label: 'X01' },
     { id: 'elimination', label: t('Elimination') },
@@ -48,6 +56,7 @@
   {/each}
 </div>
 
+{#key version}
 {#if mode === 'x01'}
   <StatsX01 />
 {:else if mode === 'target_battle'}
@@ -65,6 +74,7 @@
 {:else}
   <StatsElimination />
 {/if}
+{/key}
 
 <style>
   .chips { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; flex-wrap: wrap; }

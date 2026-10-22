@@ -9,6 +9,7 @@
   import { rangeLabel, fieldName } from '../../../lib/checkoutTraining.js';
   import { KINDS, modeLabel } from '../../../lib/warmUp.js';
   import X01Summary from '../../../lib/components/X01Summary.svelte';
+  import { deleteGuarded } from '../../../lib/deleteGuard.js';
 
   let { mode } = $props();
 
@@ -43,6 +44,12 @@
     }
     next.add(matchId);
     openMatches = next;
+  }
+
+  async function deleteMatch(matchId) {
+    const done = await deleteGuarded(`/api/stats/match/${encodeURIComponent(matchId)}`,
+      t('Delete this match? Everything stored for it is removed, including the achievements earned in it.'));
+    if (done) matches = matches.filter((m) => m.match_id !== matchId);
   }
 
   function ordinal(n) {
@@ -258,6 +265,7 @@
                 <button type="button" class="summary-btn" onclick={(e) => { e.stopPropagation(); summaryMatch = m.match_id; }}>{t('Summary')}</button>
               {/if}
             {/if}
+            <button type="button" class="summary-btn" onclick={(e) => { e.stopPropagation(); deleteMatch(m.match_id); }}>{t('Delete')}</button>
           </div>
         {/if}
       </div>

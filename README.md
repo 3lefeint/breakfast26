@@ -234,6 +234,8 @@ names of your players are kept, and shows how to record a pack of your own.
 Every turn is stored locally in `stats.db`. The **Stats** page has a view for each game mode with records,
 comparisons between players and recent matches; for X01 also per-player details such as a score histogram
 and a heatmap of the board. Leaderboards rank players by average, 180s and checkout rate.
+A game that is cancelled before its end is not stored, and a match can be deleted from the list of recent matches
+(it asks for the location PIN when one is set).
 
 <img src="media/stats-x01.webp" alt="The Stats page for X01" width="600">
 

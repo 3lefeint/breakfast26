@@ -21,6 +21,11 @@ export function choiceDialog(message, yes, no) {
   return ask(message, false, { yes, no, modal: true });
 }
 
+// Asks for the PIN of this location. Resolves the typed PIN, null on Cancel, Escape or a click next to the dialog.
+export function pinDialog(message) {
+  return ask(message, false, { pin: true });
+}
+
 function ask(message, info, options = {}) {
   return new Promise((resolve) => {
     confirmRequest.update((open) => {

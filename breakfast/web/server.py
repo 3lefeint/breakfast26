@@ -1785,6 +1785,48 @@ async def stats_match(match_id: str):
     return _stats_db.match_stats(match_id)
 
 
+def _running_match_ids() -> set:
+    """The ids of the matches in play now."""
+    ctrls = (_elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl)
+    ids = {c.game.match_id for c in ctrls if c and c.active}
+    if _game_state and _game_state.match_started and _stats_tracker:
+        ids.add(getattr(_stats_tracker, "_match_id", None))
+    return ids
+
+
+def _pin_error(request: Request) -> str | None:
+    """Deleting asks for the PIN of this location when one is set; the text of the problem, or None."""
+    if not _locations:
+        return None
+    try:
+        _locations.verify_pin(request.headers.get("x-pin"))
+    except locations_mod.LocationError as e:
+        return str(e)
+    return None
+
+
+@app.get("/api/delete-guard")
+async def delete_guard():
+    """Whether the delete actions ask for a PIN."""
+    return {"pin_required": bool(_locations and _locations.pin_required())}
+
+
+@app.delete("/api/stats/match/{match_id}")
+async def stats_delete_match(match_id: str, request: Request):
+    log.info("Deleting match: %s", match_id)
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    problem = await asyncio.to_thread(_pin_error, request)
+    if problem:
+        return {"error": problem}
+    if match_id in _running_match_ids():
+        return {"error": "the match is in play"}
+    result = _stats_db.delete_match(match_id)
+    if "error" not in result:
+        push()
+    return result
+
+
 @app.get("/api/stats/x01/match/{match_id}/summary")
 async def stats_x01_match_summary(match_id: str):
     if not _stats_db:

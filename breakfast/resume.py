@@ -77,8 +77,9 @@ class ResumeOffers:
         mode = self._mode_of(key)
         if mode is None:
             return False
-        del self._pending[mode]
+        data = self._pending.pop(mode)["data"]
         self._db.clear_running_match(mode)
+        self._db.discard_unfinished(data.get("match_id"))
         if self._on_change:
             self._on_change()
         return True

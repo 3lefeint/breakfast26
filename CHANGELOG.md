@@ -3,12 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- A match can be deleted from the list of recent matches (with the achievements earned in it); it asks for the location PIN when one is set. (#81)
 - Voice chat in online matches: a Voice chat button in the lobby and on the TV view opens a page on the relay (HTTPS, so the browser allows the microphone) where the sites talk to each other directly (WebRTC); mute, level, who is speaking and the choice of the microphone; STUN, and TURN through a Cloudflare TURN key given to the relay as secrets. (#78)
 - The Online page lists the open matches of linked locations (fetched when the page opens and on Refresh); one click joins without code and password. A match of a registered location is announced to its links, a host needs no password (empty: only linked locations can join), the site name falls back to the location's name. (#77)
 - Online lobby: every site says when it is ready, the host's Start waits for all sites; players taken by another site show which one, and a site name that is already taken gets a clear message. (#77)
 - An installation can register as a location at the relay (Settings → Connections → Location Online Settings) with a name and a local PIN, create a one-time invitation code and link with another location by pasting its code; links are listed and can be removed, the location can be renamed and signed off again and its PIN changed; the calls are logged. The relay stores locations, invitations and links in D1 (`relay/migrations/0002_locations.sql`) and checks signed requests (Ed25519). (#76)
 
 ### Changed
+- A game that is cancelled before its end is no longer stored; an unfinished match older than 7 days is deleted when the next game starts. (#81)
 - Relay protocol version 2: `hello` takes a `ticket` instead of the password for a join through a link, `lobby` lists `ready` per site and `lobby_set_ready` is new; sites on version 1 are asked to upgrade. (#77)
 
 ## [1.8.0] - 2026-10-21

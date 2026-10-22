@@ -133,6 +133,17 @@ class Locations:
         self._save(state)
         raise LocationError("wrong PIN")
 
+    def pin_required(self):
+        """True when a PIN is set; the local actions that cannot be undone ask for it then."""
+        return "pin" in self._load()
+
+    def verify_pin(self, pin):
+        """Raises LocationError for a wrong PIN or while locked; passes when no PIN is set."""
+        with self._lock:
+            state = self._load()
+            if "pin" in state:
+                self._check_pin(state, pin)
+
     @staticmethod
     def _valid_pin(pin):
         pin = str(pin or "")

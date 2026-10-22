@@ -9,7 +9,7 @@ import logging
 import re
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from breakfast import telemetry
@@ -513,6 +513,10 @@ class StatsDB:
                 (match_id, _now_iso(), game_mode, points_start, tournament_id),
             )
             self._conn.commit()
+        try:
+            self.purge_stale_matches()
+        except Exception:
+            log.exception("Deleting stale matches failed")
         telemetry.record_match_opened(match_id, game_mode)
 
     # ── Running match ─────────────────────────────────────────────────────────
@@ -1758,6 +1762,66 @@ class StatsDB:
             )
             self._conn.commit()
         self._match_changed(match_id)
+
+    # ── Deleting matches ──────────────────────────────────────────────────────
+
+    # Every table with a `match_id` column: what deleting a match removes. A test keeps this list complete.
+    _DELETE_TABLES = ("turns", "bot_turns", "legs", "elimination_results", "elimination_turns",
+                      "target_battle_turns", "target_battle_results", "target_battle_games",
+                      "field_training_games", "field_training_turns", "checkout_training_games",
+                      "checkout_training_turns", "black_belt_games", "black_belt_darts", "warm_up_games",
+                      "warm_up_darts", "killer_games", "killer_turns", "killer_events", "killer_results",
+                      "dart_positions", "achievements_earned")
+    STALE_MATCH_DAYS = 7
+
+    def _delete_match_rows(self, match_id: str):
+        """The rows of one match in every table; the caller holds the lock and commits."""
+        for table in self._DELETE_TABLES:
+            self._conn.execute(f"DELETE FROM {table} WHERE match_id = ?", (match_id,))
+        self._conn.execute("DELETE FROM matches WHERE match_id = ?", (match_id,))
+
+    def delete_match(self, match_id: str) -> dict:
+        """Delete a match with everything stored for it, the achievements earned in it included.
+        {"ok": True}, or {"error"} for an unknown match and for one that belongs to a tournament."""
+        with self._lock:
+            row = self._conn.execute("SELECT tournament_id FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+            if row is None:
+                return {"error": "unknown match"}
+            if row["tournament_id"]:
+                return {"error": "the match belongs to a tournament"}
+            self._delete_match_rows(match_id)
+            self._conn.commit()
+        log.info("Deleted match %s", match_id)
+        return {"ok": True}
+
+    def discard_unfinished(self, match_id: str | None) -> bool:
+        """A game that is cancelled before its end leaves nothing behind. A finished match stays."""
+        if not match_id:
+            return False
+        with self._lock:
+            row = self._conn.execute("SELECT ended_at FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+            if row is None or row["ended_at"] is not None:
+                return False
+            self._delete_match_rows(match_id)
+            self._conn.commit()
+        log.info("Discarded unfinished match %s", match_id)
+        return True
+
+    def purge_stale_matches(self, days: int = STALE_MATCH_DAYS) -> int:
+        """Delete the matches that were never finished and started more than *days* ago, those a saved match
+        still refers to excepted (they can be resumed). Returns how many were deleted."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        with self._lock:
+            saved = " ".join(r["data"] for r in self._conn.execute("SELECT data FROM running_match").fetchall())
+            ids = [r["match_id"] for r in self._conn.execute(
+                "SELECT match_id FROM matches WHERE ended_at IS NULL AND started_at < ?", (cutoff,)).fetchall()
+                if r["match_id"] not in saved]
+            for match_id in ids:
+                self._delete_match_rows(match_id)
+            self._conn.commit()
+        if ids:
+            log.info("Deleted %s unfinished matches older than %s days", len(ids), days)
+        return len(ids)
 
     def insert_elimination_turn(self, match_id: str, player: str, darts_count: int,
                                 score: int | None = None, target: int | None = None,

@@ -1063,4 +1063,5 @@ export default {
   'The stations keep their order. The bull is thrown between two stations, the bull\'s eye comes last.': 'Die Stationen behalten ihre Reihenfolge. Das Bull kommt zwischen zwei Stationen, das Bull\'s Eye zuletzt.',
   'The bull once more.': 'Noch einmal das Bull.',
   'All of them, or only the ones you switch on, for example the big singles and the triples. The run keeps the order above, the bull comes between the stations you switch on and the bull\'s eye last.': 'Alle, oder nur die, die du einschaltest, zum Beispiel die großen Singles und die Triples. Der Lauf behält die Reihenfolge von oben, das Bull kommt zwischen die Stationen, die du einschaltest, und das Bull\'s Eye zuletzt.',
+  'Delete this match? Everything stored for it is removed, including the achievements earned in it.': 'Dieses Match löschen? Alles, was dazu gespeichert ist, wird entfernt, auch die darin erreichten Achievements.',
 };

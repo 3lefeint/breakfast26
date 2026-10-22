@@ -691,7 +691,7 @@ class TestEliminationOverview:
     def _finished(self, db, match_id, results, minutes=None, started="2026-07-06T10:00:00+00:00"):
         from datetime import datetime, timedelta
         db.open_match(match_id, "Elimination", 3)
-        db._conn.execute("UPDATE matches SET started_at = ? WHERE match_id = ?", (started, match_id))
+        db._conn.execute("UPDATE matches SET started_at = ?, ended_at = ? WHERE match_id = ?", (started, started, match_id))
         db.record_elimination_result(match_id, results)
         if minutes is not None:
             end = datetime.fromisoformat(started) + timedelta(minutes=minutes)
@@ -719,6 +719,7 @@ class TestEliminationOverview:
 
     def test_summary_without_end_times_has_no_lengths(self, db):
         self._finished(db, "e1", [("alice", 1, 2), ("bob", 2, None)])
+        db._conn.execute("UPDATE matches SET ended_at = NULL")
         summary = db.elimination_summary()
         assert (summary["games"], summary["avg_minutes"], summary["longest_minutes"]) == (1, None, None)
 
@@ -731,7 +732,7 @@ class TestEliminationOverview:
 class TestEliminationForm:
     def _game(self, db, match_id, results, started):
         db.open_match(match_id, "Elimination", 3)
-        db._conn.execute("UPDATE matches SET started_at = ? WHERE match_id = ?", (started, match_id))
+        db._conn.execute("UPDATE matches SET started_at = ?, ended_at = ? WHERE match_id = ?", (started, started, match_id))
         db.record_elimination_result(match_id, results)
         db._conn.commit()
 
@@ -834,7 +835,7 @@ class TestEliminationRecords:
     def _turn(self, db, match_id, player, score, target, passed, started="2026-07-06T10:00:00+00:00"):
         if not db._conn.execute("SELECT 1 FROM matches WHERE match_id = ?", (match_id,)).fetchone():
             db.open_match(match_id, "Elimination", 3)
-            db._conn.execute("UPDATE matches SET started_at = ? WHERE match_id = ?", (started, match_id))
+            db._conn.execute("UPDATE matches SET started_at = ?, ended_at = ? WHERE match_id = ?", (started, started, match_id))
             db._conn.commit()
         db.insert_elimination_turn(match_id, player, 3, score=score, target=target, freipass=False,
                                    passed=passed, lives_before=3)

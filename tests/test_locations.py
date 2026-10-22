@@ -260,3 +260,15 @@ def test_the_relay_answers_are_logged_without_secrets(loc, relay, caplog):
     text = caplog.text
     assert "/invitations/redeem answered 404: invalid or expired invitation" in text
     assert "1234" not in text and "t" * 32 not in text
+
+
+def test_verify_pin_passes_without_a_pin_and_checks_it_once_set(loc):
+    assert not loc.pin_required()
+    loc.verify_pin(None)
+    loc.register("wss://r.example", "Home", "1234")
+    assert loc.pin_required()
+    loc.verify_pin("1234")
+    with pytest.raises(LocationError, match="wrong PIN"):
+        loc.verify_pin("0000")
+    with pytest.raises(LocationError, match="wrong PIN"):
+        loc.verify_pin(None)

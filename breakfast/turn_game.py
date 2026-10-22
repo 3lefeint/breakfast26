@@ -378,6 +378,14 @@ class TurnGameController:
         except Exception:
             log.exception("Saving the match in play failed")
 
+    def _discard_unfinished(self, game):
+        """A game cancelled before its end leaves no match behind; a finished one stays."""
+        if game and self.stats_db:
+            try:
+                self.stats_db.discard_unfinished(game.match_id)
+            except Exception:
+                log.exception("Discarding the cancelled match failed")
+
     def _clear_saved(self):
         """The match is over or was cancelled: there is nothing to resume."""
         self._saved_text = None
@@ -433,10 +441,11 @@ class TurnGameController:
 
     def stop(self):
         with self._lock:
-            self.game = None
+            game, self.game = self.game, None
             if self.bots:
                 self.bots.clear()
         self._clear_saved()
+        self._discard_unfinished(game)
         client = self.mqtt_pub.client
         client.publish(self._topic("active"), "false", retain=True)
         client.publish(self._topic("state"), "", retain=True)

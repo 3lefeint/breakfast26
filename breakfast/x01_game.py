@@ -803,6 +803,7 @@ class X01Controller(TurnGameController):
         self._clear_saved()
         if game:
             game.stopped()
+        self._discard_unfinished(game)
         if self._on_change:
             self._on_change()
         log.info("Game stopped")
