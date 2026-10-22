@@ -12,6 +12,7 @@
   import { rematch, stopGame, ruleChips, dartLabel } from '../../lib/killer.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from '../../tv/views/DartCorrectModal.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let k = $derived($killer);
   let rows = $derived([...(k?.players || [])].sort((a, b) => a.placement - b.placement));
@@ -54,6 +55,7 @@
         <span class="hint">{t('tap a dart to correct it')}</span>
       </div>
     {/if}
+    <MatchAchievements matchId={k.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>
       <button class="btn ghost" onclick={stopGame}>{t('New game')}</button>

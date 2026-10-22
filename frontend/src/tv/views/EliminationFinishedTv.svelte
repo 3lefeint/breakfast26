@@ -14,6 +14,7 @@
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import { dartLabel } from '../../lib/killer.js';
   import DartCorrectModal from './DartCorrectModal.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { elimination, online = null } = $props();
   let lastDarts = $derived(elimination.last_turn?.darts || []);
@@ -124,6 +125,7 @@
       {/each}
     </div>
   {/if}
+  <MatchAchievements matchId={elimination.match_id} large />
   <div class="finished-actions">
     {#if !online}
       <button class="btn btn-start" onclick={openRematchModal}>{t('↻ Rematch')}</button>

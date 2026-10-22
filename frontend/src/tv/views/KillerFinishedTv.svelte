@@ -12,6 +12,7 @@
   import Crown from '../../lib/components/Crown.svelte';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { killer } = $props();
 
@@ -56,6 +57,7 @@
       {/each}
     </div>
   {/if}
+  <MatchAchievements matchId={killer.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(killer)}>{t('↻ Rematch')}</button>
     <button class="btn ghost" onclick={undo}>{t('↩ Undo')}</button>

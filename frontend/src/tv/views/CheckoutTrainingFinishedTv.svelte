@@ -5,6 +5,7 @@
   // The result of a finished Random checkout run on the TV.
   import { rematch, stopRun, undoAttempt } from '../../lib/checkoutTraining.js';
   import CheckoutTrainingResult from '../../lib/components/CheckoutTrainingResult.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { co } = $props();
 
@@ -21,6 +22,7 @@
 
 <div class="finished">
   <CheckoutTrainingResult {co} large />
+  <MatchAchievements matchId={co.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(co)}>{t('↻ Replay')}</button>
     <button class="btn ghost" onclick={undoLast}>{t('↩ Undo')}</button>

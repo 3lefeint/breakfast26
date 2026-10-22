@@ -2734,6 +2734,17 @@ class StatsDB:
                 (match_id,)).fetchall()
         return [(r["player"], r["achievement_id"]) for r in rows]
 
+    def earned_in_match(self, match_id: str) -> list:
+        """What was earned in a finished match, oldest first: [{player, achievement_id, tier, earned_at}]; nothing
+        for an unknown match and for one that is not finished."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT e.player, e.achievement_id, e.tier, e.earned_at FROM achievements_earned e"
+                " JOIN matches m ON m.match_id = e.match_id"
+                " WHERE e.match_id = ? AND m.ended_at IS NOT NULL ORDER BY e.earned_at, e.id",
+                (match_id,)).fetchall()
+        return [dict(r) for r in rows]
+
     def add_earned(self, player: str, achievement_id: str, tier: int, match_id: str | None):
         log.debug("DB write: add_earned player=%s achievement=%s tier=%s match_id=%s",
                   player, achievement_id, tier, match_id)

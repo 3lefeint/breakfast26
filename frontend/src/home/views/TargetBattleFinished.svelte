@@ -10,6 +10,7 @@
   import { shownName } from '../../lib/util.js';
   import { rematch, stopGame, SCORING_LABELS } from '../../lib/targetBattle.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let tb = $derived($targetBattle);
   let rows = $derived([...(tb?.players || [])].sort((a, b) => a.placement - b.placement || b.score - a.score));
@@ -44,6 +45,7 @@
         </li>
       {/each}
     </ul>
+    <MatchAchievements matchId={tb.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>
       <button class="btn ghost" onclick={stopGame}>{t('New game')}</button>

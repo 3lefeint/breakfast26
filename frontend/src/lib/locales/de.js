@@ -1072,4 +1072,5 @@ export default {
   '{n} achievements are removed': '{n} Achievements werden entfernt',
   'A copy of the database is made first.': 'Vorher wird eine Kopie der Datenbank angelegt.',
   'Type "delete" to confirm': 'Zur Bestätigung "delete" eingeben',
+  'Achievements earned': 'Erreichte Achievements',
 };

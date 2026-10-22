@@ -7,6 +7,7 @@
   import { warmUp } from '../../lib/stores/warmUp.js';
   import { rematch, stopRun, undoTurn } from '../../lib/warmUp.js';
   import WarmUpResult from '../../lib/components/WarmUpResult.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let wu = $derived($warmUp);
 
@@ -23,6 +24,7 @@
 {#if wu && wu.result}
   <div class="section">
     <WarmUpResult {wu} />
+    <MatchAchievements matchId={wu.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Again')}</button>
       <button class="btn ghost" onclick={stopRun}>{t('New run')}</button>

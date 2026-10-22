@@ -7,6 +7,7 @@
   import { blackBelt } from '../../lib/stores/blackBelt.js';
   import { rematch, stopRun, undoTurn } from '../../lib/blackBelt.js';
   import BlackBeltResult from '../../lib/components/BlackBeltResult.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let bb = $derived($blackBelt);
 
@@ -23,6 +24,7 @@
 {#if bb && bb.result}
   <div class="section">
     <BlackBeltResult {bb} />
+    <MatchAchievements matchId={bb.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Again')}</button>
       <button class="btn ghost" onclick={stopRun}>{t('New run')}</button>

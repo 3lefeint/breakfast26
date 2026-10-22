@@ -250,7 +250,8 @@ of banners.
 
 <img src="media/player-profile.webp" alt="A player profile with its achievements" width="600">
 
-When a match ends, the TV announces what was earned:
+When a match ends, the TV announces what was earned, and the result page of the match lists it (also in the details of the
+match in the Stats page):
 
 <img src="media/achievement-banner.webp" alt="The achievement banner on the TV view" width="420">
 

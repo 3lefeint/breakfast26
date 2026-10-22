@@ -17,7 +17,7 @@
 {#if current}
   {#key current}
     <div class="banner" role="status" aria-live="polite" onanimationend={achievementShown}>
-      <Badge item={current} size={64} />
+      <Badge item={current} size={96} />
       <div class="text">
         <div class="kicker">{t('Achievement unlocked')}</div>
         <div class="name">{localized(current.names)}</div>
@@ -30,17 +30,17 @@
 <style>
   .banner {
     position: fixed; top: 0.75rem; left: 50%; z-index: 100;
-    display: flex; align-items: center; gap: 1rem;
-    min-width: 22rem; max-width: calc(100vw - 2rem);
-    padding: 0.7rem 1.4rem 0.7rem 0.9rem;
+    display: flex; align-items: center; gap: 1.5rem;
+    min-width: 33rem; max-width: calc(100vw - 2rem);
+    padding: 1rem 2.1rem 1rem 1.3rem;
     background: var(--surface); border: 1px solid var(--accent); border-radius: 999px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
     transform: translate(-50%, -160%);
     animation: unlock 5.2s ease-in-out forwards;
   }
-  .kicker { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
-  .name { font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
-  .who { font-size: 0.85rem; color: var(--muted); }
+  .kicker { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+  .name { font-size: 1.95rem; font-weight: 800; line-height: 1.2; }
+  .who { font-size: 1.3rem; color: var(--muted); }
 
   @keyframes unlock {
     0%   { transform: translate(-50%, -160%); }

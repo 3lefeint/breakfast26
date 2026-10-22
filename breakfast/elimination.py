@@ -92,6 +92,7 @@ class EliminationGame(TurnGame):
         return {
             "active": self.state == "playing",
             "state": self.state,
+            "match_id": self.match_id,
             "winner": self.winner,
             "current_player": cp,
             "target": self.target,

@@ -1726,6 +1726,13 @@ async def achievements_player(name: str):
     return {"player": name, "achievements": engine.overview(name) if engine else []}
 
 
+@app.get("/api/stats/match/{match_id}/achievements")
+async def stats_match_achievements(match_id: str):
+    """The achievements earned in a finished match."""
+    engine = _stats_db.achievement_engine if _stats_db else None
+    return {"match_id": match_id, "achievements": engine.match_achievements(match_id) if engine else []}
+
+
 @app.get("/api/stats/matches")
 async def stats_matches(mode: str | None = Query(default=None, pattern="^(x01|elimination|target_battle|killer|field_training|black_belt|warm_up|checkout_training)$")):
     if not _stats_db:

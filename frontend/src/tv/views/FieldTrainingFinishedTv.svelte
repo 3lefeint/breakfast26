@@ -5,6 +5,7 @@
   // The result of a finished Field Training run on the TV.
   import { rematch, stopRun, undoTurn } from '../../lib/fieldTraining.js';
   import FieldTrainingResult from '../../lib/components/FieldTrainingResult.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { ft } = $props();
 
@@ -21,6 +22,7 @@
 
 <div class="finished">
   <FieldTrainingResult {ft} large />
+  <MatchAchievements matchId={ft.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(ft)}>{t('↻ Replay')}</button>
     <button class="btn ghost" onclick={undoLast}>{t('↩ Undo')}</button>

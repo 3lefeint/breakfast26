@@ -235,6 +235,7 @@ class FieldTrainingGame(TurnGame):
         return {
             "active": self.state == "playing",
             "state": self.state,
+            "match_id": self.match_id,
             "player": self.player,
             "current_player": self.current_player,
             "color": self.color,

@@ -10,6 +10,7 @@
   import { KINDS, modeLabel } from '../../../lib/warmUp.js';
   import X01Summary from '../../../lib/components/X01Summary.svelte';
   import { deleteGuarded } from '../../../lib/deleteGuard.js';
+  import MatchAchievements from '../../../lib/components/MatchAchievements.svelte';
 
   let { mode } = $props();
 
@@ -265,6 +266,7 @@
                 <button type="button" class="summary-btn" onclick={(e) => { e.stopPropagation(); summaryMatch = m.match_id; }}>{t('Summary')}</button>
               {/if}
             {/if}
+            <MatchAchievements matchId={m.match_id} />
             <button type="button" class="summary-btn" onclick={(e) => { e.stopPropagation(); deleteMatch(m.match_id); }}>{t('Delete')}</button>
           </div>
         {/if}

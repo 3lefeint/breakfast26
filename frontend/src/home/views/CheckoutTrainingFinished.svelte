@@ -7,6 +7,7 @@
   import { checkoutTraining } from '../../lib/stores/checkoutTraining.js';
   import { rematch, stopRun, undoAttempt } from '../../lib/checkoutTraining.js';
   import CheckoutTrainingResult from '../../lib/components/CheckoutTrainingResult.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let co = $derived($checkoutTraining);
 
@@ -23,6 +24,7 @@
 {#if co && co.result}
   <div class="section">
     <CheckoutTrainingResult {co} />
+    <MatchAchievements matchId={co.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Again')}</button>
       <button class="btn ghost" onclick={stopRun}>{t('New run')}</button>

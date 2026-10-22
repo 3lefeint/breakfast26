@@ -16,6 +16,7 @@
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import { dartLabel } from '../../lib/killer.js';
   import DartCorrectModal from '../../tv/views/DartCorrectModal.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let lastDarts = $derived($elimination?.last_turn?.darts || []);
   let correctingIndex = $state(null);
@@ -116,6 +117,7 @@
       {/each}
     </div>
   {/if}
+  <MatchAchievements matchId={$elimination?.match_id} />
   <div class="finished-actions">
     <button class="btn btn-add" onclick={newGame}>{t('New game')}</button>
     {#if !$online}

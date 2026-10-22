@@ -15,6 +15,7 @@
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
   import X01Summary from '../../lib/components/X01Summary.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { x, sessionStats = {} } = $props();
 
@@ -76,6 +77,7 @@
       {/each}
     </div>
   {/if}
+  <MatchAchievements matchId={x.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(x)}>{t('↻ Rematch')}</button>
     <button class="btn ghost" onclick={() => (showSummary = true)}>{t('Summary')}</button>

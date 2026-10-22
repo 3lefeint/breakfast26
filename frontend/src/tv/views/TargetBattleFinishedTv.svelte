@@ -10,6 +10,7 @@
   import { rematch, stopGame } from '../../lib/targetBattle.js';
   import Crown from '../../lib/components/Crown.svelte';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { tb } = $props();
 
@@ -66,6 +67,7 @@
       </tbody>
     </table>
   </div>
+  <MatchAchievements matchId={tb.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(tb)}>{t('↻ Rematch')}</button>
     <button class="btn ghost" onclick={undo}>{t('↩ Undo')}</button>

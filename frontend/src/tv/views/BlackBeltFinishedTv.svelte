@@ -6,6 +6,7 @@
   import { rematch, stopRun, undoTurn } from '../../lib/blackBelt.js';
   import BlackBeltResult from '../../lib/components/BlackBeltResult.svelte';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { bb } = $props();
 
@@ -24,6 +25,7 @@
 
 <div class="finished">
   <BlackBeltResult {bb} large />
+  <MatchAchievements matchId={bb.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(bb)}>{t('↻ Replay')}</button>
     <button class="btn ghost" onclick={undoLast}>{t('↩ Undo')}</button>

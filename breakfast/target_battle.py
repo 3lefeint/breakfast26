@@ -338,6 +338,7 @@ class TargetBattleGame(TurnGame):
         return {
             "active": self.state == "playing",
             "state": self.state,
+            "match_id": self.match_id,
             "round": self.round,
             "rounds": self.rounds,
             "tiebreak": self.in_tiebreak,

@@ -6,6 +6,7 @@
   import { rematch, stopRun, undoTurn } from '../../lib/warmUp.js';
   import WarmUpResult from '../../lib/components/WarmUpResult.svelte';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let { wu } = $props();
 
@@ -24,6 +25,7 @@
 
 <div class="finished">
   <WarmUpResult {wu} large />
+  <MatchAchievements matchId={wu.match_id} large />
   <div class="actions">
     <button class="btn" onclick={() => rematch(wu)}>{t('↻ Replay')}</button>
     <button class="btn ghost" onclick={undoLast}>{t('↩ Undo')}</button>

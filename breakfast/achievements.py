@@ -1429,6 +1429,18 @@ class AchievementEngine:
                 "tiers": list(a.tiers) if a.tiers else None,
                 "tier": change["tier"] or 1}
 
+    def match_achievements(self, match_id: str) -> list:
+        """The achievements earned in a finished match, for its result page: the message of the banner for each
+        (names, descriptions, motif, tier) with the time it was earned."""
+        found = []
+        for row in self.db.earned_in_match(match_id):
+            change = {"player": row["player"], "achievement": row["achievement_id"], "tier": row["tier"]}
+            try:
+                found.append({**self.notification(change), "earned_at": row["earned_at"]})
+            except StopIteration:
+                continue            # an achievement that no longer exists
+        return found
+
     def announce(self, push, audio=None, sounds=None, spacing=UNLOCK_SPACING):
         """Send every newly earned achievement to the browsers with `push` and play its sound.
         `sounds(id)` gives the files assigned to the achievement; one of them is played. Without

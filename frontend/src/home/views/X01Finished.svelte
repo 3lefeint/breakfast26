@@ -13,6 +13,7 @@
   import { rematch, stopGame, ruleChips } from '../../lib/x01.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from '../../tv/views/DartCorrectModal.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let x = $derived($x01Own);
   let stats = $derived($gameState.session_stats || {});
@@ -53,6 +54,7 @@
         <span class="hint">{t('tap a dart to correct it')}</span>
       </div>
     {/if}
+    <MatchAchievements matchId={x.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>
       <button class="btn ghost" onclick={stopGame}>{t('New game')}</button>

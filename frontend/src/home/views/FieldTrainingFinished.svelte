@@ -7,6 +7,7 @@
   import { fieldTraining } from '../../lib/stores/fieldTraining.js';
   import { rematch, stopRun, undoTurn } from '../../lib/fieldTraining.js';
   import FieldTrainingResult from '../../lib/components/FieldTrainingResult.svelte';
+  import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
   let ft = $derived($fieldTraining);
 
@@ -23,6 +24,7 @@
 {#if ft && ft.result}
   <div class="section">
     <FieldTrainingResult {ft} />
+    <MatchAchievements matchId={ft.match_id} />
     <div class="actions">
       <button class="btn btn-start" onclick={again}>{t('↻ Again')}</button>
       <button class="btn ghost" onclick={stopRun}>{t('New run')}</button>
