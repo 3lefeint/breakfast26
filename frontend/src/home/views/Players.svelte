@@ -6,6 +6,7 @@
   import { gameState } from '../../lib/stores/gameState.js';
   import { api, apiJson } from '../../lib/api.js';
   import { cap } from '../../lib/util.js';
+  import { deleteGuarded } from '../../lib/deleteGuard.js';
   import PlayerCard from '../../lib/components/PlayerCard.svelte';
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import Panel from '../../lib/components/Panel.svelte';
@@ -55,6 +56,31 @@
     mergeMessage = t('{source} was merged into {target}.', { source: cap(source), target: cap(target) });
     mergeSource = '';
     mergeTarget = '';
+  }
+
+  // Delete: the confirmation names what is removed and asks for a typed word, then the PIN of this location.
+  const DELETE_WORD = 'delete';
+  let deleteName = $state('');
+  let deleteMessage = $state('');
+  let deleting = $state(null);
+  let deleteTyped = $state('');
+
+  async function askDelete() {
+    deleteMessage = '';
+    const preview = await apiJson('GET', `/api/players/delete-preview?name=${encodeURIComponent(deleteName)}`);
+    if (preview.error) { deleteMessage = preview.error; return; }
+    deleteTyped = '';
+    deleting = { name: deleteName, ...preview };
+  }
+
+  async function confirmDelete() {
+    if (deleteTyped.trim().toLowerCase() !== DELETE_WORD) return;
+    const { name } = deleting;
+    deleting = null;
+    if (await deleteGuarded(`/api/stats/player/${encodeURIComponent(name)}`, null)) {
+      deleteMessage = t('{name} was deleted.', { name: cap(name) });
+      deleteName = '';
+    }
   }
 </script>
 
@@ -107,6 +133,19 @@
   </Panel>
 {/if}
 
+{#if allPlayers.length}
+  <Panel title={t('Delete player')}>
+    <div class="merge-row">
+      <select bind:value={deleteName} aria-label={t('Player')}>
+        <option value="">{t('Player')}</option>
+        {#each allPlayers as name (name)}<option value={name}>{cap(name)}</option>{/each}
+      </select>
+      <button class="btn-add" disabled={!deleteName} onclick={askDelete}>{t('Delete')}</button>
+    </div>
+    {#if deleteMessage}<p class="merge-message">{deleteMessage}</p>{/if}
+  </Panel>
+{/if}
+
 {#if $players.hidden.length}
   <Panel title={t('Hidden players')}>
     <ul class="hidden-players-list">
@@ -137,6 +176,30 @@
       <div class="modal-buttons">
         <button type="button" class="btn-cancel" onclick={() => (confirming = null)}>{t('Cancel')}</button>
         <button type="button" class="btn-add" disabled={typed.trim().toLowerCase() !== CONFIRM_WORD} onclick={confirmMerge}>{t('Merge')}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if deleting}
+  <div class="modal-overlay">
+    <button type="button" class="overlay-backdrop" aria-label={t('Close')} onclick={() => (deleting = null)}></button>
+    <div class="modal-box" role="dialog" aria-modal="true">
+      <div class="modal-title">{t('Delete player')}</div>
+      <p class="confirm-text">
+        <span>{t('Delete {name}?', { name: cap(deleting.name) })}</span>
+        <span>{t('{n} matches with only this player are deleted', { n: deleting.matches_deleted })}</span>
+        <span>{t('{n} matches with other players stay, the player shows as "Deleted player"', { n: deleting.matches_kept })}</span>
+        <span>{t('{n} achievements are removed', { n: deleting.achievements })}</span>
+        <span>{t('A copy of the database is made first.')}</span>
+      </p>
+      <label class="confirm-label" for="deleteConfirm">{t('Type "delete" to confirm')}</label>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input id="deleteConfirm" type="text" autocomplete="off" autofocus bind:value={deleteTyped}
+             onkeydown={(e) => e.key === 'Enter' && confirmDelete()}>
+      <div class="modal-buttons">
+        <button type="button" class="btn-cancel" onclick={() => (deleting = null)}>{t('Cancel')}</button>
+        <button type="button" class="btn-add" disabled={deleteTyped.trim().toLowerCase() !== DELETE_WORD} onclick={confirmDelete}>{t('Delete')}</button>
       </div>
     </div>
   </div>

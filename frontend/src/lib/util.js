@@ -1,7 +1,10 @@
+import { t } from './i18n.js';
+
 // Mirrors the cap() helper of the former index.html and tv.html — capitalizes the first
 // letter. Svelte auto-escapes interpolated text, so no esc() equivalent
-// is needed here.
+// is needed here. The placeholder of a deleted player ("Deleted player", "Deleted player 2") is translated.
 export function cap(s) {
+  if (s && /^Deleted player( \d+)?$/.test(s)) return s.replace('Deleted player', t('Deleted player'));
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 

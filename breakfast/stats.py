@@ -350,6 +350,11 @@ def _safe_name(raw) -> str | None:
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
+# What a deleted player is called in the matches that other players keep.
+DELETED_PLAYER = "Deleted player"
+_DELETED_NAME = re.compile(rf"^{DELETED_PLAYER}( \d+)?$")
+
+
 class StatsDB:
     def __init__(self, path: str, tz: str | None = "UTC"):
         self.tz = load_timezone(tz)
@@ -657,6 +662,10 @@ class StatsDB:
                 "SELECT name FROM players WHERE hidden = 0 ORDER BY name COLLATE NOCASE"
             ).fetchall()
         return [r["name"] for r in rows]
+
+    def listed_hidden_players(self) -> list:
+        """The hidden players the Players tab offers to unhide: not the placeholders of deleted players."""
+        return [n for n in self.hidden_players() if not _DELETED_NAME.match(n)]
 
     def hidden_players(self) -> list:
         """Names excluded from leaderboard()/all_players_stats() — the
@@ -2227,40 +2236,120 @@ class StatsDB:
             ).fetchall()
         return {r["winner"]: r["n"] for r in rows}
 
-    def delete_player(self, player: str):
-        """Delete all data for a player, including their identity row
-        (irreversible) — unlike upsert_player(hidden=True), which only
-        hides them from the Players tab/leaderboard without touching
-        history."""
-        log.debug("DB write: delete_player player=%s (turns, elimination_turns, "
-                  "elimination_results, players)", player)
+    def _delete_plan(self, player: str) -> tuple:
+        """(matches only this player is in, matches shared with others): the first are deleted, the second keep
+        their numbers under a placeholder name. The caller holds the lock."""
+        solo, shared = [], []
+        for match_id in sorted(self._matches_of(player)):
+            (shared if set(self._participants(match_id)) - {player} else solo).append(match_id)
+        return solo, shared
+
+    def delete_player_preview(self, player: str) -> dict:
+        """What deleting `player` would do: {"matches_deleted", "matches_kept", "achievements"}."""
         with self._lock:
-            self._conn.execute("DELETE FROM turns WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM elimination_turns WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM elimination_results WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM target_battle_turns WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM target_battle_results WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Target Battle'", (player,))
-            self._conn.execute("DELETE FROM killer_events WHERE player = ? OR victim = ?", (player, player))
-            self._conn.execute("DELETE FROM killer_turns WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM killer_results WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Killer'", (player,))
-            self._conn.execute("DELETE FROM field_training_games WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM field_training_turns WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Field Training'", (player,))
-            self._conn.execute("DELETE FROM checkout_training_games WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM checkout_training_turns WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Checkout Training'", (player,))
-            self._conn.execute("DELETE FROM black_belt_games WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM black_belt_darts WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Black Belt'", (player,))
-            self._conn.execute("DELETE FROM warm_up_games WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM warm_up_darts WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM dart_positions WHERE player = ? AND game_mode = 'Warm-up'", (player,))
-            self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
-            self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
-            self._conn.commit()
-        log.info("Deleted all stats for player: %s", player)
+            solo, shared = self._delete_plan(player)
+            return {"matches_deleted": len(solo), "matches_kept": len(shared),
+                    "achievements": self._conn.execute(
+                        "SELECT COUNT(*) FROM achievements_earned WHERE player = ?", (player,)).fetchone()[0]}
+
+    def delete_player(self, player: str) -> dict:
+        """Delete a player: the matches nobody else played are deleted, in the matches shared with others the player
+        becomes "Deleted player" (numbered when there are several in one match) and keeps no dart positions, and the
+        achievements and the player are removed. Unlike upsert_player(hidden=True) this cannot be undone; a copy
+        of the database is made first. Returns the preview numbers and the "backup" file."""
+        log.debug("DB write: delete_player player=%s", player)
+        with self._lock:
+            solo, shared = self._delete_plan(player)
+            achievements = self._conn.execute(
+                "SELECT COUNT(*) FROM achievements_earned WHERE player = ?", (player,)).fetchone()[0]
+            backup = None
+            if self.path not in ("", ":memory:"):
+                backup = f"{self.path}.before-delete-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+                self._conn.commit()         # a copy waits forever for a transaction that is still open
+                copy = sqlite3.connect(backup)
+                try:
+                    self._conn.backup(copy)
+                finally:
+                    copy.close()
+            try:
+                for match_id in solo:
+                    self._delete_match_rows(match_id)
+                for match_id in shared:
+                    self._anonymise_in_match(match_id, player)
+                self._anonymise_in_tournaments(player)
+                self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
+                self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+        log.info("Deleted player %s: %s matches deleted, %s kept as %s, %s achievements, backup %s",
+                 player, len(solo), len(shared), DELETED_PLAYER, achievements, backup)
+        return {"matches_deleted": len(solo), "matches_kept": len(shared), "achievements": achievements,
+                "backup": backup}
+
+    def _placeholder(self, taken) -> str:
+        """The first of "Deleted player", "Deleted player 2", ... not in `taken`, as a hidden player so that
+        rankings, the Players tab and achievements leave it out."""
+        n = 1
+        while (name := DELETED_PLAYER if n == 1 else f"{DELETED_PLAYER} {n}") in taken:
+            n += 1
+        self._conn.execute("INSERT OR IGNORE INTO players (name, created_at, hidden) VALUES (?, ?, 1)",
+                           (name, _now_iso()))
+        return name
+
+    def _anonymise_in_match(self, match_id: str, player: str):
+        """Rename `player` in one match; the caller holds the lock and commits."""
+        c = self._conn
+        name = self._placeholder(set(self._participants(match_id)))
+        c.execute("DELETE FROM dart_positions WHERE match_id = ? AND player = ?", (match_id, player))
+        for table in self._MERGE_TABLES + self._MERGE_RESULT_TABLES:
+            c.execute(f"UPDATE {table} SET player = ? WHERE match_id = ? AND player = ?", (name, match_id, player))
+        c.execute("UPDATE killer_events SET player = ? WHERE match_id = ? AND player = ?", (name, match_id, player))
+        c.execute("UPDATE killer_events SET victim = ? WHERE match_id = ? AND victim = ?", (name, match_id, player))
+        c.execute("UPDATE legs SET winner = ? WHERE match_id = ? AND winner = ?", (name, match_id, player))
+        c.execute("UPDATE matches SET winner = ? WHERE match_id = ? AND winner = ?", (name, match_id, player))
+        row = c.execute("SELECT players FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+        try:
+            names = json.loads(row["players"] or "[]") if row else []
+        except ValueError:
+            names = []
+        if player in names:
+            c.execute("UPDATE matches SET players = ? WHERE match_id = ?",
+                      (json.dumps([name if n == player else n for n in names]), match_id))
+
+    def _anonymise_in_tournaments(self, player: str):
+        """Rename `player` in the stored brackets; the caller holds the lock and commits."""
+        def strings(node):
+            if isinstance(node, str):
+                yield node
+            elif isinstance(node, dict):
+                for v in node.values():
+                    yield from strings(v)
+            elif isinstance(node, list):
+                for v in node:
+                    yield from strings(v)
+
+        def rename(node, name):
+            if isinstance(node, str):
+                return name if node == player else node
+            if isinstance(node, dict):
+                return {k: rename(v, name) for k, v in node.items()}
+            if isinstance(node, list):
+                return [rename(v, name) for v in node]
+            return node
+
+        for row in self._conn.execute("SELECT id, data FROM tournaments WHERE data LIKE ?",
+                                      (f"%{json.dumps(player)[1:-1]}%",)).fetchall():
+            try:
+                data = json.loads(row["data"])
+            except ValueError:
+                continue
+            if player not in set(strings(data)):
+                continue
+            name = self._placeholder(set(strings(data)))
+            self._conn.execute("UPDATE tournaments SET data = ? WHERE id = ?",
+                               (json.dumps(rename(data, name)), row["id"]))
 
     # ── Merging two players ───────────────────────────────────────────────────
 
@@ -2392,18 +2481,22 @@ class StatsDB:
 
     def match_participants(self, match_id: str) -> list:
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT player FROM turns WHERE match_id = ?"
-                " UNION SELECT player FROM elimination_turns WHERE match_id = ?"
-                " UNION SELECT player FROM elimination_results WHERE match_id = ?"
-                " UNION SELECT player FROM target_battle_turns WHERE match_id = ?"
-                " UNION SELECT player FROM target_battle_results WHERE match_id = ?"
-                " UNION SELECT player FROM killer_turns WHERE match_id = ?"
-                " UNION SELECT player FROM killer_results WHERE match_id = ?"
-                " UNION SELECT player FROM field_training_games WHERE match_id = ?"
-                " UNION SELECT player FROM black_belt_games WHERE match_id = ?"
-                " UNION SELECT player FROM warm_up_games WHERE match_id = ?",
-                (match_id,) * 10).fetchall()
+            return self._participants(match_id)
+
+    def _participants(self, match_id: str) -> list:
+        """The players of a match; the caller holds the lock."""
+        rows = self._conn.execute(
+            "SELECT player FROM turns WHERE match_id = ?"
+            " UNION SELECT player FROM elimination_turns WHERE match_id = ?"
+            " UNION SELECT player FROM elimination_results WHERE match_id = ?"
+            " UNION SELECT player FROM target_battle_turns WHERE match_id = ?"
+            " UNION SELECT player FROM target_battle_results WHERE match_id = ?"
+            " UNION SELECT player FROM killer_turns WHERE match_id = ?"
+            " UNION SELECT player FROM killer_results WHERE match_id = ?"
+            " UNION SELECT player FROM field_training_games WHERE match_id = ?"
+            " UNION SELECT player FROM black_belt_games WHERE match_id = ?"
+            " UNION SELECT player FROM warm_up_games WHERE match_id = ?",
+            (match_id,) * 10).fetchall()
         return sorted(r[0] for r in rows)
 
     def player_final_matches(self, player: str, since: str) -> list:

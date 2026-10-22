@@ -60,7 +60,7 @@ def test_deleting_a_player_pushes(tmp_path, monkeypatch):
     calls = _count_pushes(monkeypatch)
     try:
         asyncio.run(server.add_player(server.PlayerBody(name="Neu")))
-        asyncio.run(server.stats_delete_player("Neu"))
+        assert TestClient(server.app).delete("/api/stats/player/Neu").json()["matches_deleted"] == 0
         assert calls == [1, 1]
     finally:
         server.wire(None, None)

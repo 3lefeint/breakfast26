@@ -186,7 +186,7 @@ def _build_payload() -> dict:
         "warm_up": wu_snap,
         "checkout_training": co_snap,
         "known_players": known_players,
-        "hidden_players": _stats_db.hidden_players() if _stats_db else [],
+        "hidden_players": _stats_db.listed_hidden_players() if _stats_db else [],
         "player_colors": _stats_db.player_colors() if _stats_db else {},
         "elimination_wins": kp.load_wins(_stats_db),
         "x01_wins": kp.load_x01_wins(_stats_db),
@@ -1837,15 +1837,30 @@ async def stats_x01_match_summary(match_id: str):
     return summary
 
 
+@app.get("/api/players/delete-preview")
+async def delete_player_preview(name: str):
+    """What deleting a player would do, for the confirmation."""
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    return _stats_db.delete_player_preview(name)
+
+
 @app.delete("/api/stats/player/{name}")
-async def stats_delete_player(name: str):
+async def stats_delete_player(name: str, request: Request):
+    """Delete a player: their own matches are deleted, in shared matches they become "Deleted player". A copy
+    of stats.db is made first."""
     # Destructive and irreversible (unlike hiding) — worth INFO, not DEBUG.
     log.info("Deleting player stats: %s", name)
     if not _stats_db:
         return {"error": "stats not enabled"}
-    _stats_db.delete_player(name)
+    problem = await asyncio.to_thread(_pin_error, request)
+    if problem:
+        return {"error": problem}
+    if _a_game_is_running():
+        return {"error": "finish the running game first"}
+    result = _stats_db.delete_player(name)
     push()
-    return {"ok": True}
+    return result
 
 
 @app.get("/api/stats/dashboard/{name}")
@@ -2858,7 +2873,7 @@ async def merge_players(body: MergeBody):
 async def hidden_players():
     if not _stats_db:
         return []
-    return _stats_db.hidden_players()
+    return _stats_db.listed_hidden_players()
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

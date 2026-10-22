@@ -2,10 +2,11 @@ import { confirmDialog, pinDialog, alertDialog } from './confirm.js';
 import { apiJson } from './api.js';
 import { t } from './i18n.js';
 
-// A delete that cannot be undone: asks first, then for the PIN of this location when one is set, and sends
-// `DELETE url`. Resolves true once the server did it; a refusal is shown in a dialog and resolves false.
+// A delete that cannot be undone: asks first (`message`, null when the caller asked already), then for the PIN of
+// this location when one is set, and sends `DELETE url`. Resolves the answer of the server once it did it; a refusal is
+// shown in a dialog and resolves false.
 export async function deleteGuarded(url, message) {
-  if (!(await confirmDialog(message))) return false;
+  if (message && !(await confirmDialog(message))) return false;
   const { pin_required: needsPin } = await apiJson('GET', '/api/delete-guard');
   const headers = {};
   if (needsPin) {
@@ -24,5 +25,5 @@ export async function deleteGuarded(url, message) {
     return false;
   }
   window.dispatchEvent(new Event('stats-changed'));
-  return true;
+  return answer;
 }

@@ -115,7 +115,7 @@ With Docker the port is the one the host publishes, `BREAKFAST_PORT` in an untra
 ### Web UI
 
 Open `http://<host>:8080` from any device on your network. **Play** sets up and starts the games and drills,
-**Players** lists the players with their profiles and achievements and merges a player that was created twice (for example after a name change) into another one, **Stats** shows the statistics, and
+**Players** lists the players with their profiles and achievements and merges a player that was created twice (for example after a name change) into another one or deletes a player, **Stats** shows the statistics, and
 **Settings** edits everything in `config.toml` without touching the file, in tabs: **Appearance** (language,
 palette with its accent color, animated background), **Audio & Voice** (caller, voice-pack editor, achievement
 sounds), **Connections** (board data source, MQTT, online play) and **System** (updates, usage reports, statistics).

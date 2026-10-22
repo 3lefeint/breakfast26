@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- A player can be deleted completely (Players tab, with the number of matches and achievements named in the confirmation, a typed word and the location PIN when one is set): matches only this player played are deleted, in matches with others the player shows as "Deleted player" and keeps no dart positions, achievements are removed; a copy of `stats.db` is made first. (#67)
 - A match can be deleted from the list of recent matches (with the achievements earned in it); it asks for the location PIN when one is set. (#81)
 - Voice chat in online matches: a Voice chat button in the lobby and on the TV view opens a page on the relay (HTTPS, so the browser allows the microphone) where the sites talk to each other directly (WebRTC); mute, level, who is speaking and the choice of the microphone; STUN, and TURN through a Cloudflare TURN key given to the relay as secrets. (#78)
 - The Online page lists the open matches of linked locations (fetched when the page opens and on Refresh); one click joins without code and password. A match of a registered location is announced to its links, a host needs no password (empty: only linked locations can join), the site name falls back to the location's name. (#77)

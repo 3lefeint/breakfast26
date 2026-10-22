@@ -1064,4 +1064,12 @@ export default {
   'The bull once more.': 'Noch einmal das Bull.',
   'All of them, or only the ones you switch on, for example the big singles and the triples. The run keeps the order above, the bull comes between the stations you switch on and the bull\'s eye last.': 'Alle, oder nur die, die du einschaltest, zum Beispiel die großen Singles und die Triples. Der Lauf behält die Reihenfolge von oben, das Bull kommt zwischen die Stationen, die du einschaltest, und das Bull\'s Eye zuletzt.',
   'Delete this match? Everything stored for it is removed, including the achievements earned in it.': 'Dieses Match löschen? Alles, was dazu gespeichert ist, wird entfernt, auch die darin erreichten Achievements.',
+  'Delete player': 'Spieler löschen',
+  '{name} was deleted.': '{name} wurde gelöscht.',
+  'Deleted player': 'Gelöschter Spieler',
+  '{n} matches with only this player are deleted': '{n} Matches, in denen nur dieser Spieler gespielt hat, werden gelöscht',
+  '{n} matches with other players stay, the player shows as "Deleted player"': '{n} Matches mit anderen Spielern bleiben erhalten, der Spieler erscheint dort als "Gelöschter Spieler"',
+  '{n} achievements are removed': '{n} Achievements werden entfernt',
+  'A copy of the database is made first.': 'Vorher wird eine Kopie der Datenbank angelegt.',
+  'Type "delete" to confirm': 'Zur Bestätigung "delete" eingeben',
 };
