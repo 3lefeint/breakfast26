@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-22
+
 ### Added
 - A player can be deleted completely (Players tab, with the number of matches and achievements named in the confirmation, a typed word and the location PIN when one is set): matches only this player played are deleted, in matches with others the player shows as "Deleted player" and keeps no dart positions, achievements are removed; a copy of `stats.db` is made first. (#67)
 - A match can be deleted from the list of recent matches (with the achievements earned in it); it asks for the location PIN when one is set. (#81)
