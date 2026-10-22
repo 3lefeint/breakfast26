@@ -30,7 +30,6 @@ from breakfast import known_players as kp
 from breakfast import names as names_mod
 from breakfast import tournament as tournament_mod
 from breakfast import locations as locations_mod
-from breakfast import members as members_mod
 from breakfast import online as online_mod
 from breakfast import db_backup
 from breakfast import telemetry as telemetry_mod
@@ -69,7 +68,6 @@ _bb_ctrl = None
 _wu_ctrl = None
 _online = None
 _locations = None
-_members = None
 _cloud_client = None
 _stats_tracker = None
 _stats_db = None
@@ -97,7 +95,7 @@ def wire(game_state, elim_ctrl,
          wu_ctrl=None, resume_offers=None):
     global _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online, _locations, _members, _elim_beat_hint
+           _dev_demo, _online, _locations, _elim_beat_hint
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
@@ -114,7 +112,6 @@ def wire(game_state, elim_ctrl,
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
     _stats_db = stats_tracker._db if stats_tracker else None
-    _members = members_mod.Members(_locations, _stats_db, config_path) if (_locations and _stats_db) else None
     _mqtt_pub = mqtt_pub
     _config_path = config_path
     _audio_engine = audio_engine
@@ -1709,78 +1706,6 @@ async def locations_links():
 @app.post("/api/locations/unlink")
 async def locations_unlink(body: LocationUnlinkBody):
     return await _location_call(lambda: _locations.unlink(body.link_id, body.pin) or {})
-
-
-# ── REST: members of a location ──────────────────────────────────────────────
-
-class MemberInviteBody(LocationPinBody):
-    player: PlayerName
-    confirm: bool = False
-
-
-class MemberPreviewBody(BaseModel):
-    code: str
-
-
-class MemberJoinBody(BaseModel):
-    code: str
-    player: PlayerName
-    direction: str
-
-
-class MemberIdBody(BaseModel):
-    mailbox_id: str
-
-
-class MemberPinBody(LocationPinBody):
-    mailbox_id: str
-
-
-async def _members_call(fn, *args):
-    if not _members:
-        return {"error": "members are not available"}
-    return await _location_call(fn, *args)
-
-
-@app.get("/api/sharing")
-async def sharing_status():
-    """The members of this location and the memberships of this installation."""
-    if not _members:
-        return {"available": False}
-    return {"available": True, **_members.status()}
-
-
-@app.post("/api/sharing/members")
-async def sharing_invite(body: MemberInviteBody):
-    return await _members_call(lambda: _members.invite_member(body.player, body.pin, body.confirm))
-
-
-@app.post("/api/sharing/members/invitation")
-async def sharing_reinvite(body: MemberPinBody):
-    return await _members_call(lambda: _members.reinvite_member(body.mailbox_id, body.pin))
-
-
-@app.post("/api/sharing/members/remove")
-async def sharing_remove(body: MemberPinBody):
-    return await _members_call(lambda: _members.remove_member(body.mailbox_id, body.pin) or {})
-
-
-@app.post("/api/sharing/preview")
-async def sharing_preview(body: MemberPreviewBody):
-    return await _members_call(lambda: _members.preview(body.code))
-
-
-@app.post("/api/sharing/join")
-async def sharing_join(body: MemberJoinBody):
-    result = await _members_call(lambda: _members.join(body.code, body.player, body.direction))
-    if "error" not in result:
-        push()
-    return result
-
-
-@app.post("/api/sharing/leave")
-async def sharing_leave(body: MemberIdBody):
-    return await _members_call(lambda: _members.leave(body.mailbox_id) or {})
 
 
 # ── REST: stats ──────────────────────────────────────────────────────────────

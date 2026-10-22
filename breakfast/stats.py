@@ -272,24 +272,6 @@ CREATE TABLE IF NOT EXISTS achievements_earned (
     match_id       TEXT,
     UNIQUE(player, achievement_id, tier)
 );
--- The members of this location (the player is the member) and the memberships of this installation at locations
--- (members.py); the keys are in sharing.json next to the config file.
-CREATE TABLE IF NOT EXISTS members (
-    mailbox_id TEXT PRIMARY KEY,
-    player     TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    up         INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS subscriptions (
-    mailbox_id    TEXT PRIMARY KEY,
-    relay         TEXT NOT NULL,
-    location_id   TEXT NOT NULL,
-    location_name TEXT NOT NULL,
-    device_id     TEXT NOT NULL,
-    direction     TEXT NOT NULL,
-    player        TEXT NOT NULL,
-    created_at    TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS achievements_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

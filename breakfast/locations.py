@@ -278,20 +278,6 @@ class Locations:
             self.path.unlink(missing_ok=True)
             log.info("Locations: signed off %s", state["id"])
 
-    def identity(self):
-        """{id, name, relay} of this location; LocationError when it is not registered."""
-        state = self._registered()
-        return {"id": state["id"], "name": state["name"], "relay": state["relay"]}
-
-    def signed(self, pin, method, path, body=None):
-        """A request of this location to its relay, signed, after the PIN was checked: for what changes the members
-        of the location (members.py). `path` has no query."""
-        with self._lock:
-            state = self._registered()
-            self._check_pin(state, pin)
-            self._save(state)
-            return self._signed(state, method, state["relay"], path, body)
-
     def invite(self, pin):
         """A one-time invitation code for another location."""
         with self._lock:
