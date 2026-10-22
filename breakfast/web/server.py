@@ -761,7 +761,11 @@ async def elim_undo():
     if not (_elim_ctrl and _elim_ctrl.game):
         return {"error": "no active or finished game"}
     if _elim_ctrl.game.online:
-        return {"error": "undo is not available in an online match yet"}
+        try:
+            await asyncio.to_thread(_online.undo)
+        except online_mod.RelayError as e:
+            return {"error": str(e)}
+        return {"ok": True}
     if not _elim_ctrl.game.undo():
         return {"error": "nothing to undo"}
     return {"ok": True}

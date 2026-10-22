@@ -883,7 +883,6 @@ export default {
   'stats not enabled': 'Statistik nicht aktiviert',
   'set the relay address in Settings first': 'Trage zuerst die Relay-Adresse in den Einstellungen ein',
   'give this site a name': 'Gib diesem Standort einen Namen',
-  'undo is not available in an online match yet': 'Rückgängig ist in einem Online-Spiel noch nicht verfügbar',
   'online play is not available': 'Online-Spiel ist nicht verfügbar',
   'unknown player': 'Unbekannter Spieler',
   'unknown achievement': 'Unbekanntes Achievement',

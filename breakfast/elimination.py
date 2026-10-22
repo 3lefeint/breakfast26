@@ -478,15 +478,29 @@ class EliminationGame(TurnGame):
         log.info("Turn corrected: total=%d", new_total)
 
     def undo(self) -> bool:
-        """Walk back the most recently completed turn, see TurnGame.undo(). Not available
-        in an online match yet."""
+        """Walk back the most recently completed turn, see TurnGame.undo(). In an online match the relay decides:
+        the request goes to it (OnlineSession.undo) and every site walks back with undo_online()."""
         if self.online:
-            log.warning("Undo is not available in an online match yet")
+            log.warning("In an online match the undo goes through the relay")
             return False
         undone = super().undo()
         if undone:
             self._last_turn_throws = []
             self._last_turn_player = None
+        return undone
+
+    def undo_online(self) -> bool:
+        """The relay took the last turn back: walk back as a local undo does, on every site, and tell the relay the
+        state hash, so that a site that does not follow shows."""
+        if not self.online or self.turn_seq < 1:
+            return False
+        undone = super().undo()
+        if undone:
+            self._last_turn_throws = []
+            self._last_turn_player = None
+            self.turn_seq -= 1
+            if self.turn_seq >= 1:
+                self.online.send_ack(self.turn_seq, self.state_hash())
         return undone
 
     def correct_last_dart(self, dart_index, field, point=None):
@@ -682,6 +696,20 @@ class EliminationController(TurnGameController):
         with self._lock:
             if self.game:
                 self.game.remote_turn(player, throws)
+
+    def reset_online(self):
+        """The match starts again from the relay's log: what this site stored for it, finished or not, goes."""
+        with self._lock:
+            game = self.game
+        if game is not None and self.stats_db:
+            self.stats_db.delete_match(game.match_id)
+        self.stop()
+
+    def remote_undo(self):
+        with self._lock:
+            if self.game:
+                self.game.undo_online()
+                self.game.show_remote_darts and self.game.show_remote_darts([])
 
     def drop_players(self, names, next_player):
         with self._lock:

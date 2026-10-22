@@ -112,7 +112,7 @@
     <div class="rest-col">{total}</div>
   </div>
   <div class="elim-endgame-row">
-    {#if !online}<button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>{/if}
+    <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
     <button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>
     {#if boardStopped}
       <button class="btn-end-game start" disabled={!$gameState.has_cloud_control} onclick={startBoard}><Icon name="board" size={20} />{t('Start')}</button>

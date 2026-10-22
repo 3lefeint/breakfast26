@@ -132,7 +132,7 @@
     {:else if online.host}
       <button class="btn btn-start" onclick={onlineRematch}>{t('↻ Rematch')}</button>
     {/if}
-    {#if !online}<button class="btn btn-add" onclick={undoWin}>{t('↩ Undo')}</button>{/if}
+    <button class="btn btn-add" onclick={undoWin}>{t('↩ Undo')}</button>
     <button class="btn btn-add" onclick={finishDone}>{t('✓ Done')}</button>
   </div>
   {#if online && !online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}

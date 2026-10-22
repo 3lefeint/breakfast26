@@ -46,6 +46,9 @@ export interface MatchState {
   owners: Record<string, string>;
   seq: number;
   log: TurnRecord[];
+  snaps: { active: string[]; eliminated: string[] }[];   // the state before each turn of the log, to take it back
+  epoch: number;                                          // how often the log was taken back
+  droppedAtSeq: number | null;                            // a drop of sites changed the state after this turn
   acks: Record<string, Record<string, string>>;
   matchId: string | null;
   rejoinDeadline: number | null;
@@ -92,6 +95,9 @@ export class MatchCore {
   constructor(public s: MatchState, private deps: Deps) {
     s.tickets ??= {};   // a room stored before the tickets and the voice tickets existed
     s.voice ??= {};
+    s.snaps ??= [];     // ... and before a turn could be taken back
+    s.epoch ??= 0;
+    s.droppedAtSeq ??= null;
     for (const x of Object.values(s.sites)) x.ready ??= false;
   }
 
@@ -101,7 +107,7 @@ export class MatchCore {
       code, phase: "reserved", createdAt: now, expiresAt: now + LIMITS.CODE_TTL_MS, endedAt: null,
       passwordSalt: null, passwordHash: null, host: null, sites: {}, pending: {}, conns: {},
       lives: 0, order: [], active: [], eliminated: [], current: null, owners: {},
-      seq: 0, log: [], acks: {}, matchId: null, rejoinDeadline: null, decisionSent: false,
+      seq: 0, log: [], snaps: [], epoch: 0, droppedAtSeq: null, acks: {}, matchId: null, rejoinDeadline: null, decisionSent: false,
       failedHellos: 0, lockedUntil: 0, tickets: {}, voice: {},
     }, deps);
   }
@@ -132,6 +138,7 @@ export class MatchCore {
       case "rematch": return this.rematch(conn, site);
       case "dart": return this.dart(site, m);
       case "turn": return this.turn(conn, site, m);
+      case "undo": return this.undo(conn, site, m);
       case "ack": return this.ack(site, m);
       case "decision": return this.decision(conn, site, m);
       case "leave": return this.leave(conn, site);
@@ -254,8 +261,11 @@ export class MatchCore {
     s.conns[conn] = site;
     out.push(this.welcome(conn, site, m.token as string, site === s.host));
     if (s.phase === "lobby") return [...out, ...this.lobbyFrames()];
+    // A site that missed a take-back has turns the log no longer has: it starts the match again from the log.
+    const stale = m.epoch !== s.epoch;
+    if (stale) out.push({ to: conn, frame: { type: "resync" } });
     out.push({ to: conn, frame: this.startedFrame() });
-    for (const t of s.log.filter((t) => t.seq > (m.last_seq as number))) out.push({ to: conn, frame: { type: "turn", ...t } });
+    for (const t of s.log.filter((t) => stale || t.seq > (m.last_seq as number))) out.push({ to: conn, frame: { type: "turn", ...t } });
     if (s.phase === "paused" && !Object.values(s.sites).some((x) => !x.left && x.connection === null)) {
       s.phase = "playing";
       s.rejoinDeadline = null;
@@ -369,6 +379,7 @@ export class MatchCore {
       if (next === null || !remaining.includes(next)) return no("next_player must be an active player");
     }
     const record: TurnRecord = { seq, player, throws: m.throws as Throw[], next_player: next, eliminated, winner, site };
+    s.snaps.push({ active: [...s.active], eliminated: [...s.eliminated] });
     s.log.push(record);
     s.seq = seq;
     s.eliminated.push(...eliminated);
@@ -377,6 +388,33 @@ export class MatchCore {
     const out: Out[] = [{ to: conn, frame: { type: "turn_ok", seq } }, ...this.toAll({ type: "turn", ...record }, site)];
     if (winner !== null) out.push(...this.finish(winner));
     return out;
+  }
+
+  /** The site that threw the last turn takes it back, also the turn that ended the match. Everybody walks back. */
+  private undo(conn: string, site: string, m: Frame): Out[] {
+    const s = this.s;
+    const seq = m.seq as number;
+    const no = (reason: string) => [{ to: conn, frame: { type: "undo_rejected", seq, reason } }];
+    if (s.phase === "paused") return no("the match is paused");
+    if (s.phase !== "playing" && s.phase !== "finished") return no("the match is not being played");
+    const last = s.log[s.log.length - 1];
+    const before = s.snaps[s.snaps.length - 1];
+    if (!last || !before || seq !== s.seq || last.seq !== seq) return no("only the last turn can be taken back");
+    if (last.site !== site) return no("only the site that threw the turn can take it back");
+    if (s.droppedAtSeq === seq) return no("sites were dropped after that turn");
+    s.log.pop();
+    s.snaps.pop();
+    delete s.acks[String(seq)];
+    s.seq = seq - 1;
+    s.active = before.active;
+    s.eliminated = before.eliminated;
+    s.current = last.player;
+    if (s.phase === "finished") {
+      s.phase = "playing";
+      s.endedAt = null;
+    }
+    s.epoch++;
+    return this.toAll({ type: "undone", seq, player: last.player, site, epoch: s.epoch });
   }
 
   private ack(site: string, m: Frame): Out[] {
@@ -406,6 +444,7 @@ export class MatchCore {
     const currentIdx = s.current ? s.order.indexOf(s.current) : 0;
     s.eliminated.push(...gone);
     s.active = s.active.filter((p) => !gone.includes(p));
+    if (gone.length) s.droppedAtSeq = s.seq;
     for (const d of dropped) {
       s.sites[d.site].left = true;
       s.sites[d.site].droppedAt = null;
@@ -520,7 +559,7 @@ export class MatchCore {
   }
 
   private welcome(conn: string, site: string, token: string, host: boolean): Out {
-    return { to: conn, frame: { type: "welcome", code: this.s.code, site, token, host, state: this.s.phase } };
+    return { to: conn, frame: { type: "welcome", code: this.s.code, site, token, host, state: this.s.phase, epoch: this.s.epoch } };
   }
 
   private lobbyFrames(): Out[] {

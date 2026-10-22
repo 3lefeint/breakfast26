@@ -1,8 +1,8 @@
-// Message shapes of protocol version 2 (see ../PROTOCOL.md) and their validation.
+// Message shapes of protocol version 3 (see ../PROTOCOL.md) and their validation.
 // Both the Worker and the Python client check their frames against the examples in
 // ../protocol-tests/messages.json.
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const CLOSE = {
   BAD_REQUEST: 4400,
@@ -84,6 +84,7 @@ export function validateClientFrame(m: unknown): string | null {
       if (m.mode === "rejoin") {
         if (!isStr(m.token, 128)) return "token is required to rejoin";
         if (!isInt(m.last_seq, 0, 1_000_000)) return "last_seq must be an integer";
+        if (!isInt(m.epoch, 0, 1_000_000)) return "epoch must be an integer";
       }
       return null;
     case "lobby_set_players":
@@ -110,6 +111,8 @@ export function validateClientFrame(m: unknown): string | null {
     case "ack":
       if (!isInt(m.seq, 1, 1_000_000)) return "seq must be a positive integer";
       return isStr(m.hash, 200) ? null : "hash is required";
+    case "undo":
+      return isInt(m.seq, 1, 1_000_000) ? null : "seq must be a positive integer";
     case "decision":
       return m.choice === "continue" || m.choice === "abort" ? null : "choice must be continue or abort";
     case "rematch":
@@ -129,6 +132,7 @@ export function validateServerFrame(m: unknown): string | null {
     case "welcome":
       if (!isStr(m.code, 12) || !validName(m.site) || !isStr(m.token, 128)) return "welcome needs code, site and token";
       if (typeof m.host !== "boolean") return "host must be a boolean";
+      if (!isInt(m.epoch, 0, 1_000_000)) return "epoch must be an integer";
       return isStr(m.state, 20) ? null : "state is required";
     case "lobby":
       if (!validName(m.host)) return "host must be a name";
@@ -150,6 +154,13 @@ export function validateServerFrame(m: unknown): string | null {
       return isInt(m.seq, 0, 1_000_000) && isStr(m.reason) ? null : "turn_rejected needs seq and reason";
     case "rejected":
       return isStr(m.for) && isStr(m.reason) ? null : "rejected needs for and reason";
+    case "undone":
+      return isInt(m.seq, 1, 1_000_000) && validName(m.player) && validName(m.site) && isInt(m.epoch, 1, 1_000_000)
+        ? null : "undone needs seq, player, site and epoch";
+    case "undo_rejected":
+      return isInt(m.seq, 0, 1_000_000) && isStr(m.reason) ? null : "undo_rejected needs seq and reason";
+    case "resync":
+      return null;
     case "paused":
       return validName(m.site) && typeof m.rejoin_until === "number" && isStr(m.reason) ? null : "paused needs reason, site and rejoin_until";
     case "resumed":

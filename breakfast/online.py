@@ -19,7 +19,7 @@ import websocket
 
 log = logging.getLogger(__name__)
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 NAME_LENGTH = 24
 MAX_LIVES = 10
 REJOIN_WINDOW_S = 180
@@ -96,6 +96,8 @@ def validate_client_frame(m):
                 return "token is required to rejoin"
             if not _is_int(m.get("last_seq"), 0, 1_000_000):
                 return "last_seq must be an integer"
+            if not _is_int(m.get("epoch"), 0, 1_000_000):
+                return "epoch must be an integer"
         return None
     if t == "lobby_set_players":
         return None if _names(m.get("players")) else "players must be a list of unique names"
@@ -128,6 +130,8 @@ def validate_client_frame(m):
         if not _is_int(m.get("seq"), 1, 1_000_000):
             return "seq must be a positive integer"
         return None if _is_text(m.get("hash")) else "hash is required"
+    if t == "undo":
+        return None if _is_int(m.get("seq"), 1, 1_000_000) else "seq must be a positive integer"
     if t == "decision":
         return None if m.get("choice") in ("continue", "abort") else "choice must be continue or abort"
     if t in ("rematch", "leave"):
@@ -149,6 +153,8 @@ def validate_server_frame(m):
             return "welcome needs code, site and token"
         if not isinstance(m.get("host"), bool):
             return "host must be a boolean"
+        if not _is_int(m.get("epoch"), 0, 1_000_000):
+            return "epoch must be an integer"
         return None if _is_text(m.get("state"), 20) else "state is required"
     if t == "lobby":
         if not _is_name(m.get("host")):
@@ -173,6 +179,14 @@ def validate_server_frame(m):
         return None if _is_int(m.get("seq"), 0, 1_000_000) and _is_text(m.get("reason")) else "turn_rejected needs seq and reason"
     if t == "rejected":
         return None if _is_text(m.get("for")) and _is_text(m.get("reason")) else "rejected needs for and reason"
+    if t == "undone":
+        ok = _is_int(m.get("seq"), 1, 1_000_000) and _is_name(m.get("player")) and _is_name(m.get("site")) \
+            and _is_int(m.get("epoch"), 1, 1_000_000)
+        return None if ok else "undone needs seq, player, site and epoch"
+    if t == "undo_rejected":
+        return None if _is_int(m.get("seq"), 0, 1_000_000) and _is_text(m.get("reason")) else "undo_rejected needs seq and reason"
+    if t == "resync":
+        return None
     if t == "paused":
         ok = _is_name(m.get("site")) and isinstance(m.get("rejoin_until"), (int, float)) and _is_text(m.get("reason"))
         return None if ok else "paused needs reason, site and rejoin_until"
@@ -293,6 +307,7 @@ class OnlineSession:
         self.decision = None       # [{site, players}] while the host has to decide
         self.result = None         # {reason, placements}
         self.message = None        # the last thing the user should know
+        self.epoch = 0             # how often the relay took the log back, to see after a rejoin what this site missed
         self.connected = False
 
     # ── what the rest of Breakfast asks ──────────────────────────────────────────
@@ -407,6 +422,17 @@ class OnlineSession:
         self._send({"type": "turn", "seq": seq, "player": player, "throws": [throw_to_wire(t) for t in throws],
                     "next_player": next_player, "eliminated": eliminated, "winner": winner})
 
+    def undo(self):
+        """Ask the relay to take the last turn back on every site; the answer is the `undone` frame, or a message."""
+        with self._lock:
+            game = self.controller.game
+            if self.phase not in ("playing", "ended") or game is None or game.turn_seq < 1:
+                raise RelayError("There is no turn to take back")
+            if self.phase == "ended" and (self.result or {}).get("reason") != "finished":
+                raise RelayError("The match was stopped, a turn cannot be taken back")
+            seq = game.turn_seq
+        self._send({"type": "undo", "seq": seq})
+
     def send_ack(self, seq, state_hash):
         self._send({"type": "ack", "seq": seq, "hash": state_hash})
 
@@ -453,7 +479,7 @@ class OnlineSession:
         elif self.password:
             hello["password"] = self.password
         if mode == "rejoin":
-            hello.update(token=self.token, last_seq=self._last_seq())
+            hello.update(token=self.token, last_seq=self._last_seq(), epoch=self.epoch)
         self._send(hello)
         self._reader = threading.Thread(target=self._read, args=(conn,), daemon=True, name="relay-reader")
         self._reader.start()
@@ -561,7 +587,7 @@ class OnlineSession:
 
     def _on_welcome(self, f):
         with self._lock:
-            self.token, self.host, self.connected = f["token"], f["host"], True
+            self.token, self.host, self.connected, self.epoch = f["token"], f["host"], True, f["epoch"]
             if f["state"] in ("playing", "paused"):
                 self.phase = f["state"]
             elif self.phase == "connecting":
@@ -605,6 +631,24 @@ class OnlineSession:
         with self._lock:
             self.message = f"The relay did not accept a turn: {f['reason']}"
         log.warning("Turn %s rejected: %s", f["seq"], f["reason"])
+
+    def _on_resync(self, f):
+        """This site missed a take-back: the match starts again from the relay's log (the `started` frame and the turns
+        follow), what was stored for the old state goes."""
+        self.controller.reset_online()
+
+    def _on_undone(self, f):
+        with self._lock:
+            self.epoch = f["epoch"]
+            if self.phase == "ended" and (self.result or {}).get("reason") == "finished":
+                self.phase, self.result = "playing", None       # the turn that ended the match was taken back
+            self.message = None
+        self.controller.remote_undo()
+
+    def _on_undo_rejected(self, f):
+        with self._lock:
+            self.message = f"The relay did not take the turn back: {f['reason']}"
+        log.warning("Undo of turn %s rejected: %s", f["seq"], f["reason"])
 
     def _on_rejected(self, f):
         with self._lock:

@@ -215,3 +215,57 @@ def test_a_rematch_plays_a_second_match_in_the_same_room(relay_url):
     assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
     home.session.leave()
     club.session.leave()
+
+
+def test_a_turn_and_the_turn_that_ended_the_match_are_taken_back_on_both_sites(relay_url):
+    home, club = _site(["anna", "ben"]), _site(["carl"])
+    sites = {"Home": home, "Club": club}
+    code = home.session.create(relay_url, "Home", "pw")
+    club.session.join(relay_url, code, "Club", "pw")
+    home.session.set_players(home.players)
+    club.session.set_players(club.players)
+    assert _wait(lambda: sum(len(s["players"]) for s in home.session.status()["lobby"]["sites"]) == 3)
+    home.session.start(1, ["anna", "carl", "ben"])
+    assert _wait(lambda: home.ctrl.game and club.ctrl.game)
+
+    def throw(site, number, multiplier):
+        ctrl = sites[site].ctrl
+        for n in (1, 2, 3):
+            ctrl.on_board_state(n, _throws(number, multiplier, n))
+        ctrl.on_board_state(0, [])
+
+    def settle(seq):
+        assert _wait(lambda: home.ctrl.game.turn_seq == seq and club.ctrl.game.turn_seq == seq)
+
+    throw("Home", 20, 3)        # anna 180
+    settle(1)
+    throw("Club", 1, 1)         # carl 3: his only life
+    settle(2)
+    club.session.undo()         # carl takes his turn back: he is up again at both sites
+    assert _wait(lambda: home.ctrl.game.turn_seq == 1 and club.ctrl.game.turn_seq == 1)
+    for s in sites.values():
+        assert s.ctrl.game.current_player == "carl" and s.ctrl.game.lives == {"anna": 1, "carl": 1, "ben": 1}
+    home.session.undo()         # Home takes anna's turn back as well: anna is up again
+    assert _wait(lambda: home.ctrl.game.turn_seq == 0 and club.ctrl.game.turn_seq == 0)
+    assert home.ctrl.game.current_player == "anna" and club.ctrl.game.current_player == "anna"
+    throw("Home", 20, 3)        # the match is played again: anna 180, carl 3 is out, ben passes, anna is out
+    settle(1)
+    throw("Club", 1, 1)
+    settle(2)
+    throw("Home", 1, 1)
+    settle(3)
+    throw("Home", 1, 1)
+    assert _wait(lambda: home.session.status()["phase"] == "ended" and club.session.status()["phase"] == "ended")
+    settle(4)
+    winner = home.ctrl.game.winner
+    club.session.undo()         # the last turn was Home's: the relay refuses a take-back from Club
+    assert _wait(lambda: "site that threw" in (club.session.status()["message"] or ""))
+    assert home.session.status()["phase"] == "ended"
+    home.session.undo()         # Home takes back the turn that ended the match
+    assert _wait(lambda: home.session.status()["phase"] == "playing" and club.session.status()["phase"] == "playing")
+    for s in sites.values():
+        assert s.ctrl.game.state == "playing" and s.ctrl.game.winner is None and winner is not None
+        assert s.db._conn.execute("SELECT COUNT(*) FROM elimination_results").fetchone()[0] == 0
+    assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
+    for s in sites.values():
+        s.session.leave()

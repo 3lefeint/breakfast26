@@ -128,7 +128,7 @@
   </div>
   {#if $online && !$online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
   {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
-  {#if !$online}<button class="btn-undo-win" onclick={undoWin}>{t('↩ Undo winning turn')}</button>{/if}
+  <button class="btn-undo-win" onclick={undoWin}>{t('↩ Undo winning turn')}</button>
 </div>
 
 {#if showModal}

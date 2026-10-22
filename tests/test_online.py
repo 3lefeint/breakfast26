@@ -84,7 +84,7 @@ def _wait(cond, timeout=3):
     return False
 
 
-WELCOME = {"type": "welcome", "code": "K7M2QX", "site": "Home", "token": "tok", "host": True, "state": "lobby"}
+WELCOME = {"type": "welcome", "code": "K7M2QX", "site": "Home", "token": "tok", "host": True, "state": "lobby", "epoch": 0}
 
 
 class Harness:
@@ -128,9 +128,9 @@ class TestLobby:
     def test_create_reserves_a_code_and_says_hello(self, h):
         code = h.session.create("ws://127.0.0.1:8787", "Home", "pw")
         assert code == "K7M2QX"
-        assert h.posts == [("http://127.0.0.1:8787/api/matches", {"protocol_version": 2})]
+        assert h.posts == [("http://127.0.0.1:8787/api/matches", {"protocol_version": 3})]
         assert h.conns[0].url == "ws://127.0.0.1:8787/ws/K7M2QX"
-        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 2, "mode": "create", "site": "Home", "password": "pw"}
+        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 3, "mode": "create", "site": "Home", "password": "pw"}
         assert h.session.status()["phase"] == "lobby" and h.session.status()["host"] is True
 
     def test_a_host_without_a_password_gets_a_random_one(self, h):
@@ -142,13 +142,13 @@ class TestLobby:
         signed = []
         h.session.create("ws://relay", "Home", "", lambda method, path, raw: signed.append((method, path, raw)) or {"x-location": "a" * 32})
         url, body, headers = h.posts[0]
-        assert body == {"protocol_version": 2, "site": "Home"} and headers == {"x-location": "a" * 32}
-        assert signed == [("POST", "/api/matches", '{"protocol_version":2,"site":"Home"}')]
+        assert body == {"protocol_version": 3, "site": "Home"} and headers == {"x-location": "a" * 32}
+        assert signed == [("POST", "/api/matches", '{"protocol_version":3,"site":"Home"}')]
 
     def test_join_with_a_ticket_sends_no_password(self, h):
         h.next_frames = [{**WELCOME, "site": "Club", "host": False}]
         h.session.join("ws://relay", "k7m2qx", "Club", ticket="t" * 32)
-        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 2, "mode": "join", "site": "Club", "ticket": "t" * 32}
+        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 3, "mode": "join", "site": "Club", "ticket": "t" * 32}
 
     def test_the_voice_address_carries_a_ticket_for_this_site(self, h):
         h.session.create("wss://relay.example", "Home", "pw")
@@ -414,7 +414,7 @@ class TestMatch:
         conn.push({"type": "resumed", "site": "Club"})
         assert _wait(lambda: h.session.status()["phase"] == "playing" and h.session.status()["decision"] is None)
 
-    def test_undo_and_corrections_are_not_available_online(self, h):
+    def test_corrections_are_not_available_online_and_a_local_undo_changes_nothing(self, h):
         self._start(h)
         h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
         h.ctrl.on_board_state(0, [])
@@ -422,13 +422,87 @@ class TestMatch:
         h.ctrl.game.correct_turn(10)
         assert h.ctrl.game.turn_seq == 1 and h.ctrl.game.lives["anna"] == 2
 
+    def _turns(self, h, conn, upto):
+        """anna 180 (seq 1, thrown here), carl 3 (seq 2, remote), and for upto 4 anna 180 and carl out (the match ends)."""
+        h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
+        h.ctrl.on_board_state(0, [])
+        conn.push({"type": "turn", "seq": 2, "player": "carl", "throws": [_w(1, 1)] * 3,
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club"})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 2)
+        if upto >= 4:
+            h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
+            h.ctrl.on_board_state(0, [])
+            conn.push({"type": "turn", "seq": 4, "player": "carl", "throws": [_w(1, 1)] * 3,
+                       "next_player": None, "eliminated": ["carl"], "winner": "anna", "site": "Club"})
+            assert _wait(lambda: h.ctrl.game.state == "finished")
+
+    def test_undo_is_asked_of_the_relay_and_walked_back_when_it_answers(self, h):
+        conn = self._start(h)
+        h.ctrl.on_board_state(3, [_t(20, 3)] * 3)
+        h.ctrl.on_board_state(0, [])
+        h.session.undo()
+        assert conn.sent[-1] == {"type": "undo", "seq": 1}
+        assert h.ctrl.game.turn_seq == 1                          # nothing changes before the relay answers
+        conn.push({"type": "undone", "seq": 1, "player": "anna", "site": "Home", "epoch": 1})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 0)
+        game = h.ctrl.game
+        assert game.current_player == "anna" and game.lives == {"anna": 2, "carl": 2}
+        assert h.db._conn.execute("SELECT COUNT(*) FROM elimination_turns").fetchone()[0] == 0
+        assert h.session.epoch == 1
+
+    def test_a_remote_turn_that_is_taken_back_is_walked_back_and_acknowledged(self, h):
+        conn = self._start(h)
+        self._turns(h, conn, 2)
+        conn.push({"type": "undone", "seq": 2, "player": "carl", "site": "Club", "epoch": 1})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 1)
+        game = h.ctrl.game
+        assert game.current_player == "carl" and game.lives == {"anna": 2, "carl": 2}
+        assert conn.sent[-1]["type"] == "ack" and conn.sent[-1]["seq"] == 1
+        rows = h.db._conn.execute("SELECT player FROM elimination_turns").fetchall()
+        assert [r["player"] for r in rows] == ["anna"]
+
+    def test_the_turn_that_ended_the_match_can_be_taken_back(self, h):
+        conn = self._start(h)
+        self._turns(h, conn, 4)
+        conn.push({"type": "ended", "reason": "finished", "placements": [{"player": "anna", "placement": 1}, {"player": "carl", "placement": 2}]})
+        assert _wait(lambda: h.session.status()["phase"] == "ended")
+        conn.push({"type": "undone", "seq": 4, "player": "carl", "site": "Club", "epoch": 1})
+        assert _wait(lambda: h.session.status()["phase"] == "playing")
+        assert h.session.status()["result"] is None and h.ctrl.game.state == "playing"
+        assert h.ctrl.game.current_player == "carl" and h.ctrl.game.turn_seq == 3
+        assert h.db._conn.execute("SELECT COUNT(*) FROM elimination_results").fetchone()[0] == 0
+        assert h.db._conn.execute("SELECT ended_at FROM matches").fetchone()[0] is None
+
+    def test_a_refused_undo_is_shown_to_the_user(self, h):
+        conn = self._start(h)
+        conn.push({"type": "undo_rejected", "seq": 1, "reason": "only the last turn can be taken back"})
+        assert _wait(lambda: "taken back" in (h.session.status()["message"] or ""))
+
+    def test_undo_needs_a_turn_to_take_back(self, h):
+        self._start(h)
+        with pytest.raises(RelayError, match="no turn"):
+            h.session.undo()
+
+    def test_a_resync_starts_the_match_again_from_the_relays_log(self, h):
+        conn = self._start(h)
+        self._turns(h, conn, 2)
+        conn.push({"type": "resync"})
+        conn.push(STARTED)
+        conn.push({"type": "turn", "seq": 1, "player": "anna", "throws": [_w(20, 3)] * 3,
+                   "next_player": "carl", "eliminated": [], "winner": None, "site": "Home"})
+        assert _wait(lambda: h.ctrl.game is not None and h.ctrl.game.turn_seq == 1)
+        assert h.ctrl.game.current_player == "carl"
+        rows = h.db._conn.execute("SELECT player, score FROM elimination_turns ORDER BY id").fetchall()
+        assert [(r["player"], r["score"]) for r in rows] == [("anna", 180)]          # no turn twice
+        assert h.db._conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 1
+
     def test_a_dropped_connection_is_rejoined_with_the_token(self, h):
         conn = self._start(h)
         h.next_frames = [{**WELCOME, "state": "playing"}]
         conn.inbox.put(None)                                    # the relay hangs up
         assert _wait(lambda: len(h.conns) == 2)
         rejoin = h.conns[1].sent[0]
-        assert rejoin["mode"] == "rejoin" and rejoin["token"] == "tok" and rejoin["last_seq"] == 0
+        assert rejoin["mode"] == "rejoin" and rejoin["token"] == "tok" and rejoin["last_seq"] == 0 and rejoin["epoch"] == 0
         assert _wait(lambda: h.session.status()["connected"])
 
     def test_a_refusal_is_final(self, h):
@@ -468,7 +542,7 @@ class Hub:
             self.sites[f["site"]] = conn
             conn.site = f["site"]
             conn.push({"type": "welcome", "code": "K7M2QX", "site": f["site"], "token": "t-" + f["site"],
-                       "host": f["mode"] == "create", "state": "lobby"})
+                       "host": f["mode"] == "create", "state": "lobby", "epoch": 0})
         elif t == "lobby_set_players":
             self.lobby[conn.site] = f["players"]
         elif t == "lobby_start":

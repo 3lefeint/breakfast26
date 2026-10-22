@@ -1,4 +1,4 @@
-# Relay protocol, version 2
+# Relay protocol, version 3
 
 How Breakfast installations ("sites") play one Elimination match over the relay.
 Design decisions: `DESIGN.md`. Both sides are tested against the examples in
@@ -6,7 +6,7 @@ Design decisions: `DESIGN.md`. Both sides are tested against the examples in
 
 ## Transport
 
-- `POST /api/matches` with `{"protocol_version": 2}` reserves a **join code** and answers
+- `POST /api/matches` with `{"protocol_version": 3}` reserves a **join code** and answers
   `{"code": "K7M2QX", "expires_in_s": 600}`. The code has 6 characters from
   `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` and is valid 10 minutes, or until the match starts. A registered location
   signs the request (headers as under "Locations") and may add `site` (its name in the match): the match is then
@@ -39,12 +39,13 @@ puts the match into `paused` until it rejoins or the host decides. A `finished` 
 
 | type | fields | notes |
 |------|--------|-------|
-| `hello` | `protocol_version`, `mode` (`create` \| `join` \| `rejoin`), `site`; `password` for `create` and `join`, or `ticket` instead of the password for `join`; for `rejoin` also `token`, `last_seq` | `create` only on a reserved code and makes the sender the host; the password is set here |
+| `hello` | `protocol_version`, `mode` (`create` \| `join` \| `rejoin`), `site`; `password` for `create` and `join`, or `ticket` instead of the password for `join`; for `rejoin` also `token`, `last_seq` and `epoch` (the last `epoch` the site knows, see `undone`) | `create` only on a reserved code and makes the sender the host; the password is set here |
 | `lobby_set_players` | `players` (list of names) | the sender's local players, replaces its earlier list (and takes back the site's `ready`); names are unique across the lobby |
 | `lobby_set_ready` | `ready` (bool) | the sender is ready to start; passed on in `lobby`, the relay does not hold the start back |
 | `lobby_start` | `lives` (1 to 10), `order` (all lobby players once) | host only; at least 2 players, at most 12 players and 6 sites |
 | `dart` | `seq`, `player`, `throws` | live darts of the turn in progress, informational, relayed as is |
 | `turn` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner` | the finished turn, authoritative |
+| `undo` | `seq` | take the last turn back (`seq` is that turn); only the site that threw it may, also after the turn that ended the match; refused while paused and after sites were dropped |
 | `ack` | `seq`, `hash` | the sender applied turn `seq` and its game state has this hash |
 | `decision` | `choice` (`continue` \| `abort`) | host only, after `decision_needed` |
 | `rematch` | | host only, once the match is `finished`: back to the lobby with the same sites and players |
@@ -62,7 +63,7 @@ match is over), `turn.eliminated` the players that lost their last life with thi
 
 | type | fields | notes |
 |------|--------|-------|
-| `welcome` | `code`, `site`, `token`, `host` (bool), `state` | answer to a valid `hello`; the `token` authenticates a later `rejoin` |
+| `welcome` | `code`, `site`, `token`, `host` (bool), `state`, `epoch` | answer to a valid `hello`; the `token` authenticates a later `rejoin` |
 | `lobby` | `host`, `sites` (list of `{site, players, connected, ready}`), `lives`, `order` | sent on every lobby change; the host always counts as ready |
 | `started` | `match_id`, `lives`, `order`, `owners` (player -> site) | the match begins; `current_player` is `order[0]` |
 | `rematch` | | the host asked for a rematch; followed by a `lobby` whose `order` is that of a local rematch (the first eliminated starts, the winner is last), without sites that are gone |
@@ -71,6 +72,9 @@ match is over), `turn.eliminated` the players that lost their last life with thi
 | `turn_ok` | `seq` | to the sender: its turn was accepted |
 | `turn_rejected` | `seq`, `reason` | not the sender's player, not that player's turn, or a wrong `seq` |
 | `rejected` | `for` (the frame type), `reason` | a lobby frame was refused (name taken, not the host, ...); the connection stays open |
+| `undone` | `seq`, `player`, `site`, `epoch` | to every site, the sender included: turn `seq` was taken back, `player` is up again and every site walks its game back (a match that was finished is `playing` again); `epoch` counts the take-backs of the match |
+| `undo_rejected` | `seq`, `reason` | to the sender: not the last turn, not its turn, paused, not being played, or sites were dropped after that turn |
+| `resync` | | to a site that rejoins with an old `epoch`: it missed a take-back, so it starts the match again from the log that follows (`started`, then every turn) |
 | `paused` | `reason` (`disconnect`), `site`, `rejoin_until` (epoch ms) | a site dropped |
 | `resumed` | `site` | it came back |
 | `decision_needed` | `sites` (list of `{site, players}`) | to the host: the rejoin window (3 minutes) is over |

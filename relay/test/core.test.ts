@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MatchCore, Out } from "../src/core";
-import { CLOSE, Frame, LIMITS } from "../src/protocol";
+import { CLOSE, Frame, LIMITS, PROTOCOL_VERSION } from "../src/protocol";
 
 class Room {
   now = 1_000_000;
@@ -35,7 +35,7 @@ class Room {
   }
 
   async hello(conn: string, mode: string, site: string, extra: Record<string, unknown> = {}) {
-    return this.send(conn, { type: "hello", protocol_version: 2, mode, site, password: "pw", ...extra });
+    return this.send(conn, { type: "hello", protocol_version: PROTOCOL_VERSION, mode, site, password: "pw", ...extra });
   }
 
   frames(conn: string, type: string): Frame[] { return (this.inbox[conn] ?? []).filter((f) => f.type === type); }
@@ -81,7 +81,7 @@ describe("lobby", () => {
   });
 
   it("refuses another protocol version loudly", async () => {
-    await r.hello("h", "create", "Home", { protocol_version: 3 });
+    await r.hello("h", "create", "Home", { protocol_version: PROTOCOL_VERSION + 1 });
     expect(r.closed.h).toBe(CLOSE.UPGRADE);
     expect((r.last("h", "error").message as string)).toContain("upgrade");
   });
@@ -247,6 +247,112 @@ async function finishedMatch() {
   await r.send("h", turn(4, "anna", null, { eliminated: ["anna"], winner: "ben" }));
 }
 
+describe("undo", () => {
+  it("takes the last turn back on every site and the player is up again", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben"));
+    await r.send("c", { type: "undo", seq: 2 });
+    for (const conn of ["h", "c"]) expect(r.last(conn, "undone")).toMatchObject({ seq: 2, player: "carl", site: "Club", epoch: 1 });
+    expect(r.core.s).toMatchObject({ seq: 1, current: "carl", epoch: 1 });
+    expect(r.core.s.log.map((t) => t.seq)).toEqual([1]);
+    await r.send("c", turn(2, "carl", "ben"));                      // the turn can be thrown again
+    expect(r.last("c", "turn_ok")).toMatchObject({ seq: 2 });
+  });
+
+  it("brings back the players a turn eliminated", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben", { eliminated: ["carl"] }));
+    expect(r.core.s.active).toEqual(["anna", "ben"]);
+    await r.send("c", { type: "undo", seq: 2 });
+    expect(r.core.s.active).toEqual(["anna", "carl", "ben"]);
+    expect(r.core.s.eliminated).toEqual([]);
+  });
+
+  it("opens a finished match again and takes the result back", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben", { eliminated: ["carl"] }));
+    await r.send("h", turn(3, "ben", null, { winner: "ben", eliminated: ["anna"] }));
+    expect(r.core.phase).toBe("finished");
+    await r.send("h", { type: "undo", seq: 3 });
+    expect(r.core.phase).toBe("playing");
+    expect(r.core.s.endedAt).toBeNull();
+    expect(r.core.s).toMatchObject({ seq: 2, current: "ben" });
+    expect(r.core.s.active).toEqual(["anna", "ben"]);
+    await r.send("h", turn(3, "ben", null, { winner: "ben", eliminated: ["anna"] }));   // and it can end again
+    expect(r.core.phase).toBe("finished");
+  });
+
+  it("only the site that threw the last turn, and only the last turn", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben"));
+    await r.send("h", { type: "undo", seq: 2 });
+    expect(r.last("h", "undo_rejected").reason).toContain("site that threw");
+    await r.send("c", { type: "undo", seq: 1 });
+    expect(r.last("c", "undo_rejected").reason).toContain("last turn");
+    await r.send("c", { type: "undo", seq: 5 });
+    expect(r.last("c", "undo_rejected").reason).toContain("last turn");
+    expect(r.core.s.seq).toBe(2);
+    expect(r.frames("h", "undone")).toHaveLength(0);
+  });
+
+  it("is refused before the first turn, in the lobby and while the match is paused", async () => {
+    await r.hello("h", "create", "Home");
+    await r.send("h", { type: "undo", seq: 1 });
+    expect(r.last("h", "undo_rejected").reason).toContain("not being played");
+    await r.hello("c", "join", "Club");
+    await r.send("h", { type: "lobby_set_players", players: ["anna", "ben"] });
+    await r.send("c", { type: "lobby_set_players", players: ["carl"] });
+    await r.send("h", { type: "lobby_start", lives: 3, order: ["anna", "carl", "ben"] });
+    await r.send("h", { type: "undo", seq: 1 });
+    expect(r.last("h", "undo_rejected").reason).toContain("last turn");
+    await r.send("h", turn(1, "anna", "carl"));
+    r.drop("c");
+    await r.send("h", { type: "undo", seq: 1 });
+    expect(r.last("h", "undo_rejected").reason).toContain("paused");
+  });
+
+  it("is refused for a turn after which sites were dropped", async () => {
+    await startedMatch();
+    await r.send("h", turn(1, "anna", "carl"));
+    r.drop("c");
+    r.advance(LIMITS.REJOIN_WINDOW_MS + 1000);
+    await r.send("h", { type: "decision", choice: "continue" });
+    expect(r.core.phase).toBe("playing");
+    await r.send("h", { type: "undo", seq: 1 });
+    expect(r.last("h", "undo_rejected").reason).toContain("dropped");
+  });
+
+  it("a site that missed a take-back starts again from the log when it rejoins", async () => {
+    await startedMatch();
+    const token = r.token("c");
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben"));
+    await r.send("c", { type: "undo", seq: 2 });          // the frame never reaches Club: its connection broke just then
+    r.drop("c");
+    r.inbox["c2"] = [];
+    await r.hello("c2", "rejoin", "Club", { token, last_seq: 2, epoch: 0 });
+    const types = (r.inbox["c2"] ?? []).map((f) => f.type);
+    expect(types.indexOf("resync")).toBeGreaterThan(types.indexOf("welcome"));
+    expect(types.indexOf("started")).toBeGreaterThan(types.indexOf("resync"));
+    expect(r.frames("c2", "turn").map((f) => f.seq)).toEqual([1]);                  // everything of the corrected log
+    expect(r.last("c2", "welcome").epoch).toBe(1);
+  });
+
+  it("a site that knows the take-back gets only the turns it misses", async () => {
+    await startedMatch();
+    const token = r.token("c");
+    await r.send("h", turn(1, "anna", "carl"));
+    r.drop("c");
+    await r.hello("c2", "rejoin", "Club", { token, last_seq: 0, epoch: 0 });
+    expect(r.frames("c2", "resync")).toHaveLength(0);
+    expect(r.frames("c2", "turn").map((f) => f.seq)).toEqual([1]);
+  });
+});
+
 describe("rematch", () => {
   it("opens the lobby again like a local rematch: the first eliminated starts, the winner is last", async () => {
     await finishedMatch();
@@ -344,7 +450,7 @@ describe("disconnects", () => {
     expect(r.last("h", "paused")).toMatchObject({ site: "Club", reason: "disconnect" });
     await r.send("h", turn(2, "anna", "carl"));
     expect(r.last("h", "turn_rejected").reason).toContain("paused");
-    await r.hello("c2", "rejoin", "Club", { token, last_seq: 0 });
+    await r.hello("c2", "rejoin", "Club", { token, last_seq: 0, epoch: 0 });
     expect(r.last("c2", "welcome")).toMatchObject({ site: "Club", host: false });
     expect(r.last("c2", "started")).toBeTruthy();
     expect(r.last("h", "resumed")).toMatchObject({ site: "Club" });
@@ -356,7 +462,7 @@ describe("disconnects", () => {
     const token = r.token("c");
     await r.send("h", turn(1, "anna", "carl"));
     r.drop("c");
-    await r.hello("c2", "rejoin", "Club", { token, last_seq: 0 });
+    await r.hello("c2", "rejoin", "Club", { token, last_seq: 0, epoch: 0 });
     expect(r.frames("c2", "turn")).toHaveLength(1);
     expect(r.last("c2", "turn")).toMatchObject({ seq: 1, player: "anna" });
   });
@@ -364,7 +470,7 @@ describe("disconnects", () => {
   it("refuses a rejoin with the wrong token", async () => {
     await startedMatch();
     r.drop("c");
-    await r.hello("c2", "rejoin", "Club", { token: "wrong", last_seq: 0 });
+    await r.hello("c2", "rejoin", "Club", { token: "wrong", last_seq: 0, epoch: 0 });
     expect(r.closed.c2).toBe(CLOSE.UNAUTHORIZED);
   });
 

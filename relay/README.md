@@ -4,7 +4,7 @@ Lets Breakfast installations at different places play one Elimination match toge
 Cloudflare Worker with one Durable Object per match; every site connects to it with an
 outgoing WebSocket, so no port forwarding or VPN is needed.
 
-- `PROTOCOL.md`: the messages, close codes and rules (protocol version 1)
+- `PROTOCOL.md`: the messages, close codes and rules (protocol version 3)
 - `DESIGN.md`: why it is built this way
 - `src/protocol.ts`: frame types and validation, `src/core.ts`: the match state machine (plain
   TypeScript, no Cloudflare APIs), `src/worker.ts`: the Worker and the Durable Objects
