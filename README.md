@@ -271,6 +271,12 @@ the relay with a name and a local PIN. *Create invitation* gives a code for anot
 under *Matches of linked locations* on the Online page of the linked ones, who join it without a password. A host
 who leaves the password empty is joinable only by linked locations.
 
+**Members.** Under *Sharing* in the same place, the admin of a location (behind the PIN) can invite a player of this
+installation as a member: the invitation is a text code for that player, valid once and for 7 days. The player pastes it
+under *Join a location* at home, says which of his players he is there (the one of the same name is only suggested) and
+whether his matches are received, sent or both. Members and memberships are listed and can be removed or left. The matches
+themselves are not exchanged yet.
+
 ### Usage reports
 
 Breakfast can report errors and basic usage anonymously, to help find problems on setups other than the

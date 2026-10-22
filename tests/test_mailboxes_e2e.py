@@ -124,3 +124,40 @@ def test_a_member_and_a_location_exchange_records_through_a_mailbox(relay_url, t
 
     assert _location_call(home, relay_url, "DELETE", f"/mailboxes/{mailbox}").json() == {"ok": True}
     assert device.request("GET", f"/mailboxes/{mailbox}/down").status_code == 401
+
+
+def test_members_are_invited_join_and_are_removed_through_the_real_relay(relay_url, tmp_path):
+    from breakfast.members import Members
+    from breakfast.stats import StatsDB
+
+    def installation(name, players):
+        folder = tmp_path / name
+        folder.mkdir()
+        db = StatsDB(str(folder / "stats.db"))
+        for player in players:
+            db.upsert_player(player)
+        return folder, db, Locations(folder / "config.toml")
+
+    home_folder, home_db, home = installation("home-members", ["ana"])
+    home.register(relay_url, "Home", "1234")
+    admin = Members(home, home_db, home_folder / "config.toml")
+    made = admin.invite_member("ana", "1234", confirm=True)
+
+    member_folder, member_db, member_loc = installation("member", ["anna"])
+    member = Members(member_loc, member_db, member_folder / "config.toml")
+    assert member.preview(made["code"])["location"]["name"] == "Home"
+    joined = member.join(made["code"], "anna", "both")
+    assert joined["mailbox_id"] == made["mailbox_id"] and joined["location"]["name"] == "Home"
+    assert [s["player"] for s in member.subscriptions()] == ["anna"]
+
+    from breakfast.locations import LocationError
+    second_folder, second_db, second_loc = installation("second", [])
+    with pytest.raises(LocationError, match="invalid or expired"):
+        Members(second_loc, second_db, second_folder / "config.toml").join(made["code"], "ben", "pull")   # the token was used
+
+    again = admin.reinvite_member(made["mailbox_id"], "1234")
+    assert again["code"] != made["code"]
+    assert _location_call(home, relay_url, "GET", f"/mailboxes/{made['mailbox_id']}/up").json()["records"] == []     # nothing sent yet
+    admin.remove_member(made["mailbox_id"], "1234")
+    assert admin.members() == []
+    assert _location_call(home, relay_url, "GET", f"/mailboxes/{made['mailbox_id']}/up").status_code == 404     # the mailbox is gone

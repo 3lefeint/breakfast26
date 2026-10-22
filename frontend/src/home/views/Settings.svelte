@@ -18,6 +18,7 @@
   import { changesOf } from '../../lib/changelog.js';
   import AchievementSounds from './AchievementSounds.svelte';
   import LocationsSection from './LocationsSection.svelte';
+  import SharingSection from './SharingSection.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
 
   const MASK = '●●●●●';
@@ -925,6 +926,7 @@
     </div>
 
     <LocationsSection />
+    <SharingSection />
   {:else if activeTab === 'system'}
     <div class="settings-section" id="updates-panel">
       <div class="settings-section-title">{t('Updates')}</div>
