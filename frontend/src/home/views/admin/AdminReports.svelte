@@ -5,7 +5,7 @@
   import Panel from '../../../lib/components/Panel.svelte';
   import { adminCall } from '../../../lib/admin.js';
 
-  let days = $state(30);
+  let days = $state(7);
   let reports = $state(null);
   let error = $state('');
 
@@ -18,6 +18,7 @@
     }
   }
 
+  const installs = (n) => (n === 1 ? t('1 installation') : t('{n} installations', { n }));
   const when = (iso) => new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 
   onMount(load);
@@ -27,12 +28,12 @@
 <Panel title={t('Reports')}>
   <div class="row wide">
     <select bind:value={days} onchange={load} aria-label={t('Days')}>
-      {#each [7, 30, 90, 365] as d (d)}<option value={d}>{t('last {n} days', { n: d })}</option>{/each}
+      {#each [1, 7, 30, 90, 365] as d (d)}<option value={d}>{d === 1 ? t('last day') : t('last {n} days', { n: d })}</option>{/each}
     </select>
     <button type="button" class="btn" onclick={load}>{t('Refresh')}</button>
   </div>
   {#if reports}
-    <p class="note">{t('{n} installations reported', { n: reports.installs })}</p>
+    <p class="note">{reports.installs === 1 ? t('1 installation reported') : t('{n} installations reported', { n: reports.installs })}</p>
     <table>
       <thead><tr><th>{t('Type')}</th><th class="num">{t('Count')}</th></tr></thead>
       <tbody>{#each reports.by_type as row (row.type)}<tr><td>{row.type}</td><td class="num">{row.n}</td></tr>{/each}</tbody>
@@ -44,8 +45,8 @@
   <Panel title={t('Versions and platforms')}>
     <table>
       <tbody>
-        {#each reports.versions as row (row.version)}<tr><td>{row.version}</td><td class="num">{t('{n} installations', { n: row.installs })}</td></tr>{/each}
-        {#each reports.platforms as row (row.platform)}<tr><td>{row.platform}</td><td class="num">{t('{n} installations', { n: row.installs })}</td></tr>{/each}
+        {#each reports.versions as row (row.version)}<tr><td>{row.version}</td><td class="num">{installs(row.installs)}</td></tr>{/each}
+        {#each reports.platforms as row (row.platform)}<tr><td>{row.platform}</td><td class="num">{installs(row.installs)}</td></tr>{/each}
       </tbody>
     </table>
   </Panel>

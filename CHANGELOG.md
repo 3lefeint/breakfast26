@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- The reports of the admin area open on the last 7 days instead of 30 and have an option for the last day; one installation reads "1 installation" in the sentence and in the tables.
+
 ### Fixed
 - The matches imported from another site before an imported match counted whatever its start are evaluated for achievements once, at the first sync after the update; "Fetch again" skips records that are already stored and never did. (#99)
 
