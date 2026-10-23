@@ -209,10 +209,23 @@ class CircleSync:
             log.info("CircleSync: the admin asked to fetch everything again")
             self._update(cursor=0, refetch_seen=refetch, pull_until=None)
         self._more = False
+        self._backfill_achievements()
         self._sync_profiles(config)
         self._push(origin, config)
         self._pull(origin, config)
         self._update(last_sync=self._now())
+
+    def _backfill_achievements(self):
+        """Once per installation: the achievements of the matches that were imported before they counted whatever their start."""
+        engine = getattr(self._db, "achievement_engine", None)
+        if not engine:
+            return
+        try:
+            done = engine.backfill_imported()
+            if done:
+                log.info("CircleSync: the achievements of %s imported matches were evaluated", done)
+        except Exception:
+            log.exception("CircleSync: the achievements of the imported matches could not be evaluated")
 
     # ── the profiles of the circle players (color, voice entries) ─────────────
 

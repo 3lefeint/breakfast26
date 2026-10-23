@@ -2593,6 +2593,23 @@ class StatsDB:
             return self._conn.execute(
                 "SELECT value FROM achievements_meta WHERE key = 'start'").fetchone()[0]
 
+    def achievements_meta(self, key: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute("SELECT value FROM achievements_meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_achievements_meta(self, key: str, value: str):
+        with self._lock:
+            self._conn.execute("INSERT OR REPLACE INTO achievements_meta (key, value) VALUES (?, ?)", (key, value))
+            self._conn.commit()
+
+    def imported_match_ids(self) -> list:
+        """The finished matches that were imported from another site, oldest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT match_id FROM matches WHERE origin_id IS NOT NULL AND ended_at IS NOT NULL ORDER BY started_at").fetchall()
+        return [r[0] for r in rows]
+
     def set_achievements_start(self, iso: str):
         with self._lock:
             self._conn.execute(

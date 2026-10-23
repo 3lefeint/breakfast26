@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- The matches imported from another site before an imported match counted whatever its start are evaluated for achievements once, at the first sync after the update; "Fetch again" skips records that are already stored and never did. (#99)
+
 ## [1.11.0] - 2026-10-23
 
 ### Added

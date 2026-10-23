@@ -1534,6 +1534,17 @@ class AchievementEngine:
             self._reconcile_match(match, start, result)
         return result
 
+    def backfill_imported(self) -> int:
+        """Once: evaluate the matches that were imported before an imported match counted whatever its start (they were
+        stored but never looked at, and the circle sync skips a record it has). Returns how many matches were looked at."""
+        if self.db.achievements_meta(IMPORTED_BACKFILL) == "1":
+            return 0
+        ids = self.db.imported_match_ids()
+        for match_id in ids:
+            self.evaluate_imported(match_id)
+        self.db.set_achievements_meta(IMPORTED_BACKFILL, "1")
+        return len(ids)
+
     def evaluate_live(self, match_id: str) -> dict:
         """A turn of a match was stored. While the match runs only the live achievements are
         looked at, which is cheap enough to do after every turn."""
@@ -1635,6 +1646,9 @@ class AchievementEngine:
                     callback(change)
                 except Exception:
                     log.exception("Achievement callback failed for %s", change)
+
+
+IMPORTED_BACKFILL = "imported_backfill"     # key in achievements_meta: the one-time evaluation of the imported matches is done
 
 
 def _total(a, values):

@@ -198,6 +198,34 @@ def test_an_imported_match_counts_before_the_achievements_start_and_stays_after_
     assert earned() == {("anna", "bullseye")}                   # a local match does not take it back
 
 
+def test_imported_matches_stored_before_get_their_achievements_once(tmp_path):
+    from breakfast import achievements as ach
+    from breakfast.match_record import export_record, import_record
+    far = StatsDB(str(tmp_path / "far.db"))
+    far.open_match("m-1", "X01", 501)
+    far.insert_turn("m-1", "ana", 1, 1, 501, 120, False, False, [("S20", 20, 481), ("50", 50, 431), ("S1", 1, 430)])
+    far.record_leg_win("m-1", 1, "ana")
+    far.set_winner("m-1", "ana")
+    far.close_match("m-1")
+    record = export_record(far, "m-1", {"id": "far-id", "name": "Far"})
+
+    home = StatsDB(str(tmp_path / "home.db"))
+    home.set_achievements_start("2999-01-01T00:00:00+00:00")
+    import_record(home, record, {"ana": "anna"})              # stored by a version that did not look at it
+    earned = lambda: {(r["player"], r["achievement_id"]) for r in home._conn.execute("SELECT player, achievement_id FROM achievements_earned")}
+    assert earned() == set()
+
+    engine = ach.AchievementEngine(home, definitions=(ach.BY_ID["bullseye"],)).attach()
+    sync = CircleSync(home, Relay(), tmp_path / "config.toml", "1.9.0")
+    sync.run_once()
+    assert earned() == {("anna", "bullseye")}
+    home._conn.execute("DELETE FROM achievements_earned")
+    home._conn.commit()
+    sync.run_once()
+    assert earned() == set()                                  # done once, not on every round
+    assert engine.backfill_imported() == 0
+
+
 def test_a_match_without_a_player_of_the_circle_is_not_sent(setup):
     db, relay, sync = setup
     relay.mappings = []
