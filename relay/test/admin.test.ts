@@ -114,8 +114,9 @@ describe("players, mappings and rules", () => {
     expect((await call(token, "PUT", "/admin/rules", { player_id: ashi.id, location_ids: [home.id, home.id] })).body).toEqual({ ok: true });
     const players = (await call(token, "GET", "/admin/players")).body!.players;
     expect(players).toMatchObject([{ id: ashi.id, name: "Ashi", mappings: [{ location_id: home.id, local_name: "ashi" }], sites: [home.id] }]);
+    await env.DB.prepare("INSERT INTO circle_profiles (player_id, field, value, updated_at) VALUES (?, 'color', '\"#ff8800\"', 1)").bind(ashi.id).run();
     expect((await call(token, "DELETE", `/admin/players/${ashi.id}`)).body).toEqual({ ok: true });
-    expect(env.DB.count("SELECT COUNT(*) AS n FROM circle_mappings") + env.DB.count("SELECT COUNT(*) AS n FROM circle_rules") + env.DB.count("SELECT COUNT(*) AS n FROM circle_players")).toBe(0);
+    expect(env.DB.count("SELECT COUNT(*) AS n FROM circle_mappings") + env.DB.count("SELECT COUNT(*) AS n FROM circle_rules") + env.DB.count("SELECT COUNT(*) AS n FROM circle_players") + env.DB.count("SELECT COUNT(*) AS n FROM circle_profiles")).toBe(0);
   });
 
   it("sets, changes and clears a mapping, and refuses a bad one", async () => {

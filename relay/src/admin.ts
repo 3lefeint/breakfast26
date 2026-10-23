@@ -155,6 +155,7 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
     await db.batch([
       db.prepare("DELETE FROM circle_rules WHERE player_id = ?").bind(player[1]),
       db.prepare("DELETE FROM circle_mappings WHERE player_id = ?").bind(player[1]),
+      db.prepare("DELETE FROM circle_profiles WHERE player_id = ?").bind(player[1]),
       db.prepare("DELETE FROM circle_players WHERE id = ?").bind(player[1]),
     ]);
     return json({ ok: true });

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- The color and the private voice entries of a player follow him to the installations of the circle that know him: a change is sent to the relay (`PUT /circle/profile`, `relay/migrations/0006_circle_profiles.sql`) and taken over by the other installations, the latest change wins. Only the text of a voice entry travels, the voice files are made again at each installation. (#101)
 - Breakfast generates the missing voice files of the active voice pack by itself every 10 minutes (`[audio] auto_generate_minutes`, `0` switches it off), the same as generating without force in the Voice Pack tab. (#102)
 
 ### Changed

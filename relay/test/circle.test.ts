@@ -56,6 +56,47 @@ beforeEach(async () => {
   await circle();
 });
 
+describe("the profile of a circle player", () => {
+  const profile = (site: Site, ...players: unknown[]) => call(site, "PUT", "/circle/profile", { players });
+  const fields = (res: Record<string, any>, player: string) =>
+    Object.fromEntries(res.body.profiles.filter((f: any) => f.player_id === player).map((f: any) => [f.field, [f.value, f.at]]));
+
+  it("takes the color and the voice entry of a player and hands them to every site that maps him", async () => {
+    const res = await profile(ashitaka, { name: "Ashi", color: "#ff8800", voice: { ryan: { variants: ["Ashi", "Ashie"] } } });
+    expect(res).toEqual({ status: 200, body: { updated: 2 } });
+    const seen = fields(await call(meierhof, "GET", "/circle/config"), ashi);   // Ashi is a player at Meierhof too
+    expect(seen).toEqual({ color: ["#ff8800", NOW], "voice:ryan": [{ variants: ["Ashi", "Ashie"] }, NOW] });
+    expect((await call(streemo, "GET", "/circle/config")).body.profiles).toEqual([]);   // Streemo's board maps no Ashi
+  });
+
+  it("the latest change wins and the time only moves with a change", async () => {
+    await profile(ashitaka, { name: "ashi", color: "#ff8800" });
+    t += 1000;
+    expect((await profile(meierhof, { name: "ashi", color: "#ff8800" })).body.updated).toBe(0);
+    expect(fields(await call(ashitaka, "GET", "/circle/config"), ashi).color).toEqual(["#ff8800", NOW]);
+    t += 1000;
+    expect((await profile(meierhof, { name: "ashi", color: "#00aa00" })).body.updated).toBe(1);
+    expect(fields(await call(ashitaka, "GET", "/circle/config"), ashi).color).toEqual(["#00aa00", NOW + 2000]);
+  });
+
+  it("a cleared field is told as null", async () => {
+    await profile(ashitaka, { name: "ashi", color: "#ff8800", voice: { ryan: { variants: ["Ashi"] } } });
+    t += 1000;
+    await profile(ashitaka, { name: "ashi", color: null, voice: { ryan: null } });
+    expect(fields(await call(ashitaka, "GET", "/circle/config"), ashi)).toEqual({ color: [null, NOW + 1000], "voice:ryan": [null, NOW + 1000] });
+  });
+
+  it("ignores a player the admin has not mapped and refuses what is not a profile", async () => {
+    expect((await profile(ashitaka, { name: "stranger", color: "#ff8800" })).body.updated).toBe(0);
+    for (const bad of [{ name: "ashi", color: "red" }, { name: "ashi", voice: { ryan: { variants: [] } } },
+        { name: "ashi", voice: { "Bad Pack": { variants: ["x"] } } }, { name: "ashi", voice: { ryan: { variants: ["x".repeat(101)] } } }]) {
+      expect((await profile(ashitaka, bad)).status).toBe(400);
+    }
+    expect((await call(ashitaka, "PUT", "/circle/profile", { players: [] })).status).toBe(400);
+    expect((await profile(await newLocation(env.DB, 9), { name: "ashi", color: "#ff8800" })).status).toBe(403);
+  });
+});
+
 describe("the state a site reports", () => {
   it("a site that is not approved yet can report and is told so", async () => {
     const newcomer = await newLocation(env.DB, 9, "Newcomer");

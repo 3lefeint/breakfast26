@@ -17,6 +17,9 @@ class Relay:
         self.records = []
         self.mappings = [{"location_id": "loc-1", "location_name": "Home", "local_name": "anna", "player_id": "p-1"}]
         self.refetch = 0
+        self.own = [{"local_name": "anna", "player_id": "p-1"}]      # the mappings of this site
+        self.profiles = []                                           # [{player_id, field, value, at}] the relay holds
+        self.profile_error = None
 
     def status(self):
         return {"registered": True, "id": "loc-1", "name": "Home"}
@@ -26,7 +29,11 @@ class Relay:
         if path == "/circle/state":
             return {"approved": True}
         if path == "/circle/config":
-            return {"approved": True, "refetch": self.refetch, "circle_players": [], "mappings": [], "site_mappings": self.mappings}
+            return {"approved": True, "refetch": self.refetch, "circle_players": [], "mappings": self.own, "profiles": self.profiles, "site_mappings": self.mappings}
+        if path == "/circle/profile":
+            if self.profile_error:
+                raise self.profile_error
+            return {"updated": 1}
         if method == "PUT" and self.fail:
             raise self.fail
         if method == "PUT":
@@ -283,3 +290,79 @@ def test_a_limit_while_fetching_pauses_the_fetch(setup):
     relay.call = call
     status = sync.run_once()
     assert status["paused_until"] == 5000 + 3600 and status["error"] is None and sync._load()["cursor"] == 0
+
+
+# ── the profiles of the circle players ───────────────────────────────────────
+
+def _profile_puts(relay):
+    return [c[2]["players"] for c in relay.calls if c[1] == "/circle/profile"]
+
+
+def test_a_color_set_here_is_sent_once(setup):
+    db, relay, sync = setup
+    db.upsert_player("anna")
+    db.set_player_color("anna", "#ff8800")
+    sync.run_once()
+    assert _profile_puts(relay) == [[{"name": "anna", "color": "#ff8800"}]]
+    sync.run_once()
+    assert len(_profile_puts(relay)) == 1                   # nothing changed since
+
+
+def test_a_color_changed_at_the_relay_is_taken_over(setup):
+    db, relay, sync = setup
+    db.upsert_player("anna")
+    relay.profiles = [{"player_id": "p-1", "field": "color", "value": "#00aa00", "at": 1}]
+    sync.run_once()
+    assert db.player_colors() == {"anna": "#00aa00"} and _profile_puts(relay) == []
+    relay.profiles = [{"player_id": "p-1", "field": "color", "value": None, "at": 2}]   # cleared elsewhere
+    sync.run_once()
+    assert db.player_colors() == {}
+
+
+def test_a_color_changed_on_both_sides_keeps_the_local_one_and_sends_it(setup):
+    db, relay, sync = setup
+    db.upsert_player("anna")
+    db.set_player_color("anna", "#111111")
+    sync.run_once()                                         # both sides agree on #111111 from here
+    db.set_player_color("anna", "#222222")
+    relay.profiles = [{"player_id": "p-1", "field": "color", "value": "#333333", "at": 5}]
+    sync.run_once()
+    assert db.player_colors() == {"anna": "#222222"}
+    assert _profile_puts(relay)[-1] == [{"name": "anna", "color": "#222222"}]
+
+
+def test_a_voice_entry_travels_both_ways_and_the_files_follow(tmp_path):
+    from breakfast import voicepack_overlay as vo
+    db = StatsDB(str(tmp_path / "stats.db"))
+    relay = Relay()
+    changed = []
+    sync = CircleSync(db, relay, tmp_path / "config.toml", "1.9.0", voice_packs=lambda: ["ryan"],
+                      on_voice=lambda pack, name: changed.append((pack, name)))
+    db.upsert_player("anna")
+    relay.profiles = [{"player_id": "p-1", "field": "voice:ryan", "value": {"variants": ["Anna", "Annie"]}, "at": 1},
+                      {"player_id": "p-1", "field": "voice:leni", "value": {"variants": ["Ana"]}, "at": 1}]
+    sync.run_once()
+    path = vo.overlay_path(tmp_path, "ryan")
+    assert vo.read_entries(path) == {"anna": {"variants": ["Anna", "Annie"]}}
+    assert changed == [("ryan", "anna")]                    # leni: no plan here, so nothing is stored for it
+    assert not vo.overlay_path(tmp_path, "leni").exists() and _profile_puts(relay) == []
+
+    from breakfast import voicepack_editor as ve
+    ve.write_overlay(path, {"anna": {"variants": ["Anna", "Ana"]}})
+    relay.profiles = relay.profiles[:1]
+    sync.run_once()
+    assert _profile_puts(relay) == [[{"name": "anna", "voice": {"ryan": {"variants": ["Anna", "Ana"]}}}]]
+    assert changed == [("ryan", "anna")]                    # sending an own change touches no file
+
+
+def test_a_relay_without_profiles_does_not_stop_the_matches(setup):
+    db, relay, sync = setup
+    db.upsert_player("anna")
+    db.set_player_color("anna", "#ff8800")
+    relay.profile_error = LocationError("not found", 404)
+    _finish(db, "m-1")
+    status = sync.run_once()
+    assert status["error"] is None and status["pushed"] == 1
+    relay.profile_error = None
+    sync.run_once()
+    assert _profile_puts(relay)[-1] == [{"name": "anna", "color": "#ff8800"}]       # sent as soon as the relay can take it

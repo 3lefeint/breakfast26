@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 
 from breakfast import match_record
+from breakfast import voicepack_editor as ve
+from breakfast import voicepack_overlay as vo
 from breakfast.locations import LocationError
 
 log = logging.getLogger(__name__)
@@ -30,9 +32,13 @@ PERMANENT = {400, 403, 404, 409, 413, 422}     # the relay will not take this re
 
 
 class CircleSync:
-    def __init__(self, db, locations, config_path, version, now=time.time, on_change=None):
+    def __init__(self, db, locations, config_path, version, now=time.time, on_change=None, voice_packs=None, on_voice=None):
+        """*voice_packs*: returns the names of the voice packs this installation has a plan for. *on_voice*: called with
+        (pack, player) after the voice entry of a player was changed here, so that the voice files can follow."""
         self._db, self._locations, self._version, self._now = db, locations, version, now
         self._on_change = on_change
+        self._voice_packs = voice_packs or (lambda: [])
+        self._on_voice = on_voice
         self.path = Path(config_path).parent / "circle.json"
         self._state_lock = threading.RLock()
         self._run_lock = threading.Lock()
@@ -203,9 +209,104 @@ class CircleSync:
             log.info("CircleSync: the admin asked to fetch everything again")
             self._update(cursor=0, refetch_seen=refetch, pull_until=None)
         self._more = False
+        self._sync_profiles(config)
         self._push(origin, config)
         self._pull(origin, config)
         self._update(last_sync=self._now())
+
+    # ── the profiles of the circle players (color, voice entries) ─────────────
+
+    def _local_profiles(self, mappings, packs):
+        """{(circle player, field): (local name, value)} for the players of this site the admin mapped: `color` is #rrggbb or
+        None, `voice:<pack>` the private entry of the player in that pack ({"variants": [...]}) or None."""
+        colors = self._db.player_colors()
+        entries = {}
+        for pack in packs:
+            try:
+                entries[pack] = vo.read_entries(vo.overlay_path(self.path.parent, pack))
+            except ValueError as e:
+                log.warning("CircleSync: the private voice file of %s is not read: %s", pack, e)
+        local = {}
+        for m in mappings:
+            name, player = m["local_name"], m["player_id"]
+            local[(player, "color")] = (name, colors.get(name))
+            for pack, found in entries.items():
+                entry = found.get(name)
+                variants = entry.get("variants") if entry else None
+                local[(player, f"voice:{pack}")] = (name, {"variants": list(variants)} if variants else None)
+        return local
+
+    def _sync_profiles(self, config):
+        """Make the color and the voice entries of the mapped players the same on every site; the latest change wins. What
+        changed here since the last round (against `profile_base`, what both sides had then) is sent, what changed at the
+        relay and not here is taken over. A failure here never stops the sync of the matches."""
+        try:
+            packs = list(self._voice_packs())
+            local = self._local_profiles(config.get("mappings", []), packs)
+            remote = {(f["player_id"], f["field"]): f.get("value") for f in config.get("profiles", [])}
+            base = dict(self._load().get("profile_base", {}))
+            outgoing, sent = {}, {}
+            for (player, field), (name, value) in local.items():
+                key = f"{player}|{field}"
+                if value != base.get(key):                      # changed here: send it
+                    outgoing.setdefault(name, {})[field] = value
+                    sent[key] = value
+                elif remote.get((player, field)) != base.get(key) and self._take(name, field, remote.get((player, field)), packs):
+                    base[key] = remote.get((player, field))     # changed at the relay: take it over
+            if outgoing:
+                self._locations.call("PUT", "/circle/profile", {"players": self._profile_body(outgoing)})
+                base.update(sent)
+            self._update(profile_base=base)
+        except LocationError as e:
+            if e.status == 404:                                 # a relay without profiles
+                log.debug("CircleSync: the relay has no profiles: %s", e)
+            else:
+                log.warning("CircleSync: the profiles are not synced: %s", e)
+        except Exception:
+            log.exception("CircleSync: the profiles are not synced")
+
+    @staticmethod
+    def _profile_body(outgoing):
+        players = []
+        for name, fields in outgoing.items():
+            entry = {"name": name}
+            for field, value in fields.items():
+                if field == "color":
+                    entry["color"] = value
+                else:
+                    entry.setdefault("voice", {})[field.split(":", 1)[1]] = value
+            players.append(entry)
+        return players
+
+    def _take(self, name, field, value, packs):
+        """Apply a value from the relay to the local player. Returns False when it could not be applied here (a pack this
+        installation has no plan for, a value that is not valid), so that the round does not count it as taken."""
+        if field == "color":
+            try:
+                self._db.set_player_color(name, value)
+            except ValueError:
+                return False
+            return True
+        pack = field.split(":", 1)[1]
+        if pack not in packs:
+            return False
+        path = vo.overlay_path(self.path.parent, pack)
+        try:
+            entries = vo.read_entries(path)
+            if value is None:
+                entries.pop(name, None)
+            else:
+                entries[name] = {"variants": list(value["variants"])}
+            ve.write_overlay(path, entries)
+        except (ValueError, KeyError, TypeError, OSError) as e:
+            log.warning("CircleSync: the voice entry of %s in %s is not stored: %s", name, pack, e)
+            return False
+        if self._on_voice:
+            try:
+                self._on_voice(pack, name)
+            except Exception:
+                log.exception("CircleSync: the voice files of %s could not follow", name)
+        return True
 
     def _push(self, origin, config):
         state = self._load()

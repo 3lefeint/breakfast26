@@ -15,6 +15,9 @@ export const CIRCLE_LIMITS = {
   STATE_BYTES: 4096,
   LIST_MAX: 100,
   PARTICIPANTS: 24,
+  PROFILE_PLAYERS: 50,
+  VOICE_VARIANTS: 8,
+  VOICE_TEXT: 100,
 };
 
 export interface CircleEnv extends LocationEnv {
@@ -24,6 +27,8 @@ export interface CircleEnv extends LocationEnv {
 
 const MODES = ["X01", "Elimination"];
 const MATCH_ID = /^[A-Za-z0-9._:-]{1,80}$/;
+const COLOR = /^#[0-9a-f]{6}$/;
+const PACK = /^[a-z0-9_-]{1,30}$/;
 const NAME = /^[^\p{C}]{1,40}$/u;
 
 const READ_LIMIT = { limit: 600, windowMs: 3_600_000 };
@@ -76,6 +81,7 @@ export async function handleCircle(request: Request, env: CircleEnv, limited: Li
   const one = path.match(/^\/circle\/records\/([^/]+)$/);
   const route =
     method === "PUT" && path === "/circle/state" ? "state"
+    : method === "PUT" && path === "/circle/profile" ? "profile"
     : method === "GET" && path === "/circle/config" ? "config"
     : method === "PUT" && record ? "put"
     : method === "GET" && path === "/circle/records" ? "list"
@@ -121,13 +127,56 @@ export async function handleCircle(request: Request, env: CircleEnv, limited: Li
       "SELECT m.location_id, l.name AS location_name, m.local_name, m.player_id FROM circle_mappings m JOIN locations l ON l.id = m.location_id ORDER BY l.name, m.local_name")
       .all<{ location_id: string; location_name: string; local_name: string; player_id: string }>();
     const mine = await db.prepare("SELECT refetch FROM circle_sites WHERE location_id = ?").bind(site).first<{ refetch: number }>();
+    const profiles = await db.prepare(
+      "SELECT f.player_id, f.field, f.value, f.updated_at FROM circle_profiles f WHERE f.player_id IN (SELECT player_id FROM circle_mappings WHERE location_id = ?)")
+      .bind(site).all<{ player_id: string; field: string; value: string | null; updated_at: number }>();
     return json({
       approved: true,
       refetch: mine?.refetch ?? 0,
+      profiles: profiles.results.map((f) => ({ player_id: f.player_id, field: f.field, value: f.value === null ? null : JSON.parse(f.value), at: f.updated_at })),
       site_mappings: all.results,
       circle_players: players.results.map((p) => ({ ...p, sites: rules.results.filter((r) => r.player_id === p.id).map((r) => ({ id: r.location_id, name: r.location_name })) })),
       mappings: mappings.results,
     });
+  }
+
+  if (route === "profile") {
+    if (await limited("circle-write", WRITE_LIMIT, site)) return tooMany();
+    const players = body.data.players;
+    if (!Array.isArray(players) || players.length < 1 || players.length > CIRCLE_LIMITS.PROFILE_PLAYERS) return json({ error: "players must be a list" }, 400);
+    const changes: { playerId: string; field: string; value: string | null }[] = [];
+    for (const entry of players) {
+      if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !NAME.test(entry.name)) return json({ error: "a player needs a name" }, 400);
+      const mapped = await db.prepare("SELECT player_id FROM circle_mappings WHERE location_id = ? AND local_name = ?").bind(site, entry.name.toLowerCase()).first<{ player_id: string }>();
+      if (!mapped) continue;                                  // not a player of the circle (the admin may map him later)
+      if (entry.color !== undefined) {
+        if (entry.color !== null && !(typeof entry.color === "string" && COLOR.test(entry.color))) return json({ error: "color must look like #rrggbb" }, 400);
+        changes.push({ playerId: mapped.player_id, field: "color", value: entry.color === null ? null : JSON.stringify(entry.color) });
+      }
+      if (entry.voice !== undefined) {
+        if (typeof entry.voice !== "object" || entry.voice === null || Array.isArray(entry.voice)) return json({ error: "voice must map packs to entries" }, 400);
+        for (const [pack, voice] of Object.entries(entry.voice as Record<string, unknown>)) {
+          if (!PACK.test(pack)) return json({ error: "bad voice pack name" }, 400);
+          if (voice === null) { changes.push({ playerId: mapped.player_id, field: `voice:${pack}`, value: null }); continue; }
+          const variants = (voice as { variants?: unknown })?.variants;
+          if (typeof voice !== "object" || !Array.isArray(variants) || variants.length < 1 || variants.length > CIRCLE_LIMITS.VOICE_VARIANTS ||
+              !variants.every((v) => typeof v === "string" && v.length >= 1 && v.length <= CIRCLE_LIMITS.VOICE_TEXT)) {
+            return json({ error: "a voice entry needs 1 to 8 variants" }, 400);
+          }
+          changes.push({ playerId: mapped.player_id, field: `voice:${pack}`, value: JSON.stringify({ variants }) });
+        }
+      }
+    }
+    let updated = 0;
+    for (const c of changes) {
+      const current = await db.prepare("SELECT value FROM circle_profiles WHERE player_id = ? AND field = ?").bind(c.playerId, c.field).first<{ value: string | null }>();
+      if (current && current.value === c.value) continue;     // nothing changed: keep the time of the change that is there
+      await db.prepare(
+        "INSERT INTO circle_profiles (player_id, field, value, updated_at) VALUES (?1, ?2, ?3, ?4) " +
+        "ON CONFLICT(player_id, field) DO UPDATE SET value = ?3, updated_at = ?4").bind(c.playerId, c.field, c.value, now).run();
+      updated++;
+    }
+    return json({ updated });
   }
 
   if (route === "list") {

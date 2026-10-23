@@ -118,7 +118,8 @@ def wire(game_state, elim_ctrl,
     _config_path = config_path
     _circle = None
     if _locations and _stats_db:
-        _circle = circle_sync_mod.CircleSync(_stats_db, _locations, config_path, __version__)
+        _circle = circle_sync_mod.CircleSync(_stats_db, _locations, config_path, __version__,
+                                             voice_packs=lambda: list(_voicepack_plans()), on_voice=_voice_entry_changed)
         _stats_db.on_match_closed = _circle.match_closed
         _stats_db.on_match_deleted = _circle.match_deleted
     _audio_engine = audio_engine
@@ -2291,6 +2292,19 @@ async def voicepack_generate(body: VoicepackGenerateBody):
     minutes for the full pack)."""
     log.debug("Voice-pack generate requested: force=%s", body.force)
     return _voicepack_generate_start(body.pack, body.force)
+
+
+def _voice_entry_changed(pack: str, key: str):
+    """The voice entry of a player was changed from outside (the circle): drop his old files so that they are made again."""
+    out_dir = _voicepack_out_dir(pack)
+    if out_dir.is_dir():
+        stale = re.compile(rf"{re.escape(key)}(\+\d+)?\.mp3")
+        for file in out_dir.iterdir():
+            if stale.fullmatch(file.name):
+                file.unlink()
+    if _audio_engine:
+        _audio_engine.invalidate(key)
+    _voicepack_generate_start(pack, False)
 
 
 AUTO_GENERATE_MINUTES = 10      # `[audio] auto_generate_minutes`, 0 switches it off

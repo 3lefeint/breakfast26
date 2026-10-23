@@ -404,3 +404,19 @@ def test_the_interval_of_the_automatic_generation_comes_from_the_config(wired, t
     assert server._auto_generate_minutes() == 3
     cfg_mod.write(path, {"audio": {"dir": "x", "auto_generate_minutes": "often"}})
     assert server._auto_generate_minutes() == server.AUTO_GENERATE_MINUTES
+
+
+def test_a_voice_entry_changed_by_the_circle_gets_new_files_without_a_restart(wired):
+    out_dir = wired["audio_dir"] / "profiles" / "leni"
+    out_dir.mkdir(parents=True)
+    (out_dir / "busted.mp3").write_bytes(b"old")
+    (out_dir / "busted+1.mp3").write_bytes(b"old")
+    engine = wired["engine"]
+    assert engine.has_audio("busted") is True
+
+    server._voice_entry_changed("leni", "busted")
+    _wait_generation()
+
+    assert (out_dir / "busted.mp3").read_bytes() == b"fake-mp3"
+    assert (out_dir / "busted+1.mp3").read_bytes() == b"fake-mp3"
+    assert engine.has_audio("busted") is True

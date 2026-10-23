@@ -227,3 +227,36 @@ def test_the_sync_of_the_sites_sends_pulls_and_deletes(relay_url, tmp_path):
     _match(east[0], "sync-2", ["nina"], "nina")
     assert east[1].status()["enabled"] is False and east[1].status()["pending"] == 0
     assert east[1].run_once()["pushed"] == 2
+
+
+def test_the_color_of_a_player_follows_him_to_the_other_site(relay_url, tmp_path):
+    """The profile of a circle player through the real relay: a color set at one site reaches the site that maps the same
+    circle player under another name, and a change there comes back."""
+    sites = {}
+    for name in ("North Board", "South Board"):
+        loc, db = _site(tmp_path, name, relay_url)
+        sites[name.split()[0].lower()] = (loc, db, CircleSync(db, loc, loc.path.parent / "config.toml", "1.9.0"))
+    ids = {name: loc.status()["id"] for name, (loc, _, _) in sites.items()}
+    sites["north"][1].upsert_player("nina")
+    sites["south"][1].upsert_player("nin")
+
+    admin = Admin(relay_url)
+    assert admin.login().status_code == 200
+    for site_id in ids.values():
+        admin("POST", f"/admin/sites/{site_id}/approve", {})
+    for site in sites.values():
+        site[2].run_once()
+    nina = admin("POST", "/admin/players", {"name": "Tessa"}).json()["id"]
+    admin("PUT", "/admin/mappings", {"location_id": ids["north"], "local_name": "nina", "player_id": nina})
+    admin("PUT", "/admin/mappings", {"location_id": ids["south"], "local_name": "nin", "player_id": nina})
+
+    sites["north"][1].set_player_color("nina", "#ff8800")
+    sites["north"][2].run_once()
+    sites["south"][2].run_once()
+    assert sites["south"][1].player_colors() == {"nin": "#ff8800"}
+
+    sites["south"][1].set_player_color("nin", "#00aa00")
+    sites["south"][2].run_once()
+    sites["north"][2].run_once()
+    assert sites["north"][1].player_colors() == {"nina": "#00aa00"}
+    assert sites["south"][1].player_colors() == {"nin": "#00aa00"}
