@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-10-23
+
 ### Changed
 - The reports of the admin area open on the last 7 days instead of 30 and have an option for the last day; one installation reads "1 installation" in the sentence and in the tables.
 
