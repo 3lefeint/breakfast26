@@ -2630,15 +2630,15 @@ class StatsDB:
         return sorted(r[0] for r in rows)
 
     def player_final_matches(self, player: str, since: str) -> list:
-        """Closed matches the player took part in that started at or after `since`,
-        oldest first."""
+        """Closed matches the player took part in that started at or after `since`, and the imported ones whenever
+        they started, oldest first."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT m.match_id, m.game_mode, m.points_start, m.winner, m.started_at, m.ended_at,"
                 " COALESCE(g.scoring, 'standard') AS scoring, f.counts AS ft_counts, f.field AS ft_field"
                 " FROM matches m LEFT JOIN target_battle_games g ON g.match_id = m.match_id"
                 " LEFT JOIN field_training_games f ON f.match_id = m.match_id"
-                " WHERE m.ended_at IS NOT NULL AND m.started_at >= ? AND ("
+                " WHERE m.ended_at IS NOT NULL AND (m.started_at >= ? OR m.origin_id IS NOT NULL) AND ("
                 " EXISTS (SELECT 1 FROM turns t WHERE t.match_id = m.match_id AND t.player = ?)"
                 " OR EXISTS (SELECT 1 FROM elimination_turns e WHERE e.match_id = m.match_id AND e.player = ?)"
                 " OR EXISTS (SELECT 1 FROM elimination_results r WHERE r.match_id = m.match_id AND r.player = ?)"
@@ -2754,7 +2754,7 @@ class StatsDB:
 
     def achievement_distribution(self, since: str) -> tuple:
         """(number of players, {(achievement_id, tier): number who earned it}). The players
-        are the visible ones with a closed match that started at or after `since`."""
+        are the visible ones with a closed match that started at or after `since` or was imported."""
         with self._lock:
             players = self._conn.execute(
                 "SELECT COUNT(DISTINCT p.player) FROM ("
@@ -2769,7 +2769,7 @@ class StatsDB:
                 " UNION SELECT player, match_id FROM black_belt_games"
                 " UNION SELECT player, match_id FROM warm_up_games) p"
                 " JOIN matches m ON m.match_id = p.match_id"
-                " WHERE m.ended_at IS NOT NULL AND m.started_at >= ?"
+                " WHERE m.ended_at IS NOT NULL AND (m.started_at >= ? OR m.origin_id IS NOT NULL)"
                 " AND p.player NOT IN (SELECT name FROM players WHERE hidden = 1)",
                 (since,)).fetchone()[0]
             rows = self._conn.execute(

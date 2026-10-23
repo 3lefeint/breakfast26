@@ -1525,11 +1525,12 @@ class AchievementEngine:
 
     def evaluate_imported(self, match_id: str) -> dict:
         """Reconcile the players of a match that was imported from another site (circle sync, match_record.py). The
-        achievements are stored like those of a match played here, but nothing is announced: no banner, no sound."""
+        achievements are stored like those of a match played here, but nothing is announced: no banner, no sound.
+        The achievements start of this installation does not apply: the match was played elsewhere."""
         result = {"earned": [], "revoked": [], "provisional": []}
         match = self.db.match_row(match_id)
         start = self.db.achievements_start()
-        if match and match["ended_at"] is not None and match["started_at"] >= start:
+        if match and match["ended_at"] is not None:
             self._reconcile_match(match, start, result)
         return result
 
