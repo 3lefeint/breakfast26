@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- The Players and Rules tabs of the admin area are one table: a row per circle player, a column per site, a tick for the sites that get the matches of the player and a select for who he is at that site (choosing a name ticks the cell). The reported players no circle player stands for yet are listed per site. (#98)
+
 ## [1.10.0] - 2026-10-22
 
 ### Added

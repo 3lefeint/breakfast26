@@ -9,7 +9,6 @@
   import { adminRelay, adminLoggedIn, adminLogin, adminLogout, adminForget, adminCall, relayBase } from '../../lib/admin.js';
   import AdminSites from './admin/AdminSites.svelte';
   import AdminPlayers from './admin/AdminPlayers.svelte';
-  import AdminRules from './admin/AdminRules.svelte';
   import AdminSync from './admin/AdminSync.svelte';
   import AdminReports from './admin/AdminReports.svelte';
   import AdminUsage from './admin/AdminUsage.svelte';
@@ -25,7 +24,6 @@
   const TABS = [
     { id: 'sites', label: t('Sites') },
     { id: 'players', label: t('Players') },
-    { id: 'rules', label: t('Rules') },
     { id: 'sync', label: t('Sync') },
     { id: 'reports', label: t('Reports') },
     { id: 'usage', label: t('Usage') },
@@ -55,18 +53,24 @@
     }
   }
 
-  // An action on the relay, then the lists again.
-  async function act(method, path, body) {
+  // Actions on the relay in a row, [method, path, body] each, then the lists again; false when one of them failed.
+  async function actAll(calls) {
     error = '';
-    try {
-      await adminCall(method, path, body);
-    } catch (e) {
-      error = t(e.message);
-      return false;
+    let done = true;
+    for (const [method, path, body] of calls) {
+      try {
+        await adminCall(method, path, body);
+      } catch (e) {
+        error = t(e.message);
+        done = false;
+        break;
+      }
     }
     await load();
-    return true;
+    return done;
   }
+
+  const act = (method, path, body) => actAll([[method, path, body]]);
 
   let approved = $derived(sites.filter((s) => s.approved));
   let known = $derived(!!relayBase($adminRelay));
@@ -102,9 +106,7 @@
     {#if tab === 'sites'}
       <AdminSites {sites} {act} reload={load} />
     {:else if tab === 'players'}
-      <AdminPlayers {sites} {approved} {players} {act} />
-    {:else if tab === 'rules'}
-      <AdminRules {approved} {players} {act} />
+      <AdminPlayers {approved} {players} {actAll} />
     {:else if tab === 'sync'}
       <AdminSync />
     {:else if tab === 'usage'}
