@@ -2232,23 +2232,19 @@ async def voicepack_packs():
     return {"packs": packs, "default": default_name}
 
 
-@app.post("/api/voicepack/generate")
-async def voicepack_generate(body: VoicepackGenerateBody):
-    """Regenerate the voice pack — force=False only fills in
-    missing keys (fast), force=True re-generates everything, including
-    keys whose text changed since the last generation (slow, several
-    minutes for the full pack)."""
-    log.debug("Voice-pack generate requested: force=%s", body.force)
+def _voicepack_generate_start(pack: str | None, force: bool, only_if_missing: bool = False) -> dict:
+    """Start the generation in the background. With *only_if_missing* nothing starts (and nothing is pushed) while
+    every file of the plan exists. Returns {"ok": True}, {"ok": False} when there was nothing to do, or {"error": ...}."""
     if _voicepack_status["running"]:
         return {"error": "generation already running"}
     if not _audio_engine:
         return {"error": "audio not configured"}
 
-    from tools.generate_voicepack import run as generate_run
+    from tools.generate_voicepack import resolve_entries, run as generate_run
 
-    plan_path = _voicepack_plan_path(body.pack)
+    plan_path = _voicepack_plan_path(pack)
     if plan_path is None:
-        return {"error": "unknown voice pack" if body.pack else "no voice-pack plan"}
+        return {"error": "unknown voice pack" if pack else "no voice-pack plan"}
     with open(plan_path, "rb") as f:
         plan = tomllib.load(f)
     name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
@@ -2259,9 +2255,11 @@ async def voicepack_generate(body: VoicepackGenerateBody):
         except ValueError as e:
             return {"error": f"private player file: {e}"}
     out_dir = _voicepack_out_dir(name)
+    if only_if_missing and all((out_dir / f"{entry[1]}.mp3").exists() for entry in resolve_entries(plan)):
+        return {"ok": False}
 
     _voicepack_status.update(running=True, done=0, skipped=0, total=0, error=None)
-    log.info("Voice-pack generation started (force=%s)", body.force)
+    log.info("Voice-pack generation started (force=%s)", force)
     push()
 
     async def task():
@@ -2269,7 +2267,7 @@ async def voicepack_generate(body: VoicepackGenerateBody):
             _voicepack_status.update(done=done, skipped=skipped, total=total)
             push()
         try:
-            await generate_run(plan, out_dir, only=None, force=body.force,
+            await generate_run(plan, out_dir, only=None, force=force,
                                 dry_run=False, trim=True, on_progress=on_progress)
             log.info("Voice-pack generation finished: done=%d skipped=%d",
                       _voicepack_status["done"], _voicepack_status["skipped"])
@@ -2277,11 +2275,48 @@ async def voicepack_generate(body: VoicepackGenerateBody):
             log.exception("Voice-pack generation failed")
             _voicepack_status["error"] = str(e)
         finally:
+            _audio_engine.invalidate_all()     # a name looked up before its file existed would stay silent
             _voicepack_status["running"] = False
             push()
 
     _run_async_in_thread(task)
     return {"ok": True}
+
+
+@app.post("/api/voicepack/generate")
+async def voicepack_generate(body: VoicepackGenerateBody):
+    """Regenerate the voice pack — force=False only fills in
+    missing keys (fast), force=True re-generates everything, including
+    keys whose text changed since the last generation (slow, several
+    minutes for the full pack)."""
+    log.debug("Voice-pack generate requested: force=%s", body.force)
+    return _voicepack_generate_start(body.pack, body.force)
+
+
+AUTO_GENERATE_MINUTES = 10      # `[audio] auto_generate_minutes`, 0 switches it off
+
+
+def _auto_generate_minutes() -> int:
+    try:
+        minutes = cfg_mod.load(_config_path).get("audio", {}).get("auto_generate_minutes", AUTO_GENERATE_MINUTES)
+    except Exception:
+        return AUTO_GENERATE_MINUTES
+    return minutes if isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0 else AUTO_GENERATE_MINUTES
+
+
+def start_voicepack_auto_generate():
+    """Fill in the missing voice files by itself every `[audio] auto_generate_minutes` minutes (the config is re-read
+    each round), the same as generating without force from the Voice Pack tab."""
+    def loop():
+        time.sleep(60)
+        while True:
+            minutes = _auto_generate_minutes()
+            if minutes:
+                result = _voicepack_generate_start(None, False, only_if_missing=True)
+                if result.get("error") and result["error"] not in ("generation already running", "audio not configured"):
+                    log.warning("Automatic voice-pack generation: %s", result["error"])
+            time.sleep(minutes * 60 if minutes else 60)
+    threading.Thread(target=loop, name="voicepack-auto", daemon=True).start()
 
 
 @app.get("/api/voicepack/groups")

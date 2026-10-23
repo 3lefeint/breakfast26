@@ -195,6 +195,13 @@ class TestInvalidate:
     def test_unknown_key_is_a_noop(self, engine):
         engine.invalidate("never_looked_up")  # must not raise
 
+    def test_invalidate_all_forgets_every_name(self, engine, audio_dir):
+        assert engine.has_audio("one") is False and engine.has_audio("two") is False
+        (audio_dir / "one.mp3").write_bytes(b"")
+        (audio_dir / "two.mp3").write_bytes(b"")
+        engine.invalidate_all()
+        assert engine.has_audio("one") is True and engine.has_audio("two") is True
+
 
 class TestResolve:
     def test_known_file(self, engine, audio_dir):

@@ -144,6 +144,10 @@ class AudioEngine:
         looked up once (`_variants()` never expires an entry on its own)."""
         self._cache.pop(name, None)
 
+    def invalidate_all(self):
+        """Forget every looked-up name, after files were written in bulk (a voice pack generation)."""
+        self._cache.clear()
+
     def has_audio(self, name: str) -> bool:
         """True if at least one variant file exists for *name*, without
         playing it — e.g. to flag a player name with no recording in the UI."""

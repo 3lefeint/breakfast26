@@ -98,6 +98,9 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # Optional voice-pack profile: sounds are looked up in <dir>/profiles/<profile>/
 # first, your own files in <dir> cover any key the profile doesn't have.
 # profile = "ryan"
+# Every n minutes Breakfast generates the voice files the profile's plan lists but that are missing (for example
+# for a new player); 0 switches it off.
+# auto_generate_minutes = 10
 
 # ── Voice caller (requires [audio] dir; playback via the /audio browser page) ─
 # [caller]

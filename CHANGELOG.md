@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- Breakfast generates the missing voice files of the active voice pack by itself every 10 minutes (`[audio] auto_generate_minutes`, `0` switches it off), the same as generating without force in the Voice Pack tab. (#102)
+
 ### Changed
 - A match imported from another site counts for the achievements whenever it started, also before the achievements start of this installation. (#99)
 - The Players and Rules tabs of the admin area are one table: a row per circle player, a column per site, a tick for the sites that get the matches of the player and a select for who he is at that site (choosing a name ticks the cell). The reported players no circle player stands for yet are listed per site. (#98)
+
+### Fixed
+- A voice file generated while Breakfast runs is played without a restart, also for a name that was looked up before its file existed. (#102)
 
 ## [1.10.0] - 2026-10-22
 

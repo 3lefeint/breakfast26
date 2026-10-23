@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -358,3 +359,48 @@ def test_a_broken_private_file_is_reported_and_left_alone(wired_players):
     body = server.VoicepackEntryBody(group="Player names", key="anna", variants=["Anna"])
     assert "error" in asyncio.run(server.voicepack_save_entry(body))
     assert wired_players["overlay"].read_text(encoding="utf-8") == "not [ valid"
+
+
+def _wait_generation(timeout=10):
+    deadline = time.time() + timeout
+    while server._voicepack_status["running"] and time.time() < deadline:
+        time.sleep(0.05)
+    assert not server._voicepack_status["running"], "the generation did not finish"
+
+
+def test_generation_makes_files_known_to_the_running_audio_engine(wired):
+    engine = wired["engine"]
+    assert engine.has_audio("busted") is False  # looked up before the file exists
+
+    res = asyncio.run(server.voicepack_generate(server.VoicepackGenerateBody()))
+    assert res == {"ok": True}
+    _wait_generation()
+
+    assert engine.has_audio("busted") is True, "files written by a generation must be found without a restart"
+
+
+def test_automatic_generation_starts_only_while_a_file_is_missing(wired):
+    out_dir = wired["audio_dir"] / "profiles" / "leni"
+    first = server._voicepack_generate_start(None, False, only_if_missing=True)
+    assert first == {"ok": True}
+    _wait_generation()
+    assert (out_dir / "busted.mp3").is_file() and (out_dir / "require_3+1.mp3").is_file()
+
+    again = server._voicepack_generate_start(None, False, only_if_missing=True)
+    assert again == {"ok": False}                              # everything exists: no run, no status change
+    assert server._voicepack_status["running"] is False
+
+    (out_dir / "busted+1.mp3").unlink()
+    assert server._voicepack_generate_start(None, False, only_if_missing=True) == {"ok": True}
+    _wait_generation()
+
+
+def test_the_interval_of_the_automatic_generation_comes_from_the_config(wired, tmp_path):
+    path = str(tmp_path / "config.toml")
+    assert server._auto_generate_minutes() == server.AUTO_GENERATE_MINUTES
+    cfg_mod.write(path, {"audio": {"dir": "x", "auto_generate_minutes": 0}})
+    assert server._auto_generate_minutes() == 0                # switched off
+    cfg_mod.write(path, {"audio": {"dir": "x", "auto_generate_minutes": 3}})
+    assert server._auto_generate_minutes() == 3
+    cfg_mod.write(path, {"audio": {"dir": "x", "auto_generate_minutes": "often"}})
+    assert server._auto_generate_minutes() == server.AUTO_GENERATE_MINUTES
