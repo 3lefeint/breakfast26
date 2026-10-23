@@ -17,6 +17,7 @@ own account and needs no other add-on.
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
 - [Online Elimination](#online-elimination): play one Elimination match together with players at other locations
+- [Circle of friends](#circle-of-friends): installations of a group of friends share their matches, so a player has his statistics and achievements wherever he plays
 - [Usage reports](#usage-reports): optional anonymous usage and error reports, off by default
 - [MQTT output](#mqtt) for LED strips and Home Assistant, optional
 - [Installation](#installation) on Windows, with Docker or from source, with [self-update](#updates)
@@ -227,6 +228,8 @@ To change a single entry, use **Settings → Audio & Voice → Voice Pack**: pic
 listen to a preview and save. [VOICE_PACKS.md](VOICE_PACKS.md) lists every call key, explains where the
 names of your players are kept, and shows how to record a pack of your own. Player names are stored in lower case and
 shown in upper case, so the voice file of a player is `<name>.mp3` whatever the spelling when the player was created.
+Breakfast also fills in the voice files that are missing, for example for a new player, by itself every 10 minutes
+(`[audio] auto_generate_minutes`, `0` switches it off), and uses a new file without a restart.
 
 <img src="media/voice-pack-editor.webp" alt="The Voice Pack editor in Settings" width="560">
 
@@ -264,12 +267,38 @@ lives and the order. A voice chat for the sites of a match opens in its own brow
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off. Every site stores the whole match, the players of the other sites
 as guests (`name@site`): they appear in the match but have no entry in the Players tab, no ranking and no achievements here.
+The last turn can be undone or corrected, a dart of it or its total, also in an online match: the site that threw the turn does
+it, and the other sites play it again.
 
 **Linked locations.** Under Settings → Connections, *Location Online Settings* registers the installation at
 the relay with a name and a local PIN. *Create invitation* gives a code for another location, which pastes it under
 *Accept an invitation*; the two are linked from then on. A match that a registered location opens then shows up
 under *Matches of linked locations* on the Online page of the linked ones, who join it without a password. A host
 who leaves the password empty is joinable only by linked locations.
+
+### Circle of friends
+
+A group of friends with several Breakfast installations (clubs, homes) can form a **circle**: a finished X01 or Elimination match
+goes to the installations the circle's admin chose for the players in it, so a player has his statistics, match list and
+achievements on every installation he plays on, wherever the match was played. It needs the same relay as online play
+([relay/README.md](relay/README.md)) and an installation that is registered as a location (see *Linked locations* above); the
+admin approves each installation once.
+
+- **For everyone:** Settings → Connections → *Circle of friends* has a switch for the sync, shows when matches were last sent and
+  fetched and how many wait, and *Send all matches* hands over the matches played before (a large history takes some days, the relay
+  limits the daily amount). Imported matches are stored like your own and earn achievements for the players the admin matched to
+  local players, without a banner or a sound; other players appear as guests (`name@site`). The color of a player and his
+  private voice entries (the pronunciation of his name, see *Voice caller and voice packs*) follow him to the installations
+  that know him, the latest change wins; the voice files are made again at each installation.
+- **For the admin:** the admin area (`#admin` in the Home app, a sidebar entry appears once a relay address is stored in the
+  browser) logs in to the relay with the admin password, which is stored only as a salted hash at the relay and never on an
+  installation. It approves the installations, keeps the players of the circle, matches the players of each installation to them
+  and ticks the installations that get the matches of each player. It also shows the sync state, the newest records, the usage
+  reports and how close the relay is to the free plan of Cloudflare. *Fetch again* makes an installation fetch everything meant for
+  it once more, after a rule or a match of players changed.
+
+Matches are sent as plain JSON and the relay can read them. A site can switch the sync off at any time; what it sent stays at the
+other sites.
 
 ### Usage reports
 
