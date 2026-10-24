@@ -1,4 +1,5 @@
 import json
+import os
 import logging
 import threading
 import time
@@ -221,6 +222,7 @@ def run_direct(email, password, board_id, record_file=None,
 
     from breakfast.web import server as web
     from breakfast.achievements import AchievementEngine
+    from breakfast.scenes import SceneEngine, run_x01
     from breakfast.stats import StatsDB, StatsTracker
 
     state = GameState()
@@ -241,12 +243,16 @@ def run_direct(email, password, board_id, record_file=None,
         from breakfast import caller as caller_mod
         from breakfast import voicepack
         from breakfast.audio_engine import AudioEngine
-        audio = AudioEngine(voicepack.search_dirs(audio_dir, audio_profile),
-                            broadcast=web.push_sound)
+        audio = AudioEngine(voicepack.search_dirs(audio_dir, audio_profile), broadcast=web.push_sound,
+                            library_dirs=[os.path.join(audio_dir, voicepack.SCENES_SUBDIR)])
         caller = caller_mod.from_config(audio, caller_cfg)
     elif caller_cfg:
         log.warning("[caller] is configured but [audio] dir is not set — "
                     "voice caller disabled")
+
+    scene_engine = SceneEngine(stats_db_instance, audio=audio, overlay=web.push_scene)
+    if caller:
+        scene_engine.ambient_volume = caller.ambient_volume
 
     if achievements:
         achievements.announce(web.push_achievement, audio, sounds=web.assigned_achievement_sounds)
@@ -268,6 +274,7 @@ def run_direct(email, password, board_id, record_file=None,
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
     )
+    elim_ctrl.scenes = scene_engine
     tb_ctrl = TargetBattleController(
         mqtt_pub or NullMqttPublisher(), mqtt_base_topic, stats_db=stats_db_instance,
         audio=audio, on_change=web.push,
@@ -324,8 +331,9 @@ def run_direct(email, password, board_id, record_file=None,
                 pl = pl.get("name", "")
             log.info("Event: %s  player=%s", ev, pl)
         evt = state.update(data)
-        if caller and not data.get("silent"):      # a corrected turn of a match played here makes no calls
-            caller.on_event(evt, state.snapshot())
+        if evt and not data.get("silent"):         # a corrected turn of a match played here makes no calls
+            snapshot = state.snapshot()
+            run_x01(scene_engine, caller, evt, snapshot)
         if stats_tracker:
             stats_tracker.process(data)
         if log_events:
@@ -377,7 +385,8 @@ def run_direct(email, password, board_id, record_file=None,
              stats_tracker=stats_tracker, mqtt_pub=mqtt_pub,
              config_path=config_path, audio_engine=audio,
              board_manager_url=board_manager_url, dev_demo=dev_demo, tb_ctrl=tb_ctrl, killer_ctrl=killer_ctrl, ft_ctrl=ft_ctrl, bb_ctrl=bb_ctrl, co_ctrl=co_ctrl,
-             x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl, wu_ctrl=wu_ctrl, resume_offers=resume_offers)
+             x01_ctrl=x01_ctrl, tournament_ctrl=tournament_ctrl, wu_ctrl=wu_ctrl, resume_offers=resume_offers,
+             scene_engine=scene_engine)
     if web_port:
         web.start(web_port)
         web.start_update_check()

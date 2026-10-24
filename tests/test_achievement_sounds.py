@@ -5,6 +5,7 @@ from starlette.testclient import TestClient
 
 from breakfast import achievement_sounds as snd
 from breakfast import config as cfg_mod
+from breakfast import sound_edit
 from breakfast.achievements import ACHIEVEMENTS, AchievementEngine
 from breakfast.audio_engine import AudioEngine
 from breakfast.stats import StatsDB
@@ -318,6 +319,14 @@ class TestRoutes:
         data = c.get(URL).json()
         assert len(data["achievements"]) == len(ACHIEVEMENTS) and "party.mp3" in data["files"]
 
+    def test_the_list_with_the_conditions_opens_like_the_dev_tab(self, client):
+        c, *_ = client
+        assert "locked" in c.get("/api/dev/achievements").json()["error"]
+        c.post("/api/dev/unlock")
+        rows = c.get("/api/dev/achievements").json()["achievements"]
+        ton_up = next(a for a in rows if a["id"] == "ton_up")
+        assert len(rows) == len(ACHIEVEMENTS) and ton_up["descriptions"]["en"] and ton_up["tiers"] == [1, 10, 100, 1000]
+
     def test_dev_enabled_in_the_config_opens_it_too(self, client):
         c, _, config = client
         cfg_mod.write(config, {"dev": {"enabled": True}})
@@ -389,3 +398,18 @@ class TestRoutes:
         finally:
             server._dev_unlocked = False
             server.wire(None, None)
+
+
+@pytest.mark.skipif(not sound_edit.available(), reason="ffmpeg is not installed")
+class TestEdit:
+    def test_an_edited_sound_is_stored_and_can_replace_a_file(self, client):
+        import subprocess
+        wav = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                              "-f", "wav", "pipe:1"], capture_output=True, check=True).stdout
+        c, engine, _ = client
+        c.post("/api/dev/unlock")
+        assert c.post(f"{URL}/edit?name=cut.mp3&start=0.2&end=1.2&fade_in=0.1", content=wav).json() == {"ok": True, "file": "cut.mp3"}
+        assert "cut.mp3" in c.get(URL).json()["files"]
+        assert "exists" in c.post(f"{URL}/edit?name=cut.mp3&start=0&end=1&source=cut.mp3").json()["error"]
+        assert c.post(f"{URL}/edit?name=cut.mp3&start=0&end=0.5&source=cut.mp3&overwrite=true").json()["ok"] is True
+        assert "not a sound" in c.post(f"{URL}/edit?name=x.mp3&start=0&end=1&source=matchon.mp3").json()["error"]

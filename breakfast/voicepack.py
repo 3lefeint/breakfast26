@@ -29,6 +29,8 @@ PROFILES_SUBDIR = "profiles"
 # Jingles for earned achievements: not spoken, not part of a voice, so they live apart from
 # the calls. Searched last; see achievements.AchievementEngine.announce().
 ACHIEVEMENTS_SUBDIR = "achievements"
+# The sound library of the scenes: files that are played by name from a scene, not the sound of a key.
+SCENES_SUBDIR = "scenes"
 
 
 def search_dirs(audio_dir, profile=None):

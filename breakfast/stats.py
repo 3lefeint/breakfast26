@@ -276,6 +276,13 @@ CREATE TABLE IF NOT EXISTS achievements_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS scenes (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name    TEXT    NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    graph   TEXT    NOT NULL,
+    slug    TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_turns_player ON turns (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_player ON dart_positions (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_match  ON dart_positions (match_id);
@@ -400,6 +407,7 @@ class StatsDB:
             self._conn.execute(
                 "INSERT OR IGNORE INTO achievements_meta (key, value) VALUES ('start', ?)",
                 (_now_iso(),))
+            self._migrate_scenes_slug()
             self._migrate_matches_winner()
             self._migrate_matches_has_bot()
             self._migrate_matches_tournament()
@@ -416,6 +424,41 @@ class StatsDB:
             self._migrate_lowercase_names()
             self._conn.commit()
         log.info("Stats DB: %s", path)
+
+    # ── scenes (see scenes.py) ────────────────────────────────────────────────
+
+    def list_scenes(self) -> list:
+        with self._lock:
+            rows = self._conn.execute("SELECT id, name, enabled, graph, slug FROM scenes ORDER BY id").fetchall()
+        return [{"id": r["id"], "name": r["name"], "enabled": bool(r["enabled"]), "graph": json.loads(r["graph"]),
+                 "slug": r["slug"]} for r in rows]
+
+    def save_scene(self, scene_id, data: dict, slug=None):
+        """Insert a scene (`scene_id` None) or replace one. `slug` marks the edited copy of a default scene. Returns its
+        id, None for an id that does not exist."""
+        values = (data["name"], int(data["enabled"]), json.dumps(data["graph"]))
+        with self._lock:
+            if scene_id is None:
+                scene_id = self._conn.execute(
+                    "INSERT INTO scenes (name, enabled, graph, slug) VALUES (?, ?, ?, ?)", (*values, slug)).lastrowid
+            elif not self._conn.execute(
+                    "UPDATE scenes SET name = ?, enabled = ?, graph = ? WHERE id = ?", (*values, scene_id)).rowcount:
+                return None
+            self._conn.commit()
+        return scene_id
+
+    def delete_scene(self, scene_id) -> bool:
+        with self._lock:
+            deleted = self._conn.execute("DELETE FROM scenes WHERE id = ?", (scene_id,)).rowcount
+            self._conn.commit()
+        return bool(deleted)
+
+    def _migrate_scenes_slug(self):
+        """The scenes table was made without `slug`, the key of the edited copy of a default scene."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(scenes)")}
+        if "slug" not in cols:
+            self._conn.execute("ALTER TABLE scenes ADD COLUMN slug TEXT")
+        self._conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_scenes_slug ON scenes (slug) WHERE slug IS NOT NULL")
 
     def _migrate_matches_winner(self):
         """CREATE TABLE IF NOT EXISTS matches doesn't add columns to an

@@ -1,6 +1,7 @@
+from breakfast.caller import Caller
 from breakfast.caller_x01 import X01Caller
 
-from conftest import FakeAudio
+from conftest import FakeAudio, drive
 
 # Mirrors the real sound inventory: d/t/m field files exist, plain singles
 # don't (announced via number), require_* mostly missing.
@@ -44,6 +45,15 @@ def make(audio=None, **kw):
     audio = audio if audio is not None else FakeAudio(FIELD_SET)
     c = X01Caller(ambient_volume=0, **kw)
     return c, audio
+
+
+def turn(c, audio, evt, snapshot):
+    """An event the way the program handles it: the caller, then the standard scenes."""
+    pipe = getattr(c, "_pipe", None)
+    if pipe is None:
+        pipe = c._pipe = Caller(audio, call_player=c.call_player, ambient_volume=0)
+        pipe.register("X01", c)
+    drive(pipe, evt, snapshot)
 
 
 class TestPerDart:
@@ -110,105 +120,105 @@ class TestPerDart:
 class TestTurnTotal:
     def test_total_after_third_dart(self):
         c, audio = make()
-        c.on_dart(dart(20, 3, dartno=3), snap(turn_score=180), audio)
+        turn(c, audio, dart(20, 3, dartno=3), snap(turn_score=180))
         assert audio.played() == ["t20", "180"]
 
     def test_no_total_on_first_or_second_dart(self):
         c, audio = make()
-        c.on_dart(dart(20, 3, dartno=1), snap(turn_score=60), audio)
-        c.on_dart(dart(20, 3, dartno=2), snap(turn_score=120), audio)
+        turn(c, audio, dart(20, 3, dartno=1), snap(turn_score=60))
+        turn(c, audio, dart(20, 3, dartno=2), snap(turn_score=120))
         assert audio.played() == ["t20", "t20"]
 
     def test_total_disabled(self):
         c, audio = make(turn_total=False)
-        c.on_dart(dart(20, 3, dartno=3), snap(turn_score=180), audio)
+        turn(c, audio, dart(20, 3, dartno=3), snap(turn_score=180))
         assert audio.played() == ["t20"]
 
 
 class TestCheckoutCall:
     def test_checkout_without_require_file_is_skipped(self):
         c, audio = make(announce_change=False)
-        c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end", "mode": "X01"}, snap(remaining=40))
         assert "you_require" not in audio.calls     # no half sentence
         assert audio.calls.count("40") == 0         # never the euphoric number
 
     def test_missing_require_file_still_names_the_player(self):
         c, audio = make()
-        c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end", "mode": "X01"}, snap(remaining=40))
         assert audio.played() == ["anna"]
 
     def test_require_file_used_when_available(self):
         audio = FakeAudio(WITH_REQUIRE)
         c, _ = make(audio)
-        c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end", "mode": "X01"}, snap(remaining=40))
         assert audio.played() == ["anna", "you_require", "require_40"]
 
     def test_bogey_number_is_ambient_only(self):
         c, audio = make()
-        c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=169), audio)
+        turn(c, audio, {"type": "turn_end", "mode": "X01"}, snap(remaining=169))
         assert "you_require" not in audio.calls
 
     def test_above_170_silent(self):
         c, audio = make()
-        c.on_turn_end({"type": "turn_end", "mode": "X01"}, snap(remaining=171), audio)
+        turn(c, audio, {"type": "turn_end", "mode": "X01"}, snap(remaining=171))
         assert "you_require" not in audio.calls
 
     def test_same_remaining_respects_limit(self):
         c, audio = make(FakeAudio(WITH_REQUIRE))
         s = snap(remaining=40)
-        c.on_turn_end({"type": "turn_end"}, s, audio)
-        c.on_turn_end({"type": "turn_end"}, s, audio)   # same score again
+        turn(c, audio, {"type": "turn_end"}, s)
+        turn(c, audio, {"type": "turn_end"}, s)   # same score again
         assert audio.calls.count("you_require") == 1
 
     def test_new_remaining_resets_counter(self):
         c, audio = make(FakeAudio(WITH_REQUIRE))
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=32), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40))
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=32))
         assert audio.calls.count("you_require") == 2
 
     def test_counter_is_per_player(self):
         c, audio = make(FakeAudio(WITH_REQUIRE))
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40, player="anna", idx=0), audio)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40, player="carla", idx=1), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40, player="anna", idx=0))
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40, player="carla", idx=1))
         assert audio.calls.count("you_require") == 2
 
     def test_match_start_resets_counters(self):
         c, audio = make(FakeAudio(WITH_REQUIRE))
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40))
         c.on_match_start(snap())
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40))
         assert audio.calls.count("you_require") == 2
 
     def test_disabled_via_limit_zero(self):
         c, audio = make(checkout_limit=0)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40))
         assert "you_require" not in audio.calls
 
 
 class TestPlayerChange:
     def test_announce_change_calls_incoming_player(self):
         c, audio = make(announce_change=True)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=301), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=301))
         assert audio.played() == ["anna"]
 
     def test_announce_player_falls_back_to_unknown_player_when_name_missing(self):
         # A registered name with no recording gets the generic
         # unknown_player fallback instead of the old player{N} numbering.
         c, audio = make(announce_change=True)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=301, player="ghost"), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=301, player="ghost"))
         assert audio.played() == ["unknown_player"]
 
     def test_announce_change_skipped_when_checkout_called(self):
         c, audio = make(FakeAudio(WITH_REQUIRE), announce_change=True)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=40), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=40))
         assert audio.calls.count("anna") == 1   # once for the checkout call only
 
     def test_announce_change_still_fires_when_limit_exceeded_across_turns(self):
         c, audio = make(FakeAudio(WITH_REQUIRE), announce_change=True, checkout_limit=1)
         s = snap(remaining=40)
-        c.on_turn_end({"type": "turn_end"}, s, audio)   # first time — limit not yet exceeded
+        turn(c, audio, {"type": "turn_end"}, s)   # first time — limit not yet exceeded
         audio.calls.clear()
-        c.on_turn_end({"type": "turn_end"}, s, audio)   # same remaining again — limit exceeded
+        turn(c, audio, {"type": "turn_end"}, s)   # same remaining again — limit exceeded
         assert audio.played() == ["anna"]
         assert "you_require" not in audio.calls
 
@@ -217,10 +227,10 @@ class TestPlayerChange:
 
     def test_announce_change_respects_call_player(self):
         c, audio = make(announce_change=True, call_player=False)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=301), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=301))
         assert audio.calls == []
 
     def test_single_player_no_change_announce(self):
         c, audio = make(announce_change=True)
-        c.on_turn_end({"type": "turn_end"}, snap(remaining=301, players=1), audio)
+        turn(c, audio, {"type": "turn_end"}, snap(remaining=301, players=1))
         assert audio.calls == []

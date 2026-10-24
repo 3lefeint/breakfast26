@@ -22,6 +22,7 @@
   import TopBar from '../home/shell/TopBar.svelte';
   import Aurora from '../lib/components/Aurora.svelte';
   import AchievementBanner from './views/AchievementBanner.svelte';
+  import SceneOverlay from './views/SceneOverlay.svelte';
   import X01View from './views/X01View.svelte';
   import X01BullOffTv from './views/X01BullOffTv.svelte';
   import X01FinishedTv from './views/X01FinishedTv.svelte';
@@ -160,6 +161,8 @@
 <Aurora />
 
 <AchievementBanner />
+
+<SceneOverlay />
 
 <TopBar tv {boardConnected} {mqttOk} {autodartsOk} {wsConnected} {connLabel} title={matchMeta} glowColor={headerGlow}>
   {#snippet titleExtra()}

@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { gameState } from '../../lib/stores/gameState.js';
 import { createPlayer } from '../../lib/audioPlayer.js';
 import { announceAchievement } from '../../lib/stores/achievementQueue.js';
+import { announceSceneOverlay } from '../../lib/stores/sceneOverlay.js';
 
 // The TV view's WS connection + voice-call playback. The TV view is the audio-role device by default
 // (the one meant to be heard next to the board), so while it is shown it holds a socket with a `?role=audio`
@@ -46,6 +47,7 @@ function open() {
     if (msg.type === 'sound') { handleSound(msg); return; }
     if (msg.type === 'sound_batch') { handleSoundBatch(msg); return; }
     if (msg.type === 'achievement') { announceAchievement(msg); return; }
+    if (msg.type === 'scene_overlay') { announceSceneOverlay(msg); return; }
     gameState.set(msg);
   };
 }

@@ -1,10 +1,19 @@
 import contextlib
 
+import pytest
+
 from breakfast import elimination
 from breakfast.elimination import EliminationController, EliminationGame
 from breakfast.turn_game import dart_value, parse_field
 from breakfast.mqtt_output import NullMqttPublisher
 from breakfast.stats import StatsDB
+
+
+@pytest.fixture(autouse=True)
+def chances_hit(monkeypatch):
+    """The calls with a chance (a comment on a missed dart, `nice`, `close`) come from chance nodes of the default scenes:
+    every chance hits, so the order of the calls can be asserted."""
+    monkeypatch.setattr("breakfast.scenes.random.random", lambda: 0.0)
 
 
 def _throw(number, multiplier):

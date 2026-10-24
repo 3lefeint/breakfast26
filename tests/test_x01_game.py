@@ -1,5 +1,6 @@
 import pytest
 
+from tests.conftest import drive
 from breakfast.state import GameState
 from breakfast.stats import StatsDB, StatsTracker
 from breakfast.x01_game import X01Controller, X01Game
@@ -502,7 +503,7 @@ class TestScreens:
         audio = FakeAudio({"ana", "bo", "matchon", "20"})
         caller = from_config(audio, {})
         m = Match()
-        m.game._emit_to = lambda data: (m.events.append(data), caller.on_event(m.state.update(data), m.state.snapshot()),
+        m.game._emit_to = lambda data: (m.events.append(data), drive(caller, m.state.update(data), m.state.snapshot()),
                                         m.tracker.process(data))
         audio.calls.clear()
         play(m.game, hit(20, 1))
@@ -559,7 +560,7 @@ class TestCalls:
             m.events.append(data)
             evt = m.state.update(data)
             if not data.get("silent"):
-                caller.on_event(evt, m.state.snapshot())
+                drive(caller, evt, m.state.snapshot())
             m.tracker.process(data)
 
         m.game._emit_to = emit

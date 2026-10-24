@@ -21,6 +21,9 @@ from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
 from breakfast import achievement_sounds as ach_sounds
+from breakfast import scene_sounds
+from breakfast import scenes as scenes_mod
+from breakfast import scenes_default as scenes_default_mod
 from breakfast.bot import X01_LEVELS
 from breakfast import achievements as ach_mod
 from breakfast import config as cfg_mod
@@ -78,6 +81,7 @@ _start_time: float = time.time()
 _config_path: str | None = None
 _CHANGELOG_PATH = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
 _audio_engine = None
+_scene_engine = None
 _board_manager_url: str | None = None
 _voicepack_status = {"running": False, "done": 0, "skipped": 0, "total": 0, "error": None}
 _dev_demo = None
@@ -94,10 +98,11 @@ def wire(game_state, elim_ctrl,
          cloud_client=None, stats_tracker=None, mqtt_pub=None, config_path=None,
          audio_engine=None, board_manager_url: str | None = None, dev_demo=None,
          tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None, tournament_ctrl=None,
-         wu_ctrl=None, resume_offers=None):
-    global _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
+         wu_ctrl=None, resume_offers=None, scene_engine=None):
+    global _scene_engine, _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
            _dev_demo, _online, _locations, _circle, _elim_beat_hint
+    _scene_engine = scene_engine
     _game_state = game_state
     _elim_ctrl = elim_ctrl
     _tb_ctrl = tb_ctrl
@@ -118,6 +123,8 @@ def wire(game_state, elim_ctrl,
     _stats_db = stats_tracker._db if stats_tracker else None
     _mqtt_pub = mqtt_pub
     _config_path = config_path
+    if _scene_engine and config_path:
+        _scene_engine.fun = bool(cfg_mod.load(config_path).get("caller", {}).get("fun", False))
     _circle = None
     if _locations and _stats_db:
         _circle = circle_sync_mod.CircleSync(_stats_db, _locations, config_path, __version__,
@@ -302,6 +309,12 @@ def push_sound(instruction: dict):
 
 def push_achievement(message: dict):
     """Call from any thread to tell every browser client about an earned achievement."""
+    if _loop and _loop.is_running() and _clients:
+        asyncio.run_coroutine_threadsafe(_send_to(_clients, message), _loop)
+
+
+def push_scene(message: dict):
+    """Call from any thread to show a scene's overlay on every browser client (the TV views draw it)."""
     if _loop and _loop.is_running() and _clients:
         asyncio.run_coroutine_threadsafe(_send_to(_clients, message), _loop)
 
@@ -2127,6 +2140,7 @@ async def get_config():
             "call_player":     caller.get("call_player", True),
             "ambient_volume":  caller.get("ambient_volume", 0.6),
             "call_misses":     caller.get("call_misses", True),
+            "fun":             caller.get("fun", False),
         },
         "record": {
             "file": record.get("file"),
@@ -2200,6 +2214,9 @@ async def patch_config(body: dict):
     if "elimination_beat_hint" in updates.get("web", {}):
         _elim_beat_hint = updates["web"]["elimination_beat_hint"] is True
         push()
+
+    if "fun" in updates.get("caller", {}) and _scene_engine:
+        _scene_engine.fun = updates["caller"]["fun"] is True
 
     if "telemetry" in updates and telemetry_mod.get():
         telemetry_mod.get().settings_changed()
@@ -2788,6 +2805,29 @@ async def admin_delete_achievement_sound(filename: str):
     return {"ok": True}
 
 
+@app.post("/api/admin/achievement-sounds/edit")
+async def admin_edit_achievement_sound(request: Request, name: str = Query(...), start: float = Query(0),
+                                       end: float = Query(...), fade_in: float = Query(0), fade_out: float = Query(0),
+                                       source: str = Query(""), overwrite: bool = Query(False), trim: float = Query(0), curve_in: float = Query(1),
+                           curve_out: float = Query(1)):
+    """Cut, fade and level a sound into the achievements folder. The source is the request body (any audio file) or
+    `source`, a file of the folder."""
+    locked = _admin_locked()
+    if locked:
+        return locked
+    data = await request.body()
+    if source:
+        if not ach_sounds.playable(_audio_engine, source):
+            return {"error": "not a sound of the achievements folder"}
+        data = (ach_sounds.sound_dir(_audio_engine) / source).read_bytes()
+    problem = await asyncio.to_thread(ach_sounds.save_edit, _audio_engine, name, data, start, end, fade_in, fade_out,
+                                      overwrite, trim, curve_in, curve_out)
+    if problem:
+        return {"error": problem}
+    log.info("Achievement sound edited: %s (%.2f to %.2f s)", name, start, end)
+    return {"ok": True, "file": name}
+
+
 @app.post("/api/admin/achievement-sounds/upload")
 async def admin_upload_achievement_sound(request: Request, name: str = Query(...)):
     """Upload an mp3 into the achievements folder; the file is the request body."""
@@ -2800,6 +2840,152 @@ async def admin_upload_achievement_sound(request: Request, name: str = Query(...
         return {"error": problem}
     log.info("Achievement sound uploaded: %s (%d bytes)", name, len(data))
     return {"ok": True, "file": name}
+
+
+# ── REST: scenes ──────────────────────────────────────────────────────────────
+
+_SCENE_SAMPLE = {"score": 180, "remaining": 100, "leg": 1, "target": 60, "lives": 2, "next": 61, "freipass": 0, "margin": 60,
+                 "close": 0, "preview": 1, "last": 0, "announce": 1, "change": 1, "total": 1, "checkout": 0,
+                 "combo": "t20t20t20", "bracket": 150, "number": 20, "multiplier": 3, "points": 60, "dart": 1, "miss": 0}
+
+
+class SceneBody(BaseModel):
+    name: str = ""
+    enabled: bool = True
+    graph: dict = {}
+
+
+def _scene_list() -> list:
+    return _scene_engine.scenes() if _scene_engine else []
+
+
+@app.get("/api/scenes")
+async def get_scenes():
+    """The scenes, the events and building blocks the editor offers, and the sound library."""
+    return {
+        "available": _scene_engine is not None,
+        "scenes": _scene_list(),
+        "events": {k: {"label": v["label"], "game": v["game"], "fields": v["fields"]}
+                   for k, v in scenes_mod.EVENTS.items()},
+        "operators": list(scenes_mod.OPERATORS),
+        "animations": list(scenes_mod.ANIMATIONS),
+        "call_keys": [*scenes_default_mod.TOKENS, *scenes_default_mod.CALL_KEYS],
+        "achievements": [{"id": a.id, "name": a.names.get("en") or a.id, "tiers": len(a.tiers) if a.tiers else 1}
+                         for a in ach_mod.ACHIEVEMENTS],
+        "sounds": scene_sounds.overview(_audio_engine, _scene_list()),
+    }
+
+
+def _scene_ref(ref: str):
+    """The id of a scene of the user (a number) or the slug of a default scene, None when it is neither."""
+    if ref.isdigit():
+        return int(ref)
+    return ref if ref in scenes_default_mod.BY_SLUG else None
+
+
+def _save_scene(ref, body: SceneBody):
+    if not _scene_engine:
+        return {"error": "scenes are not available"}
+    saved = _scene_engine.save(ref, scenes_mod.clean_scene(body.model_dump()))
+    if saved is None:
+        return {"error": "unknown scene"}
+    return {"ok": True, "id": saved}
+
+
+@app.post("/api/scenes")
+async def create_scene(body: SceneBody):
+    return _save_scene(None, body)
+
+
+@app.put("/api/scenes/{ref}")
+async def update_scene(ref: str, body: SceneBody):
+    ref = _scene_ref(ref)
+    return _save_scene(ref, body) if ref is not None else {"error": "unknown scene"}
+
+
+@app.delete("/api/scenes/{ref}")
+async def delete_scene(ref: str):
+    """Delete a scene of the user; for a default scene this takes an edited copy away (a reset)."""
+    ref = _scene_ref(ref)
+    if not _scene_engine or ref is None or not _scene_engine.delete(ref):
+        return {"error": "unknown scene"}
+    return {"ok": True}
+
+
+@app.post("/api/scenes/{ref}/test")
+async def test_scene(ref: str):
+    """Run a scene once for each of its triggers with sample values, whether it is switched on or not. It is heard
+    and seen on the connected views."""
+    ref = _scene_ref(ref)
+    scene = _scene_engine.find(ref) if _scene_engine and ref is not None else None
+    if not scene:
+        return {"error": "unknown scene"}
+    trace = []
+    for node in scene["graph"]["nodes"]:
+        if node["type"] == "trigger":
+            _scene_engine.fire(node["event"], {"player": "test", **_SCENE_SAMPLE}, only=scene["id"], trace=trace)
+    return {"ok": True, "trace": trace}
+
+
+@app.get("/api/scenes/audio-clients")
+async def scene_audio_clients():
+    """How many audio pages (the /audio page, the TV views with sound) are connected: the Scenes page checks it
+    before a test, so a sound is not played twice."""
+    return {"count": audio_client_count()}
+
+
+@app.post("/api/scenes/sounds/upload")
+async def upload_scene_sound(request: Request, name: str = Query(...)):
+    """Upload an mp3 into the sound library; the file is the request body."""
+    data = await request.body()
+    problem = scene_sounds.save_upload(_audio_engine, name, data)
+    if problem:
+        return {"error": problem}
+    log.info("Scene sound uploaded: %s (%d bytes)", name, len(data))
+    return {"ok": True, "file": name}
+
+
+@app.post("/api/scenes/sounds/edit")
+async def edit_scene_sound(request: Request, name: str = Query(...), start: float = Query(0), end: float = Query(...),
+                           fade_in: float = Query(0), fade_out: float = Query(0), source: str = Query(""),
+                           overwrite: bool = Query(False), trim: float = Query(0), curve_in: float = Query(1),
+                           curve_out: float = Query(1)):
+    """Cut, fade and level a sound into the library under *name*. The source is the request body (any audio file) or
+    `source`, a file of the library."""
+    data = await request.body()
+    if source:
+        path = scene_sounds.folder(_audio_engine)
+        if source not in scene_sounds.files(_audio_engine) or path is None:
+            return {"error": "not a sound of the library"}
+        data = (path / source).read_bytes()
+    problem = await asyncio.to_thread(scene_sounds.save_edit, _audio_engine, name, data, start, end, fade_in, fade_out,
+                                      overwrite, trim, curve_in, curve_out)
+    if problem:
+        return {"error": problem}
+    log.info("Scene sound edited: %s (%.2f to %.2f s)", name, start, end)
+    return {"ok": True, "file": name}
+
+
+class SoundRenameBody(BaseModel):
+    name: str = ""
+
+
+@app.post("/api/scenes/sounds/{filename}/rename")
+async def rename_scene_sound(filename: str, body: SoundRenameBody):
+    problem = scene_sounds.rename_file(_audio_engine, _scene_engine, filename, body.name)
+    if problem:
+        return {"error": problem}
+    log.info("Scene sound renamed: %s to %s", filename, body.name)
+    return {"ok": True, "file": body.name}
+
+
+@app.delete("/api/scenes/sounds/{filename}")
+async def delete_scene_sound(filename: str):
+    problem = scene_sounds.delete_file(_audio_engine, filename)
+    if problem:
+        return {"error": problem}
+    log.info("Scene sound deleted: %s", filename)
+    return {"ok": True}
 
 
 # ── REST: dev demo ────────────────────────────────────────────────────────────
@@ -2829,6 +3015,18 @@ async def dev_unlock():
     _dev_unlocked = True
     log.info("Dev tab unlocked for this run (version-number tap)")
     return {"unlocked": True}
+
+
+@app.get("/api/dev/achievements")
+async def dev_achievements():
+    """Every achievement with its condition, for the list in the Dev tab (secret ones included, so it opens like the Dev tab)."""
+    if not _dev_enabled():
+        return {"error": "locked: unlock the Dev tab first"}
+    return {"achievements": [
+        {"id": a.id, "mode": a.mode, "difficulty": a.difficulty, "names": a.names, "descriptions": a.descriptions,
+         "applies": a.game_modes, "hidden": a.hidden, "label": a.label, "motif": a.motif or a.id, "tiers": list(a.tiers) if a.tiers else None,
+         "peak": a.peak, "practice": a.practice, "live": a.live}
+        for a in ach_mod.ACHIEVEMENTS]}
 
 
 @app.post("/api/dev/demo/x01")
