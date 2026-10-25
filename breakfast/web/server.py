@@ -105,6 +105,7 @@ _audio_engine = None
 _scene_engine = None
 _board_manager_url: str | None = None
 _streamdeck = None
+_web_port = 8080
 _voicepack_status = {"running": False, "done": 0, "skipped": 0, "total": 0, "error": None}
 _dev_demo = None
 _elim_beat_hint = False   # `[web] elimination_beat_hint`, kept here because every push sends it
@@ -162,7 +163,7 @@ def wire(game_state, elim_ctrl,
         _streamdeck.stop()
     _streamdeck = None
     if config_path and game_state:
-        _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control)
+        _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control, web_base=lambda: f"http://127.0.0.1:{_web_port}")
         _streamdeck.board_status = game_state.board_status
         game_state.board_status_listeners.append(_streamdeck.on_board_status)
     _dev_demo = dev_demo
@@ -3568,6 +3569,7 @@ class StreamDeckBody(BaseModel):
     enabled: bool | None = None
     brightness: int | None = None
     keys: list[dict] | None = None
+    actions: list[dict] | None = None
 
 
 @app.put("/api/streamdeck")
@@ -3804,7 +3806,8 @@ async def hidden_players():
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 def start(port: int = 8080):
-    global _loop
+    global _loop, _web_port
+    _web_port = port
     _loop = asyncio.new_event_loop()
 
     def run():

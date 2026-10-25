@@ -129,6 +129,15 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 #     { key = 0, action = "reset_board", label = "Reset Board", color = "status", hold = 0.8 },   # hold = seconds to hold, 0 runs on the press
 #     { key = 1, action = "start_board", label = "Start Board", color = "status", hold = 0 },
 # ]
+# Custom actions a key can run besides the built-in ones (kind "route": a path under /api/ of Breakfast, kind "url": any
+# http(s) address with an optional body):
+# [[streamdeck.actions]]
+# id = "custom-1"
+# name = "Lamp on"
+# kind = "url"
+# method = "POST"
+# target = "http://homeassistant.local:8123/api/webhook/lamp-on"
+# body = ""
 
 # ── Dev mode ──────────────────────────────────────────────────────────────────
 # Exposes a Settings "Dev" tab to simulate a full X01 leg or Elimination match
