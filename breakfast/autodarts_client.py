@@ -148,6 +148,9 @@ class AutodartsCloudClient:
     """Connects to the Autodarts cloud WebSocket and translates match-state snapshots
     into darts-caller-compatible events, delivered via the on_event callback."""
 
+    _RETRY_MIN = 3     # seconds between reconnect attempts, doubled per failed attempt
+    _RETRY_MAX = 60
+
     def __init__(self, *, email: str, password: str, board_id: str, on_event, on_turn_darts=None):
         self._board_id = board_id
         self._on_event = on_event
@@ -158,6 +161,8 @@ class AutodartsCloudClient:
 
         # Connection state
         self._ws_connected = False
+        self._outage_since: float | None = None   # set at the first failure of an outage, None while connected
+        self._retry_delay = self._RETRY_MIN
 
         # Match tracking
         self._match_lock = threading.Lock()
@@ -434,14 +439,15 @@ class AutodartsCloudClient:
 
     def _connect(self):
         def run():
-            log.info("Connecting to %s", _AUTODARTS_WS_URL)
+            (log.debug if self._outage_since else log.info)("Connecting to %s", _AUTODARTS_WS_URL)
             try:
                 ws = websocket.WebSocketApp(
                     _AUTODARTS_WS_URL,
                     header=self._auth_header(),
                     on_open=self._on_open,
                     on_message=self._on_message,
-                    on_error=lambda ws, e: log.error("WS error: %s: %s", type(e).__name__, e),
+                    on_error=lambda ws, e: self._log_failure(
+                        log.error, "WS error: %s: %s", type(e).__name__, e),
                     # Reconnect happens below after run_forever() returns —
                     # only mark the connection state here (visible in /api/health).
                     on_close=self._mark_closed,
@@ -449,14 +455,19 @@ class AutodartsCloudClient:
                 ws.run_forever()
                 log.debug("run_forever() returned")
             except Exception as e:
-                log.error("WS thread crashed: %s: %s", type(e).__name__, e)
-            time.sleep(3)
+                self._log_failure(log.error, "WS thread crashed: %s: %s", type(e).__name__, e)
+            time.sleep(self._retry_delay)
+            self._retry_delay = min(self._retry_delay * 2, self._RETRY_MAX)
             self._connect()
 
         threading.Thread(target=run, daemon=True, name="autodarts-ws").start()
 
     def _on_open(self, ws):
         self._ws_connected = True
+        if self._outage_since is not None:
+            log.info("Connection restored after %ds", time.time() - self._outage_since)
+            self._outage_since = None
+        self._retry_delay = self._RETRY_MIN
         log.info("WS open, subscribing…")
         try:
             # Resume any active match
@@ -487,7 +498,15 @@ class AutodartsCloudClient:
         # Was never wired before (a debug lambda shadowed it), so
         # /api/health kept showing "connected" after a drop.
         self._ws_connected = False
-        log.warning("WS closed (%s: %s), reconnecting…", code, msg)
+        self._log_failure(log.warning, "WS closed (%s: %s), reconnecting…", code, msg)
+
+    def _log_failure(self, level, fmt, *args):
+        """Log the first failure of an outage at `level`, the repeats of the retry loop at debug."""
+        if self._outage_since is None:
+            self._outage_since = time.time()
+            level(fmt, *args)
+        else:
+            log.debug(fmt, *args)
 
     def _on_message(self, ws, raw):
         # Messages are queued and handled by one worker thread so they are
