@@ -2,9 +2,10 @@
 
 The device is driven over USB by Breakfast itself (python-elgato-streamdeck), so no other software has to run next to
 it. The layout lives in `[streamdeck]` of config.toml: `enabled`, `brightness` and `keys`, a list of
-`{key, action, label, color, hold, image}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
+`{key, action, label, color, hold, image, show}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
 `hold` is the seconds the key has to be held to run its action, 0 runs it on the press; `image` is empty, a symbol
-of Breakfast (`symbol:undo`) or a png, jpg or webp file uploaded into the `streamdeck` folder next to config.toml). `actions` holds the custom
+of Breakfast (`symbol:undo`) or a png, jpg or webp file uploaded into the `streamdeck` folder next to config.toml; `show`
+makes a display key that shows a value of the game in play (SHOW_VALUES), with or without an action). `actions` holds the custom
 actions a key can run besides the built-in ones: `{id, name, kind, method, target, body}`, a route of Breakfast or any
 web address.
 
@@ -48,6 +49,10 @@ HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_TIMEOUT_SECONDS = 5
 SYMBOLS = ("reset", "start", "undo", "next_player", "next_game")   # drawn by Breakfast, no file needed
 SYMBOL_PREFIX = "symbol:"
+SHOW_VALUES = ("player", "remaining", "lives", "darts", "round")   # what a display key shows of the game in play
+FLASH_SECONDS = 3
+FLASH_STEP_SECONDS = 0.4
+FLASH_COLOR = "#e6a800"
 IMAGE_NAME = re.compile(r"^\w[\w .\-]{0,78}\.(png|jpe?g|webp)$", re.IGNORECASE)
 MAX_IMAGE_BYTES = 2_000_000
 IMAGE_DIR_NAME = "streamdeck"       # next to config.toml
@@ -133,9 +138,15 @@ def clean_keys(keys, custom_ids=()):
         key = entry.get("key")
         if not isinstance(key, int) or isinstance(key, bool) or not 0 <= key < MAX_KEYS:
             raise ValueError("key must be a number from 0 to %d" % (MAX_KEYS - 1))
-        action = entry.get("action")
-        if action not in ACTIONS and action not in custom_ids:
-            raise ValueError(f"unknown action: {action}")
+        action = entry.get("action") or ""
+        show = entry.get("show") or ""
+        if show and show not in SHOW_VALUES:
+            raise ValueError(f"unknown value to show: {show}")
+        if action:
+            if action not in ACTIONS and action not in custom_ids:
+                raise ValueError(f"unknown action: {action}")
+        elif not show:
+            raise ValueError("a key needs an action or a value to show")
         label = entry.get("label")
         label = ACTIONS.get(action, "") if label is None else str(label)[:40]
         color = entry.get("color", "status")
@@ -147,7 +158,7 @@ def clean_keys(keys, custom_ids=()):
         image = entry.get("image", "")
         if not valid_image(image):
             raise ValueError("image must be empty, symbol:<name> or the name of an uploaded png, jpg or webp file")
-        out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image}
+        out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image, "show": show}
     return [out[k] for k in sorted(out)]
 
 
@@ -173,11 +184,11 @@ def _rgb(hex_color):
     return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def render_key(label, hex_color, size, progress=None, image=None, symbol=None):
+def render_key(label, hex_color, size, progress=None, image=None, symbol=None, value=None):
     """A square key image: the color as background and the label centered, black or white text by brightness.
     With a picture (`image`, a PIL image) the picture fills the key inside a frame of the color and the label sits on a
     band at the bottom; with a `symbol` the symbol is drawn on the color. `progress` (0 to 1) adds a bar along the
-    bottom, the hold of a key that has to be held."""
+    bottom, the hold of a key that has to be held. A `value` (text) is drawn large with the label small below it."""
     from PIL import Image, ImageDraw
 
     w, h = size
@@ -185,7 +196,12 @@ def render_key(label, hex_color, size, progress=None, image=None, symbol=None):
     ink = (0, 0, 0) if (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 > 140 else (255, 255, 255)
     img = Image.new("RGB", (w, h), rgb)
     draw = ImageDraw.Draw(img)
-    if image is not None:
+    if value is not None:
+        top = round(h * 0.68) if label else h
+        _draw_label(img, value, ink, (0, 0, w, top), big=True)
+        if label:
+            _draw_label(img, label, ink, (0, top - 2, w, h))
+    elif image is not None:
         frame = max(3, h // 10)
         img.paste(_cover(image, (w - 2 * frame, h - 2 * frame)), (frame, frame))
         if label:
@@ -264,15 +280,15 @@ def _draw_symbol(draw, name, area, ink):
         draw.polygon([(cx + r * 0.15, cy - r * 0.55), (cx + r * 0.15, cy + r * 0.75), (cx + r * 1.0, cy + r * 0.1)], fill=ink)
 
 
-def _draw_label(img, label, ink, area):
-    """The label centered in `area` (x0, y0, x1, y1), as large as fits."""
+def _draw_label(img, label, ink, area, big=False):
+    """The label centered in `area` (x0, y0, x1, y1), as large as fits (`big` starts from a larger size, for a value)."""
     from PIL import ImageDraw, ImageFont
 
     x0, y0, x1, y1 = (round(v) for v in area)
     w, h = x1 - x0, y1 - y0
     draw = ImageDraw.Draw(img)
     words = label.split()
-    for pt in range(max(10, h // 3 if h < img.size[1] else img.size[1] // 4), 7, -1):
+    for pt in range(max(10, round(h * 0.8) if big else (h // 3 if h < img.size[1] else img.size[1] // 4)), 7, -1):
         font = ImageFont.load_default(size=pt)
         lines = _wrap(draw, words, font, w - 8)
         height = sum(draw.textbbox((0, 0), ln, font=font)[3] + 4 for ln in lines)
@@ -326,13 +342,18 @@ class StreamDeckService:
     the seams the tests replace."""
 
     def __init__(self, config_path, run_control, enumerate_decks=None, to_native=None, reconnect_seconds=RECONNECT_SECONDS,
-                 web_base=lambda: "http://127.0.0.1:8080", request=None):
+                 web_base=lambda: "http://127.0.0.1:8080", request=None, values=None):
         self.config_path = config_path
         self.run_control = run_control
         self._enumerate = enumerate_decks or _enumerate_decks
         self._to_native = to_native or _to_native
         self._reconnect = reconnect_seconds
         self._web_base = web_base           # where the routes of Breakfast itself answer
+        self._values = values or (lambda: None)   # what a display key can show of the game in play
+        self._vals = None                   # the last result of it, read outside the lock
+        self._shown = {}                    # key -> the value text the key shows now
+        self._flash_until = 0
+        self._flash_phase = False
         self._request = request             # the HTTP call of a custom action, replaced in the tests
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -412,6 +433,8 @@ class StreamDeckService:
     def _run(self):
         while not self._stop.is_set():
             try:
+                if self._deck is not None:
+                    self.refresh_values()
                 with self._lock:
                     if not self.enabled():
                         self._close()
@@ -426,6 +449,7 @@ class StreamDeckService:
             self._stop.wait(self._reconnect)
 
     def _connect(self):
+        self._vals = None            # read again with the next round of the loop; the first drawing shows the labels
         try:
             decks = self._enumerate()
         except Exception as e:
@@ -492,7 +516,61 @@ class StreamDeckService:
         if not entry:
             return render_key("", STATUS_COLORS["off"], size)
         picture, symbol = self._picture(entry["image"])
-        return render_key(entry["label"], key_hex(entry, self.board_status), size, progress, picture, symbol)
+        value = self._value_of(entry)
+        self._shown[entry["key"]] = value
+        color = FLASH_COLOR if self._flash_on(entry) else key_hex(entry, self.board_status)
+        return render_key(entry["label"], color, size, progress, picture, symbol, value)
+
+    def _value_of(self, entry):
+        """The text a display key shows now, None for any other key or while the game has no such value."""
+        if not entry["show"] or not self._vals:
+            return None
+        value = self._vals.get(entry["show"])
+        return None if value is None else str(value)
+
+    def _flash_on(self, entry):
+        return bool(entry["show"]) and self._flash_phase and time.monotonic() < self._flash_until
+
+    # ---- the game ----
+    def refresh_values(self):
+        """Read the game once, outside the lock of the device: a game holds its own lock while it tells the page."""
+        try:
+            self._vals = self._values()
+        except Exception:
+            self._vals = None
+
+    def on_game_change(self):
+        """Called whenever the state of a game changes: redraw the display keys whose value is not the one shown."""
+        if self._deck is None:
+            return
+        self.refresh_values()
+        with self._lock:
+            for entry in self.keys():
+                if entry["show"] and self._value_of(entry) != self._shown.get(entry["key"]):
+                    self._draw_key(entry["key"], entry)
+
+    def flash(self, seconds=FLASH_SECONDS):
+        """Make the display keys flash, for an earned achievement."""
+        if self._deck is None:
+            return
+        with self._lock:
+            running = time.monotonic() < self._flash_until
+            self._flash_until = time.monotonic() + seconds
+        if not running:
+            threading.Thread(target=self._flash, name="streamdeck-flash", daemon=True).start()
+
+    def _flash(self):
+        self._flash_phase = True
+        while time.monotonic() < self._flash_until and not self._stop.is_set():
+            with self._lock:
+                for entry in self.keys():
+                    if entry["show"]:
+                        self._draw_key(entry["key"], entry)
+            self._flash_phase = not self._flash_phase
+            time.sleep(FLASH_STEP_SECONDS)
+        self._flash_phase = False
+        with self._lock:
+            self._draw()
 
     # ---- images ----
     def image_dir(self):
@@ -571,6 +649,7 @@ class StreamDeckService:
         entry = next((k for k in self.keys() if k["key"] == key), None)
         if entry is None:
             return None
+        self.refresh_values()
         out = io.BytesIO()
         self._render(entry, PREVIEW_SIZE).save(out, "PNG")
         return out.getvalue()
@@ -585,6 +664,8 @@ class StreamDeckService:
                 return
             entry = next((k for k in self.keys() if k["key"] == key), None)
             if entry is None:
+                return
+            if not entry["action"]:
                 return
             if entry["hold"] > 0:
                 cancelled = self._holds[key] = threading.Event()
@@ -658,6 +739,7 @@ class StreamDeckService:
 
     # ---- state for the page ----
     def snapshot(self):
+        self.refresh_values()
         with self._lock:
             deck = self._deck
             rows, cols = (deck.key_layout() if deck is not None else (DEFAULT_ROWS, DEFAULT_COLS))
@@ -679,5 +761,6 @@ class StreamDeckService:
                 "custom_actions": self.actions(),
                 "images": self.images(),
                 "symbols": list(SYMBOLS),
-                "keys": [{**k, "shown": key_hex(k, self.board_status)} for k in keys],
+                "show_values": list(SHOW_VALUES),
+                "keys": [{**k, "shown": key_hex(k, self.board_status), "value": self._value_of(k)} for k in keys],
             }

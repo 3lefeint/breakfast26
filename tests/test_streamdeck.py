@@ -40,8 +40,8 @@ class TestStatusColor:
 class TestCleanKeys:
     def test_valid_keys_are_sorted_and_filled_in(self):
         keys = sd.clean_keys([{"key": 2, "action": "undo"}, {"key": 0, "action": "reset_board", "label": "Reset", "color": "#FF0000"}])
-        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000", "hold": 0, "image": ""},
-                        {"key": 2, "action": "undo", "label": "Undo", "color": "status", "hold": 0, "image": ""}]
+        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000", "hold": 0, "image": "", "show": ""},
+                        {"key": 2, "action": "undo", "label": "Undo", "color": "status", "hold": 0, "image": "", "show": ""}]
 
     def test_the_last_entry_for_a_key_wins(self):
         keys = sd.clean_keys([{"key": 1, "action": "undo"}, {"key": 1, "action": "next_game"}])
@@ -150,7 +150,7 @@ class TestService:
         service.on_board_status("Throw")
         snap = service.snapshot()
         assert (snap["rows"], snap["cols"]) == (sd.DEFAULT_ROWS, sd.DEFAULT_COLS)
-        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "hold": 0, "image": "", "shown": sd.STATUS_COLORS["green"]}]
+        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "hold": 0, "image": "", "show": "", "shown": sd.STATUS_COLORS["green"], "value": None}]
 
     def test_update_refuses_bad_values_and_writes_nothing(self, service):
         with pytest.raises(ValueError):
@@ -362,6 +362,125 @@ class TestImages:
             assert sd.render_key("", "#1faa59", (72, 72), symbol=name).tobytes() != blank
 
 
+class TestDisplayKeys:
+    @pytest.fixture
+    def game(self, service):
+        game = {"values": None}
+        service._values = lambda: game["values"]
+        service.draws = []
+        original = FakeDeck.set_key_image
+        service.deck.set_key_image = lambda i, img: (service.draws.append(i), original(service.deck, i, img))[1]
+        service.update(enabled=True, keys=[{"key": 0, "action": "", "show": "remaining", "label": "Score", "color": "#0000ff"},
+                                           {"key": 1, "action": "undo", "show": "player", "label": "Who"}])
+        with service._lock:
+            service._connect()
+        service.draws.clear()
+        return game
+
+    def test_a_key_needs_an_action_or_a_value(self):
+        assert sd.clean_keys([{"key": 0, "show": "round"}])[0]["action"] == ""
+        for bad in ([{"key": 0}], [{"key": 0, "action": ""}], [{"key": 0, "show": "nonsense"}], [{"key": 0, "action": "undo", "show": 5}]):
+            with pytest.raises(ValueError):
+                sd.clean_keys(bad)
+
+    def test_the_key_shows_the_label_until_a_game_runs(self, service, game):
+        before = service.deck.images[0].tobytes()
+        game["values"] = {"remaining": 170, "player": "anna"}
+        service.on_game_change()
+        assert service.deck.images[0].tobytes() != before
+        assert service.snapshot()["keys"][0]["value"] == "170" and service.snapshot()["keys"][1]["value"] == "anna"
+        game["values"] = None
+        service.on_game_change()
+        assert service.deck.images[0].tobytes() == before and service.snapshot()["keys"][0]["value"] is None
+
+    def test_only_a_changed_value_is_drawn_again(self, service, game):
+        game["values"] = {"remaining": 170, "player": "anna"}
+        service.on_game_change()
+        assert sorted(service.draws) == [0, 1]
+        service.draws.clear()
+        service.on_game_change()
+        game["values"] = {"remaining": 130, "player": "anna"}
+        service.on_game_change()
+        assert service.draws == [0]
+
+    def test_a_value_that_does_not_apply_falls_back_to_the_label(self, service, game):
+        game["values"] = {"remaining": None, "player": "ben"}
+        service.on_game_change()
+        assert service.snapshot()["keys"][0]["value"] is None
+
+    def test_a_display_key_without_action_does_nothing_when_pressed(self, service, game):
+        service.deck.callback(service.deck, 0, True)
+        assert service.calls == []
+        service.deck.callback(service.deck, 1, True)           # a display key with an action still runs it
+        assert service.calls == ["undo"]
+
+    def test_a_failing_game_read_shows_the_labels(self, service, game):
+        def broken():
+            raise RuntimeError
+        service._values = broken
+        service.on_game_change()
+        assert service.snapshot()["keys"][0]["value"] is None
+
+    def test_the_display_keys_flash_and_are_normal_again(self, service, game, monkeypatch):
+        monkeypatch.setattr(sd, "FLASH_STEP_SECONDS", 0.02)
+        normal = service.deck.images[0].tobytes()
+        service.flash(0.15)
+        _wait(lambda: service.deck.images[0].getpixel((0, 0)) == (0xe6, 0xa8, 0x00))
+        _wait(lambda: service.deck.images[0].tobytes() == normal and not service._flash_phase)
+
+    def test_a_flash_without_a_device_does_nothing(self, service):
+        service.flash()
+        assert service._flash_until == 0
+
+
+class TestGameValues:
+    class Ctrl:
+        def __init__(self, snap, state="playing"):
+            self.game = type("G", (), {"state": state, "snapshot": lambda self_: snap})()
+
+    def test_x01_gives_the_player_on_turn_and_his_score(self):
+        from breakfast.web import server
+        snap = {"current_player": "anna", "round": 3, "current_darts": [20, 5],
+                "players": [{"name": "ben", "remaining": 301, "current": False}, {"name": "anna", "remaining": 170, "current": True}]}
+        server.wire(None, None, x01_ctrl=self.Ctrl(snap))
+        try:
+            assert server._game_values() == {"player": "anna", "remaining": 170, "lives": None, "darts": 2, "round": 3}
+        finally:
+            server.wire(None, None)
+
+    def test_elimination_gives_the_lives(self):
+        from breakfast.web import server
+        snap = {"current_player": "ben", "current_darts": [], "players": [{"name": "ben", "lives": 2, "current": True}]}
+        server.wire(None, self.Ctrl(snap))
+        try:
+            assert server._game_values() == {"player": "ben", "remaining": None, "lives": 2, "darts": 0, "round": None}
+        finally:
+            server.wire(None, None)
+
+    def test_nothing_while_no_game_plays(self):
+        from breakfast.web import server
+        server.wire(None, None, x01_ctrl=self.Ctrl({}, state="finished"))
+        try:
+            assert server._game_values() is None
+        finally:
+            server.wire(None, None)
+
+    def test_a_push_and_an_earned_achievement_reach_the_service(self, tmp_path):
+        from breakfast.web import server
+        path = tmp_path / "config.toml"
+        path.write_text('mode = "direct"\n')
+        server.wire(GameState(), None, config_path=str(path))
+        seen = []
+        server._streamdeck.on_game_change = lambda: seen.append("change")
+        server._streamdeck.flash = lambda: seen.append("flash")
+        try:
+            server.push()
+            server.push_achievement({"type": "achievement"})
+        finally:
+            server.wire(None, None)
+        assert seen == ["change", "flash"]
+
+
 class TestHold:
     def _connect(self, service, hold):
         service._hold_step = 0.01
@@ -445,7 +564,7 @@ class TestRoutes:
         body = srv.StreamDeckBody(enabled=True, brightness=40, keys=[{"key": 0, "action": "reset_board", "label": "Reset"}])
         snap = asyncio.run(srv.streamdeck_put(body))
         assert snap["enabled"] and snap["brightness"] == 40 and snap["keys"][0]["label"] == "Reset"
-        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status", "hold": 0, "image": ""}]
+        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status", "hold": 0, "image": "", "show": ""}]
 
     def test_put_answers_a_bad_layout_with_an_error(self, server):
         import asyncio
