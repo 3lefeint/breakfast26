@@ -32,13 +32,16 @@ PERMANENT = {400, 403, 404, 409, 413, 422}     # the relay will not take this re
 
 
 class CircleSync:
-    def __init__(self, db, locations, config_path, version, now=time.time, on_change=None, voice_packs=None, on_voice=None):
+    def __init__(self, db, locations, config_path, version, now=time.time, on_change=None, voice_packs=None, on_voice=None,
+                 busy=None):
         """*voice_packs*: returns the names of the voice packs this installation has a plan for. *on_voice*: called with
-        (pack, player) after the voice entry of a player was changed here, so that the voice files can follow."""
+        (pack, player) after the voice entry of a player was changed here, so that the voice files can follow. *busy*:
+        tells whether a game is in play, the names stay as they are then."""
         self._db, self._locations, self._version, self._now = db, locations, version, now
         self._on_change = on_change
         self._voice_packs = voice_packs or (lambda: [])
         self._on_voice = on_voice
+        self._busy = busy or (lambda: False)
         self.path = Path(config_path).parent / "circle.json"
         self._state_lock = threading.RLock()
         self._run_lock = threading.Lock()
@@ -223,9 +226,9 @@ class CircleSync:
     def _adopt_guests(self, config):
         """A guest of another site (`ben@site`, stored by an online match) that the admin mapped to a local player is
         that player: everything stored under the guest name moves to him, as a merge in the Players tab does it. Not
-        while a match runs, its game still holds the guest name."""
+        while a game is in play, it still holds the guest name."""
         guests = self._db.guest_names()
-        if not guests or self._db.running_matches():
+        if not guests or self._busy():
             return
         engine = getattr(self._db, "achievement_engine", None)
         for guest, local in self._mapping({"match": {"players": guests}}, None, config).items():

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- A turn has at most three darts: a dart entered by hand that finds the turn full takes the place of the dart there, so the turn is sent to the other sites of an online match. (#119)
+- Guests of other sites are not merged into local players while any game is in play, an online match included. (#120)
+
 ## [1.12.0] - 2026-10-25
 
 ### Added

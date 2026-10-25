@@ -912,3 +912,22 @@ class TestCorrectLastDart:
 
         assert game.target == 42 and game.current_player == "ben"
         assert game.state == "playing" and game.lives == {"ben": 1, "anna": 1}
+
+
+def test_a_dart_entered_by_hand_never_makes_a_fourth_dart():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.correct_current_dart(0, "S4")             # tapped before the board saw a dart
+    game.on_board_state(3, [_throw(20, 1), _throw(19, 1), _throw(18, 1)])
+    assert len(game._last_throws) == 3 and len(game._current_darts) == 3
+    assert game._current_darts == [4, 19, 18]      # the hand-entered dart took the place of the first one
+    game.on_board_state(0, [])
+    assert game.current_player == "bob" and game.target == 41
+
+
+def test_a_dart_entered_by_hand_still_fits_when_the_turn_has_room():
+    game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+
+    game.on_board_state(2, [_throw(20, 1), _throw(19, 1)])
+    game.correct_current_dart(2, "S5")             # the third one, not seen by the board
+    assert game._current_darts == [20, 19, 5]
