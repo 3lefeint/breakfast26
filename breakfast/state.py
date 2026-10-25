@@ -39,6 +39,7 @@ class GameState:
 
     def reset(self):
         self.board_status = None
+        self.board_status_listeners = []   # called with the new status, e.g. the Stream Deck keys
         self.last_event = None
         self.match_started = False
         self.match_id = None
@@ -143,6 +144,11 @@ class GameState:
         if event == "Board Status":
             status = data.get("data", {}).get("status")
             self.board_status = status
+            for listener in self.board_status_listeners:
+                try:
+                    listener(status)
+                except Exception:
+                    log.exception("board status listener failed")
             return {"type": "board_status", "status": status}
 
         if event == "match-started":

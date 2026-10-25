@@ -394,6 +394,7 @@ def run_direct(email, password, board_id, record_file=None,
         web.start_update_check()
         web.start_circle_sync()
         web.start_voicepack_auto_generate()
+        web.start_streamdeck()
 
     if client:
         log.info("Connecting to Autodarts cloud (board=%s)", board_id)

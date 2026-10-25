@@ -43,6 +43,7 @@ from breakfast import telemetry as telemetry_mod
 from breakfast.update_check import UpdateChecker
 from breakfast import frozen, self_update
 from breakfast import voicepack
+from breakfast import streamdeck as streamdeck_mod
 from breakfast import voicepack_editor as ve
 from breakfast import voicepack_overlay as vo
 from breakfast import checkout_routes as co_routes
@@ -103,6 +104,7 @@ _build_info: dict = read_build_info()
 _audio_engine = None
 _scene_engine = None
 _board_manager_url: str | None = None
+_streamdeck = None
 _voicepack_status = {"running": False, "done": 0, "skipped": 0, "total": 0, "error": None}
 _dev_demo = None
 _elim_beat_hint = False   # `[web] elimination_beat_hint`, kept here because every push sends it
@@ -121,7 +123,7 @@ def wire(game_state, elim_ctrl,
          wu_ctrl=None, resume_offers=None, scene_engine=None):
     global _scene_engine, _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online, _locations, _circle, _shared, _elim_beat_hint
+           _dev_demo, _online, _locations, _circle, _shared, _elim_beat_hint, _streamdeck
     _scene_engine = scene_engine
     _game_state = game_state
     _elim_ctrl = elim_ctrl
@@ -156,6 +158,13 @@ def wire(game_state, elim_ctrl,
         _stats_db.on_match_deleted = _circle.match_deleted
     _audio_engine = audio_engine
     _board_manager_url = board_manager_url
+    if _streamdeck:
+        _streamdeck.stop()
+    _streamdeck = None
+    if config_path and game_state:
+        _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control)
+        _streamdeck.board_status = game_state.board_status
+        game_state.board_status_listeners.append(_streamdeck.on_board_status)
     _dev_demo = dev_demo
     web_cfg = (cfg_mod.load(config_path) if config_path else {}).get("web", {})
     _elim_beat_hint = web_cfg.get("elimination_beat_hint") is True
@@ -582,49 +591,63 @@ def _run_in_thread(fn):
     threading.Thread(target=fn, daemon=True).start()
 
 
-@app.post("/api/control/undo")
-async def control_undo():
-    log.debug("Undo requested")
+_CONTROLS = {
+    # action: (what the log says, method of the cloud client, board manager call when board_manager_url is set)
+    "undo": ("Undo", "undo_throw", None),
+    "next_player": ("Next player", "next_player", None),
+    "next_game": ("Next game", "next_game", None),
+    "reset_board": ("Reset board", "reset_board", ("POST", "/api/reset", "reset")),
+    "start_board": ("Start board", "start_board", ("PUT", "/api/start", "start")),
+}
+
+
+def run_control(action: str) -> dict:
+    """Run a board control by name: the routes below and the Stream Deck keys both come here."""
+    what, method, direct = _CONTROLS[action]
+    log.debug("%s requested", what)
+    if direct and _board_manager_url:
+        _run_in_thread(_board_manager_call(*direct))
+        return {"ok": True}
     if not _cloud_client:
         return {"error": "cloud control not available"}
-    _run_in_thread(_cloud_client.undo_throw)
+    _run_in_thread(getattr(_cloud_client, method))
     return {"ok": True}
+
+
+def _board_manager_call(method: str, path: str, what: str):
+    """Send one command straight to the board manager at the configured `[direct] board_manager_url`."""
+    def run():
+        try:
+            requests.request(method, f"{_board_manager_url.rstrip('/')}{path}", timeout=5)
+            log.info("Board %s sent", what)
+        except Exception as e:
+            log.error("Board %s failed: %s", what, e)
+    return run
+
+
+@app.post("/api/control/undo")
+async def control_undo():
+    return run_control("undo")
 
 
 @app.post("/api/control/next-player")
 async def control_next_player():
-    log.debug("Next player requested")
-    if not _cloud_client:
-        return {"error": "cloud control not available"}
-    _run_in_thread(_cloud_client.next_player)
-    return {"ok": True}
+    return run_control("next_player")
 
 
 @app.post("/api/control/next-game")
 async def control_next_game():
-    log.debug("Next game requested")
-    if not _cloud_client:
-        return {"error": "cloud control not available"}
-    _run_in_thread(_cloud_client.next_game)
-    return {"ok": True}
+    return run_control("next_game")
 
 
 @app.post("/api/control/reset-board")
 async def control_reset_board():
-    log.debug("Reset board requested")
-    if not _cloud_client:
-        return {"error": "cloud control not available"}
-    _run_in_thread(_cloud_client.reset_board)
-    return {"ok": True}
+    return run_control("reset_board")
 
 
 @app.post("/api/control/start-board")
 async def control_start_board():
-    log.debug("Start board requested")
-    if not _cloud_client:
-        return {"error": "cloud control not available"}
-    _run_in_thread(_cloud_client.start_board)
-    return {"ok": True}
+    return run_control("start_board")
 
 
 @app.post("/api/control/force-clear-match")
@@ -3526,6 +3549,36 @@ def start_circle_sync():
     """The sync with the circle of friends runs in the background, see circle_sync.py."""
     if _circle:
         _circle.start()
+
+
+def start_streamdeck():
+    """Keep a Stream Deck at the board in step with the board status when `[streamdeck] enabled` is set."""
+    if _streamdeck:
+        _streamdeck.start()
+
+
+@app.get("/api/streamdeck")
+async def streamdeck_get():
+    if not _streamdeck:
+        return {"error": "Stream Deck not available"}
+    return _streamdeck.snapshot()
+
+
+class StreamDeckBody(BaseModel):
+    enabled: bool | None = None
+    brightness: int | None = None
+    keys: list[dict] | None = None
+
+
+@app.put("/api/streamdeck")
+async def streamdeck_put(body: StreamDeckBody):
+    if not _streamdeck:
+        return {"error": "Stream Deck not available"}
+    try:
+        _streamdeck.update(**body.model_dump(exclude_unset=True))
+    except ValueError as e:
+        return {"error": str(e)}
+    return _streamdeck.snapshot()
 
 
 def start_update_check():

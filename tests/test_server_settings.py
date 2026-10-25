@@ -100,3 +100,21 @@ class TestStartBoard:
     def test_the_route_needs_cloud_control(self):
         server.wire(None, None)
         assert asyncio.run(server.control_start_board()) == {"error": "cloud control not available"}
+
+
+class TestBoardCommandsViaUrl:
+    """With `[direct] board_manager_url` set, reset and start go straight to the board manager, without a cloud client."""
+
+    def _call(self, monkeypatch, route):
+        calls = []
+        server.wire(None, None, board_manager_url="http://board.local:3180/")
+        monkeypatch.setattr(server, "_run_in_thread", lambda fn: fn())
+        monkeypatch.setattr(server.requests, "request", lambda method, url, timeout: calls.append((method, url)))
+        assert asyncio.run(route()) == {"ok": True}
+        return calls
+
+    def test_reset_posts_to_the_board_manager(self, monkeypatch):
+        assert self._call(monkeypatch, server.control_reset_board) == [("POST", "http://board.local:3180/api/reset")]
+
+    def test_start_puts_to_the_board_manager(self, monkeypatch):
+        assert self._call(monkeypatch, server.control_start_board) == [("PUT", "http://board.local:3180/api/start")]

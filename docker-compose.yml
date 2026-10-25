@@ -53,6 +53,9 @@ services:
       - "${BREAKFAST_PORT:-8080}:8080"
     volumes:
       - ./data:/app/data
+    # A Stream Deck plugged into this computer (Settings > Stream Deck): uncomment to pass the USB bus through.
+    # devices:
+    #   - /dev/bus/usb:/dev/bus/usb
     dns:
       # Explicit public resolvers — on hosts where /etc/resolv.conf points
       # only at a loopback stub resolver (e.g. systemd-resolved's 127.0.0.53),
