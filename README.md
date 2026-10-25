@@ -372,7 +372,8 @@ messages. **Show what is sent** lists the queued and the recently sent reports. 
 A Stream Deck plugged into the computer that runs Breakfast can reset the board with one key press, for example when
 it hangs after the take-out. Breakfast drives the device over USB itself, no other software is needed. Switch it on
 under Settings → Stream Deck, click a key in the grid and pick its action (reset board, start board, undo, next
-player, next game), label and color. The keys follow the board status: green when it is ready to throw, yellow around
+player, next game), label and color. A key can be set to run only when it is held (a board reset is by default,
+0.8 seconds): it shows a bar filling up while held, and nothing happens when it is let go earlier. The keys follow the board status: green when it is ready to throw, yellow around
 the take-out and while it starts, red when it is stopped or disconnected; a key can also have a fixed color. The page
 works without a device (it shows a 15-key grid) so the layout can be prepared first. The layout is stored in
 `[streamdeck]` of `config.toml`.
