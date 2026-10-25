@@ -20,6 +20,17 @@ from breakfast.dartboard import autodarts_segment, field_centers
 
 log = logging.getLogger(__name__)
 
+
+class _LibraryGoodbye(logging.Filter):
+    """websocket-client logs `<error> - goodbye` at error level on every failed connect, whatever on_error does. The
+    callers log a failure themselves, once per outage."""
+
+    def filter(self, record):
+        return not record.getMessage().endswith(" - goodbye")
+
+
+logging.getLogger("websocket").addFilter(_LibraryGoodbye())
+
 _AUTODARTS_WS_URL = "wss://api.autodarts.io/ms/v0/subscribe"
 _BOARDS_URL = "https://api.autodarts.io/bs/v0/boards/"
 _MATCHES_URL = "https://api.autodarts.io/gs/v0/matches/"

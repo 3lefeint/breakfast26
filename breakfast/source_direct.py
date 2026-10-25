@@ -134,6 +134,35 @@ def _fetch_board_status(state, board_ws_url, mqtt_pub=None):
         web.push()
 
 
+class _Reconnect:
+    """The retries of a connection that is kept up for ever: the first failure of an outage is logged, the repeats go to
+    debug, the delay doubles up to a minute, and one line says when the connection is back."""
+
+    MIN, MAX = 3, 60
+
+    def __init__(self, name):
+        self.name = name
+        self.since = None
+        self.delay = self.MIN
+
+    def failed(self, reason):
+        if self.since is None:
+            self.since = time.time()
+            log.warning("%s lost: %s", self.name, reason)
+        else:
+            log.debug("%s still down: %s", self.name, reason)
+
+    def opened(self):
+        if self.since is not None:
+            log.info("%s restored after %ds", self.name, time.time() - self.since)
+            self.since = None
+        self.delay = self.MIN
+
+    def next_delay(self):
+        delay, self.delay = self.delay, min(self.delay * 2, self.MAX)
+        return delay
+
+
 def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_WS_URL, audio=None,
                     tb_ctrl=None, killer_ctrl=None, ft_ctrl=None, bb_ctrl=None, co_ctrl=None, x01_ctrl=None,
                     wu_ctrl=None):
@@ -159,17 +188,24 @@ def _start_board_ws(state, mqtt_pub, elim_ctrl=None, board_ws_url=DEFAULT_BOARD_
         if connected:
             threading.Thread(target=_fetch_board_status, args=(state, board_ws_url, mqtt_pub), daemon=True).start()
 
+    reconnect = _Reconnect("Board stream")
+
+    def opened(ws):
+        reconnect.opened()
+        set_connected(True)
+
     def run():
         while True:
             try:
                 ws = websocket.WebSocketApp(
-                    board_ws_url, on_message=on_message,
-                    on_open=lambda ws: set_connected(True))
+                    board_ws_url, on_message=on_message, on_open=opened,
+                    on_error=lambda ws, e: reconnect.failed(f"{type(e).__name__}: {e}"),
+                    on_close=lambda ws, code, msg: reconnect.failed(f"closed ({code})"))
                 ws.run_forever()
             except Exception as e:
-                log.warning("Board WS error: %s", e)
+                reconnect.failed(f"{type(e).__name__}: {e}")
             set_connected(False)
-            time.sleep(3)
+            time.sleep(reconnect.next_delay())
 
     threading.Thread(target=run, daemon=True).start()
 

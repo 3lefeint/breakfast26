@@ -8,6 +8,7 @@
 
 ### Fixed
 - An unreachable dartboard is logged once when the connection drops and once when it is back; the retries stay at debug level and back off from 3 to 60 seconds. (#112)
+- The connection to the local board follows the same rule, and the error line the WebSocket library writes on every failed connect is no longer logged. (#112)
 - A match both sites played online and the relay took from the other one counts as delivered: "Send all matches" and a second close do not queue it again. (#114)
 - A guest of another site stored by an online match becomes the local player the admin mapped him to, with his matches, wins and achievements; this waits while a match is running. (#115)
 
