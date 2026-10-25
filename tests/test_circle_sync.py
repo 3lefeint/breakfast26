@@ -442,14 +442,16 @@ def test_a_guest_of_an_online_match_becomes_the_local_player_he_is_mapped_to(set
     assert db.win_counts().get("ben") == 2 and guest not in db.win_counts()
 
 
-def test_a_guest_stays_while_a_match_is_running(setup):
-    db, relay, sync = setup
+def test_a_guest_stays_while_a_game_is_in_play(tmp_path):
+    db = StatsDB(str(tmp_path / "stats.db"))
+    relay = Relay()
+    playing = [True]                                          # a game in play that is not saved (an online match)
+    sync = CircleSync(db, relay, tmp_path / "config.toml", "1.9.0", busy=lambda: playing[0])
     guest = _online_guest(db, relay)
     db.record_elimination_result("old", [("ben", 1, 2)])
-    db.save_running_match("Elimination", {"players": ["anna", guest]})
     sync.run_once()
     assert guest in db.guest_names()
-    db.clear_running_match("Elimination")
+    playing[0] = False
     sync.run_once()
     assert guest not in db.guest_names()
 

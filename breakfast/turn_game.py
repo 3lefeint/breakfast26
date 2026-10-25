@@ -22,6 +22,8 @@ from .dartboard import field_centers
 
 log = logging.getLogger(__name__)
 
+MAX_DARTS = 3     # darts in a turn: what the board reports and what the relay accepts
+
 _FIELD_CENTERS = field_centers()
 
 
@@ -207,7 +209,10 @@ class TurnGame:
         throws = [t for t in self._last_throws[:len(self._current_darts)] if not t.get("manual")]
         manual = sorted(i for i, t in self._dart_overrides.items() if t.get("manual"))
         for idx in manual:
-            throws.insert(min(idx, len(throws)), self._dart_overrides[idx])
+            if len(throws) >= MAX_DARTS:        # no room: it takes the place of the dart there, a turn has three darts
+                throws[min(idx, len(throws) - 1)] = self._dart_overrides[idx]
+            else:
+                throws.insert(min(idx, len(throws)), self._dart_overrides[idx])
         for idx, throw in self._dart_overrides.items():
             if throw.get("manual"):
                 continue

@@ -119,7 +119,8 @@ def wire(game_state, elim_ctrl,
     _circle = None
     if _locations and _stats_db:
         _circle = circle_sync_mod.CircleSync(_stats_db, _locations, config_path, __version__,
-                                             voice_packs=lambda: list(_voicepack_plans()), on_voice=_voice_entry_changed)
+                                             voice_packs=lambda: list(_voicepack_plans()), on_voice=_voice_entry_changed,
+                                             busy=_a_game_is_running)
         _stats_db.on_match_closed = _circle.match_closed
         _stats_db.on_match_deleted = _circle.match_deleted
     _audio_engine = audio_engine
