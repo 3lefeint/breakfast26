@@ -266,7 +266,7 @@ the sites are linked, with one click. Each site adds its own players and says it
 lives and the order. A voice chat for the sites of a match opens in its own browser tab (*Voice chat* in the lobby and on the TV view): it runs on the relay's secure page, directly between the browsers, and a headset avoids echo.
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off. Every site stores the whole match, the players of the other sites
-as guests (`name@site`): they appear in the match but have no entry in the Players tab, no ranking and no achievements here.
+as guests (`name@site`): they appear in the match but have no entry in the Players tab, no ranking and no achievements here. A guest the circle admin mapped to a local player counts as that player, also for matches stored before.
 The last turn can be undone or corrected, a dart of it or its total, also in an online match: the site that threw the turn does
 it, and the other sites play it again.
 

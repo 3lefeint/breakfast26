@@ -394,3 +394,89 @@ def test_a_relay_without_profiles_does_not_stop_the_matches(setup):
     relay.profile_error = None
     sync.run_once()
     assert _profile_puts(relay)[-1] == [{"name": "anna", "color": "#ff8800"}]       # sent as soon as the relay can take it
+
+
+def test_a_match_the_other_site_delivered_first_is_not_queued_again(setup):
+    db, relay, sync = setup
+    _finish(db, "m-1")
+    relay.fail = LocationError("that match belongs to another site", 403)
+    status = sync.run_once()
+    assert status["pending"] == 0 and status["pushed"] == 0
+    assert sync.send_all() == 0                             # "send all" leaves it alone
+    sync.match_closed("m-1")                                # so does a second close
+    assert sync.status()["pending"] == 0
+    assert len(_puts(relay)) == 1
+    relay.fail = None
+    db.delete_match("m-1")
+    _finish(db, "m-1")                                      # a deleted match is a new one
+    assert sync.status()["pending"] == 1
+
+
+def test_another_refusal_with_403_is_not_remembered(setup):
+    db, relay, sync = setup
+    _finish(db, "m-1")
+    relay.fail = LocationError("this site is not approved by the admin yet", 403)
+    sync.run_once()
+    relay.fail = None
+    assert sync.send_all() == 1
+
+
+def _online_guest(db, relay, match_id="m-1"):
+    """A match played online with ben of another site: he is stored as a guest, and the admin mapped him."""
+    relay.mappings += [{"location_id": "loc-2", "location_name": "Club", "local_name": "ben", "player_id": "p-2"}]
+    relay.own += [{"local_name": "ben", "player_id": "p-2"}]
+    guest = db.guest_name("ben", "Club")
+    db.open_match(match_id, "Elimination", 5)
+    db.record_elimination_result(match_id, [("anna", 2, None), (guest, 1, 3)])
+    db.set_winner(match_id, guest)
+    db.close_match(match_id)
+    return guest
+
+
+def test_a_guest_of_an_online_match_becomes_the_local_player_he_is_mapped_to(setup):
+    db, relay, sync = setup
+    guest = _online_guest(db, relay)
+    db.record_elimination_result("old", [("ben", 1, 2)])      # a match of the local ben
+    sync.run_once()
+    assert guest not in db.guest_names()
+    assert db.win_counts().get("ben") == 2 and guest not in db.win_counts()
+
+
+def test_a_guest_stays_while_a_match_is_running(setup):
+    db, relay, sync = setup
+    guest = _online_guest(db, relay)
+    db.record_elimination_result("old", [("ben", 1, 2)])
+    db.save_running_match("Elimination", {"players": ["anna", guest]})
+    sync.run_once()
+    assert guest in db.guest_names()
+    db.clear_running_match("Elimination")
+    sync.run_once()
+    assert guest not in db.guest_names()
+
+
+def test_a_guest_without_a_local_player_stays_a_guest(setup):
+    db, relay, sync = setup
+    guest = _online_guest(db, relay)                          # no local ben is stored: nothing to merge into
+    sync.run_once()
+    assert guest in db.guest_names()
+
+
+def test_the_matches_of_an_adopted_guest_are_evaluated_for_him(setup):
+    db, relay, sync = setup
+    _online_guest(db, relay)
+    db.record_elimination_result("old", [("ben", 1, 2)])
+
+    class Engine:
+        seen = []
+
+        def evaluate_imported(self, match_id):
+            self.seen.append(match_id)
+
+        def backfill_imported(self):
+            return 0
+
+    db.achievement_engine = Engine()
+    sync.run_once()
+    assert Engine.seen == ["m-1"]                             # the finished online match, once
+    sync.run_once()
+    assert Engine.seen == ["m-1"]

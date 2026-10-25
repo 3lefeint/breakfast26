@@ -60,6 +60,7 @@ class CircleSync:
         state.setdefault("cursor", 0)
         state.setdefault("outbox", {})
         state.setdefault("sent", {})
+        state.setdefault("foreign", {})
         return state
 
     def _save(self, state):
@@ -101,6 +102,7 @@ class CircleSync:
         """A match was deleted: a deletion record follows when it was sent before."""
         with self._state_lock:
             state = self._load()
+            state["foreign"].pop(match_id, None)
             if match_id in state["sent"]:
                 state["outbox"][match_id] = {"op": "delete", "tries": 0}
             else:
@@ -121,7 +123,7 @@ class CircleSync:
             queued = 0
             for match_id, revision in rows:
                 sent = state["sent"].get(match_id)
-                if match_id in state["outbox"] or (sent and sent["revision"] >= revision):
+                if match_id in state["outbox"] or match_id in state["foreign"] or (sent and sent["revision"] >= revision):
                     continue
                 state["outbox"][match_id] = {"op": "push", "tries": 0}
                 queued += 1
@@ -135,6 +137,8 @@ class CircleSync:
             state = self._load()
             if not state["enabled"] or not self._locations.status()["registered"]:
                 return
+            if op == "push" and match_id in state["foreign"]:
+                return                  # the relay holds it from the other site that played it
             state["outbox"][match_id] = {"op": op, "tries": 0}
             self._save(state)
         self._wake.set()
@@ -211,9 +215,31 @@ class CircleSync:
         self._more = False
         self._backfill_achievements()
         self._sync_profiles(config)
+        self._adopt_guests(config)
         self._push(origin, config)
         self._pull(origin, config)
         self._update(last_sync=self._now())
+
+    def _adopt_guests(self, config):
+        """A guest of another site (`ben@site`, stored by an online match) that the admin mapped to a local player is
+        that player: everything stored under the guest name moves to him, as a merge in the Players tab does it. Not
+        while a match runs, its game still holds the guest name."""
+        guests = self._db.guest_names()
+        if not guests or self._db.running_matches():
+            return
+        engine = getattr(self._db, "achievement_engine", None)
+        for guest, local in self._mapping({"match": {"players": guests}}, None, config).items():
+            matches = self._db.finished_matches_of(guest)
+            result = self._db.merge_players(guest, local)
+            if "error" in result:
+                log.info("CircleSync: the guest %s stays a guest of its own: %s", guest, result["error"])
+                continue
+            log.info("CircleSync: the guest %s is %s here: %s matches", guest, local, result["matches"])
+            for match_id in matches:            # as a guest he earned nothing: the matches count for him now, silently
+                try:
+                    engine and engine.evaluate_imported(match_id)
+                except Exception:
+                    log.exception("CircleSync: the achievements of match %s could not be evaluated", match_id)
 
     def _backfill_achievements(self):
         """Once per installation: the achievements of the matches that were imported before they counted whatever their start."""
@@ -346,6 +372,8 @@ class CircleSync:
                     return
                 if e.status in PERMANENT:
                     log.info("CircleSync: match %s is not taken: %s", match_id, e)
+                    if e.status == 403 and "another site" in str(e):
+                        self._mark_foreign(match_id)
                 else:
                     self._retry(match_id, e)
                     raise
@@ -403,6 +431,14 @@ class CircleSync:
                                            "participants": body["participants"]}
             state["pushed"] = state.get("pushed", 0) + 1
             state["last_push"] = self._now()
+            self._save(state)
+
+    def _mark_foreign(self, match_id):
+        """The relay holds the match from another site (both sites played it online): it counts as delivered, a later
+        "send all" or a second close of the match does not queue it again."""
+        with self._state_lock:
+            state = self._load()
+            state["foreign"][match_id] = 1
             self._save(state)
 
     def _forget(self, match_id):
