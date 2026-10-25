@@ -3,15 +3,18 @@
 The device is driven over USB by Breakfast itself (python-elgato-streamdeck), so no other software has to run next to
 it. The layout lives in `[streamdeck]` of config.toml: `enabled`, `brightness` and `keys`, a list of
 `{key, action, label, color, hold}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
-`hold` is the seconds the key has to be held to run its action, 0 runs it on the press).
+`hold` is the seconds the key has to be held to run its action, 0 runs it on the press). `actions` holds the custom
+actions a key can run besides the built-in ones: `{id, name, kind, method, target, body}`, a route of Breakfast or any
+web address.
 
 Everything that does not touch the USB device (layout checks, status colors, key drawing, the actions) works without
 one, so it is tested without hardware; the device layer is a few calls on the object the library returns.
 """
-import io
+import json
 import logging
 import threading
 import time
+import uuid
 
 from breakfast import config as cfg_mod
 
@@ -35,6 +38,9 @@ DEFAULT_BRIGHTNESS = 60
 # Shown while no device is connected, so the layout can be set up first (a 15-key Stream Deck).
 DEFAULT_ROWS, DEFAULT_COLS = 3, 5
 MAX_KEYS = 64
+MAX_ACTIONS = 32
+HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+REQUEST_TIMEOUT_SECONDS = 5
 MAX_HOLD_SECONDS = 5
 DEFAULT_HOLD_SECONDS = 0.8
 HOLD_STEP_SECONDS = 0.08   # how often the progress bar of a held key is drawn
@@ -61,8 +67,48 @@ def _valid_hex(value):
             and all(c in "0123456789abcdefABCDEF" for c in value[1:]))
 
 
-def clean_keys(keys):
-    """The layout as stored: unknown actions and bad colors dropped, one entry per key, sorted by key.
+def clean_actions(actions):
+    """The custom actions as stored: a list of `{id, name, kind, method, target, body}`.
+
+    `kind` is `route` (a route of Breakfast, `target` is a path under /api/) or `url` (any http(s) address, with an
+    optional `body`). An action without an id gets one. Raises ValueError with a message for the UI."""
+    if not isinstance(actions, list):
+        raise ValueError("actions must be a list")
+    if len(actions) > MAX_ACTIONS:
+        raise ValueError(f"at most {MAX_ACTIONS} custom actions")
+    out, seen = [], set(ACTIONS)
+    for entry in actions:
+        if not isinstance(entry, dict):
+            raise ValueError("every action must be an object")
+        name = str(entry.get("name", "")).strip()[:40]
+        if not name:
+            raise ValueError("an action needs a name")
+        kind = entry.get("kind")
+        if kind not in ("route", "url"):
+            raise ValueError("kind must be 'route' or 'url'")
+        method = str(entry.get("method", "POST")).upper()
+        if method not in HTTP_METHODS:
+            raise ValueError("method must be one of " + ", ".join(HTTP_METHODS))
+        target = str(entry.get("target", "")).strip()
+        if kind == "route" and not (target.startswith("/api/") and " " not in target):
+            raise ValueError("a route has to start with /api/")
+        if kind == "url" and not (target.lower().startswith(("http://", "https://")) and " " not in target):
+            raise ValueError("an address has to start with http:// or https://")
+        body = entry.get("body", "")
+        if not isinstance(body, str) or len(body) > 4000:
+            raise ValueError("body must be text of at most 4000 characters")
+        action_id = entry.get("id") or "custom-" + uuid.uuid4().hex[:8]
+        if not isinstance(action_id, str) or not action_id.startswith("custom-") or action_id in seen:
+            raise ValueError("bad or duplicate action id")
+        seen.add(action_id)
+        out.append({"id": action_id, "name": name, "kind": kind, "method": method, "target": target,
+                    "body": body if kind == "url" else ""})
+    return out
+
+
+def clean_keys(keys, custom_ids=()):
+    """The layout as stored: unknown actions and bad colors refused, one entry per key, sorted by key.
+    `custom_ids` are the ids of the custom actions a key may use besides the built-in ones.
 
     Raises ValueError with a message for the UI when the layout is not a list of key entries."""
     if not isinstance(keys, list):
@@ -77,10 +123,10 @@ def clean_keys(keys):
         if not isinstance(key, int) or isinstance(key, bool) or not 0 <= key < MAX_KEYS:
             raise ValueError("key must be a number from 0 to %d" % (MAX_KEYS - 1))
         action = entry.get("action")
-        if action not in ACTIONS:
+        if action not in ACTIONS and action not in custom_ids:
             raise ValueError(f"unknown action: {action}")
         label = entry.get("label")
-        label = ACTIONS[action] if label is None else str(label)[:40]
+        label = ACTIONS.get(action, "") if label is None else str(label)[:40]
         color = entry.get("color", "status")
         if color != "status" and not _valid_hex(color):
             raise ValueError("color must be 'status' or #rrggbb")
@@ -184,15 +230,18 @@ def _to_native(deck, image):
 class StreamDeckService:
     """Keeps the first Stream Deck found open, draws the keys and runs the action of a pressed key.
 
-    `run_control(action)` runs a board control by its name (see ACTIONS); `enumerate_decks` and `to_native` are the
-    two seams the tests replace."""
+    `run_control(action)` runs a board control by its name (see ACTIONS); `enumerate_decks`, `to_native` and `request` are
+    the seams the tests replace."""
 
-    def __init__(self, config_path, run_control, enumerate_decks=None, to_native=None, reconnect_seconds=RECONNECT_SECONDS):
+    def __init__(self, config_path, run_control, enumerate_decks=None, to_native=None, reconnect_seconds=RECONNECT_SECONDS,
+                 web_base=lambda: "http://127.0.0.1:8080", request=None):
         self.config_path = config_path
         self.run_control = run_control
         self._enumerate = enumerate_decks or _enumerate_decks
         self._to_native = to_native or _to_native
         self._reconnect = reconnect_seconds
+        self._web_base = web_base           # where the routes of Breakfast itself answer
+        self._request = request             # the HTTP call of a custom action, replaced in the tests
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = None
@@ -209,9 +258,17 @@ class StreamDeckService:
     def enabled(self):
         return self._cfg().get("enabled") is True
 
-    def keys(self):
+    def actions(self):
         try:
-            return clean_keys(self._cfg().get("keys", []))
+            return clean_actions(self._cfg().get("actions", []))
+        except ValueError:
+            log.warning("The [streamdeck] actions in config.toml are not valid, ignored")
+            return []
+
+    def keys(self):
+        cfg = self._cfg()
+        try:
+            return clean_keys(cfg.get("keys", []), {a["id"] for a in self.actions()})
         except ValueError:
             log.warning("The [streamdeck] keys in config.toml are not valid, ignored")
             return []
@@ -220,7 +277,7 @@ class StreamDeckService:
         value = self._cfg().get("brightness", DEFAULT_BRIGHTNESS)
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100 else DEFAULT_BRIGHTNESS
 
-    def update(self, enabled=None, brightness=None, keys=None):
+    def update(self, enabled=None, brightness=None, keys=None, actions=None):
         """Save a change of the settings and apply it at once. Raises ValueError for a bad value."""
         changes = {}
         if enabled is not None:
@@ -231,8 +288,15 @@ class StreamDeckService:
             if not isinstance(brightness, int) or isinstance(brightness, bool) or not 0 <= brightness <= 100:
                 raise ValueError("brightness must be a number from 0 to 100")
             changes["brightness"] = brightness
+        custom = clean_actions(actions) if actions is not None else self.actions()
+        ids = {a["id"] for a in custom}
+        if actions is not None:
+            changes["actions"] = custom
         if keys is not None:
-            changes["keys"] = clean_keys(keys)
+            changes["keys"] = clean_keys(keys, ids)
+        elif actions is not None:
+            # a key whose custom action was deleted goes with it
+            changes["keys"] = [k for k in self.keys() if k["action"] in ACTIONS or k["action"] in ids]
         if changes:
             cfg_mod.write(self.config_path, {"streamdeck": changes})
         with self._lock:
@@ -374,11 +438,46 @@ class StreamDeckService:
     def _run_action(self, key, entry):
         log.info("Stream Deck key %d: %s", key, entry["action"])
         try:
-            result = self.run_control(entry["action"])
-            if isinstance(result, dict) and result.get("error"):
-                log.warning("Stream Deck key %d: %s", key, result["error"])
+            if entry["action"] in ACTIONS:
+                result = self.run_control(entry["action"])
+                if isinstance(result, dict) and result.get("error"):
+                    log.warning("Stream Deck key %d: %s", key, result["error"])
+                return
+            action = next((a for a in self.actions() if a["id"] == entry["action"]), None)
+            if action is None:
+                log.warning("Stream Deck key %d: the action %s no longer exists", key, entry["action"])
+                return
+            self._run_custom(key, action)
         except Exception as e:
             log.error("Stream Deck key %d failed: %s", key, e)
+
+    def _run_custom(self, key, action):
+        """Send the request of a custom action in a thread of its own, so a slow target holds up no other key. Only the
+        name of the action is logged: an address can carry a secret."""
+        url = action["target"] if action["kind"] == "url" else self._web_base().rstrip("/") + action["target"]
+        kwargs = {"timeout": REQUEST_TIMEOUT_SECONDS}
+        if action["body"]:
+            try:
+                kwargs["json"] = json.loads(action["body"])
+            except ValueError:
+                kwargs["data"] = action["body"].encode()
+                kwargs["headers"] = {"Content-Type": "text/plain; charset=utf-8"}
+
+        def send():
+            request = self._request
+            if request is None:
+                import requests
+                request = requests.request
+            try:
+                response = request(action["method"], url, **kwargs)
+                if response.status_code >= 400:
+                    log.warning("Stream Deck key %d: %s answered %s", key, action["name"], response.status_code)
+                else:
+                    log.info("Stream Deck key %d: %s sent", key, action["name"])
+            except Exception as e:
+                log.error("Stream Deck key %d: %s failed: %s", key, action["name"], type(e).__name__)
+
+        threading.Thread(target=send, name="streamdeck-request", daemon=True).start()
 
     # ---- state for the page ----
     def snapshot(self):
@@ -398,6 +497,8 @@ class StreamDeckService:
                 "board_status": self.board_status,
                 "status_color": status_color(self.board_status),
                 "colors": STATUS_COLORS,
-                "actions": [{"id": k, "label": v} for k, v in ACTIONS.items()],
+                "actions": [{"id": k, "label": v, "custom": False} for k, v in ACTIONS.items()]
+                           + [{"id": a["id"], "label": a["name"], "custom": True} for a in self.actions()],
+                "custom_actions": self.actions(),
                 "keys": [{**k, "shown": key_hex(k, self.board_status)} for k in keys],
             }

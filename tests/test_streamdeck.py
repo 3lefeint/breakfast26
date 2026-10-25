@@ -188,6 +188,102 @@ class TestBoardStatusListener:
         assert state.update({"event": "Board Status", "data": {"status": "Throw"}}) == {"type": "board_status", "status": "Throw"}
 
 
+class TestCleanActions:
+    def test_a_route_and_an_address_are_kept_and_get_an_id(self):
+        actions = sd.clean_actions([
+            {"name": " Undo twice ", "kind": "route", "method": "post", "target": "/api/control/undo"},
+            {"name": "Light", "kind": "url", "method": "PUT", "target": "https://ha.example/api/webhook/x", "body": '{"on": true}'},
+        ])
+        assert [a["name"] for a in actions] == ["Undo twice", "Light"]
+        assert actions[0]["method"] == "POST" and actions[0]["id"].startswith("custom-") and actions[0]["body"] == ""
+        assert actions[1]["body"] == '{"on": true}' and actions[0]["id"] != actions[1]["id"]
+
+    def test_the_id_is_kept_when_given(self):
+        assert sd.clean_actions([{"id": "custom-a1", "name": "x", "kind": "route", "target": "/api/state"}])[0]["id"] == "custom-a1"
+
+    @pytest.mark.parametrize("bad", [
+        "x", [1], [{"name": "", "kind": "route", "target": "/api/x"}], [{"name": "x", "kind": "shell", "target": "/api/x"}],
+        [{"name": "x", "kind": "route", "target": "/state"}], [{"name": "x", "kind": "route", "target": "/api/a b"}],
+        [{"name": "x", "kind": "url", "target": "ftp://host/x"}], [{"name": "x", "kind": "url", "target": "file:///etc/passwd"}],
+        [{"name": "x", "kind": "route", "method": "TRACE", "target": "/api/x"}], [{"name": "x", "kind": "route", "target": "/api/x", "body": 5}],
+        [{"id": "other", "name": "x", "kind": "route", "target": "/api/x"}], [{"id": "reset_board", "name": "x", "kind": "route", "target": "/api/x"}],
+        [{"id": "custom-1", "name": "x", "kind": "route", "target": "/api/x"}, {"id": "custom-1", "name": "y", "kind": "route", "target": "/api/y"}],
+        [{"name": "x", "kind": "route", "target": "/api/x"}] * 33,
+    ])
+    def test_bad_actions_are_refused(self, bad):
+        with pytest.raises(ValueError):
+            sd.clean_actions(bad)
+
+    def test_a_key_may_use_a_custom_action_only_when_it_exists(self):
+        assert sd.clean_keys([{"key": 0, "action": "custom-a1"}], {"custom-a1"})[0]["label"] == ""
+        with pytest.raises(ValueError):
+            sd.clean_keys([{"key": 0, "action": "custom-a1"}])
+
+
+class TestCustomActions:
+    @pytest.fixture
+    def sent(self, service):
+        sent = []
+
+        class Response:
+            status_code = 200
+        service._request = lambda method, url, **kw: sent.append((method, url, kw)) or Response()
+        service._web_base = lambda: "http://127.0.0.1:8080"
+        return sent
+
+    def _press(self, service, actions, action_id=None):
+        service.update(enabled=True, actions=actions)
+        action_id = action_id or service.actions()[0]["id"]
+        service.update(keys=[{"key": 0, "action": action_id, "label": "x"}])
+        with service._lock:
+            service._connect()
+        service.deck.callback(service.deck, 0, True)
+
+    def test_a_route_is_called_on_breakfast_itself(self, service, sent):
+        self._press(service, [{"name": "Undo", "kind": "route", "method": "POST", "target": "/api/control/undo"}])
+        _wait(lambda: sent)
+        assert sent == [("POST", "http://127.0.0.1:8080/api/control/undo", {"timeout": sd.REQUEST_TIMEOUT_SECONDS})]
+        assert service.calls == []                                    # not a built-in control
+
+    def test_an_address_is_called_with_a_json_body(self, service, sent):
+        self._press(service, [{"name": "Light", "kind": "url", "method": "PUT", "target": "http://lamp.local/on", "body": '{"on": true}'}])
+        _wait(lambda: sent)
+        method, url, kw = sent[0]
+        assert (method, url, kw["json"]) == ("PUT", "http://lamp.local/on", {"on": True})
+
+    def test_a_body_that_is_no_json_goes_out_as_text(self, service, sent):
+        self._press(service, [{"name": "Hook", "kind": "url", "method": "POST", "target": "http://h.local/x", "body": "on"}])
+        _wait(lambda: sent)
+        assert sent[0][2]["data"] == b"on" and "text/plain" in sent[0][2]["headers"]["Content-Type"]
+
+    def test_a_slow_or_failing_target_does_not_block_or_raise(self, service):
+        def hang(method, url, **kw):
+            time.sleep(0.3)
+            raise TimeoutError()
+        service._request = hang
+        started = time.time()
+        self._press(service, [{"name": "Slow", "kind": "url", "method": "GET", "target": "http://slow.local/"}])
+        assert time.time() - started < 0.25
+
+    def test_deleting_an_action_takes_its_keys_with_it(self, service):
+        service.update(actions=[{"id": "custom-a", "name": "A", "kind": "route", "target": "/api/x"},
+                                {"id": "custom-b", "name": "B", "kind": "route", "target": "/api/y"}])
+        service.update(keys=[{"key": 0, "action": "custom-a"}, {"key": 1, "action": "custom-b"}, {"key": 2, "action": "undo"}])
+        service.update(actions=[{"id": "custom-b", "name": "B", "kind": "route", "target": "/api/y"}])
+        assert [k["action"] for k in service.keys()] == ["custom-b", "undo"]
+
+    def test_a_key_with_an_unknown_custom_action_is_refused(self, service):
+        with pytest.raises(ValueError):
+            service.update(keys=[{"key": 0, "action": "custom-zzz"}])
+
+    def test_the_snapshot_lists_built_in_and_custom_actions(self, service):
+        service.update(actions=[{"id": "custom-a", "name": "Lamp", "kind": "url", "target": "http://l.local/"}])
+        snap = service.snapshot()
+        assert {"id": "custom-a", "label": "Lamp", "custom": True} in snap["actions"]
+        assert {"id": "undo", "label": "Undo", "custom": False} in snap["actions"]
+        assert snap["custom_actions"][0]["target"] == "http://l.local/"
+
+
 class TestHold:
     def _connect(self, service, hold):
         service._hold_step = 0.01

@@ -7,10 +7,12 @@
   import { onMount, onDestroy } from 'svelte';
   import Toggle from '../../lib/components/Toggle.svelte';
   import { apiJson } from '../../lib/api.js';
+  import { confirmDialog } from '../../lib/confirm.js';
 
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
                          next_player: t('Next Player'), next_game: t('Next Game') };
+  const labelOf = (id) => ACTION_LABEL[id] || data?.actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
 
@@ -57,7 +59,7 @@
   async function chooseAction() {
     // A label that is still the name of the previous action follows the new action.
     const previous = data.keys.find((k) => k.key === selected);
-    if (!draft.label || (previous && draft.label === ACTION_LABEL[previous.action])) draft.label = ACTION_LABEL[draft.action] || '';
+    if (!draft.label || (previous && draft.label === labelOf(previous.action))) draft.label = labelOf(draft.action);
     // A board reset has to be held by default, so it is not run by a press by accident.
     if (!previous && draft.action === 'reset_board') draft.hold = DEFAULT_HOLD;
     await save();
@@ -75,6 +77,29 @@
 
   const setHold = (on) => { draft.hold = on ? DEFAULT_HOLD : 0; save(); };
   const holdTime = (e) => { draft.hold = Math.min(5, Math.max(0.2, Number(e.currentTarget.value) || DEFAULT_HOLD)); save(); };
+  // ---- custom actions ----
+  const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+  const emptyAction = () => ({ id: '', name: '', kind: 'route', method: 'POST', target: '', body: '' });
+  let editing = $state(null);          // the custom action in the form, null while there is none
+
+  const newAction = () => { editing = emptyAction(); };
+  const editAction = (a) => { editing = { ...a }; };
+  const kindChanged = () => { if (!editing.target) editing.method = editing.kind === 'route' ? 'POST' : 'GET'; };
+
+  async function saveAction() {
+    const others = data.custom_actions.filter((a) => a.id !== editing.id);
+    const kept = editing.id ? data.custom_actions.map((a) => (a.id === editing.id ? editing : a)) : [...others, editing];
+    if (await send({ actions: kept })) editing = null;
+  }
+
+  async function deleteAction(a) {
+    const used = data.keys.filter((k) => k.action === a.id).length;
+    if (used && !await confirmDialog(t('{name} is on {n} key(s). Delete it and clear those keys?', { name: a.name, n: used }))) return;
+    if (selected !== null && draft.action === a.id) selected = null;
+    await send({ actions: data.custom_actions.filter((x) => x.id !== a.id) });
+    if (editing?.id === a.id) editing = null;
+  }
+
   const toggleEnabled = (value) => send({ enabled: value });
   const setBrightness = (e) => send({ brightness: Number(e.currentTarget.value) });
   const fixedColor = (e) => { draft.color = e.currentTarget.value; save(); };
@@ -138,7 +163,12 @@
         <span>{t('Action')}</span>
         <select bind:value={draft.action} onchange={chooseAction}>
           <option value="">{t('None')}</option>
-          {#each data.actions as a (a.id)}<option value={a.id}>{ACTION_LABEL[a.id]}</option>{/each}
+          {#each data.actions.filter((a) => !a.custom) as a (a.id)}<option value={a.id}>{ACTION_LABEL[a.id]}</option>{/each}
+          {#if data.custom_actions.length}
+            <optgroup label={t('Custom actions')}>
+              {#each data.actions.filter((a) => a.custom) as a (a.id)}<option value={a.id}>{a.label}</option>{/each}
+            </optgroup>
+          {/if}
         </select>
       </label>
       {#if draft.action}
@@ -167,6 +197,49 @@
       {/if}
     </div>
   {/if}
+
+  <div class="custom">
+    <div class="editor-title">{t('Custom actions')}</div>
+    <p class="hint">{t('A custom action calls a route of Breakfast or a web address. Create it here, then pick it for a key.')}</p>
+    {#if data.custom_actions.length}
+      <ul class="custom-list">
+        {#each data.custom_actions as a (a.id)}
+          <li>
+            <span class="cname">{a.name}</span>
+            <span class="cmeta">{a.method} {a.kind === 'route' ? a.target : t('web address')}</span>
+            <button type="button" class="act" onclick={() => editAction(a)}>{t('Edit')}</button>
+            <button type="button" class="act danger" onclick={() => deleteAction(a)}>{t('Delete')}</button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if editing}
+      <div class="form">
+        <label class="field"><span>{t('Name')}</span><input type="text" maxlength="40" bind:value={editing.name}></label>
+        <label class="field"><span>{t('Kind')}</span>
+          <select bind:value={editing.kind} onchange={kindChanged}>
+            <option value="route">{t('Route of Breakfast')}</option>
+            <option value="url">{t('Web address')}</option>
+          </select>
+        </label>
+        <label class="field"><span>{t('Method')}</span>
+          <select bind:value={editing.method}>{#each METHODS as m (m)}<option value={m}>{m}</option>{/each}</select>
+        </label>
+        <label class="field"><span>{editing.kind === 'route' ? t('Route') : t('Address')}</span>
+          <input type="text" bind:value={editing.target} placeholder={editing.kind === 'route' ? '/api/control/undo' : 'https://…'}>
+        </label>
+        {#if editing.kind === 'url'}
+          <label class="field"><span>{t('Body')}</span><textarea rows="3" bind:value={editing.body} placeholder={'{"key": "value"}'}></textarea></label>
+        {/if}
+        <div class="form-buttons">
+          <button type="button" class="act" onclick={saveAction}>{t('Save')}</button>
+          <button type="button" class="act" onclick={() => (editing = null)}>{t('Cancel')}</button>
+        </div>
+      </div>
+    {:else}
+      <button type="button" class="act" onclick={newAction}>{t('Add a custom action')}</button>
+    {/if}
+  </div>
 
   {#if error}<div class="message">{error}</div>{/if}
 {/if}
@@ -205,5 +278,15 @@
   .act { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); padding: 0.25rem 0.8rem; font-family: inherit; font-size: 0.8rem; cursor: pointer; }
   .act:hover { border-color: var(--accent); color: var(--text); }
   .act.danger:hover { border-color: var(--red); color: var(--red); }
+  .custom { margin-top: 1.25rem; max-width: 34rem; }
+  .hint { color: var(--muted); font-size: 0.8rem; margin: 0 0 0.6rem; }
+  .custom-list { list-style: none; padding: 0; margin: 0 0 0.75rem; }
+  .custom-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--glass-border); flex-wrap: wrap; }
+  .custom-list li:first-child { border-top: none; }
+  .cname { font-size: 0.9rem; flex: 1; min-width: 6rem; }
+  .cmeta { font-size: 0.75rem; color: var(--muted); word-break: break-all; }
+  .form { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.75rem 0.9rem; }
+  .form textarea { flex: 1; min-width: 8rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text); padding: 0.35rem 0.55rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+  .form-buttons { display: flex; gap: 0.5rem; }
   .message { font-size: 0.85rem; color: var(--yellow); margin-top: 0.75rem; }
 </style>
