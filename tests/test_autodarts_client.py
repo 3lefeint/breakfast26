@@ -1,11 +1,12 @@
 import base64
 import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
 import requests
 
-from breakfast.autodarts_client import AutodartsCloudClient
+from breakfast.autodarts_client import AutodartsCloudClient, log as client_log
 
 
 def _fake_jwt(sub="user-1"):
@@ -423,3 +424,25 @@ class TestBustedEvent:
         assert [e["event"] for e in events] == ["busted"]
         game = events[0]["game"]
         assert game["dartNumber"] == "1" and game["dartValue"] == "60" and game["pointsBeforeTurn"] == "32"
+
+
+class TestOutageLogging:
+    def test_only_the_first_failure_of_an_outage_is_logged_above_debug(self, caplog):
+        client = _make_client()
+        with caplog.at_level("DEBUG", logger="breakfast.autodarts_client"):
+            for _ in range(5):
+                client._log_failure(client_log.error, "WS error: %s", "boom")
+                client._mark_closed(None, 1006, "gone")
+        loud = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(loud) == 1
+
+    def test_reconnect_logs_once_and_resets_the_backoff(self, caplog):
+        client = _make_client()
+        client._mark_closed(None, 1006, "gone")
+        client._retry_delay = 60
+        ws = MagicMock()
+        with caplog.at_level("INFO", logger="breakfast.autodarts_client"):
+            client._on_open(ws)
+        assert any("Connection restored" in r.getMessage() for r in caplog.records)
+        assert client._outage_since is None
+        assert client._retry_delay == AutodartsCloudClient._RETRY_MIN
