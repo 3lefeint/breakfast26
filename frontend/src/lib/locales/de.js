@@ -934,6 +934,8 @@ export default {
   'Label': 'Beschriftung',
   'Follow the board status': 'Dem Board-Status folgen',
   'Clear key': 'Taste leeren',
+  'Hold to run': 'Gedrückt halten',
+  'Hold for (seconds)': 'Haltezeit (Sekunden)',
   'System': 'System',
   'Caller': 'Caller',
   'MQTT enabled': 'MQTT aktiv',

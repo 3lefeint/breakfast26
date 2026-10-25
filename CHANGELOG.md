@@ -76,6 +76,7 @@
 - The connection to the local board follows the same rule, and the error line the WebSocket library writes on every failed connect is no longer logged. (#112)
 - A match both sites played online and the relay took from the other one counts as delivered: "Send all matches" and a second close do not queue it again. (#114)
 - A guest of another site stored by an online match becomes the local player the admin mapped him to, with his matches, wins and achievements; this waits while a match is running. (#115)
+- A Stream Deck key can be set to run its action only when it is held (default for Reset Board: 0.8 seconds); a bar fills up on the key while it is held and a shorter press does nothing. (#110)
 - Stream Deck keys: a Stream Deck plugged into the computer that runs Breakfast resets or starts the board, undoes a dart or skips a player or game, and its keys show the board status (green when ready to throw, yellow around the take-out, red when stopped). The keys are set up on the new Settings → Stream Deck page (`[streamdeck]`, `GET`/`PUT /api/streamdeck`); Linux and Docker, Windows not yet. (#106)
 
 ### Changed

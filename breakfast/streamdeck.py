@@ -2,7 +2,8 @@
 
 The device is driven over USB by Breakfast itself (python-elgato-streamdeck), so no other software has to run next to
 it. The layout lives in `[streamdeck]` of config.toml: `enabled`, `brightness` and `keys`, a list of
-`{key, action, label, color}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value).
+`{key, action, label, color, hold}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
+`hold` is the seconds the key has to be held to run its action, 0 runs it on the press).
 
 Everything that does not touch the USB device (layout checks, status colors, key drawing, the actions) works without
 one, so it is tested without hardware; the device layer is a few calls on the object the library returns.
@@ -10,6 +11,7 @@ one, so it is tested without hardware; the device layer is a few calls on the ob
 import io
 import logging
 import threading
+import time
 
 from breakfast import config as cfg_mod
 
@@ -33,6 +35,9 @@ DEFAULT_BRIGHTNESS = 60
 # Shown while no device is connected, so the layout can be set up first (a 15-key Stream Deck).
 DEFAULT_ROWS, DEFAULT_COLS = 3, 5
 MAX_KEYS = 64
+MAX_HOLD_SECONDS = 5
+DEFAULT_HOLD_SECONDS = 0.8
+HOLD_STEP_SECONDS = 0.08   # how often the progress bar of a held key is drawn
 RECONNECT_SECONDS = 3
 
 
@@ -79,7 +84,10 @@ def clean_keys(keys):
         color = entry.get("color", "status")
         if color != "status" and not _valid_hex(color):
             raise ValueError("color must be 'status' or #rrggbb")
-        out[key] = {"key": key, "action": action, "label": label, "color": color.lower()}
+        hold = entry.get("hold", 0)
+        if isinstance(hold, bool) or not isinstance(hold, (int, float)) or not 0 <= hold <= MAX_HOLD_SECONDS:
+            raise ValueError("hold must be a number of seconds from 0 to %d" % MAX_HOLD_SECONDS)
+        out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold}
     return [out[k] for k in sorted(out)]
 
 
@@ -94,15 +102,35 @@ def _rgb(hex_color):
     return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def render_key(label, hex_color, size):
-    """A square key image: the color as background and the label centered, black or white text by brightness."""
+def render_key(label, hex_color, size, progress=None):
+    """A square key image: the color as background and the label centered, black or white text by brightness.
+    `progress` (0 to 1) adds a bar along the bottom, the hold of a key that has to be held."""
     from PIL import Image, ImageDraw, ImageFont
 
     w, h = size
     rgb = _rgb(hex_color)
     img = Image.new("RGB", (w, h), rgb)
-    if not label:
-        return img
+    if label:
+        _draw_label(img, label, rgb)
+    if progress is not None:
+        _draw_progress(img, progress)
+    return img
+
+
+def _draw_progress(img, progress):
+    from PIL import ImageDraw
+
+    w, h = img.size
+    bar = max(4, h // 8)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((0, h - bar, w, h), fill=(20, 20, 20))
+    draw.rectangle((0, h - bar, round(w * min(max(progress, 0), 1)), h), fill=(255, 255, 255))
+
+
+def _draw_label(img, label, rgb):
+    from PIL import ImageDraw, ImageFont
+
+    w, h = img.size
     ink = (0, 0, 0) if (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 > 140 else (255, 255, 255)
     draw = ImageDraw.Draw(img)
     words = label.split()
@@ -117,7 +145,6 @@ def render_key(label, hex_color, size):
         box = draw.textbbox((0, 0), ln, font=font)
         draw.text(((w - draw.textlength(ln, font=font)) / 2, y - box[1]), ln, font=font, fill=ink)
         y += box[3] + 4
-    return img
 
 
 def _wrap(draw, words, font, width):
@@ -171,6 +198,8 @@ class StreamDeckService:
         self._thread = None
         self._deck = None
         self._error = None
+        self._holds = {}                    # key -> Event that cancels the hold of a key being held
+        self._hold_step = HOLD_STEP_SECONDS
         self.board_status = None
 
     # ---- config ----
@@ -259,6 +288,9 @@ class StreamDeckService:
         self._draw()
 
     def _close(self):
+        for held in self._holds.values():
+            held.set()
+        self._holds.clear()
         deck, self._deck = self._deck, None
         if deck is None:
             return
@@ -287,22 +319,59 @@ class StreamDeckService:
         deck = self._deck
         if deck is None:
             return
-        size = deck.key_image_format()["size"]
         by_key = {k["key"]: k for k in self.keys()}
         for index in range(deck.key_count()):
-            entry = by_key.get(index)
-            if entry:
-                image = render_key(entry["label"], key_hex(entry, self.board_status), size)
-            else:
-                image = render_key("", STATUS_COLORS["off"], size)
-            self._guard(lambda image=image, index=index: deck.set_key_image(index, self._to_native(deck, image)))
+            self._draw_key(index, by_key.get(index))
+
+    def _draw_key(self, index, entry, progress=None):
+        deck = self._deck
+        if deck is None:
+            return
+        size = deck.key_image_format()["size"]
+        if entry:
+            image = render_key(entry["label"], key_hex(entry, self.board_status), size, progress)
+        else:
+            image = render_key("", STATUS_COLORS["off"], size)
+        self._guard(lambda: deck.set_key_image(index, self._to_native(deck, image)))
 
     def _on_key(self, deck, key, pressed):
-        if not pressed:
-            return
-        entry = next((k for k in self.keys() if k["key"] == key), None)
-        if entry is None:
-            return
+        with self._lock:
+            held = self._holds.pop(key, None)
+            if held:
+                held.set()                 # the key was let go before the hold was over, or pressed again
+                self._draw_key(key, next((k for k in self.keys() if k["key"] == key), None))
+            if not pressed:
+                return
+            entry = next((k for k in self.keys() if k["key"] == key), None)
+            if entry is None:
+                return
+            if entry["hold"] > 0:
+                cancelled = self._holds[key] = threading.Event()
+                threading.Thread(target=self._hold, args=(key, entry, cancelled), name="streamdeck-hold", daemon=True).start()
+                return
+        self._run_action(key, entry)
+
+    def _hold(self, key, entry, cancelled):
+        """Draw the progress of a held key; run its action when the hold is over."""
+        start = time.monotonic()
+        while True:
+            elapsed = time.monotonic() - start
+            if cancelled.is_set():
+                return
+            if elapsed >= entry["hold"]:
+                break
+            with self._lock:
+                if not cancelled.is_set():
+                    self._draw_key(key, entry, elapsed / entry["hold"])
+            cancelled.wait(self._hold_step)
+        with self._lock:
+            if cancelled.is_set():
+                return
+            self._holds.pop(key, None)
+            self._draw_key(key, entry)
+        self._run_action(key, entry)
+
+    def _run_action(self, key, entry):
         log.info("Stream Deck key %d: %s", key, entry["action"])
         try:
             result = self.run_control(entry["action"])

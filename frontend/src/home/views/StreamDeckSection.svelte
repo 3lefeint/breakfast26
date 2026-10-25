@@ -11,12 +11,13 @@
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
                          next_player: t('Next Player'), next_game: t('Next Game') };
+  const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
 
   let data = $state(null);
   let error = $state('');
   let selected = $state(null);
-  let draft = $state({ action: '', label: '', color: 'status' });
+  let draft = $state({ action: '', label: '', color: 'status', hold: 0 });
   let timer = null;
 
   async function load() {
@@ -44,19 +45,21 @@
   function select(i) {
     selected = selected === i ? null : i;
     const k = data?.keys.find((x) => x.key === i);
-    draft = k ? { action: k.action, label: k.label, color: k.color } : { action: '', label: '', color: 'status' };
+    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold } : { action: '', label: '', color: 'status', hold: 0 };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
   function layoutWith(i, d) {
-    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color }) => ({ key, action, label, color }));
-    return d.action ? [...others, { key: i, action: d.action, label: d.label, color: d.color }] : others;
+    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color, hold }) => ({ key, action, label, color, hold }));
+    return d.action ? [...others, { key: i, action: d.action, label: d.label, color: d.color, hold: d.hold }] : others;
   }
 
   async function chooseAction() {
     // A label that is still the name of the previous action follows the new action.
     const previous = data.keys.find((k) => k.key === selected);
     if (!draft.label || (previous && draft.label === ACTION_LABEL[previous.action])) draft.label = ACTION_LABEL[draft.action] || '';
+    // A board reset has to be held by default, so it is not run by a press by accident.
+    if (!previous && draft.action === 'reset_board') draft.hold = DEFAULT_HOLD;
     await save();
   }
 
@@ -66,10 +69,12 @@
   }
 
   async function clearKey() {
-    draft = { action: '', label: '', color: 'status' };
+    draft = { action: '', label: '', color: 'status', hold: 0 };
     await save();
   }
 
+  const setHold = (on) => { draft.hold = on ? DEFAULT_HOLD : 0; save(); };
+  const holdTime = (e) => { draft.hold = Math.min(5, Math.max(0.2, Number(e.currentTarget.value) || DEFAULT_HOLD)); save(); };
   const toggleEnabled = (value) => send({ enabled: value });
   const setBrightness = (e) => send({ brightness: Number(e.currentTarget.value) });
   const fixedColor = (e) => { draft.color = e.currentTarget.value; save(); };
@@ -151,6 +156,13 @@
             <input type="color" value={draft.color} onchange={fixedColor} aria-label={t('Color')}>
           {/if}
         </div>
+        <Toggle label={t('Hold to run')} checked={draft.hold > 0} onchange={setHold} />
+        {#if draft.hold > 0}
+          <label class="field">
+            <span>{t('Hold for (seconds)')}</span>
+            <input type="number" min="0.2" max="5" step="0.1" value={draft.hold} onchange={holdTime}>
+          </label>
+        {/if}
         <button type="button" class="act danger" onclick={clearKey}>{t('Clear key')}</button>
       {/if}
     </div>
@@ -187,6 +199,7 @@
     flex: 1; min-width: 8rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px;
     color: var(--text); padding: 0.35rem 0.55rem; font-family: inherit; font-size: 0.85rem;
   }
+  .field input[type="number"] { width: 5rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text); padding: 0.35rem 0.55rem; font-family: inherit; font-size: 0.85rem; }
   .follow { display: flex; align-items: center; gap: 0.4rem; color: var(--text); font-size: 0.85rem; }
   input[type="color"] { width: 2.6rem; height: 1.8rem; padding: 0; border: 1px solid var(--glass-border); border-radius: 6px; background: none; }
   .act { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); padding: 0.25rem 0.8rem; font-family: inherit; font-size: 0.8rem; cursor: pointer; }

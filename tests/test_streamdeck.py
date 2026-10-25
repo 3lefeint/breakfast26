@@ -1,4 +1,6 @@
 """Stream Deck keys: layout checks, status colors, key drawing and the service against a fake device."""
+import time
+
 import pytest
 
 from breakfast import config as cfg_mod
@@ -38,8 +40,8 @@ class TestStatusColor:
 class TestCleanKeys:
     def test_valid_keys_are_sorted_and_filled_in(self):
         keys = sd.clean_keys([{"key": 2, "action": "undo"}, {"key": 0, "action": "reset_board", "label": "Reset", "color": "#FF0000"}])
-        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000"},
-                        {"key": 2, "action": "undo", "label": "Undo", "color": "status"}]
+        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000", "hold": 0},
+                        {"key": 2, "action": "undo", "label": "Undo", "color": "status", "hold": 0}]
 
     def test_the_last_entry_for_a_key_wins(self):
         keys = sd.clean_keys([{"key": 1, "action": "undo"}, {"key": 1, "action": "next_game"}])
@@ -49,6 +51,8 @@ class TestCleanKeys:
         "x", [1], [{"key": -1, "action": "undo"}], [{"key": "0", "action": "undo"}], [{"key": True, "action": "undo"}],
         [{"key": 0, "action": "launch"}], [{"key": 0, "action": "undo", "color": "red"}], [{"key": 0, "action": "undo", "color": "#12345"}],
         [{"key": i, "action": "undo"} for i in range(65)],
+        [{"key": 0, "action": "undo", "hold": -1}], [{"key": 0, "action": "undo", "hold": 6}], [{"key": 0, "action": "undo", "hold": "1"}],
+        [{"key": 0, "action": "undo", "hold": True}],
     ])
     def test_bad_layouts_are_refused(self, bad):
         with pytest.raises(ValueError):
@@ -144,7 +148,7 @@ class TestService:
         service.on_board_status("Throw")
         snap = service.snapshot()
         assert (snap["rows"], snap["cols"]) == (sd.DEFAULT_ROWS, sd.DEFAULT_COLS)
-        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "shown": sd.STATUS_COLORS["green"]}]
+        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "hold": 0, "shown": sd.STATUS_COLORS["green"]}]
 
     def test_update_refuses_bad_values_and_writes_nothing(self, service):
         with pytest.raises(ValueError):
@@ -184,6 +188,64 @@ class TestBoardStatusListener:
         assert state.update({"event": "Board Status", "data": {"status": "Throw"}}) == {"type": "board_status", "status": "Throw"}
 
 
+class TestHold:
+    def _connect(self, service, hold):
+        service._hold_step = 0.01
+        service.update(enabled=True, keys=[{"key": 0, "action": "reset_board", "hold": hold}])
+        with service._lock:
+            service._connect()
+        return service.deck
+
+    def test_a_key_without_hold_runs_on_the_press(self, service):
+        deck = self._connect(service, 0)
+        deck.callback(deck, 0, True)
+        assert service.calls == ["reset_board"]
+
+    def test_a_held_key_runs_its_action_after_the_time_and_only_once(self, service):
+        deck = self._connect(service, 0.1)
+        deck.callback(deck, 0, True)
+        assert service.calls == []
+        _wait(lambda: service.calls == ["reset_board"])
+        deck.callback(deck, 0, False)
+        time.sleep(0.05)
+        assert service.calls == ["reset_board"]
+
+    def test_a_key_let_go_early_does_nothing_and_is_drawn_normally_again(self, service):
+        deck = self._connect(service, 0.3)
+        normal = deck.images[0].tobytes()
+        deck.callback(deck, 0, True)
+        _wait(lambda: deck.images[0].tobytes() != normal)             # the progress bar is drawn
+        deck.callback(deck, 0, False)
+        time.sleep(0.4)
+        assert service.calls == [] and deck.images[0].tobytes() == normal
+
+    def test_pressing_again_starts_the_hold_over(self, service):
+        deck = self._connect(service, 0.2)
+        deck.callback(deck, 0, True)
+        time.sleep(0.1)
+        deck.callback(deck, 0, False)
+        deck.callback(deck, 0, True)
+        time.sleep(0.15)
+        assert service.calls == []
+        _wait(lambda: service.calls == ["reset_board"])
+
+    def test_closing_the_device_cancels_a_hold(self, service):
+        deck = self._connect(service, 0.2)
+        deck.callback(deck, 0, True)
+        with service._lock:
+            service._close()
+        time.sleep(0.35)
+        assert service.calls == []
+
+    def test_the_progress_bar_fills_with_the_progress(self):
+        pytest.importorskip("PIL")
+        empty, half, full = (sd.render_key("", "#cc2a2a", (72, 72), p) for p in (0, 0.5, 1))
+        dark, white = (20, 20, 20), (255, 255, 255)
+        assert empty.getpixel((10, 70)) == dark
+        assert half.getpixel((10, 70)) == white and half.getpixel((60, 70)) == dark
+        assert full.getpixel((70, 70)) == white and full.getpixel((10, 10)) == (0xcc, 0x2a, 0x2a)
+
+
 class TestRoutes:
     @pytest.fixture
     def server(self, tmp_path):
@@ -209,7 +271,7 @@ class TestRoutes:
         body = srv.StreamDeckBody(enabled=True, brightness=40, keys=[{"key": 0, "action": "reset_board", "label": "Reset"}])
         snap = asyncio.run(srv.streamdeck_put(body))
         assert snap["enabled"] and snap["brightness"] == 40 and snap["keys"][0]["label"] == "Reset"
-        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status"}]
+        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status", "hold": 0}]
 
     def test_put_answers_a_bad_layout_with_an_error(self, server):
         import asyncio
