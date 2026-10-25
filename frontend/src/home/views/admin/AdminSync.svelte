@@ -3,7 +3,7 @@
   import { t } from '../../../lib/i18n.js';
   // The sync state per approved site (what it reported, how many records it sent) and the newest records without their content.
   import Panel from '../../../lib/components/Panel.svelte';
-  import { adminCall, ago } from '../../../lib/admin.js';
+  import { adminCall, ago, compareVersions, newestVersion } from '../../../lib/admin.js';
 
   let sync = $state(null);
   let records = $state([]);
@@ -19,6 +19,7 @@
     }
   }
 
+  const newest = $derived(sync ? newestVersion(sync.sites) : '');
   const size = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
   const stateLine = (state) => Object.entries(state || {}).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ') || '—';
 
@@ -32,6 +33,7 @@
   {#if sync && !sync.sites.length}
     <p class="empty">{t('No approved site yet.')}</p>
   {:else if sync}
+    {#if newest}<p class="note">{t('Newest version in the circle: {version}', { version: newest })}</p>{/if}
     <table>
       <thead><tr><th>{t('Site')}</th><th>{t('Seen')}</th><th>{t('Version')}</th><th class="num">{t('Records sent')}</th><th>{t('Reported state')}</th></tr></thead>
       <tbody>
@@ -39,7 +41,8 @@
           <tr>
             <td><strong>{site.name}</strong></td>
             <td>{ago(site.last_seen, t)}</td>
-            <td>{site.version || '—'}</td>
+            <td>{site.version || '—'}
+              {#if newest && compareVersions(site.version, newest) < 0}<span class="tag warn">{t('older')}</span>{/if}</td>
             <td class="num">{site.records_sent.n}</td>
             <td class="mono">{stateLine(site.state)}</td>
           </tr>
