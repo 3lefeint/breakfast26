@@ -127,7 +127,7 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # brightness = 60           # 0-100
 # keys = [
 #     { key = 0, action = "reset_board", label = "Reset Board", color = "status", hold = 0.8 },   # hold = seconds to hold, 0 runs on the press
-#     { key = 1, action = "start_board", label = "Start Board", color = "status", hold = 0 },
+#     { key = 1, action = "start_board", label = "Start Board", color = "status", hold = 0, image = "symbol:start" },   # image: symbol:<name> or a file of the streamdeck folder
 # ]
 # Custom actions a key can run besides the built-in ones (kind "route": a path under /api/ of Breakfast, kind "url": any
 # http(s) address with an optional body):

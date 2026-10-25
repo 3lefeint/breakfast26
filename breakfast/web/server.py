@@ -3583,6 +3583,50 @@ async def streamdeck_put(body: StreamDeckBody):
     return _streamdeck.snapshot()
 
 
+@app.get("/api/streamdeck/images/{name}")
+async def streamdeck_image(name: str):
+    if not _streamdeck or not streamdeck_mod.IMAGE_NAME.match(name):
+        raise HTTPException(status_code=404)
+    path = _streamdeck.image_dir() / name
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path)
+
+
+@app.post("/api/streamdeck/images")
+async def streamdeck_image_upload(request: Request, name: str = Query(...)):
+    """Upload a picture for the keys; the file is the request body."""
+    if not _streamdeck:
+        return {"error": "Stream Deck not available"}
+    data = await request.body()
+    try:
+        _streamdeck.save_image(name, data)
+    except ValueError as e:
+        return {"error": str(e)}
+    log.info("Stream Deck image uploaded: %s (%d bytes)", name, len(data))
+    return {"ok": True, "file": name}
+
+
+@app.delete("/api/streamdeck/images/{name}")
+async def streamdeck_image_delete(name: str):
+    if not _streamdeck:
+        return {"error": "Stream Deck not available"}
+    try:
+        _streamdeck.delete_image(name)
+    except ValueError as e:
+        return {"error": str(e)}
+    return _streamdeck.snapshot()
+
+
+@app.get("/api/streamdeck/key/{key}.png")
+async def streamdeck_key_png(key: int):
+    """A configured key as the device shows it now, for the preview in the Stream Deck tab."""
+    png = _streamdeck.preview(key) if _streamdeck else None
+    if png is None:
+        raise HTTPException(status_code=404)
+    return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
 def start_update_check():
     """Look for a newer release by itself, see update_check.py."""
     global _update_checker

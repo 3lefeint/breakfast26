@@ -2,19 +2,24 @@
 
 The device is driven over USB by Breakfast itself (python-elgato-streamdeck), so no other software has to run next to
 it. The layout lives in `[streamdeck]` of config.toml: `enabled`, `brightness` and `keys`, a list of
-`{key, action, label, color, hold}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
-`hold` is the seconds the key has to be held to run its action, 0 runs it on the press). `actions` holds the custom
+`{key, action, label, color, hold, image}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
+`hold` is the seconds the key has to be held to run its action, 0 runs it on the press; `image` is empty, a symbol
+of Breakfast (`symbol:undo`) or a png, jpg or webp file uploaded into the `streamdeck` folder next to config.toml). `actions` holds the custom
 actions a key can run besides the built-in ones: `{id, name, kind, method, target, body}`, a route of Breakfast or any
 web address.
 
 Everything that does not touch the USB device (layout checks, status colors, key drawing, the actions) works without
 one, so it is tested without hardware; the device layer is a few calls on the object the library returns.
 """
+import io
 import json
 import logging
+import os
+import re
 import threading
 import time
 import uuid
+from pathlib import Path
 
 from breakfast import config as cfg_mod
 
@@ -41,6 +46,12 @@ MAX_KEYS = 64
 MAX_ACTIONS = 32
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_TIMEOUT_SECONDS = 5
+SYMBOLS = ("reset", "start", "undo", "next_player", "next_game")   # drawn by Breakfast, no file needed
+SYMBOL_PREFIX = "symbol:"
+IMAGE_NAME = re.compile(r"^\w[\w .\-]{0,78}\.(png|jpe?g|webp)$", re.IGNORECASE)
+MAX_IMAGE_BYTES = 2_000_000
+IMAGE_DIR_NAME = "streamdeck"       # next to config.toml
+PREVIEW_SIZE = (96, 96)
 MAX_HOLD_SECONDS = 5
 DEFAULT_HOLD_SECONDS = 0.8
 HOLD_STEP_SECONDS = 0.08   # how often the progress bar of a held key is drawn
@@ -133,8 +144,22 @@ def clean_keys(keys, custom_ids=()):
         hold = entry.get("hold", 0)
         if isinstance(hold, bool) or not isinstance(hold, (int, float)) or not 0 <= hold <= MAX_HOLD_SECONDS:
             raise ValueError("hold must be a number of seconds from 0 to %d" % MAX_HOLD_SECONDS)
-        out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold}
+        image = entry.get("image", "")
+        if not valid_image(image):
+            raise ValueError("image must be empty, symbol:<name> or the name of an uploaded png, jpg or webp file")
+        out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image}
     return [out[k] for k in sorted(out)]
+
+
+def valid_image(value):
+    """No image, a built-in symbol (`symbol:undo`) or the name of a file in the image folder."""
+    if value == "":
+        return True
+    if not isinstance(value, str):
+        return False
+    if value.startswith(SYMBOL_PREFIX):
+        return value[len(SYMBOL_PREFIX):] in SYMBOLS
+    return IMAGE_NAME.match(value) is not None
 
 
 def key_hex(entry, board_status):
@@ -148,19 +173,48 @@ def _rgb(hex_color):
     return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def render_key(label, hex_color, size, progress=None):
+def render_key(label, hex_color, size, progress=None, image=None, symbol=None):
     """A square key image: the color as background and the label centered, black or white text by brightness.
-    `progress` (0 to 1) adds a bar along the bottom, the hold of a key that has to be held."""
-    from PIL import Image, ImageDraw, ImageFont
+    With a picture (`image`, a PIL image) the picture fills the key inside a frame of the color and the label sits on a
+    band at the bottom; with a `symbol` the symbol is drawn on the color. `progress` (0 to 1) adds a bar along the
+    bottom, the hold of a key that has to be held."""
+    from PIL import Image, ImageDraw
 
     w, h = size
     rgb = _rgb(hex_color)
+    ink = (0, 0, 0) if (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 > 140 else (255, 255, 255)
     img = Image.new("RGB", (w, h), rgb)
-    if label:
-        _draw_label(img, label, rgb)
+    draw = ImageDraw.Draw(img)
+    if image is not None:
+        frame = max(3, h // 10)
+        img.paste(_cover(image, (w - 2 * frame, h - 2 * frame)), (frame, frame))
+        if label:
+            band = round(h * 0.34)
+            shade = Image.new("RGB", (w - 2 * frame, band), (0, 0, 0))
+            region = (frame, h - frame - band, w - frame, h - frame)
+            img.paste(Image.blend(img.crop(region), shade, 0.65), region[:2])
+            _draw_label(img, label, (255, 255, 255), (region[0], region[1], region[2], region[3]))
+    elif symbol is not None:
+        top = round(h * 0.68) if label else h
+        _draw_symbol(draw, symbol, (0, 0, w, top), ink)
+        if label:
+            _draw_label(img, label, ink, (0, top - 2, w, h))
+    elif label:
+        _draw_label(img, label, ink, (0, 0, w, h))
     if progress is not None:
         _draw_progress(img, progress)
     return img
+
+
+def _cover(image, size):
+    """The picture scaled to fill `size`, the overflow cut off evenly."""
+    from PIL import Image
+
+    w, h = size
+    scale = max(w / image.width, h / image.height)
+    scaled = image.convert("RGB").resize((max(w, round(image.width * scale)), max(h, round(image.height * scale))), Image.LANCZOS)
+    left, top = (scaled.width - w) // 2, (scaled.height - h) // 2
+    return scaled.crop((left, top, left + w, top + h))
 
 
 def _draw_progress(img, progress):
@@ -173,23 +227,61 @@ def _draw_progress(img, progress):
     draw.rectangle((0, h - bar, round(w * min(max(progress, 0), 1)), h), fill=(255, 255, 255))
 
 
-def _draw_label(img, label, rgb):
+def _draw_symbol(draw, name, area, ink):
+    """One of the built-in symbols, drawn with shapes so it stays sharp at any key size."""
+    import math
+
+    x0, y0, x1, y1 = area
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    r = min(x1 - x0, y1 - y0) * 0.36
+    lw = max(2, round(r * 0.3))
+
+    def arrow_head(angle, forward):
+        """A head at the point of the circle of radius r at `angle` degrees (clockwise from 3 o'clock), pointing
+        along the circle (`forward` 1 clockwise, -1 counterclockwise)."""
+        a = math.radians(angle)
+        px, py = cx + r * math.cos(a), cy + r * math.sin(a)
+        nx, ny = math.cos(a), math.sin(a)                       # outward
+        tx, ty = -math.sin(a) * forward, math.cos(a) * forward   # direction of travel
+        wide, long_ = r * 0.62, r * 0.85
+        draw.polygon([(px + nx * wide, py + ny * wide), (px - nx * wide, py - ny * wide), (px + tx * long_, py + ty * long_)], fill=ink)
+
+    if name == "start":
+        draw.polygon([(cx - r * 0.7, cy - r), (cx - r * 0.7, cy + r), (cx + r * 0.95, cy)], fill=ink)
+    elif name == "next_game":
+        for shift in (-0.5, 0.5):
+            x = cx + shift * r
+            draw.polygon([(x - r * 0.55, cy - r * 0.85), (x - r * 0.55, cy + r * 0.85), (x + r * 0.55, cy)], fill=ink)
+    elif name == "reset":
+        draw.arc((cx - r, cy - r, cx + r, cy + r), start=-50, end=235, fill=ink, width=lw)
+        arrow_head(235, 1)
+    elif name == "undo":
+        draw.arc((cx - r, cy - r, cx + r, cy + r), start=270, end=130, fill=ink, width=lw)
+        arrow_head(270, -1)
+    elif name == "next_player":
+        draw.ellipse((cx - r * 0.95, cy - r * 0.95, cx - r * 0.15, cy - r * 0.15), fill=ink)
+        draw.pieslice((cx - r * 1.2, cy, cx, cy + r * 1.6), start=180, end=360, fill=ink)
+        draw.polygon([(cx + r * 0.15, cy - r * 0.55), (cx + r * 0.15, cy + r * 0.75), (cx + r * 1.0, cy + r * 0.1)], fill=ink)
+
+
+def _draw_label(img, label, ink, area):
+    """The label centered in `area` (x0, y0, x1, y1), as large as fits."""
     from PIL import ImageDraw, ImageFont
 
-    w, h = img.size
-    ink = (0, 0, 0) if (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 > 140 else (255, 255, 255)
+    x0, y0, x1, y1 = (round(v) for v in area)
+    w, h = x1 - x0, y1 - y0
     draw = ImageDraw.Draw(img)
     words = label.split()
-    for pt in range(max(10, h // 4), 7, -1):
+    for pt in range(max(10, h // 3 if h < img.size[1] else img.size[1] // 4), 7, -1):
         font = ImageFont.load_default(size=pt)
         lines = _wrap(draw, words, font, w - 8)
         height = sum(draw.textbbox((0, 0), ln, font=font)[3] + 4 for ln in lines)
-        if height <= h - 8 and all(draw.textlength(ln, font=font) <= w - 8 for ln in lines):
+        if height <= h - 6 and all(draw.textlength(ln, font=font) <= w - 8 for ln in lines):
             break
-    y = (h - height) // 2
+    y = y0 + (h - height) // 2
     for ln in lines:
         box = draw.textbbox((0, 0), ln, font=font)
-        draw.text(((w - draw.textlength(ln, font=font)) / 2, y - box[1]), ln, font=font, fill=ink)
+        draw.text((x0 + (w - draw.textlength(ln, font=font)) / 2, y - box[1]), ln, font=font, fill=ink)
         y += box[3] + 4
 
 
@@ -247,6 +339,7 @@ class StreamDeckService:
         self._thread = None
         self._deck = None
         self._error = None
+        self._pictures = {}                 # file name -> (mtime, PIL image), the pictures of the keys
         self._holds = {}                    # key -> Event that cancels the hold of a key being held
         self._hold_step = HOLD_STEP_SECONDS
         self.board_status = None
@@ -392,11 +485,95 @@ class StreamDeckService:
         if deck is None:
             return
         size = deck.key_image_format()["size"]
-        if entry:
-            image = render_key(entry["label"], key_hex(entry, self.board_status), size, progress)
-        else:
-            image = render_key("", STATUS_COLORS["off"], size)
+        image = self._render(entry, size, progress)
         self._guard(lambda: deck.set_key_image(index, self._to_native(deck, image)))
+
+    def _render(self, entry, size, progress=None):
+        if not entry:
+            return render_key("", STATUS_COLORS["off"], size)
+        picture, symbol = self._picture(entry["image"])
+        return render_key(entry["label"], key_hex(entry, self.board_status), size, progress, picture, symbol)
+
+    # ---- images ----
+    def image_dir(self):
+        return Path(self.config_path).parent / IMAGE_DIR_NAME
+
+    def _picture(self, value):
+        """(picture, symbol) of an `image` value: a PIL image of the uploaded file, or the name of a symbol. A missing or
+        broken file draws the key without a picture."""
+        if value.startswith(SYMBOL_PREFIX):
+            return None, value[len(SYMBOL_PREFIX):]
+        if not value:
+            return None, None
+        path = self.image_dir() / value
+        try:
+            mtime = path.stat().st_mtime
+            cached = self._pictures.get(value)
+            if cached is None or cached[0] != mtime:
+                from PIL import Image
+                with Image.open(path) as opened:
+                    cached = self._pictures[value] = (mtime, opened.convert("RGB"))
+            return cached[1], None
+        except Exception:
+            self._pictures.pop(value, None)
+            return None, None
+
+    def images(self):
+        folder = self.image_dir()
+        if not folder.is_dir():
+            return []
+        return sorted(f.name for f in folder.iterdir() if f.is_file() and IMAGE_NAME.match(f.name))
+
+    def save_image(self, name, data):
+        """Store an uploaded picture; raises ValueError with a message for the UI."""
+        if not IMAGE_NAME.match(name or ""):
+            raise ValueError("the file name has to end in .png, .jpg or .webp and may not contain a path")
+        if not data or len(data) > MAX_IMAGE_BYTES:
+            raise ValueError("the image has to be at most %d MB" % (MAX_IMAGE_BYTES // 1_000_000))
+        try:
+            from PIL import Image
+            with Image.open(io.BytesIO(data)) as opened:
+                opened.verify()
+            with Image.open(io.BytesIO(data)) as opened:
+                if opened.width > 4000 or opened.height > 4000:
+                    raise ValueError("the image is larger than 4000 pixels")
+        except ValueError:
+            raise
+        except Exception:
+            raise ValueError("the file is not a picture")
+        folder = self.image_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = folder / (name + ".part")
+        tmp.write_bytes(data)
+        os.replace(tmp, folder / name)
+        self._pictures.pop(name, None)
+        with self._lock:
+            self._draw()
+
+    def delete_image(self, name):
+        """Delete an uploaded picture; the keys that showed it lose their image."""
+        if not IMAGE_NAME.match(name or ""):
+            raise ValueError("unknown image")
+        path = self.image_dir() / name
+        if not path.is_file():
+            raise ValueError("unknown image")
+        path.unlink()
+        self._pictures.pop(name, None)
+        keys = self.keys()
+        if any(k["image"] == name for k in keys):
+            self.update(keys=[{**k, "image": "" if k["image"] == name else k["image"]} for k in keys])
+        else:
+            with self._lock:
+                self._draw()
+
+    def preview(self, key):
+        """The PNG of a configured key as the device shows it now (None for a key without an action)."""
+        entry = next((k for k in self.keys() if k["key"] == key), None)
+        if entry is None:
+            return None
+        out = io.BytesIO()
+        self._render(entry, PREVIEW_SIZE).save(out, "PNG")
+        return out.getvalue()
 
     def _on_key(self, deck, key, pressed):
         with self._lock:
@@ -500,5 +677,7 @@ class StreamDeckService:
                 "actions": [{"id": k, "label": v, "custom": False} for k, v in ACTIONS.items()]
                            + [{"id": a["id"], "label": a["name"], "custom": True} for a in self.actions()],
                 "custom_actions": self.actions(),
+                "images": self.images(),
+                "symbols": list(SYMBOLS),
                 "keys": [{**k, "shown": key_hex(k, self.board_status)} for k in keys],
             }
