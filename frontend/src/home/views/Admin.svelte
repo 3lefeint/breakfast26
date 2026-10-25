@@ -144,6 +144,7 @@
   .admin :global(.num) { text-align: right; }
   .admin :global(.tag) { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--glass-border); color: var(--muted); }
   .admin :global(.tag.ok) { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); }
+  .admin :global(.tag.warn) { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
   .admin :global(.mono) { font-family: monospace; font-size: 0.8rem; color: var(--muted); }
   .topline { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
   .chips { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; flex-wrap: wrap; }

@@ -56,10 +56,10 @@
       <p class="empty">{t('No event in this time.')}</p>
     {:else}
       <table>
-        <thead><tr><th>{t('When')}</th><th>{t('Type')}</th><th>{t('Version')}</th><th>{t('Details')}</th></tr></thead>
+        <thead><tr><th>{t('When')}</th><th>{t('Type')}</th><th>{t('Installation')}</th><th>{t('Version')}</th><th>{t('Details')}</th></tr></thead>
         <tbody>
           {#each reports.recent as event (event.id)}
-            <tr><td>{when(event.received_at)}</td><td>{event.type}</td><td>{event.version}</td><td class="mono">{JSON.stringify(event.data)}</td></tr>
+            <tr><td>{when(event.received_at)}</td><td>{event.type}</td><td class="mono">{event.install_id.slice(0, 8)}</td><td>{event.version}</td><td class="mono">{JSON.stringify(event.data)}</td></tr>
           {/each}
         </tbody>
       </table>

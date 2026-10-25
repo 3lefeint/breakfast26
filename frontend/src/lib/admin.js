@@ -103,3 +103,30 @@ export function ago(ms, t) {
   if (h < 36) return t('{n} h ago', { n: h });
   return t('{n} days ago', { n: Math.round(h / 24) });
 }
+
+// The parts of a version like "1.11.1" as numbers; anything that is not a version gives null.
+function versionParts(version) {
+  const m = /^v?(\d+(?:\.\d+)*)/.exec(String(version || '').trim());
+  return m ? m[1].split('.').map(Number) : null;
+}
+
+// Negative when version a is older than b, positive when newer, 0 when equal or not comparable.
+export function compareVersions(a, b) {
+  const x = versionParts(a);
+  const y = versionParts(b);
+  if (!x || !y) return 0;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] || 0) - (y[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+// The newest version among the sites (each has a `version`), '' when none reported one.
+export function newestVersion(sites) {
+  let newest = '';
+  for (const site of sites) {
+    if (versionParts(site.version) && (!newest || compareVersions(site.version, newest) > 0)) newest = site.version;
+  }
+  return newest;
+}

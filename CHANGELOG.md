@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- The Sites and Sync tabs of the admin area show the newest version in the circle and mark a site that runs an older one. (#103)
+- The newest events of the admin reports show the installation id. (#103)
+
 ## [1.11.1] - 2026-10-23
 
 ### Changed
