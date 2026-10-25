@@ -13,6 +13,8 @@
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
                          next_player: t('Next Player'), next_game: t('Next Game') };
   const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game') };
+  const SHOW_LABEL = { player: t('Player on turn'), remaining: t('Remaining score'), lives: t('Lives'),
+                       darts: t('Darts in the turn'), round: t('Round') };
   const labelOf = (id) => ACTION_LABEL[id] || data?.actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
@@ -20,7 +22,7 @@
   let data = $state(null);
   let error = $state('');
   let selected = $state(null);
-  let draft = $state({ action: '', label: '', color: 'status', hold: 0, image: '' });
+  let draft = $state({ action: '', label: '', color: 'status', hold: 0, image: '', show: '' });
   let timer = null;
 
   async function load() {
@@ -48,13 +50,13 @@
   function select(i) {
     selected = selected === i ? null : i;
     const k = data?.keys.find((x) => x.key === i);
-    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image } : { action: '', label: '', color: 'status', hold: 0, image: '' };
+    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show } : { action: '', label: '', color: 'status', hold: 0, image: '', show: '' };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
   function layoutWith(i, d) {
-    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color, hold, image }) => ({ key, action, label, color, hold, image }));
-    return d.action ? [...others, { key: i, action: d.action, label: d.label, color: d.color, hold: d.hold, image: d.image }] : others;
+    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color, hold, image, show }) => ({ key, action, label, color, hold, image, show }));
+    return d.action || d.show ? [...others, { key: i, action: d.action, label: d.label, color: d.color, hold: d.hold, image: d.image, show: d.show }] : others;
   }
 
   async function chooseAction() {
@@ -66,13 +68,18 @@
     await save();
   }
 
+  async function chooseShow() {
+    if (draft.show && !draft.label) draft.label = SHOW_LABEL[draft.show];
+    await save();
+  }
+
   async function save() {
     if (selected === null) return;
     await send({ keys: layoutWith(selected, draft) });
   }
 
   async function clearKey() {
-    draft = { action: '', label: '', color: 'status', hold: 0, image: '' };
+    draft = { action: '', label: '', color: 'status', hold: 0, image: '', show: '' };
     await save();
   }
 
@@ -82,7 +89,7 @@
   let uploading = $state(false);
   const isFile = (v) => v && !v.startsWith('symbol:');
   // The preview of a key with an image is drawn by Breakfast itself, so it is what the device shows.
-  const previewUrl = (c) => `${URL}/key/${c.key}.png?v=${encodeURIComponent([c.shown, c.label, c.image, data.images.join()].join('|'))}`;
+  const previewUrl = (c) => `${URL}/key/${c.key}.png?v=${encodeURIComponent([c.shown, c.label, c.image, c.value, data.images.join()].join('|'))}`;
 
   async function upload(event) {
     const file = event.target.files?.[0];
@@ -188,7 +195,7 @@
               style={c.empty ? '' : `background: ${c.shown}; color: ${textColor(c.shown)};`}
               onclick={() => select(c.key)} aria-label={t('Key {n}', { n: c.key + 1 })}>
         {#if c.empty}<span class="num">{c.key + 1}</span>
-        {:else if c.image}<img class="keyimg" src={previewUrl(c)} alt={c.label}>
+        {:else if c.image || c.show}<img class="keyimg" src={previewUrl(c)} alt={c.label}>
         {:else}{c.label}{/if}
       </button>
     {/each}
@@ -209,7 +216,14 @@
           {/if}
         </select>
       </label>
-      {#if draft.action}
+      <label class="field">
+        <span>{t('Show')}</span>
+        <select bind:value={draft.show} onchange={chooseShow}>
+          <option value="">{t('Nothing')}</option>
+          {#each data.show_values as v (v)}<option value={v}>{SHOW_LABEL[v]}</option>{/each}
+        </select>
+      </label>
+      {#if draft.action || draft.show}
         <label class="field">
           <span>{t('Label')}</span>
           <input type="text" maxlength="40" bind:value={draft.label} onchange={save}>
@@ -246,8 +260,8 @@
           </label>
           {#if isFile(draft.image)}<button type="button" class="act danger" onclick={deleteImage}>{t('Delete file')}</button>{/if}
         </div>
-        <Toggle label={t('Hold to run')} checked={draft.hold > 0} onchange={setHold} />
-        {#if draft.hold > 0}
+        {#if draft.action}<Toggle label={t('Hold to run')} checked={draft.hold > 0} onchange={setHold} />{/if}
+        {#if draft.action && draft.hold > 0}
           <label class="field">
             <span>{t('Hold for (seconds)')}</span>
             <input type="number" min="0.2" max="5" step="0.1" value={draft.hold} onchange={holdTime}>

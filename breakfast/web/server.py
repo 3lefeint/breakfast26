@@ -163,7 +163,8 @@ def wire(game_state, elim_ctrl,
         _streamdeck.stop()
     _streamdeck = None
     if config_path and game_state:
-        _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control, web_base=lambda: f"http://127.0.0.1:{_web_port}")
+        _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control, web_base=lambda: f"http://127.0.0.1:{_web_port}",
+                                                       values=_game_values)
         _streamdeck.board_status = game_state.board_status
         game_state.board_status_listeners.append(_streamdeck.on_board_status)
     _dev_demo = dev_demo
@@ -327,8 +328,24 @@ async def _send_to(clients: set, data: dict):
     clients.difference_update(dead)
 
 
+def _game_values():
+    """What a Stream Deck key can show of the game in play (X01 or Elimination): the player on turn, his remaining
+    score or lives, the darts of the turn and the round. None while no such game is running."""
+    for ctrl in (_x01_ctrl, _elim_ctrl):
+        game = ctrl.game if ctrl else None
+        if not game or game.state != "playing":
+            continue
+        snap = game.snapshot()
+        current = next((p for p in snap["players"] if p.get("current")), {})
+        return {"player": snap["current_player"], "remaining": current.get("remaining"), "lives": current.get("lives"),
+                "darts": len(snap["current_darts"]), "round": snap.get("round")}
+    return None
+
+
 def push():
     """Call from any thread after state changes to push to all browser clients."""
+    if _streamdeck:
+        _streamdeck.on_game_change()
     if _loop and _loop.is_running() and _clients:
         asyncio.run_coroutine_threadsafe(_send_to(_clients, _build_payload()), _loop)
 
@@ -341,6 +358,8 @@ def push_sound(instruction: dict):
 
 def push_achievement(message: dict):
     """Call from any thread to tell every browser client about an earned achievement."""
+    if _streamdeck:
+        _streamdeck.flash()
     if _loop and _loop.is_running() and _clients:
         asyncio.run_coroutine_threadsafe(_send_to(_clients, message), _loop)
 

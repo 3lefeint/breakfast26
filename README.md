@@ -375,6 +375,10 @@ under Settings → Stream Deck, click a key in the grid and pick its action (res
 player, next game), label and color. Besides these, a *custom action* calls a route of Breakfast (any path under `/api/`) or a web address (for example a
 Home Assistant webhook) with the method and body you give it: create it once under *Custom actions*, then pick it for any
 key. Keep in mind that the settings of Breakfast have no login, so anyone on your network can add such an action.
+A key can also show a value of the game in play instead of (or besides) running an action: the player on turn, his
+remaining score (X01) or lives (Elimination), the darts thrown in the turn or the round. Such a display key redraws when
+the value changes and shows its label while no game runs; when an achievement is earned the display keys flash for a few
+seconds.
 A key can show a picture: one of the built-in symbols (reset, start, undo, next player, next game) or an image you upload
 (png, jpg or webp, up to 2 MB, stored in the `streamdeck` folder next to `config.toml`); the board status stays visible as a
 colored frame or background, and the grid shows the key exactly as the device draws it.

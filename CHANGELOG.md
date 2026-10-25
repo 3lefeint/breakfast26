@@ -76,6 +76,7 @@
 - The connection to the local board follows the same rule, and the error line the WebSocket library writes on every failed connect is no longer logged. (#112)
 - A match both sites played online and the relay took from the other one counts as delivered: "Send all matches" and a second close do not queue it again. (#114)
 - A guest of another site stored by an online match becomes the local player the admin mapped him to, with his matches, wins and achievements; this waits while a match is running. (#115)
+- Stream Deck display keys show a value of the game in play (the player on turn, remaining score, lives, darts of the turn, round) and flash when an achievement is earned; they are set per key under Settings → Stream Deck (`show`). (#109)
 - A Stream Deck key can show a picture: a built-in symbol (reset, start, undo, next player, next game) or an uploaded png, jpg or webp (`image` of a key, files in the `streamdeck` folder next to `config.toml`, `/api/streamdeck/images`); the board status shows as the frame or background color and the key grid shows the key as the device draws it. (#108)
 - Custom actions for Stream Deck keys: a key can call a route of Breakfast or any web address with a method and a body, created under Settings → Stream Deck → Custom actions (`[[streamdeck.actions]]`, `actions` of `PUT /api/streamdeck`). (#107)
 - A Stream Deck key can be set to run its action only when it is held (default for Reset Board: 0.8 seconds); a bar fills up on the key while it is held and a shorter press does nothing. (#110)
