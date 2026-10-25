@@ -1,0 +1,249 @@
+"""Stream Deck keys: layout checks, status colors, key drawing and the service against a fake device."""
+import pytest
+
+from breakfast import config as cfg_mod
+from breakfast import streamdeck as sd
+from breakfast.state import GameState
+
+
+class FakeDeck:
+    def __init__(self, keys=6, layout=(2, 3), connected=True):
+        self.keys, self.layout, self._connected = keys, layout, connected
+        self.images, self.callback, self.brightness, self.opened, self.closed = {}, None, None, False, False
+
+    def open(self): self.opened = True
+    def close(self): self.closed = True
+    def reset(self): pass
+    def connected(self): return self._connected
+    def deck_type(self): return "Fake Deck"
+    def key_count(self): return self.keys
+    def key_layout(self): return self.layout
+    def key_image_format(self): return {"size": (72, 72)}
+    def set_brightness(self, value): self.brightness = value
+    def set_key_callback(self, cb): self.callback = cb
+    def set_key_image(self, index, image): self.images[index] = image
+
+
+class TestStatusColor:
+    @pytest.mark.parametrize("status, color", [
+        ("Throw", "green"), ("Takeout Finished", "green"),
+        ("Takeout", "yellow"), ("Takeout in progress", "yellow"), ("Takeout Started", "yellow"), ("Board Starting", "yellow"),
+        ("Board Stopped", "red"), ("Board Disconnected", "red"), ("Board Stopping", "red"),
+        (None, "off"), ("", "off"), ("Calibration Started", "off"),
+    ])
+    def test_status(self, status, color):
+        assert sd.status_color(status) == color
+
+
+class TestCleanKeys:
+    def test_valid_keys_are_sorted_and_filled_in(self):
+        keys = sd.clean_keys([{"key": 2, "action": "undo"}, {"key": 0, "action": "reset_board", "label": "Reset", "color": "#FF0000"}])
+        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000"},
+                        {"key": 2, "action": "undo", "label": "Undo", "color": "status"}]
+
+    def test_the_last_entry_for_a_key_wins(self):
+        keys = sd.clean_keys([{"key": 1, "action": "undo"}, {"key": 1, "action": "next_game"}])
+        assert [k["action"] for k in keys] == ["next_game"]
+
+    @pytest.mark.parametrize("bad", [
+        "x", [1], [{"key": -1, "action": "undo"}], [{"key": "0", "action": "undo"}], [{"key": True, "action": "undo"}],
+        [{"key": 0, "action": "launch"}], [{"key": 0, "action": "undo", "color": "red"}], [{"key": 0, "action": "undo", "color": "#12345"}],
+        [{"key": i, "action": "undo"} for i in range(65)],
+    ])
+    def test_bad_layouts_are_refused(self, bad):
+        with pytest.raises(ValueError):
+            sd.clean_keys(bad)
+
+
+class TestRender:
+    def test_the_key_has_the_color_and_the_size(self):
+        pytest.importorskip("PIL")
+        img = sd.render_key("", "#cc2a2a", (72, 72))
+        assert img.size == (72, 72) and img.getpixel((0, 0)) == (0xcc, 0x2a, 0x2a)
+
+    def test_a_label_changes_the_image_and_keeps_the_corner_color(self):
+        pytest.importorskip("PIL")
+        img = sd.render_key("Reset Board", "#1faa59", (72, 72))
+        assert img.getpixel((0, 0)) == (0x1f, 0xaa, 0x59)
+        assert img.tobytes() != sd.render_key("", "#1faa59", (72, 72)).tobytes()
+
+
+@pytest.fixture
+def service(tmp_path):
+    pytest.importorskip("PIL")
+    path = tmp_path / "config.toml"
+    calls = []
+    deck = FakeDeck()
+    svc = sd.StreamDeckService(str(path), calls.append, enumerate_decks=lambda: [deck], to_native=lambda d, img: img, reconnect_seconds=0.01)
+    svc.deck, svc.calls = deck, calls
+    return svc
+
+
+class TestService:
+    def test_disabled_does_not_open_the_device(self, service):
+        assert service.enabled() is False
+        assert service.snapshot()["connected"] is False
+
+    def test_connects_and_draws_every_key(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "reset_board"}])
+        with service._lock:
+            service._connect()
+        deck = service.deck
+        assert deck.opened and deck.brightness == sd.DEFAULT_BRIGHTNESS and set(deck.images) == set(range(6))
+        assert deck.images[0].getpixel((0, 0)) == (0x2b, 0x2b, 0x2f)          # status unknown: off
+        service.on_board_status("Board Stopped")
+        assert deck.images[0].getpixel((0, 0)) == (0xcc, 0x2a, 0x2a)
+        assert deck.images[1].getpixel((0, 0)) == (0x2b, 0x2b, 0x2f)          # an unassigned key stays dark
+
+    def test_a_fixed_color_ignores_the_status(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "color": "#0000ff"}])
+        with service._lock:
+            service._connect()
+        service.on_board_status("Throw")
+        assert service.deck.images[0].getpixel((0, 0)) == (0, 0, 0xff)
+
+    def test_pressing_a_key_runs_its_action_and_release_does_nothing(self, service):
+        service.update(enabled=True, keys=[{"key": 3, "action": "next_player"}])
+        with service._lock:
+            service._connect()
+        service.deck.callback(service.deck, 3, True)
+        service.deck.callback(service.deck, 3, False)
+        service.deck.callback(service.deck, 4, True)
+        assert service.calls == ["next_player"]
+
+    def test_unplugging_closes_and_replugging_reconnects(self, service):
+        service.update(enabled=True)
+        service.start()
+        try:
+            _wait(lambda: service.snapshot()["connected"])
+            first = service.deck
+            first._connected = False
+            fresh = FakeDeck()
+            service._enumerate = lambda: [fresh]
+            _wait(lambda: service.snapshot()["connected"] and service._deck is fresh)
+            assert first.closed
+        finally:
+            service.stop()
+
+    def test_no_hid_backend_is_reported(self, service):
+        class ProbeError(Exception):
+            pass
+
+        def boom():
+            raise ProbeError("no backend")
+        service._enumerate = boom
+        service.update(enabled=True)
+        with service._lock:
+            service._connect()
+        snap = service.snapshot()
+        assert snap["connected"] is False and snap["device_error"] == "no_hid_backend"
+        assert "error" not in snap          # the page takes an `error` of the answer for a failed request
+
+    def test_snapshot_of_an_unplugged_setup_shows_the_default_grid_and_the_layout(self, service):
+        service.update(keys=[{"key": 1, "action": "start_board"}])
+        service.on_board_status("Throw")
+        snap = service.snapshot()
+        assert (snap["rows"], snap["cols"]) == (sd.DEFAULT_ROWS, sd.DEFAULT_COLS)
+        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "shown": sd.STATUS_COLORS["green"]}]
+
+    def test_update_refuses_bad_values_and_writes_nothing(self, service):
+        with pytest.raises(ValueError):
+            service.update(brightness=101)
+        with pytest.raises(ValueError):
+            service.update(keys=[{"key": 0, "action": "nope"}])
+        assert cfg_mod.load(service.config_path) == {}
+
+    def test_brightness_is_applied_to_an_open_device(self, service):
+        service.update(enabled=True)
+        with service._lock:
+            service._connect()
+        service.update(brightness=20)
+        assert service.deck.brightness == 20
+
+
+def _wait(cond, timeout=3.0):
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        if cond():
+            return
+        time.sleep(0.01)
+    raise AssertionError("condition not met")
+
+
+class TestBoardStatusListener:
+    def test_the_game_state_tells_its_listeners(self):
+        state, seen = GameState(), []
+        state.board_status_listeners.append(seen.append)
+        state.update({"event": "Board Status", "data": {"status": "Throw"}})
+        assert seen == ["Throw"]
+
+    def test_a_failing_listener_does_not_stop_the_update(self):
+        state = GameState()
+        state.board_status_listeners.append(lambda s: 1 / 0)
+        assert state.update({"event": "Board Status", "data": {"status": "Throw"}}) == {"type": "board_status", "status": "Throw"}
+
+
+class TestRoutes:
+    @pytest.fixture
+    def server(self, tmp_path):
+        pytest.importorskip("PIL")
+        from breakfast.web import server
+        path = tmp_path / "config.toml"
+        path.write_text('mode = "direct"\n')
+        state = GameState()
+        server.wire(state, None, config_path=str(path))
+        yield server, state, path
+        server.wire(None, None)
+
+    def test_get_shows_the_settings_and_follows_the_board_status(self, server):
+        import asyncio
+        srv, state, _ = server
+        state.update({"event": "Board Status", "data": {"status": "Board Stopped"}})
+        snap = asyncio.run(srv.streamdeck_get())
+        assert snap["enabled"] is False and snap["board_status"] == "Board Stopped" and snap["status_color"] == "red"
+
+    def test_put_saves_the_layout_into_the_config(self, server):
+        import asyncio
+        srv, _, path = server
+        body = srv.StreamDeckBody(enabled=True, brightness=40, keys=[{"key": 0, "action": "reset_board", "label": "Reset"}])
+        snap = asyncio.run(srv.streamdeck_put(body))
+        assert snap["enabled"] and snap["brightness"] == 40 and snap["keys"][0]["label"] == "Reset"
+        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status"}]
+
+    def test_put_answers_a_bad_layout_with_an_error(self, server):
+        import asyncio
+        srv, _, path = server
+        res = asyncio.run(srv.streamdeck_put(srv.StreamDeckBody(keys=[{"key": 0, "action": "nope"}])))
+        assert "unknown action" in res["error"] and "streamdeck" not in cfg_mod.load(path)
+
+    def test_a_status_change_reaches_the_service(self, server):
+        srv, state, _ = server
+        state.update({"event": "Board Status", "data": {"status": "Throw"}})
+        assert srv._streamdeck.board_status == "Throw"
+
+
+class TestRunControl:
+    def test_every_stream_deck_action_is_a_control(self):
+        from breakfast.web import server
+        assert set(sd.ACTIONS) == set(server._CONTROLS)
+
+    def test_the_cloud_client_runs_the_action(self, monkeypatch):
+        from breakfast.web import server
+
+        class Client:
+            def __init__(self): self.calls = []
+            def undo_throw(self): self.calls.append("undo_throw")
+        client = Client()
+        server.wire(None, None, cloud_client=client)
+        monkeypatch.setattr(server, "_run_in_thread", lambda fn: fn())
+        try:
+            assert server.run_control("undo") == {"ok": True}
+        finally:
+            server.wire(None, None)
+        assert client.calls == ["undo_throw"]
+
+    def test_without_a_client_or_url_the_answer_is_an_error(self):
+        from breakfast.web import server
+        server.wire(None, None)
+        assert server.run_control("next_game") == {"error": "cloud control not available"}

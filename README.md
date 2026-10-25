@@ -20,6 +20,7 @@ own account and needs no other add-on.
 - [Online play](#online-play): play one Elimination or X01 match together with players at other locations
 - [Circle of friends](#circle-of-friends): installations of a group of friends share their matches and talk in voice chat channels, so a player has his statistics and achievements wherever he plays
 - [Usage reports](#usage-reports): optional anonymous usage and error reports, off by default
+- [Stream Deck](#stream-deck): keys that reset or start the board and show its status, optional
 - [MQTT output](#mqtt) for LED strips and Home Assistant, optional
 - [Installation](#installation) on Windows, with Docker or from source, with [self-update](#updates)
 - [Settings](#web-ui) in the browser, English or German interface
@@ -132,7 +133,7 @@ Open `http://<host>:8080` from any device on your network. **Play** sets up and 
 **Players** lists the players with their profiles and achievements and merges a player that was created twice (for example after a name change) into another one or deletes a player, **Stats** shows the statistics, and
 **Settings** edits everything in `config.toml` without touching the file, in tabs: **Appearance** (language,
 palette with its accent color, animated background), **Audio & Voice** (caller, voice-pack editor, achievement
-sounds), **Connections** (board data source, MQTT, online play) and **System** (updates, usage reports, statistics).
+sounds), **Connections** (board data source, MQTT, online play), **Stream Deck** and **System** (updates, usage reports, statistics).
 It stays available while a game runs, with a link back to the game. A setting that needs a restart is listed in a
 notice with a Restart button. The TV view (`/#tv`) and the `/audio` page are described below.
 
@@ -365,6 +366,23 @@ version, the platform, the game modes played with their duration, and the errors
 location), sent under a random installation ID. It never holds player names, scores, IP addresses or error
 messages. **Show what is sent** lists the queued and the recently sent reports. The reports go to the relay
 (`[telemetry] url`, by default `[online] relay_url`, see [relay/README.md](relay/README.md)).
+
+### Stream Deck
+
+A Stream Deck plugged into the computer that runs Breakfast can reset the board with one key press, for example when
+it hangs after the take-out. Breakfast drives the device over USB itself, no other software is needed. Switch it on
+under Settings → Stream Deck, click a key in the grid and pick its action (reset board, start board, undo, next
+player, next game), label and color. The keys follow the board status: green when it is ready to throw, yellow around
+the take-out and while it starts, red when it is stopped or disconnected; a key can also have a fixed color. The page
+works without a device (it shows a 15-key grid) so the layout can be prepared first. The layout is stored in
+`[streamdeck]` of `config.toml`.
+
+- **Native Linux**: install the system library `libhidapi-libusb0` and `pip install -r requirements-streamdeck.txt`.
+  A rule for the device lets a normal user open it: put
+  `SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", MODE="0666"` into `/etc/udev/rules.d/50-streamdeck.rules`, then
+  `sudo udevadm control --reload-rules` and plug the device in again.
+- **Docker**: the image has the library; uncomment `devices` in `docker-compose.yml` to pass the USB bus through.
+- Windows is not supported yet.
 
 ### MQTT
 

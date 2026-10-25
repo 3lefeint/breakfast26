@@ -21,6 +21,7 @@
   import Scenes from './Scenes.svelte';
   import Sounds from './Sounds.svelte';
   import VoicePackRecording from './VoicePackRecording.svelte';
+  import StreamDeckSection from './StreamDeckSection.svelte';
   import LocationsSection from './LocationsSection.svelte';
   import CircleSection from './CircleSection.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
@@ -53,6 +54,7 @@
     { id: 'appearance', label: t('Appearance') },
     { id: 'audio', label: t('Audio & Voice') },
     { id: 'connections', label: t('Connections') },
+    { id: 'streamdeck', label: t('Stream Deck') },
     { id: 'system', label: t('System') },
   ];
   const AUDIO_TABS = [
@@ -733,7 +735,11 @@
   <AchievementList />
 {/if}
 
-<form onsubmit={save} hidden={activeTab === 'achievement-list' || (activeTab === 'audio' && (audioTab === 'achievements' || audioTab === 'sounds' || audioTab === 'scenes'))}>
+{#if activeTab === 'streamdeck'}
+  <StreamDeckSection />
+{/if}
+
+<form onsubmit={save} hidden={activeTab === 'achievement-list' || activeTab === 'streamdeck' || (activeTab === 'audio' && (audioTab === 'achievements' || audioTab === 'sounds' || audioTab === 'scenes'))}>
   {#if activeTab === 'appearance'}
     <div class="settings-section">
       <div class="settings-section-title">{t('Display')}</div>

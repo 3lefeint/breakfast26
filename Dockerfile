@@ -11,11 +11,12 @@ WORKDIR /app
 
 # ffmpeg is needed at runtime by tools/generate_voicepack.py's silence-trim
 # step (regenerating the voice pack from the Settings tab).
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# libhidapi-libusb0 is the USB layer of the Stream Deck keys (Settings > Stream Deck).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libhidapi-libusb0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-streamdeck.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-streamdeck.txt
 
 COPY main.py .
 COPY CHANGELOG.md .

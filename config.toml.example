@@ -117,6 +117,19 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # [record]
 # file = "session.jsonl"
 
+# ── Stream Deck ───────────────────────────────────────────────────────────────
+# Keys of an Elgato Stream Deck at the board run board controls (reset board, start board, undo,
+# next player, next game) and show the board status (green: ready to throw, yellow: take-out or
+# starting, red: stopped). The device is plugged into the computer that runs Breakfast. Normally set
+# on the page under Settings → Stream Deck; this is what it writes.
+# [streamdeck]
+# enabled = true
+# brightness = 60           # 0-100
+# keys = [
+#     { key = 0, action = "reset_board", label = "Reset Board", color = "status" },
+#     { key = 1, action = "start_board", label = "Start Board", color = "status" },
+# ]
+
 # ── Dev mode ──────────────────────────────────────────────────────────────────
 # Exposes a Settings "Dev" tab to simulate a full X01 leg or Elimination match
 # at runtime (no physical board needed). Off by default; not meant to be
