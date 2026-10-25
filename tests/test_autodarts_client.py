@@ -446,3 +446,12 @@ class TestOutageLogging:
         assert any("Connection restored" in r.getMessage() for r in caplog.records)
         assert client._outage_since is None
         assert client._retry_delay == AutodartsCloudClient._RETRY_MIN
+
+
+def test_the_library_goodbye_line_is_dropped_but_other_websocket_errors_stay(caplog):
+    import logging
+    lib = logging.getLogger("websocket")
+    with caplog.at_level(logging.DEBUG, logger="websocket"):
+        lib.error("[Errno 111] Connection refused - goodbye")
+        lib.error("something else went wrong")
+    assert [r.getMessage() for r in caplog.records] == ["something else went wrong"]
