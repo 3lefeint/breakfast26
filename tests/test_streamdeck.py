@@ -40,8 +40,8 @@ class TestStatusColor:
 class TestCleanKeys:
     def test_valid_keys_are_sorted_and_filled_in(self):
         keys = sd.clean_keys([{"key": 2, "action": "undo"}, {"key": 0, "action": "reset_board", "label": "Reset", "color": "#FF0000"}])
-        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000", "hold": 0},
-                        {"key": 2, "action": "undo", "label": "Undo", "color": "status", "hold": 0}]
+        assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000", "hold": 0, "image": ""},
+                        {"key": 2, "action": "undo", "label": "Undo", "color": "status", "hold": 0, "image": ""}]
 
     def test_the_last_entry_for_a_key_wins(self):
         keys = sd.clean_keys([{"key": 1, "action": "undo"}, {"key": 1, "action": "next_game"}])
@@ -53,6 +53,8 @@ class TestCleanKeys:
         [{"key": i, "action": "undo"} for i in range(65)],
         [{"key": 0, "action": "undo", "hold": -1}], [{"key": 0, "action": "undo", "hold": 6}], [{"key": 0, "action": "undo", "hold": "1"}],
         [{"key": 0, "action": "undo", "hold": True}],
+        [{"key": 0, "action": "undo", "image": "../x.png"}], [{"key": 0, "action": "undo", "image": "x.gif"}], [{"key": 0, "action": "undo", "image": "symbol:nope"}],
+        [{"key": 0, "action": "undo", "image": 5}], [{"key": 0, "action": "undo", "image": "dir/x.png"}],
     ])
     def test_bad_layouts_are_refused(self, bad):
         with pytest.raises(ValueError):
@@ -148,7 +150,7 @@ class TestService:
         service.on_board_status("Throw")
         snap = service.snapshot()
         assert (snap["rows"], snap["cols"]) == (sd.DEFAULT_ROWS, sd.DEFAULT_COLS)
-        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "hold": 0, "shown": sd.STATUS_COLORS["green"]}]
+        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "hold": 0, "image": "", "shown": sd.STATUS_COLORS["green"]}]
 
     def test_update_refuses_bad_values_and_writes_nothing(self, service):
         with pytest.raises(ValueError):
@@ -284,6 +286,82 @@ class TestCustomActions:
         assert snap["custom_actions"][0]["target"] == "http://l.local/"
 
 
+def _png(color=(200, 50, 50), size=(40, 30)):
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("RGB", size, color).save(out, "PNG")
+    return out.getvalue()
+
+
+class TestImages:
+    def test_valid_image_values(self):
+        assert all(sd.valid_image(v) for v in ("", "symbol:undo", "logo.png", "My logo 2.JPG", "a-b_c.webp", "x.jpeg"))
+        assert not any(sd.valid_image(v) for v in ("symbol:nope", "x.gif", "../x.png", "a/b.png", ".png", None, 3))
+
+    def test_a_key_keeps_its_image(self):
+        assert sd.clean_keys([{"key": 0, "action": "undo", "image": "symbol:undo"}])[0]["image"] == "symbol:undo"
+
+    def test_uploaded_pictures_are_listed_and_a_wrong_file_is_refused(self, service):
+        service.save_image("logo.png", _png())
+        service.save_image("b.png", _png())
+        assert service.images() == ["b.png", "logo.png"] and service.image_dir().name == "streamdeck"
+        for name, data in (("x.png", b"not a picture"), ("x.gif", _png()), ("../x.png", _png()), ("x.png", b""),
+                           ("x.png", _png() + b"0" * sd.MAX_IMAGE_BYTES), ("x.png", _png(size=(4001, 10)))):
+            with pytest.raises(ValueError):
+                service.save_image(name, data)
+        assert service.images() == ["b.png", "logo.png"]
+
+    def test_a_key_with_a_picture_is_drawn_with_it_and_in_the_frame_color(self, service):
+        service.save_image("logo.png", _png(color=(0, 0, 255), size=(30, 30)))
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "label": "", "image": "logo.png"}])
+        with service._lock:
+            service._connect()
+        service.on_board_status("Board Stopped")
+        img = service.deck.images[0]
+        assert img.getpixel((0, 0)) == (0xcc, 0x2a, 0x2a)          # the frame follows the status
+        assert img.getpixel((36, 36)) == (0, 0, 255)               # the picture fills the middle
+
+    def test_a_symbol_is_drawn_on_the_color(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "label": "", "image": "symbol:start"}])
+        with service._lock:
+            service._connect()
+        img = service.deck.images[0]
+        assert img.getpixel((0, 0)) == (0x2b, 0x2b, 0x2f) and img.getpixel((36, 36)) == (255, 255, 255)
+
+    def test_a_missing_file_draws_the_key_without_a_picture(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "label": "", "image": "gone.png"}])
+        with service._lock:
+            service._connect()
+        assert service.deck.images[0].getpixel((36, 36)) == (0x2b, 0x2b, 0x2f)
+
+    def test_deleting_a_picture_clears_the_keys_that_use_it(self, service):
+        service.save_image("logo.png", _png())
+        service.update(keys=[{"key": 0, "action": "undo", "image": "logo.png"}, {"key": 1, "action": "undo", "image": "symbol:undo"}])
+        service.delete_image("logo.png")
+        assert service.images() == [] and [k["image"] for k in service.keys()] == ["", "symbol:undo"]
+        with pytest.raises(ValueError):
+            service.delete_image("logo.png")
+
+    def test_a_replaced_file_is_loaded_again(self, service):
+        service.save_image("logo.png", _png(color=(0, 0, 255)))
+        service.update(keys=[{"key": 0, "action": "undo", "label": "", "image": "logo.png"}])
+        first = service.preview(0)
+        service.save_image("logo.png", _png(color=(0, 255, 0)))
+        assert service.preview(0) != first
+
+    def test_the_preview_is_a_png_of_the_key_and_empty_keys_have_none(self, service):
+        service.update(keys=[{"key": 0, "action": "undo", "label": "Undo", "image": "symbol:undo"}])
+        png = service.preview(0)
+        assert png.startswith(b"\x89PNG") and service.preview(1) is None
+
+    def test_every_symbol_draws(self):
+        pytest.importorskip("PIL")
+        blank = sd.render_key("", "#1faa59", (72, 72)).tobytes()
+        for name in sd.SYMBOLS:
+            assert sd.render_key("", "#1faa59", (72, 72), symbol=name).tobytes() != blank
+
+
 class TestHold:
     def _connect(self, service, hold):
         service._hold_step = 0.01
@@ -367,13 +445,36 @@ class TestRoutes:
         body = srv.StreamDeckBody(enabled=True, brightness=40, keys=[{"key": 0, "action": "reset_board", "label": "Reset"}])
         snap = asyncio.run(srv.streamdeck_put(body))
         assert snap["enabled"] and snap["brightness"] == 40 and snap["keys"][0]["label"] == "Reset"
-        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status", "hold": 0}]
+        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status", "hold": 0, "image": ""}]
 
     def test_put_answers_a_bad_layout_with_an_error(self, server):
         import asyncio
         srv, _, path = server
         res = asyncio.run(srv.streamdeck_put(srv.StreamDeckBody(keys=[{"key": 0, "action": "nope"}])))
         assert "unknown action" in res["error"] and "streamdeck" not in cfg_mod.load(path)
+
+    def test_upload_serve_and_delete_a_picture_over_the_routes(self, server):
+        import asyncio
+        srv, _, path = server
+
+        class Req:
+            async def body(self):
+                return _png()
+        assert asyncio.run(srv.streamdeck_image_upload(Req(), name="logo.png")) == {"ok": True, "file": "logo.png"}
+        assert (path.parent / "streamdeck" / "logo.png").is_file()
+        assert asyncio.run(srv.streamdeck_image("logo.png")).path == path.parent / "streamdeck" / "logo.png"
+        assert "error" in asyncio.run(srv.streamdeck_image_upload(Req(), name="../logo.png"))
+        assert asyncio.run(srv.streamdeck_image_delete("logo.png"))["images"] == []
+        with pytest.raises(Exception):
+            asyncio.run(srv.streamdeck_image("../../config.toml"))
+
+    def test_the_key_preview_route(self, server):
+        import asyncio
+        srv, _, _ = server
+        asyncio.run(srv.streamdeck_put(srv.StreamDeckBody(keys=[{"key": 0, "action": "undo", "image": "symbol:undo"}])))
+        assert asyncio.run(srv.streamdeck_key_png(0)).media_type == "image/png"
+        with pytest.raises(Exception):
+            asyncio.run(srv.streamdeck_key_png(1))
 
     def test_a_status_change_reaches_the_service(self, server):
         srv, state, _ = server

@@ -12,6 +12,7 @@
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
                          next_player: t('Next Player'), next_game: t('Next Game') };
+  const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game') };
   const labelOf = (id) => ACTION_LABEL[id] || data?.actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
@@ -19,7 +20,7 @@
   let data = $state(null);
   let error = $state('');
   let selected = $state(null);
-  let draft = $state({ action: '', label: '', color: 'status', hold: 0 });
+  let draft = $state({ action: '', label: '', color: 'status', hold: 0, image: '' });
   let timer = null;
 
   async function load() {
@@ -47,13 +48,13 @@
   function select(i) {
     selected = selected === i ? null : i;
     const k = data?.keys.find((x) => x.key === i);
-    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold } : { action: '', label: '', color: 'status', hold: 0 };
+    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image } : { action: '', label: '', color: 'status', hold: 0, image: '' };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
   function layoutWith(i, d) {
-    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color, hold }) => ({ key, action, label, color, hold }));
-    return d.action ? [...others, { key: i, action: d.action, label: d.label, color: d.color, hold: d.hold }] : others;
+    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color, hold, image }) => ({ key, action, label, color, hold, image }));
+    return d.action ? [...others, { key: i, action: d.action, label: d.label, color: d.color, hold: d.hold, image: d.image }] : others;
   }
 
   async function chooseAction() {
@@ -71,12 +72,47 @@
   }
 
   async function clearKey() {
-    draft = { action: '', label: '', color: 'status', hold: 0 };
+    draft = { action: '', label: '', color: 'status', hold: 0, image: '' };
     await save();
   }
 
   const setHold = (on) => { draft.hold = on ? DEFAULT_HOLD : 0; save(); };
   const holdTime = (e) => { draft.hold = Math.min(5, Math.max(0.2, Number(e.currentTarget.value) || DEFAULT_HOLD)); save(); };
+  // ---- images ----
+  let uploading = $state(false);
+  const isFile = (v) => v && !v.startsWith('symbol:');
+  // The preview of a key with an image is drawn by Breakfast itself, so it is what the device shows.
+  const previewUrl = (c) => `${URL}/key/${c.key}.png?v=${encodeURIComponent([c.shown, c.label, c.image, data.images.join()].join('|'))}`;
+
+  async function upload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    uploading = true;
+    try {
+      const res = await fetch(`${URL}/images?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file }).then((r) => r.json());
+      if (res.error) { error = res.error; return; }
+      error = '';
+      await load();
+      draft.image = res.file;
+      await save();
+    } catch (e) {
+      error = t('The upload failed.');
+    } finally {
+      uploading = false;
+    }
+  }
+
+  async function deleteImage() {
+    const name = draft.image;
+    if (!await confirmDialog(t('Delete {file}? Keys that show it lose the image.', { file: name }))) return;
+    const res = await apiJson('DELETE', `${URL}/images/${encodeURIComponent(name)}`);
+    if (res.error) { error = res.error; return; }
+    error = '';
+    data = res;
+    draft.image = '';
+  }
+
   // ---- custom actions ----
   const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
   const emptyAction = () => ({ id: '', name: '', kind: 'route', method: 'POST', target: '', body: '' });
@@ -151,7 +187,9 @@
       <button type="button" class="key" class:selected={selected === c.key} class:empty={c.empty}
               style={c.empty ? '' : `background: ${c.shown}; color: ${textColor(c.shown)};`}
               onclick={() => select(c.key)} aria-label={t('Key {n}', { n: c.key + 1 })}>
-        {#if c.empty}<span class="num">{c.key + 1}</span>{:else}{c.label}{/if}
+        {#if c.empty}<span class="num">{c.key + 1}</span>
+        {:else if c.image}<img class="keyimg" src={previewUrl(c)} alt={c.label}>
+        {:else}{c.label}{/if}
       </button>
     {/each}
   </div>
@@ -185,6 +223,28 @@
           {#if draft.color !== 'status'}
             <input type="color" value={draft.color} onchange={fixedColor} aria-label={t('Color')}>
           {/if}
+        </div>
+        <label class="field">
+          <span>{t('Image')}</span>
+          <select bind:value={draft.image} onchange={save}>
+            <option value="">{t('None')}</option>
+            <optgroup label={t('Symbols')}>
+              {#each data.symbols as sym (sym)}<option value={'symbol:' + sym}>{SYMBOL_LABEL[sym]}</option>{/each}
+            </optgroup>
+            {#if data.images.length}
+              <optgroup label={t('Your images')}>
+                {#each data.images as f (f)}<option value={f}>{f}</option>{/each}
+              </optgroup>
+            {/if}
+          </select>
+        </label>
+        <div class="field">
+          <span></span>
+          <label class="act upload" class:busy={uploading}>
+            {uploading ? t('Uploading…') : t('Upload an image')}
+            <input type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onchange={upload} disabled={uploading}>
+          </label>
+          {#if isFile(draft.image)}<button type="button" class="act danger" onclick={deleteImage}>{t('Delete file')}</button>{/if}
         </div>
         <Toggle label={t('Hold to run')} checked={draft.hold > 0} onchange={setHold} />
         {#if draft.hold > 0}
@@ -288,5 +348,10 @@
   .form { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.75rem 0.9rem; }
   .form textarea { flex: 1; min-width: 8rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text); padding: 0.35rem 0.55rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
   .form-buttons { display: flex; gap: 0.5rem; }
+  .key.picture, .key:has(.keyimg) { padding: 0; }
+  .keyimg { width: 100%; height: 100%; display: block; border-radius: 8px; object-fit: cover; }
+  .upload { display: inline-block; cursor: pointer; }
+  .upload.busy { opacity: 0.6; cursor: default; }
+  .upload input { display: none; }
   .message { font-size: 0.85rem; color: var(--yellow); margin-top: 0.75rem; }
 </style>
