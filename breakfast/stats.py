@@ -787,6 +787,20 @@ class StatsDB:
                      (name, _now_iso()))
         return name
 
+    def finished_matches_of(self, player: str) -> list:
+        """The ids of the finished matches a player is in, oldest first."""
+        with self._lock:
+            ids = self._matches_of(player)
+            rows = self._conn.execute(
+                "SELECT match_id FROM matches WHERE ended_at IS NOT NULL ORDER BY started_at").fetchall()
+        return [r[0] for r in rows if r[0] in ids]
+
+    def guest_names(self) -> list:
+        """The names of the guests stored here, `player@origin`."""
+        with self._lock:
+            rows = self._conn.execute("SELECT name FROM players WHERE guest = 1 ORDER BY name").fetchall()
+        return [r["name"] for r in rows]
+
     def hidden_players(self) -> list:
         """Names excluded from leaderboard()/all_players_stats() — the
         "Unhide" list, since a hidden name by definition no longer
