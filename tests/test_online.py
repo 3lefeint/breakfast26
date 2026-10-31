@@ -731,6 +731,29 @@ def test_two_sites_play_a_match_and_agree():
         s.session.leave()
 
 
+def test_the_steps_of_an_online_match_are_logged(h, caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="breakfast.online")
+    h.session.create("ws://relay", "Home", "pw")
+    conn = h.conns[0]
+    conn.push({"type": "lobby", "host": "Home", "sites": [{"site": "Home", "players": ["anna"], "connected": True, "ready": True},
+                                                          {"site": "Club", "players": ["carl"], "connected": True, "ready": False}],
+               "lives": 0, "order": [], "game": "x01",
+               "rules": {"start": 301, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": True, "max_rounds": None}})
+    h.session.set_players(["anna"])
+    conn.push(STARTED)
+    assert _wait(lambda: h.ctrl.game is not None)
+    conn.push({"type": "ended", "reason": "aborted", "placements": []})
+    assert _wait(lambda: h.session.status()["phase"] == "ended")
+    h.session.leave()
+    text = [r.getMessage() for r in caplog.records]
+    for expected in ("opened the lobby K7M2QX as Home", "connected to the match K7M2QX as Home (host), lobby",
+                     "the lobby is now Home: anna; Club: carl; x01 {'start': 301", "this site plays with ['anna']",
+                     "the match m-online starts (elimination), order ['anna', 'carl'], played here: ['anna']",
+                     "the match ended (aborted)", "leaving the match K7M2QX"):
+        assert any(expected in line for line in text), (expected, text)
+
+
 def test_a_match_of_another_game_is_left_again(h, caplog):
     import logging
     caplog.set_level(logging.INFO, logger="breakfast.online")

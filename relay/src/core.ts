@@ -74,6 +74,7 @@ export interface Deps {
   now(): number;
   randomHex(bytes: number): string;
   uuid(): string;
+  log?(message: string): void;      // what happens to a match, for the log of the Worker
 }
 
 const enc = new TextEncoder();
@@ -121,6 +122,7 @@ export class MatchCore {
   }
 
   get phase(): Phase { return this.s.phase; }
+  private log(message: string): void { this.deps.log?.(`match ${this.s.code}: ${message}`); }
   isOver(): boolean { return this.s.phase === "finished" || this.s.phase === "aborted"; }
 
   // ── connections ──────────────────────────────────────────────────────────────
@@ -165,9 +167,10 @@ export class MatchCore {
     if (!site || site.connection !== conn) return [];
     site.connection = null;
     const now = this.deps.now();
+    this.log(`${name} lost the connection (${this.s.phase})`);
     switch (this.s.phase) {
       case "lobby":
-        if (name === this.s.host) return this.abort();
+        if (name === this.s.host) return this.abort("aborted", `the host ${name} lost the connection in the lobby`);
         delete this.s.sites[name];
         return this.lobbyFrames();
       case "playing":
@@ -193,11 +196,11 @@ export class MatchCore {
       }
     }
     if ((s.phase === "reserved" || s.phase === "lobby") && now >= s.expiresAt) {
-      out.push(...this.abort());
+      out.push(...this.abort("aborted", "the code expired"));
     } else if (s.phase === "paused" && !s.decisionSent && s.rejoinDeadline !== null && now >= s.rejoinDeadline) {
       const hostSite = s.host ? s.sites[s.host] : undefined;
       if (!hostSite || hostSite.connection === null) {
-        out.push(...this.abort());
+        out.push(...this.abort("aborted", "the host is gone and nobody can decide"));
       } else {
         s.decisionSent = true;
         out.push({ to: hostSite.connection, frame: { type: "decision_needed", sites: this.droppedSites() } });
@@ -236,6 +239,7 @@ export class MatchCore {
       s.host = site;
       s.phase = "lobby";
       const token = await this.addSite(conn, site);
+      this.log(`${site} opened the lobby`);
       return [this.welcome(conn, site, token, true), ...this.lobbyFrames()];
     }
 
@@ -253,6 +257,7 @@ export class MatchCore {
       if (Object.keys(s.sites).length >= LIMITS.MAX_SITES) return [this.fail(conn, CLOSE.CONFLICT, "the match is full")];
       if (ticket !== null) delete s.tickets[ticket];
       const token = await this.addSite(conn, site);
+      this.log(`${site} joined with ${ticket !== null ? "a ticket" : "the password"}`);
       return [this.welcome(conn, site, token, false), ...this.lobbyFrames()];
     }
 
@@ -270,6 +275,7 @@ export class MatchCore {
     known.droppedAt = null;
     s.conns[conn] = site;
     out.push(this.welcome(conn, site, m.token as string, site === s.host));
+    this.log(`${site} came back (${s.phase})`);
     if (s.phase === "lobby") return [...out, ...this.lobbyFrames()];
     // A site that missed a take-back has turns the log no longer has: it starts the match again from the log.
     const stale = m.epoch !== s.epoch;
@@ -344,6 +350,7 @@ export class MatchCore {
     s.seq = 0;
     s.log = [];
     s.acks = {};
+    this.log(`${site} started ${s.game} with ${order.length} players at ${Object.keys(s.sites).length} sites`);
     return this.toAll(this.startedFrame());
   }
 
@@ -362,6 +369,7 @@ export class MatchCore {
     s.tickets = {};
     const present = Object.values(s.sites).flatMap((x) => x.players);
     s.order = [...ranked.filter((p) => present.includes(p)), ...present.filter((p) => !ranked.includes(p))];
+    this.log(`${site} asked for a rematch`);
     s.phase = "lobby";
     s.expiresAt = this.deps.now() + LIMITS.CODE_TTL_MS;
     s.endedAt = null;
@@ -527,7 +535,7 @@ export class MatchCore {
     delete s.acks[key];
     if (new Set(Object.values(hashes)).size === 1) return [];
     const out = this.toAll({ type: "desync", seq: m.seq, hashes });
-    if (s.phase !== "finished") out.push(...this.abort("desync"));
+    if (s.phase !== "finished") out.push(...this.abort("desync", `the sites disagree about turn ${m.seq}`));
     return out;
   }
 
@@ -535,7 +543,8 @@ export class MatchCore {
     const s = this.s;
     if (site !== s.host) return [this.rejected(conn, "decision", "only the host can decide")];
     if (s.phase !== "paused" || !s.decisionSent) return [this.rejected(conn, "decision", "there is nothing to decide")];
-    if (m.choice === "abort") return this.abort();
+    this.log(`${site} decided to ${m.choice === "abort" ? "end the match" : "play on"}`);
+    if (m.choice === "abort") return this.abort("aborted", "the host ended the match");
     if (s.game === "x01") return [this.rejected(conn, "decision", "players cannot be dropped from an X01 match, end it instead")];
     const dropped = this.droppedSites();
     const lost = new Set(dropped.map((d) => d.site));
@@ -575,8 +584,9 @@ export class MatchCore {
     const out: Out[] = [{ to: conn, close: 1000 }];
     delete s.conns[conn];
     x.connection = null;
+    this.log(`${site} left (${s.phase})`);
     if (s.phase === "lobby") {
-      if (site === s.host) return [...out, ...this.abort()];
+      if (site === s.host) return [...out, ...this.abort("aborted", `the host ${site} left the lobby`)];
       delete s.sites[site];
       return [...out, ...this.lobbyFrames()];
     }
@@ -585,7 +595,7 @@ export class MatchCore {
       x.droppedAt = this.deps.now();
       s.phase = "paused";
       s.rejoinDeadline = this.deps.now();
-      if (site === s.host) return [...out, ...this.abort()];
+      if (site === s.host) return [...out, ...this.abort("aborted", `the host ${site} left the match`)];
       return [...out, ...this.toAll({ type: "paused", reason: "disconnect", site, rejoin_until: s.rejoinDeadline })];
     }
     return out;
@@ -681,11 +691,13 @@ export class MatchCore {
     const s = this.s;
     s.phase = "finished";
     s.endedAt = this.deps.now();
+    this.log(`finished, winner ${winner ?? "nobody"}`);
     return this.toAll({ type: "ended", reason: "finished", placements: this.placements(winner) });
   }
 
-  private abort(reason: "aborted" | "desync" = "aborted"): Out[] {
+  private abort(reason: "aborted" | "desync", why: string): Out[] {
     const s = this.s;
+    this.log(`ended (${reason}): ${why}`);
     s.phase = "aborted";
     s.endedAt = this.deps.now();
     const out = this.toAll({ type: "ended", reason, placements: [] });
@@ -699,6 +711,7 @@ export class MatchCore {
   }
 
   private fail(conn: string, code: number, message: string): Out {
+    this.log(`refused with ${code}: ${message}`);
     return { to: conn, frame: { type: "error", code, message }, close: code };
   }
 

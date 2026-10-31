@@ -360,6 +360,7 @@ class OnlineSession:
         self.message = None        # the last thing the user should know
         self.epoch = 0             # how often the relay took the log back, to see after a rejoin what this site missed
         self.connected = False
+        self._lobby_logged = None   # the last lobby that was written to the log
         self.expected_game = None   # the game of the page this site joined from, a match of another game is refused
 
     # ── what the rest of Breakfast asks ──────────────────────────────────────────
@@ -400,6 +401,7 @@ class OnlineSession:
         if res.status_code != 200:
             self._fail(self._http_error(res))
         self.code = res.json()["code"]
+        log.info("Online: opened the lobby %s as %s", self.code, site)
         self._open("create")
         return self.code
 
@@ -410,6 +412,7 @@ class OnlineSession:
         self.ticket = ticket
         self.expected_game = game
         self.code = code.strip().upper()
+        log.info("Online: joining the match %s as %s with %s", self.code, site, "a ticket" if ticket else "the password")
         self._open("join")
 
     def voice_url(self, lang="en"):
@@ -436,6 +439,7 @@ class OnlineSession:
     def set_players(self, players):
         with self._lock:
             self.local_players = list(players)
+        log.info("Online: this site plays with %s", list(players) or "nobody")
         self._send({"type": "lobby_set_players", "players": list(players)})
 
     def set_rules(self, game="elimination", lives=3, rules=None):
@@ -444,6 +448,7 @@ class OnlineSession:
 
     def start(self, lives, order, game="elimination", rules=None):
         """Host only: start the match with the given order. For Elimination `lives` count, for X01 the `rules`."""
+        log.info("Online: starting %s in the order %s", game, list(order))
         self._send({**self._rules_frame("lobby_start", game, lives, rules), "order": list(order)})
 
     @staticmethod
@@ -458,12 +463,15 @@ class OnlineSession:
             ready = self.phase == "ended" and self.host and (self.result or {}).get("reason") == "finished"
         if not ready:
             raise RelayError("A rematch needs a finished match and the host")
+        log.info("Online: asking for a rematch")
         self._send({"type": "rematch"})
 
     def decide(self, choice):
+        log.info("Online: decided to %s", "play on" if choice == "continue" else "end the match")
         self._send({"type": "decision", "choice": choice})
 
     def leave(self):
+        log.info("Online: leaving the match %s", self.code)
         with self._lock:
             conn, self._closing = self._conn, True
         if conn is not None:
@@ -588,6 +596,7 @@ class OnlineSession:
         if problem:
             log.error("Not sending an invalid %s frame: %s", frame.get("type"), problem)
             return
+        log.debug("Online: -> %s %s", frame.get("type"), frame.get("seq", ""))
         try:
             with self._send_lock:
                 conn.send(json.dumps(frame, ensure_ascii=False))
@@ -604,6 +613,7 @@ class OnlineSession:
                         conn.ping()  # raises when the connection is gone
                     continue
                 if raw is None or raw == "":
+                    log.info("Online: the relay closed the connection")
                     break
                 try:
                     frame = json.loads(raw)
@@ -626,10 +636,12 @@ class OnlineSession:
             self._conn = None
             self.connected = False
             closing, phase, final = self._closing, self.phase, self._fatal
+        log.info("Online: the connection is gone (%s, %s)", phase, "closed by this site" if closing else "not closed by this site")
         self._ready.set()
         if closing or phase in ("idle", "ended"):
             return
         if phase in ("playing", "paused") and not final and self.token:
+            log.info("Online: trying to rejoin the match %s", self.code)
             threading.Thread(target=self._reconnect, daemon=True, name="relay-reconnect").start()
             self._changed()
             return
@@ -647,10 +659,12 @@ class OnlineSession:
                     return
             try:
                 self._open("rejoin")
+                log.info("Online: rejoined the match %s", self.code)
                 return
-            except RelayError:
-                pass
+            except RelayError as e:
+                log.info("Online: rejoining failed: %s", e)
             self._sleep(3)
+        log.warning("Online: gave up rejoining the match %s", self.code)
         with self._lock:
             if self.phase not in ("idle", "ended"):
                 self.message = "The connection to the relay was lost"
@@ -667,6 +681,7 @@ class OnlineSession:
     # ── frames from the relay ────────────────────────────────────────────────────
 
     def _on_frame(self, f):
+        log.debug("Online: <- %s %s", f["type"], f.get("seq", ""))
         handler = getattr(self, f"_on_{f['type']}", None)
         if handler:
             handler(f)
@@ -679,6 +694,8 @@ class OnlineSession:
                 self.phase = f["state"]
             elif self.phase == "connecting":
                 self.phase = "lobby"
+            phase = self.phase
+        log.info("Online: connected to the match %s as %s%s, %s", self.code, self.site, " (host)" if f["host"] else "", phase)
         self._ready.set()
 
     def _refuse_game(self, kind):
@@ -706,8 +723,14 @@ class OnlineSession:
         with self._lock:
             self.lobby = {"host": f["host"], "sites": f["sites"], "lives": f["lives"], "order": f["order"],
                           "game": f.get("game", "elimination"), "rules": f.get("rules")}
+        summary = "; ".join(f"{s['site']}{'' if s['connected'] else ' (away)'}: {', '.join(s['players']) or 'no players'}" for s in f["sites"])
+        summary += f"; {self.lobby['game']}" + (f" {self.lobby['rules']}" if self.lobby["rules"] else f", {f['lives']} lives" if f["lives"] else "")
+        if summary != self._lobby_logged:
+            self._lobby_logged = summary
+            log.info("Online: the lobby is now %s", summary)
 
     def _on_rematch(self, f):
+        log.info("Online: the host asked for a rematch, back in the lobby")
         with self._lock:
             self.phase, self.result, self.match = "lobby", None, None
             self.paused = self.decision = self.message = None
@@ -729,6 +752,7 @@ class OnlineSession:
                           "order": f["order"], "owners": f["owners"]}
             self.local_players = [p for p in f["order"] if f["owners"].get(p) == self.site]
             self.phase = "playing"
+        log.info("Online: the match %s starts (%s), order %s, played here: %s", f["match_id"], kind, f["order"], self.local_players or "nobody")
         controller.start_online(f["order"], f["rules"] if kind == "x01" else f["lives"], f["match_id"], self.local_players, self)
 
     def _on_dart(self, f):
@@ -788,27 +812,33 @@ class OnlineSession:
             self.message = f["reason"]
 
     def _on_paused(self, f):
+        log.info("Online: the match waits for %s (%s)", f["site"], f["reason"])
         with self._lock:
             self.phase, self.paused = "paused", {"site": f["site"], "rejoin_until": f["rejoin_until"]}
 
     def _on_resumed(self, f):
+        log.info("Online: the match goes on, %s is back", f["site"])
         with self._lock:
             self.phase, self.paused, self.decision = "playing", None, None
 
     def _on_decision_needed(self, f):
+        log.info("Online: the host has to decide about %s", [s["site"] for s in f["sites"]])
         with self._lock:
             self.decision = f["sites"]
 
     def _on_site_dropped(self, f):
+        log.info("Online: the sites %s were dropped from the match", [s["site"] for s in f["sites"]])
         with self._lock:
             self.decision, self.paused, self.phase = None, None, "playing"
         self.controller.drop_players([p for s in f["sites"] for p in s["players"]], f["next_player"])
 
     def _on_desync(self, f):
+        log.warning("Online: the sites disagree about turn %s: %s", f["seq"], f["hashes"])
         with self._lock:
             self.message = "The sites no longer agree about the game, the match was stopped"
 
     def _on_ended(self, f):
+        log.info("Online: the match ended (%s)", f["reason"])
         with self._lock:
             self.phase, self.result, self.paused, self.decision = "ended", {"reason": f["reason"], "placements": f["placements"]}, None, None
         if f["reason"] == "finished":
@@ -817,6 +847,7 @@ class OnlineSession:
             self.controller.stop()
 
     def _on_error(self, f):
+        log.warning("Online: the relay sent an error %s: %s", f["code"], f["message"])
         with self._lock:
             self.message = f["message"]
             self._fatal = f["code"] in _FINAL_CLOSES

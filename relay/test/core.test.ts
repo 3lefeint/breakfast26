@@ -8,6 +8,7 @@ class Room {
   core: MatchCore;
   inbox: Record<string, Frame[]> = {};
   closed: Record<string, number> = {};
+  logs: string[] = [];
   private seen = new Set<string>();
 
   constructor() {
@@ -15,6 +16,7 @@ class Room {
       now: () => this.now,
       randomHex: (bytes) => (++this.n).toString(16).padStart(bytes * 2, "0"),
       uuid: () => "00000000-0000-4000-8000-000000000001",
+      log: (message) => this.logs.push(message),
     });
   }
 
@@ -63,6 +65,41 @@ async function startedMatch() {
 
 const turn = (seq: number, player: string, next: string | null, extra: Record<string, unknown> = {}): Frame => ({
   type: "turn", seq, player, throws: [T20], next_player: next, eliminated: [], winner: null, ...extra,
+});
+
+describe("the log of the match", () => {
+  it("tells who opened and joined the lobby, who started and why it ended", async () => {
+    await startedMatch();
+    expect(r.logs).toEqual([
+      "match K7M2QX: Home opened the lobby",
+      "match K7M2QX: Club joined with the password",
+      "match K7M2QX: Home started elimination with 3 players at 2 sites",
+    ]);
+    r.drop("c");
+    r.advance(LIMITS.REJOIN_WINDOW_MS + 1000);
+    await r.send("h", { type: "decision", choice: "abort" });
+    expect(r.logs.slice(3)).toEqual([
+      "match K7M2QX: Club lost the connection (playing)",
+      "match K7M2QX: Home decided to end the match",
+      "match K7M2QX: ended (aborted): the host ended the match",
+    ]);
+  });
+
+  it("says why a lobby ended: the host lost the connection, or the code expired", async () => {
+    await r.hello("h", "create", "Home");
+    r.drop("h");
+    expect(r.logs.slice(-2)).toEqual(["match K7M2QX: Home lost the connection (lobby)", "match K7M2QX: ended (aborted): the host Home lost the connection in the lobby"]);
+    r = new Room();
+    await r.hello("h", "create", "Home");
+    r.advance(LIMITS.CODE_TTL_MS + 1);
+    expect(r.logs.at(-1)).toBe("match K7M2QX: ended (aborted): the code expired");
+  });
+
+  it("tells what a site was refused", async () => {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club", { password: "wrong" });
+    expect(r.logs.at(-1)).toBe("match K7M2QX: refused with 4401: wrong password");
+  });
 });
 
 describe("lobby", () => {

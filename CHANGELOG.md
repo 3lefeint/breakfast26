@@ -10,6 +10,7 @@
 
 ### Changed
 
+- The log tells the steps of an online match: opening and joining the lobby, the players and rules, the start, the end with its reason and every lost connection, at the installation and at the relay.
 - The online lobby has no ready button any more: the host starts the match when the players are there.
 - Online Elimination: a *Random order* switch draws the order when the match starts, instead of a Shuffle button that showed it beforehand; the arrows appear when it is off, and after a rematch it is off with the order of the rematch.
 - X01: the players of the bull-off throw in a drawn order, and a rematch starts with the next player in the order, like a further leg, without a new bull-off.

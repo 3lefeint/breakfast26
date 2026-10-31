@@ -43,6 +43,7 @@ const deps: Deps = {
   now: () => Date.now(),
   randomHex: (bytes) => [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, "0")).join(""),
   uuid: () => crypto.randomUUID(),
+  log: (message) => console.log(message),
 };
 
 function randomCode(): string {
@@ -273,12 +274,14 @@ export class MatchRoom extends DurableObject<Env> {
     await this.save();
   }
 
-  async webSocketClose(ws: WebSocket): Promise<void> {
+  async webSocketClose(ws: WebSocket, code?: number, reason?: string, wasClean?: boolean): Promise<void> {
+    console.log(`match ${this.core?.s.code ?? "?"}: a socket closed, code ${code ?? "?"} "${reason ?? ""}", ${wasClean ? "clean" : "not clean"}`);
     await this.dropped(ws);
     try { ws.close(); } catch { /* already closed */ }
   }
 
-  async webSocketError(ws: WebSocket): Promise<void> {
+  async webSocketError(ws: WebSocket, error?: unknown): Promise<void> {
+    console.log(`match ${this.core?.s.code ?? "?"}: a socket failed: ${error instanceof Error ? error.message : String(error)}`);
     await this.dropped(ws);
   }
 
