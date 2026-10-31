@@ -134,9 +134,26 @@
     if (await confirmDialog(t('Remove the link with {name}?', { name: link.peer.name }))) askPin((current) => unlink(link, current));
   }
 
+  // Over plain http (an installation in the home network) the browser has no clipboard API: a hidden text field does it.
+  function copyViaField(text) {
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position: fixed; opacity: 0';
+    document.body.appendChild(field);
+    field.select();
+    const ok = document.execCommand('copy');
+    field.remove();
+    if (!ok) throw new Error('copy failed');
+  }
+
   async function copy() {
     try {
-      await navigator.clipboard.writeText(invitation);
+      try {
+        await navigator.clipboard.writeText(invitation);
+      } catch {
+        copyViaField(invitation);
+      }
       message = t('Copied.');
     } catch {
       message = t('Select the code and copy it.');
