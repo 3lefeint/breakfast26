@@ -60,7 +60,7 @@
   let lastPhase = null;
   $effect(() => {
     const phase = $online?.phase ?? null;
-    if (lastPhase === 'ended' && phase === 'lobby') navigate('elimination');
+    if (lastPhase === 'ended' && phase === 'lobby') navigate($online?.lobby?.game === 'x01' ? 'x01' : 'elimination');
     lastPhase = phase;
   });
 
@@ -189,7 +189,7 @@
   {/if}
 {:else if view === 'x01'}
   <div id="active">
-    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_view ?? []} own={$x01Own} tournament={$tournament} />
+    <X01View {game} {sessionStats} hasCloudControl={!!$gameState.has_cloud_control} boardDarts={$gameState.board_view ?? []} own={$x01Own} tournament={$tournament} online={$online} />
   </div>
 {:else if view === 'tournament'}
   <div id="activeElim">
@@ -197,10 +197,10 @@
   </div>
 {:else if view === 'x01own-bulloff'}
   <div id="activeElim">
-    <X01BullOffTv x={$x01Own} tournament={$tournament} />
+    <X01BullOffTv x={$x01Own} tournament={$tournament} online={$online} />
   </div>
 {:else if view === 'x01own-finished'}
-  <X01FinishedTv x={$x01Own} {sessionStats} />
+  <X01FinishedTv x={$x01Own} {sessionStats} online={$online} />
 {:else if view === 'elim-live'}
   <div id="activeElim">
     <EliminationTv elimination={$elimination} winsFor={$players.winsFor} boardDarts={$gameState.board_view ?? []} online={$online} />

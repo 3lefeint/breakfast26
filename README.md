@@ -16,7 +16,7 @@ own account and needs no other add-on.
 - [Voice caller](#voice-caller-and-voice-packs): announces the game, with English and German voice packs and an editor for your own
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
-- [Online Elimination](#online-elimination): play one Elimination match together with players at other locations
+- [Online play](#online-play): play one Elimination or X01 match together with players at other locations
 - [Circle of friends](#circle-of-friends): installations of a group of friends share their matches, so a player has his statistics and achievements wherever he plays
 - [Usage reports](#usage-reports): optional anonymous usage and error reports, off by default
 - [MQTT output](#mqtt) for LED strips and Home Assistant, optional
@@ -258,12 +258,12 @@ match in the Stats page):
 
 <img src="media/achievement-banner.webp" alt="The achievement banner on the TV view" width="420">
 
-### Online Elimination
+### Online play
 
-Play one Elimination match together with players at other locations, each on their own Breakfast
+Play one Elimination or X01 match together with players at other locations, each on their own Breakfast
 installation. One site hosts the match; the others join with its join code and a shared password, or, if
 the sites are linked, with one click. Each site adds its own players, and the host sets the
-lives and the order, or leaves *Random order* on, which draws the order when the match starts. A rematch starts with the first player who was out. A voice chat for the sites of a match opens in its own browser tab (*Voice chat* in the lobby and on the TV view, which also offers the channels of the circle): it runs on the relay's secure page, directly between the browsers, and a headset avoids echo.
+lives and the order, or leaves *Random order* on, which draws the order when the match starts. A rematch of Elimination starts with the first player who was out. X01 is played the same way from the *Online* tab of the X01 page: the host sets the base score, the in and out mode, the max rounds and the legs, the other sites see them, and the bull-off (one dart per player at the board of their own site, the closest throws first) or the draw decides the order. A rematch of X01 starts with the next player in the order, like a further leg. If a site is lost for good the match of X01 can only be ended. A voice chat for the sites of a match opens in its own browser tab (*Voice chat* in the lobby and on the TV view, which also offers the channels of the circle): it runs on the relay's secure page, directly between the browsers, and a headset avoids echo.
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off. Every site stores the whole match, the players of the other sites
 as guests (`name@site`): they appear in the match but have no entry in the Players tab, no ranking and no achievements here. A guest the circle admin mapped to a local player counts as that player, also for matches stored before.

@@ -10,6 +10,7 @@
   // already started one).
   import { elimination } from '../../lib/stores/elimination.js';
   import { online } from '../../lib/stores/online.js';
+  import { x01Own } from '../../lib/stores/x01Own.js';
   import EliminationSetup from './EliminationSetup.svelte';
   import OnlineLobby from './OnlineLobby.svelte';
   import EliminationFinished from './EliminationFinished.svelte';
@@ -21,6 +22,10 @@
 
   $effect(() => {
     if ($elimination && $elimination.active && $elimination.state !== 'finished') {
+      openTv();
+    }
+    // An X01 match started by the host of the match we joined.
+    if ($online && $x01Own && $x01Own.active && $x01Own.state !== 'finished') {
       openTv();
     }
   });

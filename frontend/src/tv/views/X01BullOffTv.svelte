@@ -10,12 +10,14 @@
   import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { dartLabel } from '../../lib/killer.js';
-  import { ruleChips } from '../../lib/x01.js';
+  import { ruleChips, remoteTurn } from '../../lib/x01.js';
+  import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
   import { abortTournament, roundName } from '../../lib/tournament.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
-  let { x, tournament = null } = $props();
+  let { x, tournament = null, online = null } = $props();
+  let theirs = $derived(remoteTurn(x));
   let inTournament = $derived(!!(tournament && tournament.active && tournament.current));
 
   let starting = $derived(x.phase !== 'bull_off');
@@ -33,7 +35,7 @@
       if (await abortTournament()) navigate('tournament');
       return;
     }
-    if (!await confirmDialog(t('Cancel the current game?'))) return;
+    if (!await confirmDialog(online ? t('Leave the online match?') : t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
     navigate('home');
   }
@@ -50,6 +52,7 @@
 </script>
 
 <div class="stage">
+  {#if online}<OnlineBanner {online} currentPlayer={x.current_player} />{/if}
   <div class="bar">
     <div class="turn">
       <span class="turn-name">{starting ? t('Match starts …') : shownName(x.current_player || '—')}</span>
@@ -98,7 +101,7 @@
 
       <div class="endgame-row">
         <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
-        {#if x.pull_darts}<button class="btn-end-game" onclick={next}>{t('⏭ Next')}</button>{/if}
+        {#if x.pull_darts && !theirs}<button class="btn-end-game" onclick={next}>{t('⏭ Next')}</button>{/if}
         <button class="btn-end-game" onclick={stop}>{inTournament ? t('Abort tournament') : t('✕ Cancel')}</button>
       </div>
     </div>

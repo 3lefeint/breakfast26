@@ -8,8 +8,12 @@
   import { players } from '../../lib/stores/players.js';
   import { apiJson } from '../../lib/api.js';
   import { shownName } from '../../lib/util.js';
-  import { openVoiceChat } from '../../lib/voice.js';
+  import VoiceButton from '../../lib/components/VoiceButton.svelte';
   import Toggle from '../../lib/components/Toggle.svelte';
+  import OnlineX01Rules from './OnlineX01Rules.svelte';
+
+  // Which game this page hosts: the Elimination page or the X01 page. A site that joins sees the game of the host.
+  let { game = 'elimination' } = $props();
 
   let configured = $state(true);
   let site = $state('');
@@ -24,8 +28,10 @@
   let lives = $state(3);
   let order = $state([]);
   let randomOrder = $state(true);       // drawn when the host starts, so nobody sees an order before
+  let rules = $state({ start: 501, in_mode: 'straight', out_mode: 'double', legs: 1, bull_off: true, max_rounds: null });
 
   onMount(async () => {
+    if (game === 'x01') randomOrder = false;        // the bull-off is on at first: it draws the order of the throws
     const res = await fetch('/api/online').then((r) => r.json()).catch(() => null);
     if (res) {
       configured = res.configured;
@@ -63,18 +69,11 @@
   }
 
   const create = () => run('/api/online/create', { site, password });
-  const join = () => run('/api/online/join', { code, site, password: joinPassword });
-  const joinLinked = (match) => run('/api/online/join-linked', { code: match.code, site });
+  const join = () => run('/api/online/join', { code, site, password: joinPassword, game });
+  const joinLinked = (match) => run('/api/online/join-linked', { code: match.code, site, game });
+  // A match of the other game is joined on the page of that game.
+  let openHere = $derived(open.matches.filter((m) => (m.game ?? 'elimination') === game));
   const leave = () => run('/api/online/leave');
-
-  let voiceUrl = $state('');
-  async function voice() {
-    error = '';
-    voiceUrl = '';
-    const res = await openVoiceChat();
-    if (res.error) error = explain(res.error);
-    else if (res.blocked) voiceUrl = res.url;
-  }
 
   let mine = $derived($online?.lobby.sites.find((s) => s.site === $online.site)?.players ?? []);
   let everyone = $derived(($online?.lobby.sites ?? []).flatMap((s) => s.players));
@@ -97,6 +96,7 @@
     order = lobby.order.filter((p) => everyone.includes(p));
     randomOrder = false;        // the order of a rematch comes from the rules of the game
     if (lobby.lives) lives = lobby.lives;
+    if (lobby.game === 'x01' && lobby.rules) rules = { ...lobby.rules, bull_off: false };       // a rematch has no new bull-off
   });
 
   function toggle(name) {
@@ -116,7 +116,28 @@
     }
     return a;
   }
-  const start = () => run('/api/online/start', { lives, order: randomOrder ? shuffled(order) : order });
+  // X01: the game of the lobby and whether the order of the players is drawn when the match starts (always with a bull-off).
+  let isX01 = $derived((($online?.host || !$online) ? game : ($online.lobby.game ?? game)) === 'x01');
+  let drawn = $derived(randomOrder || (isX01 && rules.bull_off));
+  const onBullOff = (on) => { if (on) randomOrder = false; };
+  const onRandom = (on) => { if (on && isX01) rules.bull_off = false; };
+
+  // The host shows the other sites the game and its rules while they are in the lobby, once for every change: the relay
+  // answers each one with a lobby frame, which must not start the next one.
+  let pushed = '';
+  $effect(() => {
+    if ($online?.phase !== 'lobby' || !$online.host) { pushed = ''; return; }
+    const body = isX01 ? { game: 'x01', rules: { ...rules } } : { game: 'elimination', lives };
+    const key = JSON.stringify(body);
+    untrack(() => {
+      if (key === pushed) return;
+      pushed = key;
+      apiJson('POST', '/api/online/rules', body).catch(() => null);
+    });
+  });
+
+  const start = () => run('/api/online/start', {
+    ...(isX01 ? { game: 'x01', rules: { ...rules } } : { lives }), order: drawn ? shuffled(order) : order });
   const ownerOf = (name) => $online.lobby.sites.find((s) => s.players.includes(name))?.site;
 </script>
 
@@ -133,7 +154,7 @@
       {#if open.registered}
         <div class="box open-box">
           <div class="box-title">{t('Matches of linked locations')} <button type="button" class="btn-link" onclick={loadOpen}>{t('Refresh')}</button></div>
-          {#each open.matches as m (m.code)}
+          {#each openHere as m (m.code)}
             <div class="open-match">
               <span><strong>{m.location.name}</strong> <span class="hint">· {t('{players} players', { players: m.players })}</span></span>
               <button class="btn btn-start" disabled={busy || !(site.trim() || locationName)} onclick={() => joinLinked(m)}>{t('Join')}</button>
@@ -162,10 +183,19 @@
     <p class="note">{t('Connecting to the relay…')}</p>
 
   {:else if $online.phase === 'lobby'}
-    <div class="code-row">
-      <span class="label">{t('Join code')}</span>
-      <span class="code">{$online.code}</span>
-      <span class="hint">{t('valid for 10 minutes')}</span>
+    <div class="head">
+      <div class="code-row">
+        <span class="code">{$online.code}</span>
+        <span class="code-text"><span class="label">{t('Join code')}</span><span class="hint">{t('valid for 10 minutes')}</span></span>
+      </div>
+      <div class="head-actions">
+        {#if $online.host}
+          <button class="btn btn-start" disabled={busy || order.length < 2} onclick={start}>{t('▶ Start')}</button>
+        {/if}
+        <VoiceButton>
+          {#snippet trigger(open)}<button class="btn btn-add emoji" title={t('Opens in a new tab. Keep it open while you play.')} aria-label={t('Voice chat')} onclick={open}>🎧</button>{/snippet}
+        </VoiceButton>
+      </div>
     </div>
 
     <div class="sites">
@@ -180,49 +210,61 @@
       {/each}
     </div>
 
-    <div class="elim-section-title">{t('Your players')} <span class="hint">{t('(click to add or remove)')}</span></div>
-    <div class="known-chips">
-      {#each $players.known as name (name)}
-        <button type="button" class="chip" class:in-game={mine.includes(name)} disabled={everyone.includes(name) && !mine.includes(name)}
-                onclick={() => toggle(name)}>{shownName(name)}{#if everyone.includes(name) && !mine.includes(name)} <span class="hint">· {ownerOf(name)}</span>{/if}</button>
-      {/each}
+    <div class="top">
+      <div class="left">
+        {#if $online.host}
+          {#if isX01}
+            <OnlineX01Rules bind:rules onbulloff={onBullOff} />
+          {:else}
+            <div class="option-row">
+              <span class="label">{t('Lives per player')}</span>
+              <div class="counter">
+                <button class="btn-counter" onclick={() => (lives = Math.max(1, lives - 1))}>−</button>
+                <span class="counter-val">{lives}</span>
+                <button class="btn-counter" onclick={() => (lives = Math.min(10, lives + 1))}>+</button>
+              </div>
+            </div>
+          {/if}
+          <Toggle bind:checked={randomOrder} label={t('Random order')} onchange={onRandom} />
+        {:else if $online.lobby.game === 'x01' && $online.lobby.rules}
+          <OnlineX01Rules rules={$online.lobby.rules} editable={false} />
+        {/if}
+
+        <div class="elim-section-title">{t('Choose Players')}</div>
+        <div class="known-chips">
+          {#each $players.known as name (name)}
+            <button type="button" class="chip" class:in-game={mine.includes(name)} disabled={everyone.includes(name) && !mine.includes(name)}
+                    onclick={() => toggle(name)}>{shownName(name)}{#if everyone.includes(name) && !mine.includes(name)} <span class="hint">· {ownerOf(name)}</span>{/if}</button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- The same word in both languages, like on the setup pages of the local games. -->
+      <div class="right">
+        <div class="elim-section-title">Players</div>
+        <ul class="order">
+          {#if $online.host && !drawn}
+            {#each order as name, i (name)}
+              <li>
+                <span class="num">{i + 1}</span>
+                <span class="player-name-text">{shownName(name)} <span class="hint">· {ownerOf(name)}</span></span>
+                <button class="btn-icon" onclick={() => move(i, -1)} disabled={i === 0}>↑</button>
+                <button class="btn-icon" onclick={() => move(i, +1)} disabled={i === order.length - 1}>↓</button>
+              </li>
+            {/each}
+          {:else}
+            {#each ($online.host ? order : everyone) as name (name)}
+              <li><span class="player-name-text">{shownName(name)} <span class="hint">· {ownerOf(name)}</span></span></li>
+            {/each}
+          {/if}
+        </ul>
+      </div>
     </div>
 
-    {#if $online.host}
-      <div class="elim-section-title">{t('Order')} {#if !randomOrder}<span class="hint">{t('(order = play order)')}</span>{/if}</div>
-      {#if randomOrder}
-        <p class="note">{t('The order is drawn when the match starts.')}</p>
-      {:else}
-        <ul class="order">
-          {#each order as name, i (name)}
-            <li>
-              <span class="num">{i + 1}</span>
-              <span class="player-name-text">{shownName(name)} <span class="hint">· {ownerOf(name)}</span></span>
-              <button class="btn-icon" onclick={() => move(i, -1)} disabled={i === 0}>↑</button>
-              <button class="btn-icon" onclick={() => move(i, +1)} disabled={i === order.length - 1}>↓</button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-      <div class="lives-row">
-        <span class="label">{t('Lives per player')}</span>
-        <div class="counter">
-          <button class="btn-counter" onclick={() => (lives = Math.max(1, lives - 1))}>−</button>
-          <span class="counter-val">{lives}</span>
-          <button class="btn-counter" onclick={() => (lives = Math.min(10, lives + 1))}>+</button>
-        </div>
-        <Toggle bind:checked={randomOrder} label={t('Random order')} />
-      </div>
-      <button class="btn btn-start" disabled={busy || order.length < 2} onclick={start}>{t('▶ Start')}</button>
-    {:else}
+    {#if !$online.host}
       <p class="note">{t('Waiting for the host to start the match…')}</p>
     {/if}
-    <div class="voice-row">
-      <button class="btn btn-add" onclick={voice}>{t('🎧 Voice chat')}</button>
-      <span class="hint">{t('Opens in a new tab. Keep it open while you play.')}</span>
-      {#if voiceUrl}<a href={voiceUrl} target="_blank" rel="noopener">{t('Open the voice chat')}</a>{/if}
-    </div>
-    <button class="btn-link" onclick={leave}>{t('Leave')}</button>
+    <div class="foot"><button class="btn-link" onclick={leave}>{t('Leave')}</button></div>
 
   {:else if $online.phase === 'ended'}
     {#if $online.result?.placements?.length}
@@ -253,11 +295,15 @@
   .box-title { font-size: 0.85rem; font-weight: 600; }
   .open-box { margin-bottom: 0.75rem; align-items: stretch; }
   .open-match { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-  .voice-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0 0.5rem; }
-  .voice-row a { color: var(--accent); font-size: 0.85rem; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .head-actions { display: flex; align-items: center; gap: 0.6rem; }
+  .head-actions .btn { height: 2.6rem; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+  .head-actions .emoji { width: 2.6rem; padding: 0; font-size: 1.15rem; line-height: 1; }
+  .foot { display: flex; justify-content: flex-end; }
   .code-input { text-transform: uppercase; letter-spacing: 0.25em; font-family: monospace; width: 10rem; }
-  .code-row { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  .code-row .label { color: var(--muted); font-size: 0.85rem; }
+  .code-row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+  .code-text { display: flex; flex-direction: column; gap: 0.1rem; }
+  .code-text .label { color: var(--muted); font-size: 0.85rem; }
   .code { font-family: monospace; font-size: 2rem; font-weight: 800; letter-spacing: 0.3em; color: var(--accent); }
   .sites { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }
   .site { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 8px; font-size: 0.9rem; }
@@ -277,8 +323,11 @@
   .player-name-text { flex: 1; font-size: 0.95rem; }
   .btn-icon { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.8rem; }
   .btn-icon:disabled { opacity: 0.3; cursor: default; }
-  .lives-row { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0 1rem; flex-wrap: wrap; }
-  .lives-row .label { font-size: 0.9rem; color: var(--muted); }
+  .top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.5rem; align-items: start; margin-bottom: 1.2rem; }
+  .right .elim-section-title { margin-top: 0; }
+  .option-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+  .option-row .label { font-size: 0.9rem; color: var(--muted); min-width: 8rem; }
+  @media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter-val { font-size: 1.3rem; font-weight: 700; min-width: 2rem; text-align: center; }
   .btn-counter { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 10px; width: 2rem; height: 2rem; cursor: pointer; font-size: 1.1rem; }

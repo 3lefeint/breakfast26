@@ -10,7 +10,8 @@
   import { api } from '../../lib/api.js';
   import { shownName } from '../../lib/util.js';
   import { dartLabel } from '../../lib/killer.js';
-  import { rematch, stopGame, ruleChips } from '../../lib/x01.js';
+  import { rematch, stopGame, ruleChips, onlineRematch } from '../../lib/x01.js';
+  import { online } from '../../lib/stores/online.js';
   import ConfettiBurst from '../../lib/components/ConfettiBurst.svelte';
   import DartCorrectModal from '../../tv/views/DartCorrectModal.svelte';
   import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
@@ -21,7 +22,12 @@
   let lastDarts = $derived(x?.last_turn?.darts || []);
   let correctingIndex = $state(null);
 
+  let onlineError = $state('');
   async function again() {
+    if ($online) {
+      onlineError = await onlineRematch();     // every site goes back to the lobby of the host
+      return;
+    }
     if (await rematch(x)) openTv();
   }
 
@@ -56,10 +62,12 @@
     {/if}
     <MatchAchievements matchId={x.match_id} />
     <div class="actions">
-      <button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>
+      {#if !$online || $online.host}<button class="btn btn-start" onclick={again}>{t('↻ Rematch')}</button>{/if}
       <button class="btn ghost" onclick={stopGame}>{t('New game')}</button>
       <button class="btn ghost" onclick={undoWin}>{t('↩ Undo last turn')}</button>
     </div>
+    {#if $online && !$online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
+    {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
   </div>
 {/if}
 
@@ -70,6 +78,8 @@
 
 <style>
   .section { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; }
+  .online-note { color: var(--muted); font-size: 0.85rem; margin-top: 0.75rem; }
+  .online-error { color: var(--red); font-size: 0.85rem; margin-top: 0.75rem; }
   .heading { font-size: 1.6rem; font-weight: 800; color: var(--green); }
   .meta { color: var(--muted); font-size: 0.85rem; margin: 0.25rem 0 1rem; }
   .results { list-style: none; padding: 0; margin-bottom: 1.25rem; }

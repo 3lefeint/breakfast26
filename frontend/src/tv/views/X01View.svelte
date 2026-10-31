@@ -12,6 +12,8 @@
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
   import { abortTournament } from '../../lib/tournament.js';
+  import { remoteTurn } from '../../lib/x01.js';
+  import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
   import Avatar from '../../lib/components/Avatar.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
   import Icon from '../../lib/components/Icon.svelte';
@@ -22,8 +24,10 @@
 
   // `own`: the snapshot of a match played in Breakfast. Its controls go to /api/x01/*, not to the
   // Autodarts match, and there is no next leg or board reset (the legs follow from the darts).
-  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [], own = null, tournament = null } = $props();
+  let { game = {}, sessionStats = {}, hasCloudControl = false, boardDarts = [], own = null, tournament = null, online = null } = $props();
   let ownMatch = $derived(!!(own && own.active && own.phase === 'playing'));
+  // Online: the darts and the Next button of a player at another site are theirs.
+  let theirs = $derived(ownMatch && remoteTurn(own));
   let canControl = $derived(ownMatch || hasCloudControl);
   let inTournament = $derived(!!(tournament && tournament.active && tournament.current));
 
@@ -55,7 +59,7 @@
 
   let selectedDartNum = $state(1);
   let boardOpen = $state(false);
-  let canCorrect = $derived(canControl && game.match_started);
+  let canCorrect = $derived(canControl && game.match_started && !theirs);
 
   function openCorrect(n) {
     if (!canCorrect) return;      // an empty box enters a dart the board did not see
@@ -72,7 +76,7 @@
       if (await abortTournament()) navigate('tournament');
       return;
     }
-    if (!await confirmDialog(t('Cancel the current game?'))) return;
+    if (!await confirmDialog(online ? t('Leave the online match?') : t('Cancel the current game?'))) return;
     await api('POST', '/api/x01/stop');
     navigate('home');
   }
@@ -99,6 +103,7 @@
 
 <div class="x01-layout">
   <div class="x01-main">
+    {#if online}<OnlineBanner {online} currentPlayer={own?.current_player} />{/if}
     {#if showAbandonedWarning}
       <div class="abandoned-warning">
         <span>{abandonedText}</span>
@@ -137,7 +142,7 @@
       </div>
       <div class="control-bar">
         <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('undo')}>{t('↩ Undo')}</button>
-        <button class="btn-ctrl" disabled={!canControl || !game.match_started} onclick={() => ctrl('next-player')}>{t('⏭ Next')}</button>
+        <button class="btn-ctrl" disabled={!canControl || !game.match_started || theirs} onclick={() => ctrl('next-player')}>{t('⏭ Next')}</button>
         {#if !ownMatch}
           <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
         {/if}

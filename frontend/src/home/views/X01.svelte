@@ -5,12 +5,23 @@
   // starting a match navigates there, and landing here while a match is already running (back
   // button, another device started it) redirects.
   import { x01Own } from '../../lib/stores/x01Own.js';
+  import { elimination } from '../../lib/stores/elimination.js';
+  import { online } from '../../lib/stores/online.js';
   import X01Setup from './X01Setup.svelte';
+  import OnlineLobby from './OnlineLobby.svelte';
   import X01Finished from './X01Finished.svelte';
   import PageHeader from '../../lib/components/PageHeader.svelte';
 
+  // Local match or online match; an open online match always shows itself.
+  let mode = $state('local');
+  let onlineOpen = $derived(!!$online && !($x01Own && $x01Own.active));
+
   $effect(() => {
     if ($x01Own && $x01Own.active && $x01Own.state !== 'finished') {
+      openTv();
+    }
+    // An Elimination match of the circle started by the host of the match we joined.
+    if ($online && $elimination && $elimination.active && $elimination.state !== 'finished') {
       openTv();
     }
   });
@@ -46,5 +57,22 @@
 {#if $x01Own && $x01Own.state === 'finished'}
   <X01Finished />
 {:else if !($x01Own && $x01Own.active)}
-  <X01Setup />
+  {#if !onlineOpen}
+    <div class="mode-chips" role="tablist" aria-label={t('Game type')}>
+      <button type="button" role="tab" class="mode-chip" class:active={mode === 'local'} aria-selected={mode === 'local'} onclick={() => (mode = 'local')}>{t('Local')}</button>
+      <button type="button" role="tab" class="mode-chip" class:active={mode === 'online'} aria-selected={mode === 'online'} onclick={() => (mode = 'online')}>{t('Online')}</button>
+    </div>
+  {/if}
+  {#if onlineOpen || mode === 'online'}
+    <OnlineLobby game="x01" />
+  {:else}
+    <X01Setup />
+  {/if}
 {/if}
+
+<style>
+  .mode-chips { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
+  .mode-chip { background: var(--glass); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 20px; padding: 0.35rem 1rem; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .mode-chip:hover { border-color: var(--accent); color: var(--text); }
+  .mode-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+</style>

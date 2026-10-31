@@ -8,7 +8,7 @@
   import { shownName } from '../../lib/util.js';
   import { api } from '../../lib/api.js';
   import { dartLabel } from '../../lib/killer.js';
-  import { rematch, stopGame, ruleChips } from '../../lib/x01.js';
+  import { rematch, stopGame, ruleChips, onlineRematch } from '../../lib/x01.js';
   import Avatar from '../../lib/components/Avatar.svelte';
   import { gameState } from '../../lib/stores/gameState.js';
   import Crown from '../../lib/components/Crown.svelte';
@@ -17,7 +17,11 @@
   import X01Summary from '../../lib/components/X01Summary.svelte';
   import MatchAchievements from '../../lib/components/MatchAchievements.svelte';
 
-  let { x, sessionStats = {} } = $props();
+  let { x, sessionStats = {}, online = null } = $props();
+  let onlineError = $state('');
+  async function askRematch() {
+    onlineError = await onlineRematch();
+  }
 
   let rows = $derived([...(x.players || [])].sort((a, b) => b.legs_won - a.legs_won));
   // Players with the same number of legs share a place.
@@ -79,11 +83,17 @@
   {/if}
   <MatchAchievements matchId={x.match_id} large />
   <div class="actions">
-    <button class="btn" onclick={() => rematch(x)}>{t('↻ Rematch')}</button>
+    {#if !online}
+      <button class="btn" onclick={() => rematch(x)}>{t('↻ Rematch')}</button>
+    {:else if online.host}
+      <button class="btn" onclick={askRematch}>{t('↻ Rematch')}</button>
+    {/if}
     <button class="btn ghost" onclick={() => (showSummary = true)}>{t('Summary')}</button>
     <button class="btn ghost" onclick={undo}>{t('↩ Undo')}</button>
     <button class="btn ghost" onclick={done}>{t('✓ Done')}</button>
   </div>
+  {#if online && !online.host}<p class="online-note">{t('Only the host can start a rematch.')}</p>{/if}
+  {#if onlineError}<p class="online-error">{onlineError}</p>{/if}
 </div>
 
 {#if correctingIndex != null}
@@ -96,6 +106,8 @@
   :global(body.tv-fixed-height #app) { height: 100dvh; }
   .summary-page { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding: 1.5rem 2rem; }
   .finished { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; padding: 1.5rem 2rem; }
+  .online-note { color: var(--muted); font-size: 0.9rem; }
+  .online-error { color: var(--red); font-size: 0.9rem; }
   .heading { font-size: clamp(2rem, 5vw, 4.2rem); font-weight: 800; color: var(--green); text-align: center; }
   .meta { color: var(--muted); font-size: clamp(0.8rem, 1.3vw, 1.2rem); margin-top: -1rem; }
   .results { list-style: none; padding: 0; width: min(36rem, 90vw); max-height: 42vh; overflow-y: auto; }

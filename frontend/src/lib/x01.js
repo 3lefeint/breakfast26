@@ -29,6 +29,15 @@ export async function rematch(x) {
   return !res.error;
 }
 
+// A rematch of an online match: the host asks the relay, which opens the lobby again for every site.
+export async function onlineRematch() {
+  const res = await apiJson('POST', '/api/online/rematch');
+  return res.error ? t(res.error) : '';
+}
+
+// Whether the player who is up plays at another site of an online match.
+export const remoteTurn = (x) => !!(x?.online && x.local_players && !x.local_players.includes(x.current_player));
+
 // Clear the finished match so a new one can be set up.
 export function stopGame() {
   return api('POST', '/api/x01/stop');
