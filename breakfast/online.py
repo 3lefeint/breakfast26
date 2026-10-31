@@ -324,7 +324,8 @@ class OnlineSession:
     """One online match, from the lobby to the result. `controller` is the
     EliminationController that runs the local game."""
 
-    def __init__(self, controller, on_change=None, connect=None, post=None, sleep=time.sleep):
+    def __init__(self, controller, on_change=None, connect=None, post=None, sleep=time.sleep, x01=None):
+        self._controllers = {"elimination": controller, "x01": x01}
         self.controller = controller
         self._on_change = on_change
         self._connect = connect or _open_socket
@@ -349,15 +350,17 @@ class OnlineSession:
         self.ticket = None
         self.token = None
         self.host = False
-        self.lobby = {"host": None, "sites": [], "lives": 0, "order": []}
+        self.lobby = {"host": None, "sites": [], "lives": 0, "order": [], "game": "elimination", "rules": None}
         self.local_players = []
-        self.match = None          # {match_id, lives, order, owners} once started
+        self.controller = self._controllers["elimination"]      # the controller of the game that is played
+        self.match = None          # {match_id, game, lives or rules, order, owners} once started
         self.paused = None         # {site, rejoin_until}
         self.decision = None       # [{site, players}] while the host has to decide
         self.result = None         # {reason, placements}
         self.message = None        # the last thing the user should know
         self.epoch = 0             # how often the relay took the log back, to see after a rejoin what this site missed
         self.connected = False
+        self.expected_game = None   # the game of the page this site joined from, a match of another game is refused
 
     # ── what the rest of Breakfast asks ──────────────────────────────────────────
 
@@ -400,10 +403,12 @@ class OnlineSession:
         self._open("create")
         return self.code
 
-    def join(self, relay_url, code, site, password=None, ticket=None):
-        """Join by code and password, or by the ticket of a linked location."""
+    def join(self, relay_url, code, site, password=None, ticket=None, game=None):
+        """Join by code and password, or by the ticket of a linked location. *game*: the game of the page the user joins
+        from (elimination or x01); a match of the other game is left again."""
         self._begin(relay_url, site, password)
         self.ticket = ticket
+        self.expected_game = game
         self.code = code.strip().upper()
         self._open("join")
 
@@ -433,8 +438,19 @@ class OnlineSession:
             self.local_players = list(players)
         self._send({"type": "lobby_set_players", "players": list(players)})
 
-    def start(self, lives, order):
-        self._send({"type": "lobby_start", "lives": int(lives), "order": list(order)})
+    def set_rules(self, game="elimination", lives=3, rules=None):
+        """Host only: the game and its rules, which the other sites see in the lobby."""
+        self._send(self._rules_frame("lobby_set_rules", game, lives, rules))
+
+    def start(self, lives, order, game="elimination", rules=None):
+        """Host only: start the match with the given order. For Elimination `lives` count, for X01 the `rules`."""
+        self._send({**self._rules_frame("lobby_start", game, lives, rules), "order": list(order)})
+
+    @staticmethod
+    def _rules_frame(kind, game, lives, rules):
+        if game == "x01":
+            return {"type": kind, "game": "x01", "rules": rules}
+        return {"type": kind, "lives": int(lives)}
 
     def rematch(self):
         """Host only, after a finished match: back to the lobby with the same sites and players."""
@@ -467,9 +483,10 @@ class OnlineSession:
     def send_dart(self, seq, player, throws):
         self._send({"type": "dart", "seq": seq, "player": player, "throws": [throw_to_wire(t) for t in throws]})
 
-    def send_turn(self, seq, player, throws, next_player, eliminated, winner):
+    def send_turn(self, seq, player, throws, next_player, eliminated, winner, **extra):
+        """*extra*: `order` (the play order the bull-off decided) and `rematch_order`, X01 only."""
         self._send({"type": "turn", "seq": seq, "player": player, "throws": [throw_to_wire(t) for t in throws],
-                    "next_player": next_player, "eliminated": eliminated, "winner": winner})
+                    "next_player": next_player, "eliminated": eliminated, "winner": winner, **extra})
 
     def can_correct(self):
         """True when the last turn may be corrected: connected, and the match is played or was finished normally."""
@@ -477,10 +494,10 @@ class OnlineSession:
             return self.connected and (self.phase == "playing" or (
                 self.phase == "ended" and (self.result or {}).get("reason") == "finished"))
 
-    def send_corrected(self, seq, player, throws, next_player, eliminated, winner, total=None):
+    def send_corrected(self, seq, player, throws, next_player, eliminated, winner, total=None, **extra):
         """The last turn was corrected here: the corrected turn replaces it at the relay and at the other sites."""
         frame = {"type": "turn_corrected", "seq": seq, "player": player, "throws": [throw_to_wire(t) for t in throws],
-                 "next_player": next_player, "eliminated": eliminated, "winner": winner}
+                 "next_player": next_player, "eliminated": eliminated, "winner": winner, **extra}
         if total is not None:
             frame["total"] = total
         with self._lock:
@@ -497,6 +514,9 @@ class OnlineSession:
                 raise RelayError("There is no turn to take back")
             if self.phase == "ended" and (self.result or {}).get("reason") != "finished":
                 raise RelayError("The match was stopped, a turn cannot be taken back")
+            local_undo = getattr(game, "online_local_undo", None)
+            if local_undo and local_undo():
+                return
             seq = game.turn_seq
         self._send({"type": "undo", "seq": seq})
 
@@ -661,9 +681,31 @@ class OnlineSession:
                 self.phase = "lobby"
         self._ready.set()
 
-    def _on_lobby(self, f):
+    def _refuse_game(self, kind):
+        """The match is of another game than the page this site joined from: leave again and say why."""
+        label = {"x01": "X01", "elimination": "Elimination"}.get(kind, kind)
+        log.info("Online: left the match %s, it is %s and not %s", self.code, kind, self.expected_game)
         with self._lock:
-            self.lobby = {"host": f["host"], "sites": f["sites"], "lives": f["lives"], "order": f["order"]}
+            conn, self._closing = self._conn, True
+        self._send({"type": "leave"})
+        try:
+            conn.close()
+        except Exception:
+            pass
+        with self._lock:
+            self._conn = None
+            self._reset()
+            self.phase = "ended"
+            self.message = f"This is an {label} match, join it on the {label} page."
+            self._closing = False
+
+    def _on_lobby(self, f):
+        if self.expected_game and not self.host and f.get("game", "elimination") != self.expected_game:
+            self._refuse_game(f.get("game", "elimination"))
+            return
+        with self._lock:
+            self.lobby = {"host": f["host"], "sites": f["sites"], "lives": f["lives"], "order": f["order"],
+                          "game": f.get("game", "elimination"), "rules": f.get("rules")}
 
     def _on_rematch(self, f):
         with self._lock:
@@ -672,15 +714,22 @@ class OnlineSession:
         self.controller.stop()
 
     def _on_started(self, f):
+        kind = f.get("game", "elimination")
         with self._lock:
-            game = self.controller.game
+            controller = self._controllers.get(kind)
+            if controller is None:
+                self.message = "This installation cannot play that game online"
+                return
+            self.controller = controller
+            game = controller.game
             if game is not None and game.match_id == f["match_id"]:
                 self.phase = "playing"
                 return
-            self.match = {"match_id": f["match_id"], "lives": f["lives"], "order": f["order"], "owners": f["owners"]}
+            self.match = {"match_id": f["match_id"], "game": kind, "lives": f.get("lives"), "rules": f.get("rules"),
+                          "order": f["order"], "owners": f["owners"]}
             self.local_players = [p for p in f["order"] if f["owners"].get(p) == self.site]
             self.phase = "playing"
-        self.controller.start_online(f["order"], f["lives"], f["match_id"], self.local_players, self)
+        controller.start_online(f["order"], f["rules"] if kind == "x01" else f["lives"], f["match_id"], self.local_players, self)
 
     def _on_dart(self, f):
         self.controller.remote_dart(f["player"], [throw_from_wire(t) for t in f["throws"]])

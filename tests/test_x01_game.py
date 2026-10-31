@@ -755,3 +755,220 @@ class TestMaxRounds:
         m2 = Match(("cy",), start=40)
         play(m2.game, hit(20, 2))
         assert m2.db.player_performance_summary("cy")["best_leg_darts"] == 1
+
+
+class FakeOnline:
+    """What an online session gets from the game of this site."""
+
+    def __init__(self):
+        self.frames = []
+        self.match = {"owners": {"ana": "Home", "bo": "Club"}}
+
+    def send_dart(self, seq, player, throws):
+        self.frames.append(("dart", seq, player, len(throws)))
+
+    def send_turn(self, seq, player, throws, next_player, eliminated, winner, **extra):
+        self.frames.append(("turn", seq, player, len(throws), next_player, winner, extra))
+
+    def send_corrected(self, seq, player, throws, next_player, eliminated, winner, total=None, **extra):
+        self.frames.append(("corrected", seq, player, len(throws), next_player, winner, extra))
+
+    def send_ack(self, seq, state_hash):
+        self.frames.append(("ack", seq))
+
+    def can_play(self):
+        return True
+
+    def can_correct(self):
+        return True
+
+
+class TestOnline:
+    def game(self, **kw):
+        online = FakeOnline()
+        kw.setdefault("bull_off", False)
+        game = X01Game(["ana", "bo"], lambda e: None, start=40, start_delay=0, keep_order=True, online=online,
+                       local_players=["ana"], **kw)
+        game.announce_start()
+        return game, online
+
+    def test_a_turn_thrown_here_goes_out_with_the_next_player_and_the_hash(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(5, 1)])
+        assert online.frames[0] == ("dart", 1, "ana", 1)
+        game.on_board_state(0, [])
+        assert online.frames[-2:] == [("turn", 1, "ana", 1, "bo", None, {}), ("ack", 1)]
+        assert game.turn_seq == 1
+
+    def test_a_turn_of_a_remote_player_is_replayed_and_only_acknowledged(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])
+        online.frames.clear()
+        game.remote_turn("bo", [hit(10, 1), hit(10, 1), hit(10, 1)])
+        assert game.scores["bo"] == 10 and game.current == "ana" and game.turn_seq == 2
+        assert online.frames == [("ack", 2)]
+
+    def test_a_player_of_another_site_is_not_played_at_this_board(self):
+        game, online = self.game()
+        game.remote_turn("bo", [hit(20, 1)])           # it is ana's turn
+        assert game.turn_seq == 0
+        game.on_board_state(0, [])
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])
+        assert not game.next_turn()                     # bo is up now, his turn is ended at his site
+        assert game.undo() is False                     # the relay decides
+
+    def test_the_turn_that_wins_carries_the_order_of_a_rematch(self):
+        game, online = self.game(legs=1)
+        game.on_board_state(1, [hit(20, 2)])
+        sent = [f for f in online.frames if f[0] == "turn"][-1]
+        assert sent == ("turn", 1, "ana", 1, None, "ana", {"rematch_order": ["bo", "ana"]})
+
+    def test_the_throw_that_ends_the_bull_off_carries_the_order(self):
+        game, online = self.game(bull_off=True)
+        assert game.current == "ana"
+        game.on_board_state(1, [hit(25, 1, x=0.5, y=0.0)])
+        game.on_board_state(0, [])
+        assert online.frames[-2] == ("turn", 1, "ana", 1, "bo", None, {})
+        game.on_board_state(0, [])
+        game.remote_turn("bo", [hit(25, 1, x=0.1, y=0.0)])
+        assert game.order == ["bo", "ana"] and game.phase == "playing" and game.turn_seq == 2
+        game.undo_online()
+        assert game.order == ["ana", "bo"] and game.phase == "bull_off" and game.current == "bo" and game.turn_seq == 1
+
+    def test_an_undo_walks_the_turn_back_on_every_site(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])
+        before = game.state_hash()
+        game.remote_turn("bo", [hit(1, 1)])
+        assert game.undo_online()
+        assert game.turn_seq == 1 and game.current == "bo" and game.scores["bo"] == 40
+        assert online.frames[-1] == ("ack", 1)
+        assert game.state_hash() != before or game.scores["ana"] == 35
+
+    def test_darts_set_by_hand_go_out_as_they_change(self):
+        game, online = self.game()
+        game.correct_current_dart(0, "T20", {"x": 0.0, "y": 0.6})
+        game.correct_current_dart(1, "S5")
+        assert [f for f in online.frames if f[0] == "dart"] == [("dart", 1, "ana", 1), ("dart", 1, "ana", 2)]
+
+    def test_a_dart_of_the_bull_off_set_by_hand_goes_out_too(self):
+        game, online = self.game(bull_off=True)
+        game.correct_current_dart(0, "25")
+        assert ("dart", 1, "ana", 1) in online.frames
+
+    def test_the_darts_of_a_player_at_another_site_are_not_sent_from_here(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])                      # bo is up
+        online.frames.clear()
+        game.correct_current_dart(0, "T20")
+        assert online.frames == []
+
+    def test_the_dart_of_the_bull_off_in_progress_is_taken_back_without_the_relay(self):
+        game, online = self.game(bull_off=True)
+        game.on_board_state(1, [hit(25, 1, x=0.5, y=0.0)])
+        assert game.snapshot()["pull_darts"] is True
+        assert game.online_local_undo()
+        assert game.snapshot()["pull_darts"] is False and game.turn_seq == 0
+
+    def test_hash_and_snapshot_tell_about_the_online_match(self):
+        game, online = self.game()
+        snap = game.snapshot()
+        assert snap["online"] is True and snap["local_players"] == ["ana"]
+        assert len(game.state_hash()) == 16
+
+
+class TestOnlineBoard:
+    """The darts of a player at another site are shown on the board display of this site."""
+
+    def game(self):
+        online = FakeOnline()
+        game = X01Game(["ana", "bo"], lambda e: None, start=100, start_delay=0, keep_order=True, online=online,
+                       local_players=["ana"], bull_off=False)
+        game.announce_start()
+        shown = []
+        game.show_remote_darts = shown.append
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])                      # ana threw, bo is up
+        return game, shown
+
+    def test_the_live_darts_are_shown_and_leave_with_the_turn(self):
+        game, shown = self.game()
+        game.remote_dart("bo", [hit(20, 1)])
+        game.remote_dart("bo", [hit(20, 1), hit(1, 1)])
+        assert [len(d) for d in shown] == [1, 2]
+        game.remote_turn("bo", [hit(20, 1), hit(1, 1), hit(5, 1)])
+        assert shown[-1] == []
+
+    def test_the_darts_of_the_match_winning_turn_leave_too(self):
+        online = FakeOnline()
+        game = X01Game(["ana", "bo"], lambda e: None, start=40, start_delay=0, keep_order=True, online=online,
+                       local_players=["ana"], bull_off=False)
+        game.announce_start()
+        shown = []
+        game.show_remote_darts = shown.append
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])                      # ana 5, bo is up
+        game.remote_dart("bo", [hit(20, 2)])            # D20 checks out 40 and wins
+        assert game.state == "finished" and shown == [[hit(20, 2)]]
+        game.remote_turn("bo", [hit(20, 2)])
+        assert shown[-1] == []
+
+    def test_an_undo_clears_the_board(self):
+        game, shown = self.game()
+        game.remote_dart("bo", [hit(20, 1)])
+        game.undo_online()
+        assert shown[-1] == []
+
+    def test_the_controller_knows_when_a_remote_player_is_up(self):
+        from breakfast.x01_game import X01Controller
+        ctrl = X01Controller(lambda e: None)
+        assert ctrl.remote_turn_active() is False
+        game, _ = self.game()
+        ctrl.game = game
+        assert ctrl.remote_turn_active() is True          # bo plays at the other site
+        game.on_board_state(0, [])
+        game.remote_turn("bo", [hit(1, 1)])
+        assert ctrl.remote_turn_active() is False         # ana is up again
+
+
+class TestOnlineBullOff:
+    """The sites of an online bull-off agree about where every dart landed, also when a dart was moved."""
+
+    def game(self):
+        online = FakeOnline()
+        game = X01Game(["ana", "bo"], lambda e: None, start=301, start_delay=0, keep_order=True, online=online,
+                       local_players=["ana"], bull_off=True)
+        game.announce_start()
+        return game, online
+
+    def test_a_dart_that_was_moved_at_the_other_site_is_moved_here_too(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(25, 1, x=0.5, y=0.0)])
+        game.on_board_state(0, [])                       # ana threw, bo is up at the other site
+        game.remote_dart("bo", [hit(25, 1, x=0.4, y=0.0)])
+        game.remote_dart("bo", [hit(25, 1, x=0.05, y=0.0)])       # bo moved his dart
+        game.remote_turn("bo", [hit(25, 1, x=0.05, y=0.0)])
+        assert game.phase == "playing" and game.order == ["bo", "ana"]
+        assert round(game._bo["shown"]["bo"], 3) == 0.05
+
+    def test_both_sites_come_to_the_same_state_hash(self):
+        a, _ = self.game()
+        b_online = FakeOnline()
+        b = X01Game(["ana", "bo"], lambda e: None, start=301, start_delay=0, keep_order=True, online=b_online,
+                    local_players=["bo"], bull_off=True)
+        b.announce_start()
+        a.on_board_state(1, [hit(25, 1, x=0.5, y=0.0)])
+        a.on_board_state(0, [])
+        b.remote_dart("ana", [hit(25, 1, x=0.5, y=0.0)])
+        b.remote_turn("ana", [hit(25, 1, x=0.5, y=0.0)])
+        b.correct_current_dart(0, "25", {"x": 0.3, "y": 0.0})
+        b.correct_current_dart(0, "25", {"x": 0.05, "y": 0.0})          # moved again
+        b.next_turn()
+        a.remote_dart("bo", [hit(25, 1, x=0.3, y=0.0)])
+        a.remote_dart("bo", [hit(25, 1, x=0.05, y=0.0)])
+        a.remote_turn("bo", [hit(25, 1, x=0.05, y=0.0)])
+        assert a.state_hash() == b.state_hash()

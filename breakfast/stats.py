@@ -3767,6 +3767,20 @@ class StatsTracker:
         self._bots: set[str] = set()        # the players of the match the computer plays: their turns go to bot_turns, not to turns
         self._turn_log: list[dict] = []     # the turns flushed in this match, to take the right one out on an undo
         self._bot_turn_per_player: dict[str, int] = {}
+        self._name_map = None               # online: maps a player of another site to the guest name he is stored under
+        self._shown_as = {}                 # stored guest name -> the name the screens know him by
+
+    def set_name_map(self, fn):
+        """*fn(name)* gives the name a player is stored under, None stores everybody under his own name."""
+        self._name_map = fn
+        self._shown_as = {}
+
+    def _stored(self, name):
+        if not (self._name_map and name):
+            return name
+        stored = self._name_map(name)
+        self._shown_as[stored] = name
+        return stored
 
     @property
     def session_stats(self) -> dict:
@@ -3775,7 +3789,7 @@ class StatsTracker:
 
     def process(self, event_data: dict):
         ev     = event_data.get("event")
-        player = _safe_name(event_data.get("player"))
+        player = self._stored(_safe_name(event_data.get("player")))
         game   = event_data.get("game", {})
 
         if ev == "match-started" and game.get("resumed"):
@@ -3925,7 +3939,7 @@ class StatsTracker:
     def _human(self, player):
         """The player, or None for one the computer plays: a win of a bot is stored as no winner."""
         player = normalize(player)
-        return None if player in self._bots else player
+        return None if player in self._bots else self._stored(player)
 
     def _undo_last_turn(self):
         """Take back the last turn that was flushed. A turn of a bot was never stored; if it won a leg, only that leg
@@ -4031,6 +4045,7 @@ class StatsTracker:
         """Derive avg3, co_pct etc. from raw accumulators."""
         result = {}
         for player, s in self._session_stats.items():
+            player = self._shown_as.get(player, player)        # the screens know a guest by his plain name
             td  = s["total_darts"] or 0
             ts  = s["total_score"] or 0
             coa = s["co_attempts"] or 0

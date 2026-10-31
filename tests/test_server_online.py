@@ -28,8 +28,10 @@ class FakeSession:
         self._active = True
         return "K7M2QX"
 
-    def join(self, relay_url, code, site, password=None, ticket=None):
+    def join(self, relay_url, code, site, password=None, ticket=None, game=None):
         self.calls.append(("join", relay_url, code, site, password) if ticket is None else ("join", relay_url, code, site, ticket))
+        if game:
+            self.calls.append(("game", game))
         if password == "bad":
             raise online_mod.RelayError("wrong password")
 
@@ -43,8 +45,11 @@ class FakeSession:
     def set_players(self, players):
         self.calls.append(("players", players))
 
-    def start(self, lives, order):
-        self.calls.append(("start", lives, order))
+    def start(self, lives, order, game="elimination", rules=None):
+        self.calls.append(("start", lives, order) if game == "elimination" else ("start", game, rules, order))
+
+    def set_rules(self, game, lives, rules):
+        self.calls.append(("rules", game, lives, rules))
 
     def decide(self, choice):
         self.calls.append(("decide", choice))
@@ -222,3 +227,34 @@ def test_without_locations_there_are_no_voice_channels(wired):
     server._locations = None
     assert "not available" in run(server.voice_channels())["error"]
     assert "not available" in run(server.voice_channel_open("d" * 32))["error"]
+
+
+X01_RULES = {"start": 501, "in_mode": "straight", "out_mode": "double", "legs": 3, "bull_off": True, "max_rounds": None}
+
+
+def test_the_rules_of_an_x01_lobby_are_checked_before_they_go_to_the_relay(wired):
+    from breakfast.x01_game import X01Controller
+    server._x01_ctrl = X01Controller(lambda e: None)
+    try:
+        assert run(server.online_rules(server.OnlineRulesBody(game="x01", rules=X01_RULES))) == {"ok": True}
+        assert run(server.online_start(server.OnlineStartBody(game="x01", rules=X01_RULES, order=["anna", "carl"]))) == {"ok": True}
+        assert server._online.calls[-2:] == [("rules", "x01", 3, X01_RULES), ("start", "x01", X01_RULES, ["anna", "carl"])]
+        bad = run(server.online_start(server.OnlineStartBody(game="x01", rules={**X01_RULES, "legs": 0}, order=["anna", "carl"])))
+        assert "legs" in bad["error"]
+        assert "game" in run(server.online_rules(server.OnlineRulesBody(game="chess")))["error"]
+    finally:
+        server._x01_ctrl = None
+
+
+def test_the_game_of_the_page_goes_with_a_join(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg_mod.write(str(config_path), {"online": {"relay_url": "ws://relay", "site_name": "Home"}})
+    server.wire(None, EliminationController(NullMqttPublisher(), "autodarts"), config_path=str(config_path))
+    server._online = FakeSession()
+    server._locations = FakeLocations()
+    try:
+        run(server.online_join(server.OnlineJoinBody(code="K7M2QX", password="pw", game="x01")))
+        run(server.online_join_linked(server.OnlineLinkedJoinBody(code="K7M2QX", game="elimination")))
+        assert ("game", "x01") in server._online.calls and ("game", "elimination") in server._online.calls
+    finally:
+        server.wire(None, None)

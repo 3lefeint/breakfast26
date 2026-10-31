@@ -313,3 +313,168 @@ def test_a_dart_and_a_total_are_corrected_on_both_sites(relay_url):
     assert _wait(lambda: home.ctrl.game.state_hash() == club.ctrl.game.state_hash())
     for s in sites.values():
         s.session.leave()
+
+
+# ── X01 ───────────────────────────────────────────────────────────────────────
+
+def _x01_site(players):
+    """A site that can play X01: the controller feeds a statistics tracker like the server does."""
+    from breakfast.state import GameState
+    from breakfast.stats import StatsTracker
+    from breakfast.x01_game import X01Controller
+    db = StatsDB(":memory:")
+    tracker = StatsTracker(db)
+    state = GameState()
+
+    def emit(data):
+        state.update(data)
+        tracker.process(data)
+
+    elim = EliminationController(NullMqttPublisher(), "autodarts", stats_db=db)
+    x01 = X01Controller(emit, stats_db=db)
+    x01.tracker = tracker
+    return SimpleNamespace(db=db, ctrl=x01, session=OnlineSession(elim, x01=x01), players=players)
+
+
+def _dart(number, multiplier, x, y):
+    return {"segment": {"number": number, "multiplier": multiplier, "name": f"{'SDT'[multiplier - 1]}{number}"},
+            "coords": {"x": x, "y": y}, "entry": "detected"}
+
+
+X01_RULES = {"start": 40, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": True, "max_rounds": None}
+
+
+def test_two_sites_play_an_x01_match_from_the_bull_off_to_the_checkout(relay_url):
+    home, club = _x01_site(["anna"]), _x01_site(["carl"])
+    sites = {"Home": home, "Club": club}
+    code = home.session.create(relay_url, "Home", "pw")
+    club.session.join(relay_url, code, "Club", "pw")
+    home.session.set_players(home.players)
+    club.session.set_players(club.players)
+    assert _wait(lambda: sum(len(s["players"]) for s in home.session.status()["lobby"]["sites"]) == 2)
+    home.session.set_rules("x01", 3, X01_RULES)
+    assert _wait(lambda: club.session.status()["lobby"]["rules"] == X01_RULES)       # the other site sees the rules
+    home.session.start(3, ["anna", "carl"], "x01", X01_RULES)
+    assert _wait(lambda: home.ctrl.game and club.ctrl.game)
+    assert home.ctrl.game.match_id == club.ctrl.game.match_id
+    assert home.ctrl.game.phase == "bull_off" and home.ctrl.game.current == "anna"
+
+    def settle(seq):
+        assert _wait(lambda: home.ctrl.game.turn_seq == seq and club.ctrl.game.turn_seq == seq)
+
+    def bull_off(site, x, y):
+        ctrl = sites[site].ctrl
+        ctrl.on_board_state(1, [_dart(25, 1, x, y)])
+        ctrl.on_board_state(0, [])
+
+    bull_off("Home", 0.4, 0.0)            # anna is far from the bull
+    settle(1)
+    assert club.ctrl.game.current == "carl"
+    bull_off("Club", 0.02, 0.0)           # carl is closer: he throws first
+    settle(2)
+    for s in sites.values():
+        game = s.ctrl.game
+        assert game.phase == "playing" and game.order == ["carl", "anna"] and game.current == "carl"
+
+    ctrl = club.ctrl
+    ctrl.on_board_state(1, [_dart(20, 2, 0.0, 0.6)])         # D20 checks out 40
+    settle(3)
+    assert _wait(lambda: home.session.status()["phase"] == "ended" and club.session.status()["phase"] == "ended")
+    for s in sites.values():
+        assert s.ctrl.game.state == "finished" and s.ctrl.game.winner == "carl"
+    assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
+    # each site stores the player of the other site as a guest, name@site
+    winner = lambda s: s.db._conn.execute("SELECT winner FROM matches WHERE match_id = ?", (s.ctrl.game.match_id,)).fetchone()[0]
+    assert winner(home) == "carl@club" and winner(club) == "carl"
+    turned = lambda s: [r[0] for r in s.db._conn.execute("SELECT player FROM turns ORDER BY id")]
+    assert turned(home) == ["carl@club"] and turned(club) == ["carl"]
+    # the screens find the average of a player of the other site under his plain name
+    assert set(home.ctrl.tracker.computed_session_stats()) == set(club.ctrl.tracker.computed_session_stats()) == {"carl"}
+    home.session.leave()
+    club.session.leave()
+
+
+def test_an_x01_turn_can_be_taken_back_and_corrected_at_the_site_that_threw_it(relay_url):
+    rules = {**X01_RULES, "start": 100, "bull_off": False}
+    home, club = _x01_site(["anna"]), _x01_site(["carl"])
+    sites = {"Home": home, "Club": club}
+    code = home.session.create(relay_url, "Home", "pw")
+    club.session.join(relay_url, code, "Club", "pw")
+    home.session.set_players(home.players)
+    club.session.set_players(club.players)
+    assert _wait(lambda: sum(len(s["players"]) for s in home.session.status()["lobby"]["sites"]) == 2)
+    home.session.start(3, ["anna", "carl"], "x01", rules)
+    assert _wait(lambda: home.ctrl.game and club.ctrl.game)
+    assert home.ctrl.game.phase == "playing" and home.ctrl.game.order == ["anna", "carl"]
+
+    def settle(seq):
+        assert _wait(lambda: home.ctrl.game.turn_seq == seq and club.ctrl.game.turn_seq == seq)
+
+    def turn(site, *darts):
+        ctrl = sites[site].ctrl
+        for n in range(1, len(darts) + 1):
+            ctrl.on_board_state(n, list(darts[:n]))
+        ctrl.on_board_state(0, [])
+
+    def scores(s):
+        return {p["name"]: p["remaining"] for p in s.ctrl.game.snapshot()["players"]}
+
+    turn("Home", *_throws(20, 1, 3))                       # anna 60, 40 left
+    settle(1)
+    turn("Club", *_throws(1, 1, 3))                        # carl 3, 97 left
+    settle(2)
+    assert scores(home) == scores(club) == {"anna": 40, "carl": 97}
+
+    club.session.undo()                                    # carl's site takes its turn back
+    assert _wait(lambda: home.ctrl.game.turn_seq == 1 and club.ctrl.game.turn_seq == 1)
+    assert scores(home) == scores(club) == {"anna": 40, "carl": 100}
+    assert home.ctrl.game.current == club.ctrl.game.current == "carl"
+    turn("Club", *_throws(5, 1, 3))                        # carl 15, 85 left
+    settle(2)
+    assert club.ctrl.game.correct_last_dart(2, "S20")      # the third dart was a 20, not a 5
+    assert _wait(lambda: scores(home) == scores(club) == {"anna": 40, "carl": 70})
+    settle(2)
+    assert home.ctrl.game.state_hash() == club.ctrl.game.state_hash()
+
+    turn("Home", _dart(20, 2, 0.0, 0.6))                   # anna checks out 40
+    settle(3)
+    assert _wait(lambda: home.session.status()["phase"] == "ended" and club.session.status()["phase"] == "ended")
+    assert home.ctrl.game.winner == club.ctrl.game.winner == "anna"
+    home.session.leave()
+    club.session.leave()
+
+
+def test_the_darts_of_a_turn_in_progress_reach_the_other_site_also_when_set_by_hand(relay_url):
+    rules = {**X01_RULES, "start": 301, "bull_off": True}
+    home, club = _x01_site(["anna"]), _x01_site(["carl"])
+    shown = {"Home": [], "Club": []}
+    for name, s in (("Home", home), ("Club", club)):
+        s.ctrl.on_remote_darts = shown[name].append
+    code = home.session.create(relay_url, "Home", "pw")
+    club.session.join(relay_url, code, "Club", "pw")
+    home.session.set_players(home.players)
+    club.session.set_players(club.players)
+    assert _wait(lambda: sum(len(s["players"]) for s in home.session.status()["lobby"]["sites"]) == 2)
+    home.session.start(3, ["anna", "carl"], "x01", rules)
+    assert _wait(lambda: home.ctrl.game and club.ctrl.game)
+
+    # the bull-off: anna sets her dart by hand, carl's site sees it before anna's darts are pulled
+    home.ctrl.game.correct_current_dart(0, "25")
+    assert _wait(lambda: any(len(d) == 1 for d in shown["Club"])), shown
+    home.ctrl.game.next_turn()
+    assert _wait(lambda: club.ctrl.game.turn_seq == 1)
+    club.ctrl.game.correct_current_dart(0, "D25")
+    assert _wait(lambda: club.ctrl.game.turn_seq == 1 and any(len(d) == 1 for d in shown["Home"])), shown
+    club.ctrl.game.next_turn()
+    assert _wait(lambda: home.ctrl.game.phase == "playing" and club.ctrl.game.phase == "playing")
+
+    # in the match the darts set by hand arrive one by one
+    thrower = home if home.ctrl.game.current == "anna" else club
+    other = "Club" if thrower is home else "Home"
+    thrower.ctrl.game.correct_current_dart(0, "T20")
+    thrower.ctrl.game.correct_current_dart(1, "S5")
+    assert _wait(lambda: [len(d) for d in shown[other]][-2:] == [1, 2]), shown
+    other_site = club if thrower is home else home
+    assert _wait(lambda: other_site.ctrl.game.snapshot()["current_darts"] == [60, 5]), other_site.ctrl.game.snapshot()["current_darts"]
+    home.session.leave()
+    club.session.leave()

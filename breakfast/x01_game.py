@@ -20,6 +20,8 @@ state at the start of the turn.
 """
 
 import copy
+import hashlib
+import json
 import logging
 import random
 import threading
@@ -87,7 +89,8 @@ class X01Game(TurnGame):
 
     def __init__(self, players, emit, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
                  audio=None, on_change=None, stats_db=None, rng=None, match_id=None, start_delay=None,
-                 tournament_id=None, on_end=None, max_rounds=None, bots=None, keep_order=False):
+                 tournament_id=None, on_end=None, max_rounds=None, bots=None, keep_order=False, online=None,
+                 local_players=None):
         """*emit*: where the events of the match go (the same function the events of an Autodarts match go to).
         *stats_db* only says that statistics are kept, so that undo takes a stored turn out again.
         *tournament_id*: the tournament this match belongs to, stored with the match. *on_end*: called with the
@@ -95,7 +98,9 @@ class X01Game(TurnGame):
         *max_rounds*: when nobody has checked out after this many rounds (everybody threw that many turns) a
         bull-off decides the leg, the closest dart wins; None is no limit. It needs two players.
         *bots*: {name: level} of the players the computer plays; the events mark them so that the statistics leave
-        them out."""
+        them out. *keep_order*: the players are in their final order, without a bull-off nothing is drawn, with one
+        they throw in the given order. *online*: the session of an online match (see online.py), *local_players*: the
+        players thrown at this site's board, None means all of them."""
         players = [str(p).strip() for p in players if str(p).strip()]
         if not players:
             raise ValueError("need at least 1 player")
@@ -127,7 +132,7 @@ class X01Game(TurnGame):
         if not self.bull_off and not keep_order:
             self._rng.shuffle(self.order)
         bull_off_order = list(players)
-        if self.bull_off:
+        if self.bull_off and not keep_order:
             self._rng.shuffle(bull_off_order)        # who throws first at the bull is drawn
         self.leg, self.leg_start = 1, 0
         self.legs_won = {p: 0 for p in players}
@@ -145,6 +150,13 @@ class X01Game(TurnGame):
         self._turn_start = self._state_of()
         self._last_turn_throws = []
         self._last_turn_player = None
+        # Online play (see online.py): `online` sends this site's darts, turns and state hashes to the relay.
+        self.online = online
+        self.local_players = set(local_players) if local_players is not None else None
+        self.turn_seq = 0                  # finished turns of this match (bull-off throws too), local and remote
+        self._remote = False               # True while a remote turn is being replayed
+        self.show_remote_darts = None      # set by the controller: shows the darts of a remote player on the board
+        self._sending_correction = False   # the turn being played again is a correction: it goes to the relay as such
         log.info("Game started: %s, %d legs, in %s, out %s, bull-off %s", self.start, self.legs, in_mode, out_mode,
                  self.bull_off)
 
@@ -322,21 +334,38 @@ class X01Game(TurnGame):
             self._changed()
 
     def _dart_seen(self, count, is_new_dart, is_correction):
+        if self.online and not self._remote:
+            self.online.send_dart(self.turn_seq + 1, self.current, self._last_throws)
         if self.phase == "bull_off":
             self._pre_dart_seen()
             return
         self._replay_turn()
 
     def correct_current_dart(self, dart_index, field, point=None):
+        if self.online and not self.is_local(self.current):
+            return      # a remote player's darts are corrected at their own site
         if self.phase == "bull_off":
             self._correct_bull_off_dart(dart_index, field, point)
+            self._send_live_darts()
             return
         before = self.state
         super().correct_current_dart(dart_index, field, point)
         if before == "playing":
             self._replay_turn()
+        self._send_live_darts()
+
+    def _send_live_darts(self):
+        """The darts of the turn in progress go to the other sites of an online match as they change, also those that
+        were set by hand (the board's own darts go from _dart_seen)."""
+        if not self.online or self._remote or not self.is_local(self.current):
+            return
+        throws = self._last_turn_throws if self.phase == "bull_off" else self._last_throws
+        if throws:
+            self.online.send_dart(self.turn_seq + 1, self.current, throws)
 
     def next_turn(self):
+        if self.online and not self.is_local(self.current):
+            return False    # a remote player's turn is ended at their own site
         if self.phase == "bull_off":
             # The throw has counted and the darts are not pulled: go on without pulling them.
             if self.state != "playing" or not self._one_dart_taken:
@@ -368,6 +397,7 @@ class X01Game(TurnGame):
         self._push_history(st, turn_recorded=self.stats_db is not None)
         self._last_turn_throws = list(self._last_throws)
         self._last_turn_player = player
+        thrown = list(self._last_turn_throws)
         n_darts = len([d for d in res["darts"] if d["close"] != "bust"])
         busted = res["status"] == "bust"
         if not busted:
@@ -383,6 +413,7 @@ class X01Game(TurnGame):
                 self._turn_start = self._state_of()
                 self._changed()
                 self._notify_end(player)
+                self._online_turn_done(player, thrown)
                 return
             self.leg += 1
             self.leg_start = (self.leg_start + 1) % len(self.order)
@@ -407,6 +438,7 @@ class X01Game(TurnGame):
         elif self.max_rounds and self.turns_in_leg >= self.max_rounds * len(self.order):
             self._begin_tiebreak()
         self._changed()
+        self._online_turn_done(player, thrown)
 
     # ── the bull-off that decides a leg after the max rounds ─────────────────
 
@@ -487,21 +519,31 @@ class X01Game(TurnGame):
         self._last_turn_throws, self._last_turn_player = [throw], player
         self._changed()
 
+    def _bull_off_set_dart(self, throw):
+        """The dart of the visit, or the new place of the dart that counted already (it was corrected)."""
+        if not self._one_dart_taken:
+            self._bull_off_register(throw)
+            return
+        player = self.current
+        distance = self._bull_distance(throw)
+        self._bo["dist"][player] = distance
+        self._bo["shown"][player] = distance
+        self._last_turn_throws = [throw]
+        self._changed()
+
     def _correct_bull_off_dart(self, dart_index, field, point=None):
         """Correct the dart of the visit in the bull-off, or enter one the board did not see."""
         if dart_index != 0 or self.state != "playing":
             return
-        throw = parse_field(field, point)
-        if self._one_dart_taken:
-            distance = self._bull_distance(throw)
-            self._bo["dist"][self.current] = distance
-            self._bo["shown"][self.current] = distance
-            self._last_turn_throws = [throw]
-            self._changed()
-        else:
-            self._bull_off_register(throw)
+        self._bull_off_set_dart(parse_field(field, point))
 
     def _bull_off_advance(self):
+        """The darts of the visit are pulled: this is a turn of one dart for the other sites of an online match."""
+        thrower, thrown, first = self.current, list(self._last_turn_throws), not self.tiebreak
+        self._bull_off_step()
+        self._online_turn_done(thrower, thrown, bull_off_done=first and self.phase == "playing")
+
+    def _bull_off_step(self):
         """The darts of the visit are pulled: place the player, or let the tied ones throw again, and call
         the next thrower; with everybody placed the order is set and the match starts."""
         group = self._bo["todo"][0]
@@ -634,7 +676,15 @@ class X01Game(TurnGame):
                 log.exception("X01 end callback failed")
 
     def undo(self):
-        """Walk back the most recently completed turn (or bull-off throw). Silent, like in the other games."""
+        """Walk back the most recently completed turn (or bull-off throw). Silent, like in the other games. In an
+        online match the relay decides: the request goes to it (OnlineSession.undo) and every site walks back with
+        undo_online()."""
+        if self.online:
+            log.warning("In an online match the undo goes through the relay")
+            return False
+        return self._undo()
+
+    def _undo(self):
         if not self._history:
             return False
         was_finished = self.state == "finished"
@@ -659,12 +709,21 @@ class X01Game(TurnGame):
                 or dart_index not in (0, 1, 2):
             log.warning("No turn to correct")
             return False
-        snap = self._history.pop()
-        was_finished = self.state == "finished"
+        if self.online and not self._may_correct_online():
+            return False
         throws = list(self._last_turn_throws)
         while len(throws) <= dart_index:
             throws.append({"segment": {"number": 0, "multiplier": 0}})
         throws[dart_index] = parse_field(field, point)
+        self._replace_last_turn(throws)
+        log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
+        return True
+
+    def _replace_last_turn(self, throws, remote=False):
+        """Go back to before the last turn and play it again with these darts. Online it replaces the turn at the relay
+        (`remote`: a correction made at another site, that is only applied here)."""
+        snap = self._history.pop()
+        was_finished = self.state == "finished"
         self._restore(snap)
         if was_finished:
             self._notify_end(None)
@@ -672,14 +731,154 @@ class X01Game(TurnGame):
         self._last_throws = throws
         self._current_darts = [self.value_of(t) for t in throws]
         self._silent = True
+        if self.online:
+            self.turn_seq -= 1                  # the turn is replaced, it does not count twice
+            self._remote, self._sending_correction = remote, not remote
         try:
             self._replay_turn()
             if self.state == "playing":
                 self._complete_turn()
         finally:
             self._silent = False
-        log.info("Last turn corrected: dart %d is %s", dart_index + 1, field)
+            self._remote = self._sending_correction = False
+
+    def _may_correct_online(self):
+        """An online match lets the site that threw the last turn correct it, while the match is played or after it
+        ended normally."""
+        if self.turn_seq < 1 or not self._last_turn_player:
+            log.warning("No turn to correct")
+            return False
+        if not self.is_local(self._last_turn_player):
+            log.warning("The last turn was thrown at another site, it is corrected there")
+            return False
+        if not self.online.can_correct():
+            log.warning("The match cannot be corrected now")
+            return False
         return True
+
+    # ── online play ──────────────────────────────────────────────────────────
+
+    def is_local(self, player):
+        return self.local_players is None or player in self.local_players
+
+    @property
+    def rematch_order(self):
+        """The order a rematch starts with: like a further leg, the next player in the order starts."""
+        k = (self.leg_start + 1) % len(self.order)
+        return self.order[k:] + self.order[:k]
+
+    def state_hash(self):
+        """A short digest of everything that decides how the match goes on, equal on all sites that applied the same
+        turns."""
+        st = self._state_of()
+        st.pop("match_started", None)
+        for key in ("dist", "shown"):
+            st["bo"][key] = {p: round(v, 4) for p, v in st["bo"][key].items()}
+        text = json.dumps({"seq": self.turn_seq, **st}, sort_keys=True, default=str)
+        return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+    def _online_turn_done(self, player, throws, bull_off_done=False):
+        """A turn (or a throw of the bull-off) is done and applied. Online: a turn thrown here goes to the relay as the
+        authoritative record, and either way the relay learns this site's state hash."""
+        if not self.online:
+            return
+        self.turn_seq += 1
+        if not self._remote:
+            finished = self.state == "finished"
+            extra = {}
+            if bull_off_done:
+                extra["order"] = list(self.order)
+            if finished:
+                extra["rematch_order"] = self.rematch_order
+            send = self.online.send_corrected if self._sending_correction else self.online.send_turn
+            send(self.turn_seq, player, throws, next_player=None if finished else self.current, eliminated=[],
+                 winner=self.winner if finished else None, **extra)
+        self.online.send_ack(self.turn_seq, self.state_hash())
+
+    def _replay(self, throws, pull=False):
+        self._remote = True
+        try:
+            if throws:
+                self.on_board_state(len(throws), list(throws))
+            if pull:
+                self.on_board_state(0, [])
+        finally:
+            self._remote = False
+
+    def remote_dart(self, player, throws):
+        """The darts of a remote player's turn in progress, shown like local ones."""
+        if self.state != "playing" or player != self.current or not throws:
+            return
+        if self.phase == "bull_off":
+            self._remote_bull_off(throws[0], end=False)
+        else:
+            self._replay(throws)
+        self._show_remote_darts(throws)
+
+    def remote_turn(self, player, throws):
+        """A remote player's finished turn: replay it through the same code a local turn runs through, so scores, calls,
+        stats and the next player come out identical."""
+        if self.state != "playing":
+            self._show_remote_darts([])         # the match is over: the darts leave the board
+            return
+        if player != self.current:
+            log.warning("Remote turn of %s while %s is up", player, self.current)
+            return
+        if self.phase == "bull_off":
+            self._remote_bull_off(throws[0] if throws else None, end=True)
+        else:
+            self._replay(throws, pull=True)
+        self._show_remote_darts([])             # the turn is over: the darts leave the board
+
+    def _remote_bull_off(self, throw, end):
+        """The dart of a player at another site in the bull-off. It may come more than once, a dart that was moved
+        replaces the one before; `end`: the darts are pulled, the next one throws."""
+        self._remote = True
+        try:
+            if throw is not None:
+                self._bull_off_set_dart(throw)
+            if end:
+                self._end_turn()
+        finally:
+            self._remote = False
+
+    def _show_remote_darts(self, throws):
+        """Show the darts of a player at another site on the board display, which only the local board feeds."""
+        if self.show_remote_darts:
+            try:
+                self.show_remote_darts(throws)
+            except Exception:
+                log.exception("Showing the remote darts failed")
+
+    def correct_online(self, throws):
+        """The last turn was corrected at the site that threw it: replace it here too."""
+        if not self.online or self.turn_seq < 1 or not self._history:
+            return False
+        self._replace_last_turn(list(throws), remote=True)
+        return True
+
+    def undo_online(self):
+        """The relay took the last turn back: walk back as a local undo does, on every site, and tell the relay the state
+        hash, so that a site that does not follow shows."""
+        if not self.online or self.turn_seq < 1:
+            return False
+        if self.phase == "bull_off" and self._one_dart_taken:
+            self._undo()                        # a dart in progress, not a turn the relay knows
+        ok = self._undo()
+        # What the board showed while a remote player was up is not a turn of this game.
+        self._prev_count, self._await_pull = 0, False
+        self._show_remote_darts([])
+        if ok:
+            self.turn_seq -= 1
+            if self.turn_seq >= 1:
+                self.online.send_ack(self.turn_seq, self.state_hash())
+        return ok
+
+    def online_local_undo(self):
+        """An online undo that stays at this site: the dart in progress of the bull-off, which is no turn yet."""
+        if self.online and self.phase == "bull_off" and self._one_dart_taken and self.is_local(self.current):
+            return self._undo()
+        return False
 
     def correct_turn(self, new_total):
         log.warning("Correcting a turn total does not apply to X01")
@@ -719,7 +918,9 @@ class X01Game(TurnGame):
             "setup": {"start": self.start, "in_mode": self.in_mode, "out_mode": self.out_mode, "legs": self.legs,
                       "bull_off": self.bull_off, "max_rounds": self.max_rounds},
             "order": list(self.order),
-            "rematch_order": self.order[(self.leg_start + 1) % len(self.order):] + self.order[:(self.leg_start + 1) % len(self.order)],
+            "rematch_order": self.rematch_order,
+            "online": bool(self.online),
+            "local_players": sorted(self.local_players) if self.local_players is not None else None,
             "current_darts": list(self._current_darts),
             "darts": [self.board_dart(t) for t in self._last_throws],
             "players": [
@@ -759,6 +960,8 @@ class X01Controller(TurnGameController):
         self.game = None
         self._on_change = self._saving(on_change)
         self._lock = threading.RLock()
+        self.tracker = None        # the StatsTracker the events go to (set by the server): it learns who is a guest
+        self.on_remote_darts = None   # called with the darts of the remote player's turn in progress, [] when it ends
         self._init_bots(aim_x01, darts_x01, over=x01_turn_over, scatter=X01_SCATTER_MM)
 
     def start(self, players, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
@@ -774,8 +977,91 @@ class X01Controller(TurnGameController):
             old, self.game = self.game, game
         if old:
             old.stopped()
+        self._name_guests(None)
         game.announce_start()
         return game
+
+    def _name_guests(self, game):
+        """Tell the statistics who plays at another site: a player of a remote site is stored as a guest, `name@site`
+        (see StatsDB.guest_name), so that he never counts as, or merges with, a local player."""
+        if not self.tracker:
+            return
+        if game is None or not self.stats_db:
+            self.tracker.set_name_map(None)
+            return
+
+        def stored(player):
+            if game.is_local(player):
+                return player
+            owners = ((getattr(game.online, "match", None) or {}).get("owners")) or {}
+            return self.stats_db.guest_name(player, owners.get(player))
+        self.tracker.set_name_map(stored)
+
+    # ── online: this site's side of an online match ──────────────────────────
+
+    def start_online(self, order, rules, match_id, local_players, online):
+        """The host started an online match: every player in `order` plays, the ones in `local_players` at this site's
+        board. Without a bull-off `order` is the play order, with one it is the order the players throw in."""
+        game = X01Game(order, self.emit, start=rules["start"], in_mode=rules["in_mode"], out_mode=rules["out_mode"],
+                       legs=rules["legs"], bull_off=rules["bull_off"], max_rounds=rules.get("max_rounds"),
+                       audio=self.audio, on_change=self._on_change, stats_db=self.stats_db, match_id=match_id,
+                       start_delay=0, keep_order=True, online=online, local_players=local_players)
+        game.show_remote_darts = lambda throws: self.on_remote_darts and self.on_remote_darts(throws)
+        with self._lock:
+            self.bots.set_bots({})
+            old, self.game = self.game, game
+        if old:
+            old.stopped()
+        self._name_guests(game)
+        game.announce_start()
+        return game
+
+    def remote_turn_active(self):
+        """True while a player at another site of an online match is up: the local board shows nothing of his turn."""
+        game = self.game
+        return bool(game and game.online and game.state == "playing" and not game.is_local(game.current))
+
+    def on_board_state(self, count, throws):
+        with self._lock:
+            game = self.game
+            if game and game.online and game.state == "playing" and (
+                    not game.is_local(game.current) or not game.online.can_play()):
+                return      # online: only the board of the site whose player is up counts
+        super().on_board_state(count, throws)
+
+    def remote_dart(self, player, throws):
+        with self._lock:
+            if self.game:
+                self.game.remote_dart(player, throws)
+
+    def remote_turn(self, player, throws):
+        with self._lock:
+            if self.game:
+                self.game.remote_turn(player, throws)
+
+    def remote_correct(self, player, throws, total=None):
+        with self._lock:
+            if self.game:
+                self.game.correct_online(throws)
+
+    def remote_undo(self):
+        with self._lock:
+            if self.game:
+                self.game.undo_online()
+
+    def reset_online(self):
+        """The match starts again from the relay's log: what this site stored for it, finished or not, goes."""
+        with self._lock:
+            game = self.game
+        if game is not None and self.stats_db:
+            self.stats_db.delete_match(game.match_id)
+        self.stop()
+
+    def drop_players(self, names, next_player):
+        log.warning("Players cannot be dropped from an X01 match")
+
+    def apply_placements(self, placements):
+        """The result of an X01 match is stored from its events, the placements of the relay add nothing."""
 
     def _dump(self, game):
         """A match that is won is not saved, except one of a tournament: its result is still to be taken over."""
@@ -809,6 +1095,7 @@ class X01Controller(TurnGameController):
         if game:
             game.stopped()
         self._discard_unfinished(game)
+        self._name_guests(None)
         if self._on_change:
             self._on_change()
         log.info("Game stopped")

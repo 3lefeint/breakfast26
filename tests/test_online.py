@@ -729,3 +729,29 @@ def test_two_sites_play_a_match_and_agree():
         assert s.db.list_players() == sorted(n for n, _ in expected[name] if "@" not in n)
     for s in sites.values():
         s.session.leave()
+
+
+def test_a_match_of_another_game_is_left_again(h, caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="breakfast.online")
+    h.next_frames = [{**WELCOME, "site": "Club", "host": False}]
+    h.session.join("ws://relay", "K7M2QX", "Club", "pw", game="elimination")
+    conn = h.conns[0]
+    conn.push({"type": "lobby", "host": "Home", "sites": [{"site": "Home", "players": [], "connected": True, "ready": True}],
+               "lives": 0, "order": [], "game": "x01",
+               "rules": {"start": 301, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": True, "max_rounds": None}})
+    assert _wait(lambda: h.session.status()["phase"] == "ended")
+    status = h.session.status()
+    assert "X01 match" in status["message"] and "X01 page" in status["message"]
+    assert {"type": "leave"} in conn.sent and conn.closed
+    assert any("left the match" in r.getMessage() for r in caplog.records)
+
+
+def test_a_match_of_the_same_game_is_joined(h):
+    h.next_frames = [{**WELCOME, "site": "Club", "host": False}]
+    h.session.join("ws://relay", "K7M2QX", "Club", "pw", game="x01")
+    h.conns[0].push({"type": "lobby", "host": "Home", "sites": [{"site": "Home", "players": [], "connected": True, "ready": True}],
+                     "lives": 0, "order": [], "game": "x01",
+                     "rules": {"start": 301, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": True, "max_rounds": None}})
+    assert _wait(lambda: h.session.status()["lobby"]["game"] == "x01")
+    assert h.session.status()["phase"] == "lobby"

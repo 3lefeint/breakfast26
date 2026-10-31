@@ -109,7 +109,9 @@ def wire(game_state, elim_ctrl,
     _co_ctrl = co_ctrl
     _bb_ctrl = bb_ctrl
     _wu_ctrl = wu_ctrl
-    _online = online_mod.OnlineSession(elim_ctrl, on_change=push) if elim_ctrl else None
+    _online = online_mod.OnlineSession(elim_ctrl, on_change=push, x01=x01_ctrl) if elim_ctrl else None
+    if x01_ctrl:
+        x01_ctrl.tracker = stats_tracker
     _locations = locations_mod.Locations(config_path) if config_path else None
     _cloud_client = cloud_client
     _stats_tracker = stats_tracker
@@ -241,7 +243,7 @@ def _running_game():
     for mode, ctrl in (("X01", _x01_ctrl), ("Elimination", _elim_ctrl), ("Killer", _killer_ctrl)):
         game = ctrl.game if ctrl else None
         if game and game.state == "playing":
-            return {"mode": mode, "resumable": not (mode == "Elimination" and game.online)}
+            return {"mode": mode, "resumable": not getattr(game, "online", None)}
     for mode, ctrl in (("Target Battle", _tb_ctrl), ("Field Training", _ft_ctrl), ("Black Belt", _bb_ctrl),
                        ("Warm-up", _wu_ctrl), ("Checkout Training", _co_ctrl)):
         if ctrl and ctrl.active:
@@ -1054,6 +1056,8 @@ async def x01_stop():
     log.debug("X01 stop requested")
     if _tournament_ctrl and _tournament_ctrl.running:
         return {"error": "a tournament is running, abort it first"}
+    if _online and _online.active and _x01_ctrl and _x01_ctrl.game and _x01_ctrl.game.online:
+        await asyncio.to_thread(_online.leave)
     if _x01_ctrl:
         _x01_ctrl.stop()
     return {"ok": True}
@@ -1064,6 +1068,12 @@ async def x01_undo():
     log.debug("X01 undo requested")
     if not (_x01_ctrl and _x01_ctrl.game):
         return {"error": "no active or finished match"}
+    if _x01_ctrl.game.online:
+        try:
+            await asyncio.to_thread(_online.undo)
+        except online_mod.RelayError as e:
+            return {"error": str(e)}
+        return {"ok": True}
     if not _x01_ctrl.game.undo():
         return {"error": "nothing to undo"}
     return {"ok": True}
@@ -1463,11 +1473,13 @@ class OnlineCreateBody(BaseModel):
 
 class OnlineJoinBody(OnlineCreateBody):
     code: str
+    game: str | None = None   # the game of the page the user joins from: a match of the other game is refused
 
 
 class OnlineLinkedJoinBody(BaseModel):
     code: str
     site: str | None = None
+    game: str | None = None
 
 
 class OnlineReadyBody(BaseModel):
@@ -1478,9 +1490,25 @@ class OnlinePlayersBody(BaseModel):
     players: list[PlayerName]
 
 
-class OnlineStartBody(BaseModel):
-    lives: int = 3
+class OnlineRulesBody(BaseModel):
+    game: str = "elimination"          # elimination or x01
+    lives: int = 3                     # Elimination
+    rules: dict | None = None          # X01: start, in_mode, out_mode, legs, bull_off, max_rounds
+
+
+class OnlineStartBody(OnlineRulesBody):
     order: list[str]
+
+
+def _online_rules_error(body):
+    """Why the game and rules of an online lobby cannot be played, or None."""
+    if body.game not in online_mod.GAMES:
+        return "game must be elimination or x01"
+    if body.game == "x01":
+        if not _x01_ctrl:
+            return "X01 is not available"
+        return online_mod.x01_rules_error(body.rules)
+    return None
 
 
 class OnlineDecisionBody(BaseModel):
@@ -1549,7 +1577,7 @@ async def online_join(body: OnlineJoinBody):
         return {"error": "give this site a name"}
     if not body.password:
         return {"error": "enter the match password"}
-    return await _online_call(_online.join, relay_url, body.code, site, body.password)
+    return await _online_call(_online.join, relay_url, body.code, site, body.password, None, body.game)
 
 
 @app.get("/api/online/open")
@@ -1577,7 +1605,7 @@ async def online_join_linked(body: OnlineLinkedJoinBody):
         return {"error": "give this site a name"}
 
     def join():
-        _online.join(relay_url, body.code, site, ticket=_locations.join_ticket(body.code))
+        _online.join(relay_url, body.code, site, ticket=_locations.join_ticket(body.code), game=body.game)
 
     return await _online_call(join)
 
@@ -1631,9 +1659,21 @@ async def online_players(body: OnlinePlayersBody):
     return await _online_call(_online.set_players, [p.strip() for p in body.players if p.strip()])
 
 
+@app.post("/api/online/rules")
+async def online_rules(body: OnlineRulesBody):
+    """Host only: the game and its rules, which the other sites see in the lobby."""
+    problem = _online_rules_error(body)
+    if problem:
+        return {"error": problem}
+    return await _online_call(_online.set_rules, body.game, body.lives, body.rules)
+
+
 @app.post("/api/online/start")
 async def online_start(body: OnlineStartBody):
-    return await _online_call(_online.start, body.lives, body.order)
+    problem = _online_rules_error(body)
+    if problem:
+        return {"error": problem}
+    return await _online_call(_online.start, body.lives, body.order, body.game, body.rules)
 
 
 @app.post("/api/online/decision")
@@ -1651,6 +1691,8 @@ async def online_leave():
     result = await _online_call(_online.leave)
     if _elim_ctrl and _elim_ctrl.game and _elim_ctrl.game.online:
         _elim_ctrl.stop()
+    if _x01_ctrl and _x01_ctrl.game and _x01_ctrl.game.online:
+        _x01_ctrl.stop()
     return result
 
 

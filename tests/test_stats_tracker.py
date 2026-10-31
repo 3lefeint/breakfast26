@@ -351,3 +351,36 @@ def test_summary_names_the_winner_of_a_bot_leg(tmp_path):
     tr.process(ev_match_won("cpu"))
     s = db.x01_match_summary("m1")
     assert s["winner"] == "cpu" and s["legs"] == [{"leg": 1, "winner": "cpu"}]
+
+
+def test_a_player_of_another_site_is_stored_as_a_guest(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    tr = StatsTracker(db)
+    tr.set_name_map(lambda name: name if name == "alice" else db.guest_name(name, "Club"))
+    tr.process(ev_match_started())
+    tr.process(ev_dart(1, 32, 0, field="D16", player="bob"))
+    tr.process(ev_darts_pulled(player="bob"))
+    tr.process({"event": "match-won", "player": "bob", "game": {"winner": "bob"}})
+    assert db._conn.execute("SELECT player FROM turns").fetchall()[0][0] == "bob@club"
+    assert db._conn.execute("SELECT winner FROM matches WHERE match_id = 'm1'").fetchone()[0] == "bob@club"
+    tr.set_name_map(None)
+    tr.process(ev_match_started(match_id="m2"))
+    tr.process(ev_dart(1, 32, 0, field="D16", player="bob"))
+    tr.process(ev_darts_pulled(player="bob"))
+    assert db._conn.execute("SELECT player FROM turns WHERE match_id = 'm2'").fetchone()[0] == "bob"
+
+
+def test_the_average_of_a_player_of_another_site_is_found_under_his_plain_name(tmp_path):
+    db = StatsDB(str(tmp_path / "s.db"))
+    tr = StatsTracker(db)
+    tr.set_name_map(lambda name: name if name == "alice" else db.guest_name(name, "Club"))
+    tr.process(ev_match_started())
+    for n, (value, left) in enumerate([(60, 441), (60, 381), (60, 321)], start=1):
+        tr.process(ev_dart(n, value, left, "T20", "alice"))
+    tr.process(ev_darts_pulled(player="alice"))
+    for n, (value, left) in enumerate([(20, 481), (20, 461), (20, 441)], start=1):
+        tr.process(ev_dart(n, value, left, "S20", "bob"))
+    tr.process(ev_darts_pulled(player="bob"))
+    stats = tr.computed_session_stats()
+    assert sorted(stats) == ["alice", "bob"]
+    assert stats["alice"]["avg3"] == 180.0 and stats["bob"]["avg3"] == 60.0
