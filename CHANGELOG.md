@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-31
+
 ### Added
 
 - Relay protocol version 4: the relay knows X01 matches (the rules in the lobby, the play order of the bull-off, the order of a rematch), so the relay and all sites need this version. (#122)
