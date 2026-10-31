@@ -36,6 +36,13 @@ def client(tmp_path):
 START = {"players": ["ana", "bo"], "bull_off": False}
 
 
+def test_a_given_order_is_kept_when_asked_to(client):
+    c, *_ = client
+    players = ["ana", "bo", "cy", "di", "ed", "fy", "gu", "hi"]
+    assert c.post("/api/x01/start", json={"players": players, "bull_off": False, "keep_order": True}).json() == {"ok": True}
+    assert server._build_payload()["x01"]["order"] == players
+
+
 def test_a_match_can_be_started_and_shows_up_in_the_state(client):
     c, x01, *_ = client
     assert server._build_payload()["x01"] == {"active": False}

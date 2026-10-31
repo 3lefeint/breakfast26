@@ -11,15 +11,17 @@ export const botStageName = (stage) => [t('Beginner'), t('Casual'), t('Advanced'
 // The choices for the max rounds: no limit, or the rounds after which a bull-off decides the leg.
 export const MAX_ROUNDS_CHOICES = [null, 15, 25, 50];
 
-// Start the match that just finished once more: same players, same rules.
+// Start the match that just finished once more: same players, same rules. Like a further leg: the next player in the
+// order starts, and there is no new bull-off.
 export async function rematch(x) {
   const res = await apiJson('POST', '/api/x01/start', {
-    players: x.order,
+    players: x.rematch_order || x.order,
+    keep_order: true,
     start: x.setup.start,
     in_mode: x.setup.in_mode,
     out_mode: x.setup.out_mode,
     legs: x.setup.legs,
-    bull_off: x.setup.bull_off,
+    bull_off: false,
     max_rounds: x.setup.max_rounds,
     bots: Object.fromEntries(x.players.filter((p) => p.bot).map((p) => [p.name, p.bot])),
   });

@@ -42,6 +42,13 @@ class FixedOrder:
         pass
 
 
+class Reversed:
+    """Turns the order of the players around when it is drawn."""
+
+    def shuffle(self, items):
+        items.reverse()
+
+
 def pull(game):
     game.on_board_state(0, [])
 
@@ -342,6 +349,12 @@ class TestBullOff:
         assert m.names() == ["match-started"] and m.state.active_player_name == "bo"
         assert m.state.remaining_scores == {"player1": 501, "player2": 501, "player3": 501}
 
+    def test_who_throws_first_at_the_bull_is_drawn(self):
+        m = Match(("ana", "bo", "cy"), bull_off=True, rng=Reversed())
+        snap = m.game.snapshot()
+        assert snap["current_player"] == "cy"
+        assert [p["name"] for p in snap["players"]] == ["cy", "bo", "ana"]
+
     def test_only_the_first_dart_of_a_visit_counts(self):
         m = Match(bull_off=True)
         play(m.game, hit(5, 1, x=0.5, y=0.0), hit(25, 2, x=0.0, y=0.0))
@@ -369,6 +382,16 @@ class TestBullOff:
     def test_by_lot_the_match_starts_at_once(self):
         m = Match(("ana", "bo"), bull_off=False)
         assert m.names() == ["match-started"] and m.game.snapshot()["phase"] == "playing"
+
+    def test_a_given_order_is_kept_when_asked_to(self):
+        assert Match(("ana", "bo", "cy"), rng=Reversed()).game.snapshot()["order"] == ["cy", "bo", "ana"]
+        assert Match(("ana", "bo", "cy"), rng=Reversed(), keep_order=True).game.snapshot()["order"] == ["ana", "bo", "cy"]
+
+    def test_a_rematch_starts_with_the_player_after_the_last_starter(self):
+        m = Match(("ana", "bo", "cy"), start=40, legs=2)
+        assert m.game.snapshot()["rematch_order"] == ["bo", "cy", "ana"]       # leg 2 would start with bo
+        play(m.game, hit(20, 2))                                              # ana wins leg 1, bo starts leg 2
+        assert m.game.snapshot()["rematch_order"] == ["cy", "ana", "bo"]
 
     def test_the_first_leg_starter_is_the_first_of_the_order_and_then_it_moves_on(self):
         m = Match(("ana", "bo", "cy"), bull_off=True, start=40, legs=3)

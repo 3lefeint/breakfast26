@@ -87,7 +87,7 @@ class X01Game(TurnGame):
 
     def __init__(self, players, emit, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
                  audio=None, on_change=None, stats_db=None, rng=None, match_id=None, start_delay=None,
-                 tournament_id=None, on_end=None, max_rounds=None, bots=None):
+                 tournament_id=None, on_end=None, max_rounds=None, bots=None, keep_order=False):
         """*emit*: where the events of the match go (the same function the events of an Autodarts match go to).
         *stats_db* only says that statistics are kept, so that undo takes a stored turn out again.
         *tournament_id*: the tournament this match belongs to, stored with the match. *on_end*: called with the
@@ -124,15 +124,18 @@ class X01Game(TurnGame):
         self.turns_in_leg = 0            # the turns played in this leg, for the max rounds
         self.tiebreak = False            # the bull-off that decides a leg after the max rounds is on
         self.order = list(players)
-        if not self.bull_off:
+        if not self.bull_off and not keep_order:
             self._rng.shuffle(self.order)
+        bull_off_order = list(players)
+        if self.bull_off:
+            self._rng.shuffle(bull_off_order)        # who throws first at the bull is drawn
         self.leg, self.leg_start = 1, 0
         self.legs_won = {p: 0 for p in players}
         self.scores = {p: self.start for p in players}
         self.opened = {p: in_mode == "straight" for p in players}
         self.winner = None
         self.phase = "bull_off" if self.bull_off else "playing"
-        self._bo = {"final": [], "todo": [list(players)], "dist": {}, "shown": {}}      # the bull-off: who is placed, who throws, the distances
+        self._bo = {"final": [], "todo": [bull_off_order], "dist": {}, "shown": {}}      # the bull-off: who is placed, who throws, the distances
         self.current = self._bo_thrower() if self.bull_off else self.order[0]
         self._match_started = False
         self._silent = False             # a correction of a finished turn makes no calls
@@ -716,6 +719,7 @@ class X01Game(TurnGame):
             "setup": {"start": self.start, "in_mode": self.in_mode, "out_mode": self.out_mode, "legs": self.legs,
                       "bull_off": self.bull_off, "max_rounds": self.max_rounds},
             "order": list(self.order),
+            "rematch_order": self.order[(self.leg_start + 1) % len(self.order):] + self.order[:(self.leg_start + 1) % len(self.order)],
             "current_darts": list(self._current_darts),
             "darts": [self.board_dart(t) for t in self._last_throws],
             "players": [
@@ -758,12 +762,13 @@ class X01Controller(TurnGameController):
         self._init_bots(aim_x01, darts_x01, over=x01_turn_over, scatter=X01_SCATTER_MM)
 
     def start(self, players, start=501, in_mode="straight", out_mode="double", legs=1, bull_off=True,
-              tournament_id=None, on_end=None, max_rounds=None, bots=None):
-        """Start a match. *bots*: {name: level} of the players the computer plays. Raises ValueError for a setup
+              tournament_id=None, on_end=None, max_rounds=None, bots=None, keep_order=False):
+        """Start a match. *bots*: {name: level} of the players the computer plays. *keep_order*: without a bull-off
+        the players throw in the given order instead of a drawn one (a rematch). Raises ValueError for a setup
         that cannot be played."""
         game = X01Game(players, self.emit, start=start, in_mode=in_mode, out_mode=out_mode, legs=legs,
                        bull_off=bull_off, audio=self.audio, on_change=self._on_change, stats_db=self.stats_db,
-                       tournament_id=tournament_id, on_end=on_end, max_rounds=max_rounds, bots=bots)
+                       tournament_id=tournament_id, on_end=on_end, max_rounds=max_rounds, bots=bots, keep_order=keep_order)
         with self._lock:
             self.bots.set_bots(game.bot_levels)
             old, self.game = self.game, game

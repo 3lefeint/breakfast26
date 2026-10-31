@@ -1014,6 +1014,7 @@ class X01StartBody(BaseModel):
     bull_off: bool = True      # the closest dart at the bull throws first, else the order is drawn
     max_rounds: int | None = None   # after this many rounds without a checkout a bull-off decides the leg; None is no limit
     bots: dict[PlayerName, int] = {}   # name -> stage 1 to 5 of the players the computer plays, see bot.X01_LEVELS
+    keep_order: bool = False   # without a bull-off the order is the given one instead of a drawn one (a rematch)
 
 
 @app.post("/api/x01/start")
@@ -1041,7 +1042,8 @@ async def x01_start(body: X01StartBody):
         return {"error": error}
     try:
         _x01_ctrl.start(players, start=body.start, in_mode=body.in_mode, out_mode=body.out_mode,
-                        legs=body.legs, bull_off=body.bull_off, max_rounds=body.max_rounds, bots=bots)
+                        legs=body.legs, bull_off=body.bull_off, max_rounds=body.max_rounds, bots=bots,
+                        keep_order=body.keep_order)
     except ValueError as e:
         return {"error": str(e)}
     return {"ok": True}
