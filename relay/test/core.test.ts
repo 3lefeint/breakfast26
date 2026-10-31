@@ -508,6 +508,119 @@ describe("rematch", () => {
   });
 });
 
+describe("an X01 match", () => {
+  const rules = { start: 501, in_mode: "straight", out_mode: "double", legs: 2, bull_off: true, max_rounds: null };
+
+  /** Home (host, anna + ben) and Club (carl) in the lobby of an X01 match. */
+  async function lobby() {
+    await r.hello("h", "create", "Home");
+    await r.hello("c", "join", "Club");
+    await r.send("h", { type: "lobby_set_players", players: ["anna", "ben"] });
+    await r.send("c", { type: "lobby_set_players", players: ["carl"] });
+  }
+  async function started() {
+    await lobby();
+    await r.send("h", { type: "lobby_start", game: "x01", rules, order: ["anna", "carl", "ben"] });
+  }
+
+  it("shows the rules to every site while the host sets them", async () => {
+    await lobby();
+    await r.send("h", { type: "lobby_set_rules", game: "x01", rules });
+    expect(r.last("c", "lobby")).toMatchObject({ game: "x01", rules });
+    await r.send("c", { type: "lobby_set_rules", game: "x01", rules: { ...rules, legs: 5 } });
+    expect(r.last("c", "rejected")).toMatchObject({ for: "lobby_set_rules", reason: "only the host can set the rules" });
+    expect(r.last("h", "lobby")).toMatchObject({ rules });
+  });
+
+  it("starts with the game and its rules, without lives", async () => {
+    await started();
+    const f = r.last("c", "started");
+    expect(f).toMatchObject({ game: "x01", rules, order: ["anna", "carl", "ben"] });
+    expect(f).not.toHaveProperty("lives");
+    expect(r.core.s.current).toBe("anna");
+  });
+
+  it("tells the game in the status that the list of open matches shows", async () => {
+    await lobby();
+    await r.send("h", { type: "lobby_set_rules", game: "x01", rules });
+    expect(r.core.status().game).toBe("x01");
+  });
+
+  it("an Elimination match still starts with lives", async () => {
+    await startedMatch();
+    expect(r.last("c", "started")).toMatchObject({ game: "elimination", lives: 3 });
+    expect(r.last("c", "started")).not.toHaveProperty("rules");
+  });
+
+  it("refuses rules that are not rules", async () => {
+    await lobby();
+    const out = await r.send("h", { type: "lobby_start", game: "x01", rules: { ...rules, start: 1 }, order: ["anna", "carl", "ben"] });
+    expect(out[0].close).toBe(CLOSE.BAD_REQUEST);
+  });
+
+  it("takes turns where nobody is eliminated and the next player is any player of the match", async () => {
+    await started();
+    await r.send("h", turn(1, "anna", "carl"));
+    expect(r.last("c", "turn")).toMatchObject({ seq: 1, player: "anna", next_player: "carl" });
+    await r.send("c", turn(2, "carl", "ben"));
+    expect(r.frames("c", "turn_rejected")).toHaveLength(0);
+    await r.send("h", turn(3, "ben", "nobody"));
+    expect(r.last("h", "turn_rejected")).toMatchObject({ reason: "next_player must be a player of the match" });
+    await r.send("h", turn(3, "ben", "anna", { eliminated: ["carl"] }));
+    expect(r.last("h", "turn_rejected")).toMatchObject({ reason: "nobody is eliminated in X01" });
+    expect(r.core.s.current).toBe("ben");
+  });
+
+  it("the turn that ends the bull-off sets the play order", async () => {
+    await started();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben"));
+    await r.send("h", turn(3, "ben", "carl", { order: ["carl", "ben", "anna"] }));
+    expect(r.last("c", "turn").order).toEqual(["carl", "ben", "anna"]);
+    expect(r.core.s.order).toEqual(["carl", "ben", "anna"]);
+    await r.send("c", turn(4, "carl", "ben", { order: ["carl", "ben"] }));
+    expect(r.last("c", "turn_rejected")).toMatchObject({ reason: "order must list the players of the match once" });
+  });
+
+  it("taking a turn back also takes back the order it set", async () => {
+    await started();
+    await r.send("h", turn(1, "anna", "carl"));
+    await r.send("c", turn(2, "carl", "ben"));
+    await r.send("h", turn(3, "ben", "carl", { order: ["carl", "ben", "anna"] }));
+    await r.send("h", { type: "undo", seq: 3 });
+    expect(r.core.s.order).toEqual(["anna", "carl", "ben"]);
+    expect(r.core.s.current).toBe("ben");
+  });
+
+  it("a winner ends the match and ranks the others in the order", async () => {
+    await started();
+    await r.send("h", turn(1, "anna", null, { winner: "anna", rematch_order: ["carl", "ben", "anna"] }));
+    expect(r.core.phase).toBe("finished");
+    expect(r.last("c", "ended")).toMatchObject({ reason: "finished", placements: [
+      { player: "anna", placement: 1 }, { player: "carl", placement: 2 }, { player: "ben", placement: 3 }] });
+  });
+
+  it("a rematch keeps the game and its rules and proposes the order of the last turn", async () => {
+    await started();
+    await r.send("h", turn(1, "anna", null, { winner: "anna", rematch_order: ["carl", "ben", "anna"] }));
+    await r.send("h", { type: "rematch" });
+    expect(r.core.phase).toBe("lobby");
+    expect(r.last("c", "lobby")).toMatchObject({ game: "x01", rules, order: ["carl", "ben", "anna"] });
+  });
+
+  it("does not drop the players of a lost site, the match can only be ended", async () => {
+    await started();
+    await r.send("h", turn(1, "anna", "carl"));
+    r.drop("c");
+    r.advance(LIMITS.REJOIN_WINDOW_MS + 1000);
+    expect(r.last("h", "decision_needed")).toBeTruthy();
+    await r.send("h", { type: "decision", choice: "continue" });
+    expect(r.last("h", "rejected")).toMatchObject({ for: "decision", reason: "players cannot be dropped from an X01 match, end it instead" });
+    await r.send("h", { type: "decision", choice: "abort" });
+    expect(r.core.phase).toBe("aborted");
+  });
+});
+
 describe("state hashes", () => {
   it("equal hashes pass, differing hashes abort the match", async () => {
     await startedMatch();
@@ -674,7 +787,7 @@ describe("linked locations", () => {
     await r.hello("h", "create", "Home");
     await r.hello("c", "join", "Club");
     await r.send("h", { type: "lobby_set_players", players: ["anna", "ben"] });
-    expect(r.core.status()).toEqual({ phase: "lobby", host: "Home", sites: 2, players: 2 });
+    expect(r.core.status()).toEqual({ phase: "lobby", host: "Home", game: "elimination", sites: 2, players: 2 });
   });
 });
 

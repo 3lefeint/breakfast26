@@ -63,7 +63,7 @@ export function freshTimestamp(timestamp: string | null, nowMs: number): boolean
 export interface LocationEnv { DB?: D1Database }
 /** What the routes need from the match rooms (the Durable Objects), kept out of this file. */
 export interface Rooms {
-  status(code: string): Promise<{ phase: string; host: string | null; sites: number; players: number } | null>;
+  status(code: string): Promise<{ phase: string; host: string | null; game?: string; sites: number; players: number } | null>;
   ticket(code: string): Promise<string | null>;
 }
 export type Limiter = (purpose: string, cfg: { limit: number; windowMs: number }, key?: string) => Promise<boolean>;
@@ -219,7 +219,7 @@ export async function handleLocations(request: Request, env: LocationEnv, limite
         await db.prepare("DELETE FROM open_matches WHERE code = ?").bind(r.code).run();
         continue;
       }
-      matches.push({ code: r.code, location: { id: r.location_id, name: r.location_name }, site: status.host ?? r.site, sites: status.sites, players: status.players });
+      matches.push({ code: r.code, location: { id: r.location_id, name: r.location_name }, site: status.host ?? r.site, game: status.game ?? "elimination", sites: status.sites, players: status.players });
     }
     return json({ matches });
   }

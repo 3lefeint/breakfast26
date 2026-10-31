@@ -128,9 +128,9 @@ class TestLobby:
     def test_create_reserves_a_code_and_says_hello(self, h):
         code = h.session.create("ws://127.0.0.1:8787", "Home", "pw")
         assert code == "K7M2QX"
-        assert h.posts == [("http://127.0.0.1:8787/api/matches", {"protocol_version": 3})]
+        assert h.posts == [("http://127.0.0.1:8787/api/matches", {"protocol_version": 4})]
         assert h.conns[0].url == "ws://127.0.0.1:8787/ws/K7M2QX"
-        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 3, "mode": "create", "site": "Home", "password": "pw"}
+        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 4, "mode": "create", "site": "Home", "password": "pw"}
         assert h.session.status()["phase"] == "lobby" and h.session.status()["host"] is True
 
     def test_a_host_without_a_password_gets_a_random_one(self, h):
@@ -142,13 +142,13 @@ class TestLobby:
         signed = []
         h.session.create("ws://relay", "Home", "", lambda method, path, raw: signed.append((method, path, raw)) or {"x-location": "a" * 32})
         url, body, headers = h.posts[0]
-        assert body == {"protocol_version": 3, "site": "Home"} and headers == {"x-location": "a" * 32}
-        assert signed == [("POST", "/api/matches", '{"protocol_version":3,"site":"Home"}')]
+        assert body == {"protocol_version": 4, "site": "Home"} and headers == {"x-location": "a" * 32}
+        assert signed == [("POST", "/api/matches", '{"protocol_version":4,"site":"Home"}')]
 
     def test_join_with_a_ticket_sends_no_password(self, h):
         h.next_frames = [{**WELCOME, "site": "Club", "host": False}]
         h.session.join("ws://relay", "k7m2qx", "Club", ticket="t" * 32)
-        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 3, "mode": "join", "site": "Club", "ticket": "t" * 32}
+        assert h.conns[0].sent[0] == {"type": "hello", "protocol_version": 4, "mode": "join", "site": "Club", "ticket": "t" * 32}
 
     def test_the_voice_address_carries_a_ticket_for_this_site(self, h):
         h.session.create("wss://relay.example", "Home", "pw")

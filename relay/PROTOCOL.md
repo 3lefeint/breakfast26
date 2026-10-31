@@ -1,4 +1,4 @@
-# Relay protocol, version 3
+# Relay protocol, version 4
 
 How Breakfast installations ("sites") play one Elimination match over the relay.
 Design decisions: `DESIGN.md`. Both sides are tested against the examples in
@@ -6,7 +6,7 @@ Design decisions: `DESIGN.md`. Both sides are tested against the examples in
 
 ## Transport
 
-- `POST /api/matches` with `{"protocol_version": 3}` reserves a **join code** and answers
+- `POST /api/matches` with `{"protocol_version": 4}` reserves a **join code** and answers
   `{"code": "K7M2QX", "expires_in_s": 600}`. The code has 6 characters from
   `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` and is valid 10 minutes, or until the match starts. A registered location
   signs the request (headers as under "Locations") and may add `site` (its name in the match): the match is then
@@ -42,9 +42,10 @@ puts the match into `paused` until it rejoins or the host decides. A `finished` 
 | `hello` | `protocol_version`, `mode` (`create` \| `join` \| `rejoin`), `site`; `password` for `create` and `join`, or `ticket` instead of the password for `join`; for `rejoin` also `token`, `last_seq` and `epoch` (the last `epoch` the site knows, see `undone`) | `create` only on a reserved code and makes the sender the host; the password is set here |
 | `lobby_set_players` | `players` (list of names) | the sender's local players, replaces its earlier list (and takes back the site's `ready`); names are unique across the lobby |
 | `lobby_set_ready` | `ready` (bool) | the sender is ready to start; passed on in `lobby`, the relay does not hold the start back |
-| `lobby_start` | `lives` (1 to 10), `order` (all lobby players once) | host only; at least 2 players, at most 12 players and 6 sites |
+| `lobby_set_rules` | `game` (`elimination` \| `x01`, default `elimination`), `lives` (1 to 10) for Elimination, `rules` for X01 | host only, in the lobby: the other sites see the rules in the `lobby` frame |
+| `lobby_start` | `game`, `lives` or `rules` as in `lobby_set_rules`, `order` (all lobby players once) | host only; at least 2 players, at most 12 players and 6 sites |
 | `dart` | `seq`, `player`, `throws` | live darts of the turn in progress, informational, relayed as is |
-| `turn` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner` | the finished turn, authoritative |
+| `turn` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner`, optional `order`, `rematch_order` | the finished turn, authoritative |
 | `turn_corrected` | `seq`, `player`, `throws`, `next_player`, `eliminated`, `winner`, optional `total` | the site that threw the last turn replaces it (other darts, or with `total` another total for the same darts, 0 to 180), also the turn that ended the match; checked like a turn against the state before it; refused while paused and after sites were dropped |
 | `undo` | `seq` | take the last turn back (`seq` is that turn); only the site that threw it may, also after the turn that ended the match; refused while paused and after sites were dropped |
 | `ack` | `seq`, `hash` | the sender applied turn `seq` and its game state has this hash |
@@ -60,13 +61,22 @@ carries the `seq` of the turn it belongs to.
 match is over), `turn.eliminated` the players that lost their last life with this turn, and
 `turn.winner` the winner if this turn ended the match.
 
+**X01.** `game: "x01"` plays an X01 match. `rules` are `{start (2 to 1501), in_mode, out_mode (straight, double or master), legs (1 to 25),
+bull_off (bool), max_rounds (null or 1 to 99)}`; the host sets them in the lobby and the other sites only see them. Nobody is eliminated
+(`eliminated` is always empty), `next_player` is any player of the match, `winner` is the player who won the last leg. The bull-off is
+played as turns of one dart each; the turn that ends it carries `order`, the play order from there on (a permutation of the players), and the
+turn that ends the match carries `rematch_order`, the order a rematch starts with (the relay proposes it in the lobby). An `undo` or a
+corrected turn also takes back or replaces the `order` it set. The relay does not follow the scores; the sites do, and the `ack` hashes
+show a site that does not. The placements of an ended match are the winner first and the others in the play order. The players of a lost
+site cannot be dropped from an X01 match: after `decision_needed` only `abort` is accepted.
+
 ## Relay to client
 
 | type | fields | notes |
 |------|--------|-------|
 | `welcome` | `code`, `site`, `token`, `host` (bool), `state`, `epoch` | answer to a valid `hello`; the `token` authenticates a later `rejoin` |
-| `lobby` | `host`, `sites` (list of `{site, players, connected, ready}`), `lives`, `order` | sent on every lobby change; the host always counts as ready |
-| `started` | `match_id`, `lives`, `order`, `owners` (player -> site) | the match begins; `current_player` is `order[0]` |
+| `lobby` | `host`, `sites` (list of `{site, players, connected, ready}`), `lives`, `order`, `game`, `rules` (X01 only, else `null`) | sent on every lobby change; the host always counts as ready |
+| `started` | `match_id`, `game`, `lives` (Elimination) or `rules` (X01), `order`, `owners` (player -> site) | the match begins; `current_player` is `order[0]` |
 | `rematch` | | the host asked for a rematch; followed by a `lobby` whose `order` is that of a local rematch (the first eliminated starts, the winner is last), without sites that are gone |
 | `dart` | as received, plus `site` | forwarded to the other sites |
 | `turn` | as received, plus `site` | forwarded to the other sites, in `seq` order |
@@ -118,7 +128,7 @@ of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and 
 | `DELETE /links/<id>` | either side of the link | remove the link |
 | `PATCH /locations/<id>` `{name}` | that location | rename it; the id and the links stay |
 | `DELETE /locations/<id>` | that location | delete it with its links, open invitations and open matches |
-| `GET /locations/<id>/open-matches` | that location | `{matches: [{code, location: {id, name}, site, sites, players}]}`: the matches in the lobby that locations linked to it opened (at most 20) |
+| `GET /locations/<id>/open-matches` | that location | `{matches: [{code, location: {id, name}, site, game, sites, players}]}` (`game` is `elimination` or `x01`): the matches in the lobby that locations linked to it opened (at most 20) |
 | `POST /locations/<id>/join-ticket` `{code}` | that location | a one-time ticket (valid 2 minutes, at most 10 open per match) to join that open match with `hello.ticket` instead of the password; 404 unless the match belongs to a linked location |
 
 Only the hash of a token is stored. An unknown, used or expired token answers 404 without telling which. Registering,

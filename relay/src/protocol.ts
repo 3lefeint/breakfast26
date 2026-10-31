@@ -1,8 +1,12 @@
-// Message shapes of protocol version 3 (see ../PROTOCOL.md) and their validation.
+// Message shapes of protocol version 4 (see ../PROTOCOL.md) and their validation.
 // Both the Worker and the Python client check their frames against the examples in
 // ../protocol-tests/messages.json.
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
+
+export const GAMES = ["elimination", "x01"] as const;
+export type Game = (typeof GAMES)[number];
+export const X01_MODES = ["straight", "double", "master"] as const;
 
 export const CLOSE = {
   BAD_REQUEST: 4400,
@@ -19,6 +23,10 @@ export const LIMITS = {
   MAX_SITES: 6,
   MIN_PLAYERS: 2,
   MAX_LIVES: 10,
+  X01_START_MIN: 2,
+  X01_START_MAX: 1501,
+  X01_MAX_LEGS: 25,
+  X01_MAX_ROUNDS: 99,
   NAME_LENGTH: 24,
   CODE_LENGTH: 6,
   CODE_ALPHABET: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
@@ -71,6 +79,28 @@ function validThrows(v: unknown): string | null {
 const nameList = (v: unknown, min = 0): boolean =>
   Array.isArray(v) && v.length >= min && v.every(validName) && new Set(v).size === v.length;
 
+/** The rules of an X01 match as the host sets them in the lobby, or why they are not valid. */
+export function validX01Rules(r: unknown): string | null {
+  if (!isObj(r)) return "rules must be an object";
+  if (!isInt(r.start, LIMITS.X01_START_MIN, LIMITS.X01_START_MAX)) return "start must be 2 to 1501";
+  if (!X01_MODES.includes(r.in_mode as never) || !X01_MODES.includes(r.out_mode as never)) return "in_mode and out_mode must be straight, double or master";
+  if (!isInt(r.legs, 1, LIMITS.X01_MAX_LEGS)) return "legs must be 1 to 25";
+  if (typeof r.bull_off !== "boolean") return "bull_off must be a boolean";
+  if (r.max_rounds !== null && !isInt(r.max_rounds, 1, LIMITS.X01_MAX_ROUNDS)) return "max_rounds must be null or 1 to 99";
+  return null;
+}
+
+/** The game of a lobby frame and the rules that belong to it (lives for Elimination, the rules of an X01 match), or why not. */
+function validGameRules(m: Record<string, unknown>): string | null {
+  const game = m.game ?? "elimination";
+  if (!GAMES.includes(game as never)) return "game must be elimination or x01";
+  if (game === "elimination") {
+    if (m.rules !== undefined && m.rules !== null) return "rules belong to x01";
+    return isInt(m.lives, 1, LIMITS.MAX_LIVES) ? null : "lives must be 1 to 10";
+  }
+  return validX01Rules(m.rules);
+}
+
 /** null if `m` is a valid client frame, else why not. */
 export function validateClientFrame(m: unknown): string | null {
   if (!isObj(m) || typeof m.type !== "string") return "frame must be an object with a type";
@@ -91,9 +121,10 @@ export function validateClientFrame(m: unknown): string | null {
       return nameList(m.players) ? null : "players must be a list of unique names";
     case "lobby_set_ready":
       return typeof m.ready === "boolean" ? null : "ready must be a boolean";
+    case "lobby_set_rules":
+      return validGameRules(m);
     case "lobby_start":
-      if (!isInt(m.lives, 1, LIMITS.MAX_LIVES)) return "lives must be 1 to 10";
-      return nameList(m.order, LIMITS.MIN_PLAYERS) ? null : "order must list the players once";
+      return validGameRules(m) ?? (nameList(m.order, LIMITS.MIN_PLAYERS) ? null : "order must list the players once");
     case "dart":
       if (!isInt(m.seq, 1, 1_000_000)) return "seq must be a positive integer";
       if (!validName(m.player)) return "player must be a name";
@@ -108,6 +139,7 @@ export function validateClientFrame(m: unknown): string | null {
       if (!Array.isArray(m.eliminated) || !m.eliminated.every(validName)) return "eliminated must be a list of names";
       if (m.winner !== null && !validName(m.winner)) return "winner must be a name or null";
       if ("total" in m && !isInt(m.total, 0, 180)) return "total must be 0 to 180";
+      for (const k of ["order", "rematch_order"]) if (k in m && !nameList(m[k], LIMITS.MIN_PLAYERS)) return `${k} must list the players once`;
       return null;
     }
     case "ack":
@@ -140,12 +172,15 @@ export function validateServerFrame(m: unknown): string | null {
       if (!validName(m.host)) return "host must be a name";
       if (!Array.isArray(m.sites) || !m.sites.every((s) => isObj(s) && validName(s.site) && nameList(s.players) && typeof s.connected === "boolean" && typeof s.ready === "boolean"))
         return "sites must list {site, players, connected, ready}";
+      if (m.game !== undefined && !GAMES.includes(m.game as never)) return "game must be elimination or x01";
+      if (m.rules !== undefined && m.rules !== null && validX01Rules(m.rules)) return "rules must be the rules of an x01 match";
       return isInt(m.lives, 0, LIMITS.MAX_LIVES) ? null : "lives must be 0 to 10";
     case "rematch":
       return null;
     case "started":
-      if (!isStr(m.match_id, 64) || !isInt(m.lives, 1, LIMITS.MAX_LIVES) || !nameList(m.order, LIMITS.MIN_PLAYERS)) return "started needs match_id, lives and order";
-      return isObj(m.owners) ? null : "owners must be an object";
+      if (!isStr(m.match_id, 64) || !nameList(m.order, LIMITS.MIN_PLAYERS)) return "started needs match_id and order";
+      if (!isObj(m.owners)) return "owners must be an object";
+      return validGameRules({ game: m.game, lives: m.lives, rules: m.rules });
     case "dart":
       return validateClientFrame({ ...m, type: "dart" }) ?? (validName(m.site) ? null : "site must be a name");
     case "turn":

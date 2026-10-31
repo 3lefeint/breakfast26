@@ -2,7 +2,7 @@
 // inside the Durable Object alike. It never talks to a socket: `frame`, `disconnect` and
 // `tick` return the frames to send (`Out`), the adapter does the sending and the storing.
 
-import { CLOSE, Frame, LIMITS, PROTOCOL_VERSION, Throw, validateClientFrame } from "./protocol";
+import { CLOSE, Frame, Game, LIMITS, PROTOCOL_VERSION, Throw, validateClientFrame } from "./protocol";
 
 export type Phase = "reserved" | "lobby" | "playing" | "paused" | "finished" | "aborted";
 
@@ -25,6 +25,8 @@ export interface TurnRecord {
   winner: string | null;
   site: string;
   total?: number;           // the turn's total was corrected to this; `throws` are the darts as they were thrown
+  order?: string[];         // X01: the turn that ended the bull-off, the play order from here on
+  rematch_order?: string[]; // X01: the turn that ended the match, the order a rematch starts with
 }
 
 export interface MatchState {
@@ -39,6 +41,8 @@ export interface MatchState {
   sites: Record<string, SiteState>;
   pending: Record<string, number>;
   conns: Record<string, string>;
+  game: Game;
+  rules: Record<string, unknown> | null;                  // the rules of an X01 match
   lives: number;
   order: string[];
   active: string[];
@@ -47,7 +51,7 @@ export interface MatchState {
   owners: Record<string, string>;
   seq: number;
   log: TurnRecord[];
-  snaps: { active: string[]; eliminated: string[] }[];   // the state before each turn of the log, to take it back
+  snaps: { active: string[]; eliminated: string[]; order: string[] }[];   // the state before each turn of the log, to take it back
   epoch: number;                                          // how often the log was taken back
   droppedAtSeq: number | null;                            // a drop of sites changed the state after this turn
   acks: Record<string, Record<string, string>>;
@@ -97,6 +101,9 @@ export class MatchCore {
     s.tickets ??= {};   // a room stored before the tickets and the voice tickets existed
     s.voice ??= {};
     s.snaps ??= [];     // ... and before a turn could be taken back
+    s.game ??= "elimination";   // ... and before X01 could be played
+    s.rules ??= null;
+    for (const snap of s.snaps) snap.order ??= s.order;
     s.epoch ??= 0;
     s.droppedAtSeq ??= null;
     for (const x of Object.values(s.sites)) x.ready ??= false;
@@ -107,7 +114,7 @@ export class MatchCore {
     return new MatchCore({
       code, phase: "reserved", createdAt: now, expiresAt: now + LIMITS.CODE_TTL_MS, endedAt: null,
       passwordSalt: null, passwordHash: null, host: null, sites: {}, pending: {}, conns: {},
-      lives: 0, order: [], active: [], eliminated: [], current: null, owners: {},
+      game: "elimination", rules: null, lives: 0, order: [], active: [], eliminated: [], current: null, owners: {},
       seq: 0, log: [], snaps: [], epoch: 0, droppedAtSeq: null, acks: {}, matchId: null, rejoinDeadline: null, decisionSent: false,
       failedHellos: 0, lockedUntil: 0, tickets: {}, voice: {},
     }, deps);
@@ -135,6 +142,7 @@ export class MatchCore {
       case "hello": return [this.fail(conn, CLOSE.BAD_REQUEST, "already said hello")];
       case "lobby_set_players": return this.lobbySetPlayers(conn, site, m);
       case "lobby_set_ready": return this.lobbySetReady(conn, site, m);
+      case "lobby_set_rules": return this.lobbySetRules(conn, site, m);
       case "lobby_start": return this.lobbyStart(conn, site, m);
       case "rematch": return this.rematch(conn, site);
       case "dart": return this.dart(site, m);
@@ -297,6 +305,22 @@ export class MatchCore {
     return this.lobbyFrames();
   }
 
+  /** The host says which game it is and with which rules; the other sites only see them (the `lobby` frame carries them). */
+  private lobbySetRules(conn: string, site: string, m: Frame): Out[] {
+    const s = this.s;
+    if (site !== s.host) return [this.rejected(conn, "lobby_set_rules", "only the host can set the rules")];
+    if (s.phase !== "lobby") return [this.rejected(conn, "lobby_set_rules", "the match is not in the lobby")];
+    this.takeRules(m);
+    return this.lobbyFrames();
+  }
+
+  private takeRules(m: Frame): void {
+    const s = this.s;
+    s.game = (m.game as Game | undefined) ?? "elimination";
+    if (s.game === "x01") s.rules = { ...(m.rules as Record<string, unknown>) };
+    else { s.rules = null; s.lives = m.lives as number; }
+  }
+
   private lobbyStart(conn: string, site: string, m: Frame): Out[] {
     const s = this.s;
     if (site !== s.host) return [this.rejected(conn, "lobby_start", "only the host can start the match")];
@@ -309,7 +333,7 @@ export class MatchCore {
       return [this.rejected(conn, "lobby_start", "the order must list every lobby player once")];
     }
     s.phase = "playing";
-    s.lives = m.lives as number;
+    this.takeRules(m);
     s.order = [...order];
     s.active = [...order];
     s.eliminated = [];
@@ -330,7 +354,9 @@ export class MatchCore {
     const s = this.s;
     if (site !== s.host) return [this.rejected(conn, "rematch", "only the host can start a rematch")];
     if (s.phase !== "finished") return [this.rejected(conn, "rematch", "the match is not finished")];
-    const ranked = this.placements(s.active[0] ?? null).map((p) => p.player).reverse();
+    const ranked = s.game === "x01"
+      ? (s.log[s.log.length - 1]?.rematch_order ?? s.order)
+      : this.placements(s.active[0] ?? null).map((p) => p.player).reverse();
     for (const [name, x] of Object.entries(s.sites)) if (x.left || x.connection === null) delete s.sites[name];
     for (const x of Object.values(s.sites)) x.ready = false;
     s.tickets = {};
@@ -366,6 +392,20 @@ export class MatchCore {
     if (player !== current) return "it is not that player's turn";
     if (m.seq !== baseSeq + 1) return `expected seq ${baseSeq + 1}`;
     const eliminated = m.eliminated as string[];
+    for (const k of ["order", "rematch_order"]) {
+      const list = m[k] as string[] | undefined;
+      if (list && (list.length !== s.order.length || !list.every((p) => s.order.includes(p)))) return `${k} must list the players of the match once`;
+    }
+    if (s.game === "x01") {
+      const winner = m.winner as string | null;
+      const next = m.next_player as string | null;
+      if (eliminated.length) return "nobody is eliminated in X01";
+      if (winner !== null) {
+        if (!s.order.includes(winner)) return "the winner is not a player of the match";
+        if (next !== null) return "next_player must be null when there is a winner";
+      } else if (next === null || !s.order.includes(next)) return "next_player must be a player of the match";
+      return null;
+    }
     if (new Set(eliminated).size !== eliminated.length || eliminated.some((p) => !active.includes(p))) return "eliminated lists a player that is not active";
     const remaining = active.filter((p) => !eliminated.includes(p));
     const winner = m.winner as string | null;
@@ -394,9 +434,12 @@ export class MatchCore {
     const winner = m.winner as string | null;
     const next = m.next_player as string | null;
     const record: TurnRecord = { seq, player, throws: m.throws as Throw[], next_player: next, eliminated, winner, site };
-    s.snaps.push({ active: [...s.active], eliminated: [...s.eliminated] });
+    if (m.order) record.order = m.order as string[];
+    if (m.rematch_order) record.rematch_order = m.rematch_order as string[];
+    s.snaps.push({ active: [...s.active], eliminated: [...s.eliminated], order: [...s.order] });
     s.log.push(record);
     s.seq = seq;
+    if (record.order) s.order = [...record.order];
     s.eliminated.push(...eliminated);
     s.active = remaining;
     s.current = next;
@@ -426,7 +469,10 @@ export class MatchCore {
     const next = m.next_player as string | null;
     const record: TurnRecord = { seq, player: last.player, throws: m.throws as Throw[], next_player: next, eliminated, winner, site };
     if (typeof m.total === "number") record.total = m.total;
+    if (m.order) record.order = m.order as string[];
+    if (m.rematch_order) record.rematch_order = m.rematch_order as string[];
     s.log[s.log.length - 1] = record;
+    s.order = [...(record.order ?? before.order)];
     s.active = before.active.filter((p) => !eliminated.includes(p));
     s.eliminated = [...before.eliminated, ...eliminated];
     s.current = next;
@@ -460,6 +506,7 @@ export class MatchCore {
     s.seq = seq - 1;
     s.active = before.active;
     s.eliminated = before.eliminated;
+    s.order = before.order;
     s.current = last.player;
     if (s.phase === "finished") {
       s.phase = "playing";
@@ -489,6 +536,7 @@ export class MatchCore {
     if (site !== s.host) return [this.rejected(conn, "decision", "only the host can decide")];
     if (s.phase !== "paused" || !s.decisionSent) return [this.rejected(conn, "decision", "there is nothing to decide")];
     if (m.choice === "abort") return this.abort();
+    if (s.game === "x01") return [this.rejected(conn, "decision", "players cannot be dropped from an X01 match, end it instead")];
     const dropped = this.droppedSites();
     const lost = new Set(dropped.map((d) => d.site));
     const gone = s.order.filter((p) => s.active.includes(p) && lost.has(s.owners[p]));
@@ -579,9 +627,9 @@ export class MatchCore {
   }
 
   /** What the list of open matches shows. */
-  status(): { phase: Phase; host: string | null; sites: number; players: number } {
+  status(): { phase: Phase; host: string | null; game: Game; sites: number; players: number } {
     const sites = Object.values(this.s.sites);
-    return { phase: this.s.phase, host: this.s.host, sites: sites.length, players: sites.reduce((n, x) => n + x.players.length, 0) };
+    return { phase: this.s.phase, host: this.s.host, game: this.s.game, sites: sites.length, players: sites.reduce((n, x) => n + x.players.length, 0) };
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────────
@@ -607,7 +655,7 @@ export class MatchCore {
 
   private startedFrame(): Frame {
     const s = this.s;
-    return { type: "started", match_id: s.matchId, lives: s.lives, order: s.order, owners: s.owners };
+    return { type: "started", match_id: s.matchId, game: s.game, ...(s.game === "x01" ? { rules: s.rules } : { lives: s.lives }), order: s.order, owners: s.owners };
   }
 
   private welcome(conn: string, site: string, token: string, host: boolean): Out {
@@ -617,10 +665,14 @@ export class MatchCore {
   private lobbyFrames(): Out[] {
     const s = this.s;
     const sites = Object.values(s.sites).map((x) => ({ site: x.name, players: x.players, connected: x.connection !== null, ready: x.name === s.host || x.ready }));
-    return this.toAll({ type: "lobby", host: s.host, sites, lives: s.lives, order: s.order });
+    return this.toAll({ type: "lobby", host: s.host, sites, lives: s.lives, order: s.order, game: s.game, rules: s.rules });
   }
 
   private placements(winner: string | null): { player: string; placement: number }[] {
+    if (this.s.game === "x01") {
+      const ranked = [...(winner ? [winner] : []), ...this.s.order.filter((p) => p !== winner)];
+      return ranked.map((player, i) => ({ player, placement: i + 1 }));
+    }
     const ranked = [...(winner ? [winner] : []), ...[...this.s.eliminated].reverse()];
     return ranked.map((player, i) => ({ player, placement: i + 1 }));
   }

@@ -19,9 +19,11 @@ import websocket
 
 log = logging.getLogger(__name__)
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 NAME_LENGTH = 24
 MAX_LIVES = 10
+GAMES = ("elimination", "x01")
+X01_MODES = ("straight", "double", "master")
 REJOIN_WINDOW_S = 180
 CONNECT_TIMEOUT_S = 10
 PING_INTERVAL_S = 20
@@ -75,6 +77,35 @@ def _throws_error(v):
     return None
 
 
+def x01_rules_error(r):
+    """None if `r` are the rules of an X01 match, else why not (mirrors validX01Rules in protocol.ts)."""
+    if not isinstance(r, dict):
+        return "rules must be an object"
+    if not _is_int(r.get("start"), 2, 1501):
+        return "start must be 2 to 1501"
+    if r.get("in_mode") not in X01_MODES or r.get("out_mode") not in X01_MODES:
+        return "in_mode and out_mode must be straight, double or master"
+    if not _is_int(r.get("legs"), 1, 25):
+        return "legs must be 1 to 25"
+    if not isinstance(r.get("bull_off"), bool):
+        return "bull_off must be a boolean"
+    if r.get("max_rounds") is not None and not _is_int(r.get("max_rounds"), 1, 99):
+        return "max_rounds must be null or 1 to 99"
+    return None
+
+
+def _game_rules_error(m):
+    """The game of a lobby frame and its rules (lives for Elimination, the rules of an X01 match), or why not."""
+    game = m.get("game", "elimination")
+    if game not in GAMES:
+        return "game must be elimination or x01"
+    if game == "elimination":
+        if m.get("rules") is not None:
+            return "rules belong to x01"
+        return None if _is_int(m.get("lives"), 1, MAX_LIVES) else "lives must be 1 to 10"
+    return x01_rules_error(m.get("rules"))
+
+
 def validate_client_frame(m):
     """None if `m` is a valid frame for the relay, else why not."""
     if not isinstance(m, dict) or not isinstance(m.get("type"), str):
@@ -103,10 +134,10 @@ def validate_client_frame(m):
         return None if _names(m.get("players")) else "players must be a list of unique names"
     if t == "lobby_set_ready":
         return None if isinstance(m.get("ready"), bool) else "ready must be a boolean"
+    if t == "lobby_set_rules":
+        return _game_rules_error(m)
     if t == "lobby_start":
-        if not _is_int(m.get("lives"), 1, MAX_LIVES):
-            return "lives must be 1 to 10"
-        return None if _names(m.get("order"), 2) else "order must list the players once"
+        return _game_rules_error(m) or (None if _names(m.get("order"), 2) else "order must list the players once")
     if t == "dart":
         if not _is_int(m.get("seq"), 1, 1_000_000) or not _is_name(m.get("player")):
             return "dart needs seq and player"
@@ -127,6 +158,9 @@ def validate_client_frame(m):
             return "winner must be a name or null"
         if "total" in m and not _is_int(m.get("total"), 0, 180):
             return "total must be 0 to 180"
+        for k in ("order", "rematch_order"):
+            if k in m and not _names(m[k], 2):
+                return f"{k} must list the players once"
         return None
     if t == "ack":
         if not _is_int(m.get("seq"), 1, 1_000_000):
@@ -166,13 +200,19 @@ def validate_server_frame(m):
                 isinstance(s, dict) and _is_name(s.get("site")) and _names(s.get("players")) and isinstance(s.get("connected"), bool)
                 and isinstance(s.get("ready"), bool) for s in sites):
             return "sites must list {site, players, connected, ready}"
+        if m.get("game") is not None and m.get("game") not in GAMES:
+            return "game must be elimination or x01"
+        if m.get("rules") is not None and x01_rules_error(m.get("rules")):
+            return "rules must be the rules of an x01 match"
         return None if _is_int(m.get("lives"), 0, MAX_LIVES) else "lives must be 0 to 10"
     if t == "rematch":
         return None
     if t == "started":
-        if not (_is_text(m.get("match_id"), 64) and _is_int(m.get("lives"), 1, MAX_LIVES) and _names(m.get("order"), 2)):
-            return "started needs match_id, lives and order"
-        return None if isinstance(m.get("owners"), dict) else "owners must be an object"
+        if not (_is_text(m.get("match_id"), 64) and _names(m.get("order"), 2)):
+            return "started needs match_id and order"
+        if not isinstance(m.get("owners"), dict):
+            return "owners must be an object"
+        return _game_rules_error({"game": m.get("game"), "lives": m.get("lives"), "rules": m.get("rules")} if "game" in m else {"lives": m.get("lives")})
     if t in ("dart", "turn"):
         return validate_client_frame({**m, "type": t}) or (None if _is_name(m.get("site")) else "site must be a name")
     if t == "turn_corrected":
