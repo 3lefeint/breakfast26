@@ -41,7 +41,7 @@ puts the match into `paused` until it rejoins or the host decides. A `finished` 
 |------|--------|-------|
 | `hello` | `protocol_version`, `mode` (`create` \| `join` \| `rejoin`), `site`; `password` for `create` and `join`, or `ticket` instead of the password for `join`; for `rejoin` also `token`, `last_seq` and `epoch` (the last `epoch` the site knows, see `undone`) | `create` only on a reserved code and makes the sender the host; the password is set here |
 | `lobby_set_players` | `players` (list of names) | the sender's local players, replaces its earlier list (and takes back the site's `ready`); names are unique across the lobby |
-| `lobby_set_ready` | `ready` (bool) | the sender is ready to start; passed on in `lobby`, the relay does not hold the start back |
+| `lobby_set_ready` | `ready` (bool) | the sender is ready to start; passed on in `lobby`, the relay does not hold the start back (Breakfast does not use it any more) |
 | `lobby_set_rules` | `game` (`elimination` \| `x01`, default `elimination`), `lives` (1 to 10) for Elimination, `rules` for X01 | host only, in the lobby: the other sites see the rules in the `lobby` frame |
 | `lobby_start` | `game`, `lives` or `rules` as in `lobby_set_rules`, `order` (all lobby players once) | host only; at least 2 players, at most 12 players and 6 sites |
 | `dart` | `seq`, `player`, `throws` | live darts of the turn in progress, informational, relayed as is |
@@ -92,7 +92,7 @@ site cannot be dropped from an X01 match: after `decision_needed` only `abort` i
 | `decision_needed` | `sites` (list of `{site, players}`) | to the host: the rejoin window (3 minutes) is over |
 | `site_dropped` | `sites` (list of `{site, players}`), `next_player` | the host chose to continue: those players are eliminated now, in this order; `next_player` is who is up (`null` if the match is over) |
 | `desync` | `seq`, `hashes` (site -> hash) | the sites disagree about the game state; the match is aborted |
-| `ended` | `reason` (`finished` \| `aborted` \| `desync`), `placements` (list of `{player, placement}`) | the result; placements come only from the relay |
+| `ended` | `reason` (`finished` \| `aborted` \| `desync`), `placements` (list of `{player, placement}`) | the result; placements come only from the relay. Breakfast closes the match at the site at once on `aborted` (the host ended or left it, or the code ran out) |
 | `error` | `code`, `message` | followed by the close |
 
 ## Rules the relay enforces

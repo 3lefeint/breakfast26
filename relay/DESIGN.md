@@ -1,7 +1,7 @@
-# Online Elimination relay — design decisions
+# Online play relay — design decisions
 
-Working record for GitHub issue #10, decided step by step with pmo on the
-`online-elimination` branch. Each entry: the question, the decision, why.
+Working record, decided step by step: issue #10 (Elimination), #122 (X01) and #123 (voice channels).
+Each entry: the question, the decision, why.
 
 ## 1. Where the relay lives and what it is written in
 
@@ -32,7 +32,7 @@ Working record for GitHub issue #10, decided step by step with pmo on the
 
 - **Decision:** the relay is an ordered protocol, the rules stay in the client. The relay
   numbers and distributes the turns, checks order and sender, and compares a state hash
-  of the sites after every turn. The rules run only once, in Python (`elimination.py`).
+  of the sites after every turn. The rules run only once, in Python (`elimination.py`, `x01_game.py`).
   A site evaluates its own board only on its own player's turn; remote turns arrive from
   the relay.
 - **Why:** no second implementation of the Elimination rules (undo, corrections, freipass)
@@ -93,3 +93,23 @@ Working record for GitHub issue #10, decided step by step with pmo on the
   which two real Python clients play a whole match against a locally started Worker.
 - **Why:** differences between the two sides show up in the tests, not in a live match;
   the end-to-end test is the closest to real use and needs wrangler in the test environment.
+
+## 11. X01 (#122)
+
+- **Decision:** one protocol for both games. `lobby_set_rules` and `lobby_start` carry the `game` and its rules (`lives` for
+  Elimination, `rules` for X01); the turn frames stay the same, `eliminated` is empty and `next_player` any player of the match.
+  The bull-off is played as turns of one dart; the turn that ends it carries the new play order (`order`), the turn that ends the
+  match the order of a rematch (`rematch_order`). The relay does not follow scores; it keeps the order, decides who is up and
+  compares the state hashes. The players of a lost site cannot be dropped from an X01 match: it can only be ended.
+- **Why:** the lobby, the join code, undo, corrections, rejoin and voice stay shared and are not written twice. Dropping players
+  from a running X01 match would need a second implementation of its rules in the game.
+- **Version:** the change is protocol version 4, a site with another version is refused.
+
+## 12. Voice channels (#123)
+
+- **Decision:** the admin makes channels and ticks which approved sites see which. A channel is a signaling room (`VoiceRoom`,
+  one Durable Object per channel); a site asks the relay, signed with its location, for a ticket and enters with it. When a tick
+  is taken away, a channel is deleted or a site leaves the circle, the room checks again and sends the sites out that may not be
+  there (close code 4403).
+- **Why:** a standing channel needs no code and no lobby, and the admin decides who can talk to whom. The check at the relay (not
+  only at the join) is what makes a taken-away tick effective at once.

@@ -1,6 +1,7 @@
 # Breakfast relay
 
-Lets Breakfast installations at different places play one Elimination match together. A
+Lets Breakfast installations at different places play one Elimination or X01 match together and
+talk to each other in voice chat channels. A
 Cloudflare Worker with one Durable Object per match; every site connects to it with an
 outgoing WebSocket, so no port forwarding or VPN is needed.
 
@@ -72,7 +73,7 @@ account are counted) and `CF_R2_BUCKET` (default `breakfast-records`). Without t
 
 ## Voice chat
 
-The relay also serves the voice chat page (`/voice`) and the signaling of a match (see PROTOCOL.md, "Voice chat"). It
+The relay also serves the voice chat page (`/voice`), the signaling of a match and the voice channels of the circle (see PROTOCOL.md, "Voice chat" and "Voice channels"; the admin makes the channels, the table is in `0007_voice_channels.sql`, no further binding). It
 needs the Durable Object `VOICE` (class `VoiceRoom`) and the migration `v2` in the config you deploy with (both are in
 `wrangler.jsonc`; copy them into your own config). STUN works without anything else. For participants whose browsers cannot
 reach each other directly (mobile networks, strict firewalls) create a TURN key in the Cloudflare dashboard (Realtime ->
@@ -92,7 +93,7 @@ Two Breakfast installations on one machine, each with its own `config.toml` and 
 1. `npm run dev` in `relay/`
 2. In both configs: `[online] relay_url = "ws://127.0.0.1:8787"` and a different `site_name`; give them
    different `[web] port`s and `[stats] db` files.
-3. Start both (`python main.py ...`), open `#elimination` on each, pick **Online**.
+3. Start both (`python main.py ...`), open `#elimination` (or `#x01`) on each, pick **Online**.
 4. On the first: set a password, **Create**. On the second: the same password, the code, **Join**.
 5. Pick the players of each site, **Start** on the first. Both TV views (`/#tv`) show the match; a turn
    thrown on one board appears live on the other.
@@ -104,6 +105,10 @@ the match.
 
 Limits for now: a Breakfast that is restarted mid-match cannot rejoin (the match lives in its memory).
 The last turn can be undone or corrected in an online match; the relay decides and every site walks back.
+
+**Logs.** The Worker writes what happens to a match to its log: who opened and joined the lobby, the start, how and why it ended (the host
+lost the connection, the code ran out, a desync) and the close code of every socket. `npx wrangler tail -c <your config> --format pretty`
+shows it live.
 
 `pytest tests/test_online_e2e.py` plays whole matches between two sites against `wrangler dev`
 (it is skipped without `npm install` in `relay/`).

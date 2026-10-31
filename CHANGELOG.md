@@ -5,8 +5,8 @@
 ### Added
 
 - Relay protocol version 4: the relay knows X01 matches (the rules in the lobby, the play order of the bull-off, the order of a rematch), so the relay and all sites need this version. (#122)
-- Online X01: the Online tab of the X01 page plays a match with players at other sites, with the rules set by the host, the bull-off, undo and the correction of a dart of the last turn. (#122)
-- Voice chat channels for the circle: the admin makes channels and ticks per installation who sees them in the new Voice chats tab, and a Voice chat page on Home opens a channel without a match. (#123)
+- Online X01: the Online tab of the X01 page plays a match with players at other sites, with the rules set by the host, the bull-off, the darts shown live at every site (also those set by hand), the averages of all players, undo and the correction of a dart of the last turn. (#122)
+- Voice chat channels for the circle: the admin makes channels and ticks per installation who sees them in the new Voice chats tab, an installation that loses its tick leaves the channel at once, and a Voice chat page on Home opens a channel without a match. The voice chat button of an online match offers the chat of the match or a channel. (#123)
 
 ### Changed
 
