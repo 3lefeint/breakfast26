@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { t } from '../../lib/i18n.js';
   // The admin of the circle: the sites, the players of the circle with the mapping of the players of each site to them, the rules
-  // (which sites get the matches of a player), the sync state and the usage reports. It talks to the relay directly from the browser
+  // (which sites get the matches of a player), the voice chat channels, the sync state and the usage reports. It talks to the relay directly from the browser
   // (lib/admin.js): the address is remembered, the password is typed per session and never stored.
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import Panel from '../../lib/components/Panel.svelte';
@@ -12,6 +12,7 @@
   import AdminSync from './admin/AdminSync.svelte';
   import AdminReports from './admin/AdminReports.svelte';
   import AdminUsage from './admin/AdminUsage.svelte';
+  import AdminVoice from './admin/AdminVoice.svelte';
 
   let address = $state($adminRelay);
   let password = $state('');
@@ -24,6 +25,7 @@
   const TABS = [
     { id: 'sites', label: t('Sites') },
     { id: 'players', label: t('Players') },
+    { id: 'voice', label: t('Voice chats') },
     { id: 'sync', label: t('Sync') },
     { id: 'reports', label: t('Reports') },
     { id: 'usage', label: t('Usage') },
@@ -107,6 +109,8 @@
       <AdminSites {sites} {act} reload={load} />
     {:else if tab === 'players'}
       <AdminPlayers {approved} {players} {actAll} />
+    {:else if tab === 'voice'}
+      <AdminVoice />
     {:else if tab === 'sync'}
       <AdminSync />
     {:else if tab === 'usage'}

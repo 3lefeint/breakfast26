@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Voice chat channels for the circle: the admin makes channels and ticks per installation who sees them in the new Voice chats tab, and a Voice chat page on Home opens a channel without a match. (#123)
+
 ### Changed
 
 - Online Elimination: a *Random order* switch draws the order when the match starts, instead of a Shuffle button that showed it beforehand; the arrows appear when it is off, and after a rematch it is off with the order of the rematch.

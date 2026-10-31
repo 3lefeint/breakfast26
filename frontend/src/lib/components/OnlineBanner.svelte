@@ -5,7 +5,7 @@
   import { onDestroy } from 'svelte';
   import { shownName } from '../util.js';
   import { api } from '../api.js';
-  import { openVoiceChat } from '../voice.js';
+  import VoiceButton from './VoiceButton.svelte';
 
   let { online, currentPlayer = null } = $props();
 
@@ -18,23 +18,14 @@
   let remote = $derived(!!owner && owner !== online.site);
 
   const decide = (choice) => api('POST', '/api/online/decision', { choice });
-
-  let voiceError = $state('');
-  let voiceUrl = $state('');
-  async function voice() {
-    voiceError = voiceUrl = '';
-    const res = await openVoiceChat();
-    if (res.error) voiceError = res.error;
-    else if (res.blocked) voiceUrl = res.url;
-  }
 </script>
 
 {#if online}
   {#if ['lobby', 'playing', 'paused'].includes(online.phase)}
     <div class="voice">
-      <button class="btn-b" onclick={voice}>{t('🎧 Voice chat')}</button>
-      {#if voiceUrl}<a href={voiceUrl} target="_blank" rel="noopener">{t('Open the voice chat')}</a>{/if}
-      {#if voiceError}<span class="voice-err">{voiceError}</span>{/if}
+      <VoiceButton>
+        {#snippet trigger(open)}<button class="btn-b" onclick={open}>{t('🎧 Voice chat')}</button>{/snippet}
+      </VoiceButton>
     </div>
   {/if}
   {#if online.decision}
@@ -75,7 +66,5 @@
   .btn-b:hover { border-color: var(--accent); }
   .btn-b.danger:hover { border-color: var(--red); color: var(--red); }
   .voice { display: flex; align-items: center; gap: 0.8vw; margin-bottom: 0.6vw; font-size: clamp(0.8rem, 1.3vw, 1.3rem); }
-  .voice a { color: var(--accent); }
-  .voice-err { color: var(--red); }
   .remote { color: var(--muted); font-size: clamp(0.8rem, 1.3vw, 1.3rem); margin-bottom: 0.6vw; }
 </style>

@@ -1596,6 +1596,31 @@ async def online_voice():
     return {"ok": True, "url": url}
 
 
+@app.get("/api/voice/channels")
+async def voice_channels():
+    """The voice chat channels of the circle that this site sees."""
+    if not _locations:
+        return {"error": "locations are not available"}
+    try:
+        return {"channels": await asyncio.to_thread(_locations.voice_channels)}
+    except locations_mod.LocationError as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/voice/channels/{channel_id}/open")
+async def voice_channel_open(channel_id: str):
+    """The address of the voice chat page for a channel (a page on the relay, to open in a tab)."""
+    if not _locations:
+        return {"error": "locations are not available"}
+    raw = cfg_mod.load(_config_path) if _config_path else {}
+    language = raw.get("web", {}).get("language", "en")
+    try:
+        url = await asyncio.to_thread(_locations.voice_channel_url, channel_id, language if language in SUPPORTED_LANGUAGES else "en")
+    except locations_mod.LocationError as e:
+        return {"error": str(e)}
+    return {"ok": True, "url": url}
+
+
 @app.post("/api/online/ready")
 async def online_ready(body: OnlineReadyBody):
     return await _online_call(_online.set_ready, body.ready)

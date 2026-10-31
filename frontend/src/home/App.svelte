@@ -32,6 +32,7 @@
   import Stats from './views/Stats.svelte';
   import Settings from './views/Settings.svelte';
   import About from './views/About.svelte';
+  import VoiceChannels from './views/VoiceChannels.svelte';
   import Admin from './views/Admin.svelte';
 
   let boardAddress = $state(null);
@@ -223,6 +224,8 @@
             <Settings />
           {:else if $route === 'admin'}
             <Admin />
+          {:else if $route === 'voice'}
+            <VoiceChannels />
           {:else if $route === 'about'}
             <About />
           {:else}

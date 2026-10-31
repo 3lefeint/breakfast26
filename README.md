@@ -263,7 +263,7 @@ match in the Stats page):
 Play one Elimination match together with players at other locations, each on their own Breakfast
 installation. One site hosts the match; the others join with its join code and a shared password, or, if
 the sites are linked, with one click. Each site adds its own players and says it is ready, and the host sets the
-lives and the order, or leaves *Random order* on, which draws the order when the match starts. A rematch starts with the first player who was out. A voice chat for the sites of a match opens in its own browser tab (*Voice chat* in the lobby and on the TV view): it runs on the relay's secure page, directly between the browsers, and a headset avoids echo.
+lives and the order, or leaves *Random order* on, which draws the order when the match starts. A rematch starts with the first player who was out. A voice chat for the sites of a match opens in its own browser tab (*Voice chat* in the lobby and on the TV view, which also offers the channels of the circle): it runs on the relay's secure page, directly between the browsers, and a headset avoids echo.
 Online play needs a relay (a small Cloudflare Worker, see [relay/README.md](relay/README.md)) and
 `[online] relay_url`; without it, online play is off. Every site stores the whole match, the players of the other sites
 as guests (`name@site`): they appear in the match but have no entry in the Players tab, no ranking and no achievements here. A guest the circle admin mapped to a local player counts as that player, also for matches stored before.
@@ -289,11 +289,13 @@ admin approves each installation once.
   limits the daily amount). Imported matches are stored like your own and earn achievements for the players the admin matched to
   local players, without a banner or a sound; other players appear as guests (`name@site`). The color of a player and his
   private voice entries (the pronunciation of his name, see *Voice caller and voice packs*) follow him to the installations
-  that know him, the latest change wins; the voice files are made again at each installation.
+  that know him, the latest change wins; the voice files are made again at each installation. *Voice chat* on the Play page
+  lists the voice chat channels the admin made for this installation; a click opens the channel in its own browser tab, without a match.
 - **For the admin:** the admin area (`#admin` in the Home app, a sidebar entry appears once a relay address is stored in the
   browser) logs in to the relay with the admin password, which is stored only as a salted hash at the relay and never on an
   installation. It approves the installations, keeps the players of the circle, matches the players of each installation to them
-  and ticks the installations that get the matches of each player. It also shows the sync state, the newest records, the usage
+  and ticks the installations that get the matches of each player. The *Voice chats* tab makes voice chat channels and ticks which
+  installations see which. It also shows the sync state, the newest records, the usage
   reports and how close the relay is to the free plan of Cloudflare. *Fetch again* makes an installation fetch everything meant for
   it once more, after a rule or a match of players changed.
 

@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from breakfast import config as cfg_mod
+from breakfast import locations
 from breakfast import online as online_mod
 from breakfast.elimination import EliminationController
 from breakfast.mqtt_output import NullMqttPublisher
@@ -146,6 +147,14 @@ class FakeLocations:
         self.tickets.append(code)
         return "t" * 32
 
+    def voice_channels(self):
+        return [{"id": "d" * 32, "name": "Kitchen"}]
+
+    def voice_channel_url(self, channel_id, lang="en"):
+        if channel_id != "d" * 32:
+            raise locations.LocationError("unknown channel")
+        return f"https://relay/voice#channel={channel_id}&lang={lang}"
+
 
 def test_a_host_needs_no_password_and_a_registered_location_signs_and_names_the_site(tmp_path):
     config_path = tmp_path / "config.toml"
@@ -194,3 +203,22 @@ def test_the_voice_address_is_asked_in_the_language_of_the_interface(wired, tmp_
     cfg_mod.write(str(server._config_path), {"online": {"relay_url": "ws://relay"}, "web": {"language": "de"}})
     run(server.online_voice())
     assert server._online.calls[-1] == ("voice", "de")
+
+
+def test_the_voice_channels_are_listed_and_opened_in_the_language_of_the_interface(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg_mod.write(str(config_path), {"web": {"language": "de"}})
+    server.wire(None, EliminationController(NullMqttPublisher(), "autodarts"), config_path=str(config_path))
+    server._locations = FakeLocations()
+    try:
+        assert run(server.voice_channels()) == {"channels": [{"id": "d" * 32, "name": "Kitchen"}]}
+        assert run(server.voice_channel_open("d" * 32)) == {"ok": True, "url": f"https://relay/voice#channel={'d' * 32}&lang=de"}
+        assert run(server.voice_channel_open("e" * 32)) == {"error": "unknown channel"}
+    finally:
+        server.wire(None, None)
+
+
+def test_without_locations_there_are_no_voice_channels(wired):
+    server._locations = None
+    assert "not available" in run(server.voice_channels())["error"]
+    assert "not available" in run(server.voice_channel_open("d" * 32))["error"]

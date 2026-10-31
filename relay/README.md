@@ -57,7 +57,7 @@ The same database holds the locations (`0002_locations.sql`) and the matches the
 
 ## Circle, admin and usage
 
-The circle (PROTOCOL.md, "Circle" and "Admin") needs the migrations `0004_circle.sql`, `0005_circle_refetch.sql` and `0006_circle_profiles.sql` (the color and voice entries of the circle players; `wrangler d1 migrations apply` takes all pending ones), an R2 bucket for the records
+The circle (PROTOCOL.md, "Circle" and "Admin") needs the migrations `0004_circle.sql`, `0005_circle_refetch.sql`, `0006_circle_profiles.sql` (the color and voice entries of the circle players) and `0007_voice_channels.sql` (the voice chat channels; `wrangler d1 migrations apply` takes all pending ones), an R2 bucket for the records
 (`npx wrangler r2 bucket create breakfast-records`) with the binding `"r2_buckets": [{ "binding": "RECORDS", "bucket_name": "breakfast-records" }]`
 in the config you deploy with (it is in `wrangler.jsonc`), and the admin login: `npm run admin-password -- -c <your config>` asks for
 the password (typed hidden, 12 characters at least, take a long one from your password manager), and writes its salted hash as the

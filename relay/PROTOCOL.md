@@ -166,6 +166,8 @@ tries per 15 minutes per address. Without the secrets the routes answer 503.
 | `GET /admin/players`, `POST /admin/players` `{name}`, `DELETE /admin/players/<id>` | the circle players with their mappings and the sites of their rule; delete takes mappings and rules with it |
 | `PUT /admin/mappings` `{location_id, local_name, player_id}` | map a player of a site to a circle player (`player_id: null` removes the mapping) |
 | `PUT /admin/rules` `{player_id, location_ids}` | replace the sites that get the matches of a player |
+| `GET /admin/voice`, `POST /admin/voice/channels` `{name}`, `PUT /admin/voice/channels/<id>` `{name}`, `DELETE /admin/voice/channels/<id>` | the voice chat channels (`{id, name, created_at, sites}`, `sites` are the ids of the sites that see the channel) and the approved sites; make a channel (at most 20, a name once, 409 otherwise); rename one; delete one with its ticks (everybody in it is sent out) |
+| `PUT /admin/voice/channels/<id>/sites/<site id>` `{visible}` | tick or untick a site for a channel (the site must be approved); a site that is unticked is sent out of the channel at once |
 | `GET /admin/sync` | per approved site: last seen, version, its state and how many records it sent; the totals |
 | `GET /admin/records` | the newest records without their content: match, origin, mode, the circle players in it, size |
 | `GET /admin/usage` | the usage of the free plan from the GraphQL Analytics API (`readUsage` in `src/usage.ts`): `{configured, generated_at, day, month, limits, workers, d1, d1_size, r2_operations, r2_storage}`; `workers` is today's requests, errors, subrequests and the CPU time quantiles `cpu_p50` and `cpu_p99` (as the API gives them, its unit is not documented), `d1` today's queries and rows read and written, `d1_size` the database size, `r2_operations` this month's operations by `class_a`, `class_b`, `free` and `other` with `by_action`, `r2_storage` bytes and objects of the bucket. Every part is `{data}` or `{error}`, so a figure the API refuses does not hide the others; `{configured: false, limits}` without the secrets `CF_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` |
@@ -194,7 +196,22 @@ signaling. The audio never goes through it.
 | relay | `peer-joined` / `peer-left` | `peer` (and `site`) | |
 | relay | `signal` | `from`, `data` | |
 | relay | `mute` | `peer`, `muted` | |
-| relay | `error` | `code`, `message` | followed by the close (4400 bad frame, 4401 not allowed, 4409 replaced or full) |
+| relay | `error` | `code`, `message` | followed by the close (4400 bad frame, 4401 not allowed, 4403 taken out of a channel, 4409 replaced or full) |
 
-At most 6 peers, frames up to 16 KB. `ice` is STUN (`stun.cloudflare.com`); with the Worker secrets `TURN_KEY_ID` and
+At most 6 peers, frames up to 16 KB.
+
+### Voice channels
+
+A voice chat without a match: the admin makes channels and ticks which approved sites see which (`/admin/voice`, above). The
+requests of a site are signed like the other circle routes and need an approved site.
+
+- `GET /circle/voice`: `{channels: [{id, name}]}`, the channels this site is ticked for.
+- `POST /circle/voice/<channel id>/ticket`: `{ticket, site, channel: {id, name}}` (404 for a channel the site does not see). A
+  new ticket replaces the older one of that site; it lasts a day.
+- `GET /voice/channel/<channel id>`: WebSocket to the signaling room of the channel (a Durable Object per channel), with the same
+  frames as the room of a match. `join` takes the site name of the ticket and the ticket; the site must still be ticked for the
+  channel. When the admin unticks a site, deletes the channel or takes the site out of the circle, the relay sends the sites that may
+  not be there any more an `error` with the code 4403 and closes their connection (the others get `peer-left`). One place per site,
+  6 peers.
+- The voice page takes `channel` and `name` instead of `code` in its address after the `#`. `ice` is STUN (`stun.cloudflare.com`); with the Worker secrets `TURN_KEY_ID` and
 `TURN_KEY_API_TOKEN` of a Cloudflare TURN key it also carries TURN servers with credentials that run out after a day.

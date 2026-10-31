@@ -11,7 +11,7 @@ export const VOICE_LIMITS = {
   TURN_TTL_S: 24 * 3600,
 } as const;
 
-export const VOICE_CLOSE = { BAD_REQUEST: 4400, UNAUTHORIZED: 4401, CONFLICT: 4409 } as const;
+export const VOICE_CLOSE = { BAD_REQUEST: 4400, UNAUTHORIZED: 4401, REMOVED: 4403, CONFLICT: 4409 } as const;
 
 export interface IceServer { urls: string[]; username?: string; credential?: string }
 

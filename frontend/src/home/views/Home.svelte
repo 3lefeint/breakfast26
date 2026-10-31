@@ -12,6 +12,7 @@
       { href: '#elimination', icon: 'elimination', label: t('Elimination') },
       { href: '#target-battle', icon: 'target-battle', label: t('Target Battle') },
       { href: '#killer', icon: 'killer', label: t('Killer') },
+      { href: '#voice', icon: 'headset', label: t('Voice chat') },
     ] },
     { title: t('Singleplayer'), columns: 3, cards: [
       { href: '#field-training', icon: 'field-training', label: t('Field Training') },

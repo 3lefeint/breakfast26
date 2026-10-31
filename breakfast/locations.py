@@ -17,6 +17,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 from cryptography.hazmat.primitives import serialization
@@ -337,6 +338,20 @@ class Locations:
             data = self._signed(state, "POST", state["relay"], f"/locations/{state['id']}/join-ticket", {"code": str(code).strip().upper()})
             log.info("Locations: joining the match %s of a linked location", data.get("code"))
             return data["ticket"]
+
+    def voice_channels(self):
+        """The voice chat channels of the circle that this site sees (the admin ticks them per site)."""
+        return self.call("GET", "/circle/voice")["channels"]
+
+    def voice_channel_url(self, channel_id, lang="en"):
+        """The address of the voice chat page for a channel, with a ticket for this site. The page lives on the relay
+        (HTTPS, so the browser allows the microphone); the ticket sits after the `#` and never reaches a server."""
+        if not re.fullmatch(r"[0-9a-f]{32}", str(channel_id or "")):
+            raise LocationError("unknown channel")
+        data = self.call("POST", f"/circle/voice/{channel_id}/ticket")
+        query = urlencode({"channel": channel_id, "name": data["channel"]["name"], "site": data["site"],
+                           "ticket": data["ticket"], "lang": lang})
+        return f"{self._registered()['relay']}/voice#{query}"
 
     def unlink(self, link_id, pin):
         with self._lock:

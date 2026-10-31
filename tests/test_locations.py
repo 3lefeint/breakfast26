@@ -272,3 +272,33 @@ def test_verify_pin_passes_without_a_pin_and_checks_it_once_set(loc):
         loc.verify_pin("0000")
     with pytest.raises(LocationError, match="wrong PIN"):
         loc.verify_pin(None)
+
+
+def test_the_voice_channels_of_a_site_are_asked_with_a_signed_request(loc, relay):
+    loc.register("wss://r.example", "Home", "1234")
+    relay.answers = {"/circle/voice": {"channels": [{"id": "d" * 32, "name": "Kitchen"}]}}
+    assert loc.voice_channels() == [{"id": "d" * 32, "name": "Kitchen"}]
+    call = relay.calls[-1]
+    assert call["url"] == "https://r.example/circle/voice" and call["headers"]["x-location"] == "a" * 32
+
+
+def test_the_address_of_a_voice_channel_carries_the_ticket_after_the_hash(loc, relay):
+    loc.register("wss://r.example", "Home", "1234")
+    channel = "d" * 32
+    relay.answers = {f"/circle/voice/{channel}/ticket": {"ticket": "t" * 32, "site": "Home", "channel": {"id": channel, "name": "Front room"}}}
+    url = loc.voice_channel_url(channel, "de")
+    assert url == f"https://r.example/voice#channel={channel}&name=Front+room&site=Home&ticket={'t' * 32}&lang=de"
+    assert relay.calls[-1]["url"] == f"https://r.example/circle/voice/{channel}/ticket"
+
+
+def test_a_voice_channel_needs_a_plain_id_and_a_registered_location(loc, relay):
+    with pytest.raises(LocationError, match="register"):
+        loc.voice_channels()
+    loc.register("wss://r.example", "Home", "1234")
+    for bad in ("", "../x", "D" * 32, "d" * 31):
+        with pytest.raises(LocationError, match="unknown channel"):
+            loc.voice_channel_url(bad)
+    relay.status = 404
+    relay.answers = {f"/circle/voice/{'d' * 32}/ticket": {"error": "unknown channel"}}
+    with pytest.raises(LocationError, match="unknown channel"):
+        loc.voice_channel_url("d" * 32)

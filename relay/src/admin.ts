@@ -5,6 +5,7 @@
 
 import { b64urlEncode, Limiter, LocationEnv, sha256Hex } from "./locations";
 import { Fetcher, readUsage, UsageEnv } from "./usage";
+import { CHANNEL_LIMITS, recheckChannels } from "./voiceChannels";
 
 export const ADMIN_LIMITS = {
   TOKEN_TTL_MS: 3_600_000,
@@ -16,6 +17,7 @@ export const ADMIN_LIMITS = {
 };
 
 export interface AdminEnv extends LocationEnv, UsageEnv {
+  VOICE?: DurableObjectNamespace;      // the voice rooms, told when somebody has to leave a channel
   ADMIN_PASSWORD_HASH?: string;
   ADMIN_TOKEN_KEY?: string;
 }
@@ -130,6 +132,10 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
     await db.prepare(
       "INSERT INTO circle_sites (location_id, approved, approved_at) VALUES (?1, ?2, ?3) ON CONFLICT(location_id) DO UPDATE SET approved = ?2, approved_at = ?3")
       .bind(id, action === "approve" ? 1 : 0, action === "approve" ? now : null).run();
+    if (action === "remove") {                  // a site that is out of the circle leaves its voice channels
+      const channels = await db.prepare("SELECT channel_id FROM voice_channel_sites WHERE location_id = ?").bind(id).all<{ channel_id: string }>();
+      await recheckChannels(env.VOICE, channels.results.map((c) => c.channel_id));
+    }
     return json({ ok: true, approved: action === "approve" });
   }
 
@@ -183,6 +189,57 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
       db.prepare("DELETE FROM circle_rules WHERE player_id = ?").bind(playerId),
       ...[...new Set(sites as string[])].map((s) => db.prepare("INSERT INTO circle_rules (player_id, location_id) VALUES (?, ?)").bind(playerId, s)),
     ]);
+    return json({ ok: true });
+  }
+
+  const channel = path.match(/^\/admin\/voice\/channels\/([0-9a-f]{32})$/);
+  const cell = path.match(/^\/admin\/voice\/channels\/([0-9a-f]{32})\/sites\/([0-9a-f]{32})$/);
+
+  if (method === "GET" && path === "/admin/voice") {
+    const channels = await db.prepare("SELECT id, name, created_at FROM voice_channels ORDER BY lower(name)").all<{ id: string; name: string; created_at: number }>();
+    const visible = await db.prepare("SELECT channel_id, location_id FROM voice_channel_sites").all<{ channel_id: string; location_id: string }>();
+    const sites = await db.prepare(
+      "SELECT l.id, l.name FROM circle_sites s JOIN locations l ON l.id = s.location_id WHERE s.approved = 1 ORDER BY lower(l.name)").all<{ id: string; name: string }>();
+    return json({ sites: sites.results, channels: channels.results.map((c) => ({ ...c, sites: visible.results.filter((v) => v.channel_id === c.id).map((v) => v.location_id) })) });
+  }
+
+  if (method === "POST" && path === "/admin/voice/channels") {
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!NAME.test(name)) return json({ error: "bad name" }, 400);
+    if (await db.prepare("SELECT id FROM voice_channels WHERE lower(name) = lower(?)").bind(name).first()) return json({ error: "that channel exists already" }, 409);
+    const count = await db.prepare("SELECT COUNT(*) AS n FROM voice_channels").first<{ n: number }>();
+    if ((count?.n ?? 0) >= CHANNEL_LIMITS.CHANNELS) return json({ error: `at most ${CHANNEL_LIMITS.CHANNELS} channels` }, 409);
+    const id = randomId();
+    await db.prepare("INSERT INTO voice_channels (id, name, created_at) VALUES (?, ?, ?)").bind(id, name, now).run();
+    return json({ id, name }, 201);
+  }
+
+  if (method === "PUT" && channel) {
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!NAME.test(name)) return json({ error: "bad name" }, 400);
+    if (!(await db.prepare("SELECT id FROM voice_channels WHERE id = ?").bind(channel[1]).first())) return json({ error: "unknown channel" }, 404);
+    if (await db.prepare("SELECT id FROM voice_channels WHERE lower(name) = lower(?) AND id != ?").bind(name, channel[1]).first()) return json({ error: "that channel exists already" }, 409);
+    await db.prepare("UPDATE voice_channels SET name = ? WHERE id = ?").bind(name, channel[1]).run();
+    return json({ ok: true });
+  }
+
+  if (method === "DELETE" && channel) {
+    await db.batch([
+      db.prepare("DELETE FROM voice_channel_sites WHERE channel_id = ?").bind(channel[1]),
+      db.prepare("DELETE FROM voice_channels WHERE id = ?").bind(channel[1]),
+    ]);
+    await recheckChannels(env.VOICE, [channel[1]]);        // nobody is in a channel that is gone
+    return json({ ok: true });
+  }
+
+  if (method === "PUT" && cell) {
+    if (typeof body.visible !== "boolean") return json({ error: "visible must be true or false" }, 400);
+    if (!(await db.prepare("SELECT id FROM voice_channels WHERE id = ?").bind(cell[1]).first())) return json({ error: "unknown channel" }, 404);
+    if (!(await db.prepare("SELECT location_id FROM circle_sites WHERE location_id = ? AND approved = 1").bind(cell[2]).first())) return json({ error: "unknown site" }, 404);
+    await (body.visible
+      ? db.prepare("INSERT OR IGNORE INTO voice_channel_sites (channel_id, location_id) VALUES (?, ?)").bind(cell[1], cell[2])
+      : db.prepare("DELETE FROM voice_channel_sites WHERE channel_id = ? AND location_id = ?").bind(cell[1], cell[2])).run();
+    if (!body.visible) await recheckChannels(env.VOICE, [cell[1]]);       // the site leaves the channel at once
     return json({ ok: true });
   }
 

@@ -9,6 +9,7 @@ import { CLOSE, LIMITS, PROTOCOL_VERSION, validName } from "./protocol";
 import { authenticate, handleLocations, Rooms } from "./locations";
 import { handleAdmin } from "./admin";
 import { handleCircle } from "./circle";
+import { channelRoom, handleVoiceChannels, siteSeesChannel } from "./voiceChannels";
 import { iceServers, validateVoiceFrame, VOICE_CLOSE, VOICE_LIMITS } from "./voice";
 import { VOICE_HTML, VOICE_JS } from "./voicePage";
 import { TELEMETRY_LIMITS, TELEMETRY_VERSION, validateTelemetry } from "./telemetry";
@@ -137,6 +138,13 @@ export default {
       return new Response(res.status === 200 ? await res.text() : JSON.stringify({ error: "not allowed" }), { status: res.status === 200 ? 200 : 401, headers: { "content-type": "application/json" } });
     }
 
+    const channel = url.pathname.match(/^\/voice\/channel\/([0-9a-f]{32})$/);
+    if (request.method === "GET" && channel) {
+      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("expected a websocket", { status: 426 });
+      if (await limited(env, request, "voice-join", VOICE_JOIN_LIMIT)) return json({ error: "too many requests" }, 429);
+      return env.VOICE.get(env.VOICE.idFromName(channelRoom(channel[1]))).fetch(request);
+    }
+
     const voice = url.pathname.match(/^\/voice\/([A-Z0-9]{6})$/);
     if (request.method === "GET" && voice) {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("expected a websocket", { status: 426 });
@@ -152,6 +160,9 @@ export default {
 
     const circle = await handleCircle(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
     if (circle) return circle;
+
+    const channels = await handleVoiceChannels(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
+    if (channels) return channels;
 
     const ws = url.pathname.match(/^\/ws\/([A-Z0-9]{6})$/);
     if (request.method === "GET" && ws) {
@@ -312,12 +323,17 @@ export class MatchRoom extends DurableObject<Env> {
 
 /** The signaling of the voice chat of one match: who is in the room, and the offers, answers and ICE candidates
  *  they pass to each other. Entering needs the voice ticket of a site of the match. */
-interface VoicePeer { peer: string | null; site: string | null; muted: boolean; since: number }
+interface VoicePeer { peer: string | null; site: string | null; location?: string | null; muted: boolean; since: number }
+interface ChannelTicket { location: string; site: string; ticket: string; until: number }
 
 export class VoiceRoom extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
-    const code = new URL(request.url).pathname.split("/").pop() ?? "";
-    await this.ctx.storage.put("code", code);
+    const path = new URL(request.url).pathname;
+    if (request.method === "POST" && path === "/ticket") return this.keepTicket(await request.json() as ChannelTicket);
+    if (request.method === "POST" && path === "/recheck") return this.recheck();
+    const code = path.split("/").pop() ?? "";
+    if (path.startsWith("/voice/channel/")) await this.ctx.storage.put("channel", code);       // a channel of the circle, not a match
+    else await this.ctx.storage.put("code", code);
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
@@ -367,10 +383,47 @@ export class VoiceRoom extends DurableObject<Env> {
     }
   }
 
+  /** The ticket a site asked for to enter this channel; a new one replaces the older one of that site. */
+  private async keepTicket(t: ChannelTicket): Promise<Response> {
+    const old = await this.ctx.storage.get<string>(`site:${t.location}`);
+    if (old) await this.ctx.storage.delete(`ticket:${old}`);
+    await this.ctx.storage.put(`ticket:${t.ticket}`, t);
+    await this.ctx.storage.put(`site:${t.location}`, t.ticket);
+    return new Response(null, { status: 200 });
+  }
+
+  /** A channel lets a site in with its current ticket as long as the admin still ticks the site for the channel. Gives the
+   *  location of the site, or null when it may not come in. */
+  private async channelAllows(channel: string, site: string, ticket: string): Promise<string | null> {
+    const t = await this.ctx.storage.get<ChannelTicket>(`ticket:${ticket}`);
+    if (!t || t.site !== site || t.until < Date.now() || !this.env.DB) return null;
+    return (await siteSeesChannel(this.env.DB, channel, t.location)) ? t.location : null;
+  }
+
+  /** The admin changed who sees the channel: whoever is in and may not be any more has to go. */
+  private async recheck(): Promise<Response> {
+    const channel = await this.ctx.storage.get<string>("channel");
+    if (channel && this.env.DB) {
+      for (const w of this.ctx.getWebSockets()) {
+        const p = w.deserializeAttachment() as VoicePeer | null;
+        if (!p?.peer || !p.location) continue;
+        if (!(await siteSeesChannel(this.env.DB, channel, p.location))) this.refuse(w, VOICE_CLOSE.REMOVED, "removed from the channel");
+      }
+    }
+    return new Response(null, { status: 200 });
+  }
+
   private async join(ws: WebSocket, me: VoicePeer, site: string, ticket: string): Promise<void> {
-    const code = (await this.ctx.storage.get<string>("code")) ?? "";
-    const auth = await this.env.MATCH.get(this.env.MATCH.idFromName(code)).fetch("https://room/voice-auth", { method: "POST", body: JSON.stringify({ site, ticket }) });
-    if (auth.status !== 200) return this.refuse(ws, VOICE_CLOSE.UNAUTHORIZED, "not allowed");
+    const channel = await this.ctx.storage.get<string>("channel");
+    if (channel) {
+      const location = await this.channelAllows(channel, site, ticket);
+      if (!location) return this.refuse(ws, VOICE_CLOSE.UNAUTHORIZED, "not allowed");
+      me.location = location;
+    } else {
+      const code = (await this.ctx.storage.get<string>("code")) ?? "";
+      const auth = await this.env.MATCH.get(this.env.MATCH.idFromName(code)).fetch("https://room/voice-auth", { method: "POST", body: JSON.stringify({ site, ticket }) });
+      if (auth.status !== 200) return this.refuse(ws, VOICE_CLOSE.UNAUTHORIZED, "not allowed");
+    }
     for (const w of this.ctx.getWebSockets()) {          // the same site joining again replaces its older connection
       if (w !== ws && (w.deserializeAttachment() as VoicePeer).site === site) this.refuse(w, VOICE_CLOSE.CONFLICT, "replaced by a new connection");
     }

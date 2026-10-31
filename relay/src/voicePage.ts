@@ -1,6 +1,6 @@
 // The voice chat page the relay serves at /voice (HTML) and /voice.js. It lives on the relay's own HTTPS address
 // because browsers give the microphone only to secure pages, which the installations (plain HTTP in a LAN) are not.
-// Everything it needs is in its address after the `#` (match code, site, voice ticket, language), which never
+// Everything it needs is in its address after the `#` (match code or channel, site, voice ticket, language), which never
 // reaches a server. No external libraries. Inside the script strings: no backticks, no dollar-brace, no backslashes.
 
 export const VOICE_HTML = `<!doctype html>
@@ -60,17 +60,17 @@ export const VOICE_HTML = `<!doctype html>
 export const VOICE_JS = `(function () {
   "use strict";
   var TEXT = {
-    en: { title: "Voice chat", sub: "Match {code}, you are {site}", mic: "Microphone", join: "Join voice chat", mute: "Mute", unmute: "Unmute", leave: "Leave",
+    en: { title: "Voice chat", sub: "Match {code}, you are {site}", subChannel: "Channel {name}, you are {site}", mic: "Microphone", join: "Join voice chat", mute: "Mute", unmute: "Unmute", leave: "Leave",
       you: "you", muted: "muted", nobody: "Nobody else is here yet.", connecting: "Connecting…", connected: "In the voice chat. Keep this tab open while you play.",
       reconnecting: "Connection lost, reconnecting…", nomic: "The microphone is not available. Allow it for this page and try again.", badlink: "This link is incomplete. Open the voice chat from Breakfast again.",
-      denied: "Not allowed. Open the voice chat from Breakfast again.", full: "The voice chat is full.", replaced: "You joined from another tab, this one is closed.", left: "You left the voice chat.", headset: "A headset avoids echo." },
-    de: { title: "Sprachchat", sub: "Match {code}, du bist {site}", mic: "Mikrofon", join: "Sprachchat beitreten", mute: "Stumm", unmute: "Ton an", leave: "Verlassen",
+      denied: "Not allowed. Open the voice chat from Breakfast again.", full: "The voice chat is full.", removed: "You were taken out of this channel.", replaced: "You joined from another tab, this one is closed.", left: "You left the voice chat.", headset: "A headset avoids echo." },
+    de: { title: "Sprachchat", sub: "Match {code}, du bist {site}", subChannel: "Kanal {name}, du bist {site}", mic: "Mikrofon", join: "Sprachchat beitreten", mute: "Stumm", unmute: "Ton an", leave: "Verlassen",
       you: "du", muted: "stumm", nobody: "Noch niemand sonst da.", connecting: "Verbinde…", connected: "Im Sprachchat. Lass diesen Tab beim Spielen offen.",
       reconnecting: "Verbindung verloren, verbinde neu…", nomic: "Das Mikrofon ist nicht verfügbar. Erlaube es für diese Seite und versuche es noch einmal.", badlink: "Dieser Link ist unvollständig. Öffne den Sprachchat noch einmal in Breakfast.",
-      denied: "Kein Zutritt. Öffne den Sprachchat noch einmal in Breakfast.", full: "Der Sprachchat ist voll.", replaced: "Du bist von einem anderen Tab beigetreten, dieser wird geschlossen.", left: "Du hast den Sprachchat verlassen.", headset: "Ein Headset vermeidet Echo." }
+      denied: "Kein Zutritt. Öffne den Sprachchat noch einmal in Breakfast.", full: "Der Sprachchat ist voll.", removed: "Du wurdest aus diesem Kanal genommen.", replaced: "Du bist von einem anderen Tab beigetreten, dieser wird geschlossen.", left: "Du hast den Sprachchat verlassen.", headset: "Ein Headset vermeidet Echo." }
   };
   var params = new URLSearchParams(location.hash.slice(1));
-  var code = params.get("code"), site = params.get("site"), ticket = params.get("ticket");
+  var code = params.get("code"), channel = params.get("channel"), site = params.get("site"), ticket = params.get("ticket");
   var T = TEXT[params.get("lang") === "de" ? "de" : "en"];
   var $ = function (id) { return document.getElementById(id); };
   var ws = null, me = null, stream = null, ice = [], peers = {}, muted = false, joined = false, leaving = false, audioCtx = null;
@@ -80,12 +80,12 @@ export const VOICE_JS = `(function () {
   function send(frame) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(frame)); }
 
   $("title").textContent = T.title;
-  $("sub").textContent = T.sub.replace("{code}", code || "?").replace("{site}", site || "?");
+  $("sub").textContent = (channel ? T.subChannel.replace("{name}", params.get("name") || "?") : T.sub.replace("{code}", code || "?")).replace("{site}", site || "?");
   $("micLabel").textContent = T.mic;
   $("join").textContent = T.join;
   $("mute").textContent = T.mute;
   $("leave").textContent = T.leave;
-  if (!code || !site || !ticket) { $("join").disabled = true; status(T.badlink, true); }
+  if (!(code || channel) || !site || !ticket) { $("join").disabled = true; status(T.badlink, true); }
   else status(T.headset);
 
   window.__voice = { peers: peers };
@@ -216,7 +216,7 @@ export const VOICE_JS = `(function () {
 
   // ── the room ──────────────────────────────────────────────────────────────
   function connect() {
-    ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/voice/" + code);
+    ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/voice/" + (channel ? "channel/" + channel : code));
     ws.onopen = function () { send({ type: "join", site: site, ticket: ticket }); };
     ws.onmessage = function (ev) {
       var m;
@@ -231,7 +231,7 @@ export const VOICE_JS = `(function () {
       else if (m.type === "peer-left") { dropPeer(m.peer); }
       else if (m.type === "signal") { onSignal(m.from, m.data); }
       else if (m.type === "mute") { if (peers[m.peer]) { peers[m.peer].muted = m.muted; render(); } }
-      else if (m.type === "error") { status(m.code === 4409 && /full/.test(m.message) ? T.full : (m.code === 4409 ? T.replaced : T.denied), true); leaving = true; }
+      else if (m.type === "error") { status(m.code === 4409 && /full/.test(m.message) ? T.full : (m.code === 4409 ? T.replaced : (m.code === 4403 ? T.removed : T.denied)), true); leaving = true; }
     };
     ws.onclose = function () {
       dropAll(); joined = false; me = null;
