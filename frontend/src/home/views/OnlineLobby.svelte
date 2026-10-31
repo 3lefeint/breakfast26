@@ -1,7 +1,7 @@
 <script>
   import { t } from '../../lib/i18n.js';
   // Online Elimination on Home: host a match, join one of a linked location or join with a code, pick the players
-  // of this site, say ready, and (as the host) order them and start. Once the match runs, the TV view takes over.
+  // of this site and (as the host) order them and start. Once the match runs, the TV view takes over.
   // The open matches of the linked locations are fetched when the page opens and on Refresh, not kept up to date.
   import { onMount, untrack } from 'svelte';
   import { online } from '../../lib/stores/online.js';
@@ -78,9 +78,6 @@
 
   let mine = $derived($online?.lobby.sites.find((s) => s.site === $online.site)?.players ?? []);
   let everyone = $derived(($online?.lobby.sites ?? []).flatMap((s) => s.players));
-  let meReady = $derived($online?.lobby.sites.find((s) => s.site === $online.site)?.ready ?? false);
-  let othersReady = $derived(($online?.lobby.sites ?? []).filter((s) => s.site !== $online.lobby.host).every((s) => s.ready));
-  const setReady = () => run('/api/online/ready', { ready: !meReady });
 
   // The host's order: keep what was arranged, drop who left, add who came.
   $effect(() => {
@@ -178,7 +175,6 @@
           <strong>{s.site}</strong>
           {#if s.site === $online.lobby.host}<span class="tag">{t('host')}</span>{/if}
           {#if s.site === $online.site}<span class="tag">{t('you')}</span>{/if}
-          {#if s.site !== $online.lobby.host}<span class="tag" class:ok={s.ready}>{s.ready ? t('ready') : t('not ready')}</span>{/if}
           <span class="site-players">{s.players.length ? s.players.map(shownName).join(', ') : t('no players yet')}</span>
         </div>
       {/each}
@@ -217,10 +213,8 @@
         </div>
         <Toggle bind:checked={randomOrder} label={t('Random order')} />
       </div>
-      <button class="btn btn-start" disabled={busy || order.length < 2 || !othersReady} onclick={start}>{t('▶ Start')}</button>
-      {#if !othersReady}<p class="note">{t('Waiting for the other sites to be ready…')}</p>{/if}
+      <button class="btn btn-start" disabled={busy || order.length < 2} onclick={start}>{t('▶ Start')}</button>
     {:else}
-      <button class="btn ready-btn" class:btn-start={!meReady} class:btn-add={meReady} disabled={busy || !mine.length} onclick={setReady}>{meReady ? t('Not ready') : t('Ready')}</button>
       <p class="note">{t('Waiting for the host to start the match…')}</p>
     {/if}
     <div class="voice-row">
@@ -261,7 +255,6 @@
   .open-match { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
   .voice-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0 0.5rem; }
   .voice-row a { color: var(--accent); font-size: 0.85rem; }
-  .ready-btn { margin-top: 0.75rem; }
   .code-input { text-transform: uppercase; letter-spacing: 0.25em; font-family: monospace; width: 10rem; }
   .code-row { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .code-row .label { color: var(--muted); font-size: 0.85rem; }
@@ -270,7 +263,6 @@
   .site { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border); border-radius: 8px; font-size: 0.9rem; }
   .site.me { border-color: var(--accent); }
   .site-players { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
-  .tag.ok { color: var(--green); border-color: var(--green); }
   .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0 0.3rem; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
   .dot.ok { background: var(--green); }
