@@ -15,7 +15,7 @@ call — no ambient layer, no interruption semantics.
 ## Case 1 — Match start sequence
 
 **Current behavior:** three calls, always in this order, fired together
-0.5s after the match is created (`elimination.py:92-98`):
+0.5s after the match is created (`elimination.py:76-81`):
 1. `play("matchon")`
 2. `play(<first player's name>.lower())`
 3. `play("freipass")` — unconditional, first player always starts with a
@@ -41,7 +41,7 @@ here.
 
 **Current behavior:** every dart that lands as a miss (value 0) plays
 `play("miss", prob=0.35)` — up to 3× per turn, independent of the rest of
-the turn's outcome (`elimination.py:163`).
+the turn's outcome (`elimination.py:135`).
 
 **Decision:** keep as-is, no change.
 
@@ -51,7 +51,7 @@ the turn's outcome (`elimination.py:163`).
 
 **Current behavior:** right after the 3rd dart of a turn lands, before
 it's known whether the player survives: `play(str(running_score))`
-(`elimination.py:181`).
+(`elimination.py:157`).
 
 **Decision:** keep as-is, no change.
 
@@ -62,7 +62,7 @@ it's known whether the player survives: `play(str(running_score))`
 **Current behavior:** immediately after the score announcement (Case 3),
 if the turn score didn't beat the target: `play("eliminated")` if this
 loss brings the player to 0 lives, else `play("life_lost")`
-(`elimination.py:189`).
+(`elimination.py:178-179`).
 
 **Decision:** new order — **player name (new call, not previously
 announced here) → `eliminated` / `life_lost`**.
@@ -104,7 +104,7 @@ If neither condition matches, this case is silent.
 
 **Current behavior:** only on a passing turn (score beat the target),
 after the score announcement: `play("nice", prob=0.4)`, only if
-`score >= 100` (`elimination.py:197`).
+`score >= 100` (`elimination.py:186-187`).
 
 **Decision:** change the threshold condition from `score >= 100` to
 `score >= 2 * target` — i.e. "nice" now fires when the player scores at
@@ -120,8 +120,8 @@ condition changes.
 **Current behavior:** in rare cases (e.g. fewer than 3 darts detected),
 the 3-dart preview (Cases 3/4) never ran. `_end_turn()`/`_apply_turn()`
 then catches up with equivalent calls at a different point in the code:
-fallback `play(str(score))` (`elimination.py:226`), and if needed
-`eliminated`/`life_lost` (`elimination.py:245`/`274`, only if the
+fallback `play(str(score))` (`elimination.py:276`), and if needed
+`eliminated`/`life_lost` (`elimination.py:420`/`439`, only if the
 preview hadn't already announced it).
 
 **Decision:** mirrors Cases 3 and 4 exactly — score stays as-is, then
@@ -176,7 +176,7 @@ the stats.
 ## Case 9 — Next player name + freipass re-grant
 
 **Current behavior:** at the end of `_apply_turn()`, after any
-non-match-ending outcome (`elimination.py:280-283`):
+non-match-ending outcome (`elimination.py:446-456`):
 1. `play(<new current player>.lower())` — announces whoever is now
    current
 2. **Only if** the new current player just inherited a freipass from an
@@ -228,7 +228,7 @@ announce name → **`filler_target` (new key)** → **target + 1** (not the
 bare target — `passes = score > target`, so the target value itself
 would *not* be enough to pass; the announced number is the actual
 minimum passing score), right where Case 9's freipass re-grant already
-lives (`elimination.py:290-293`). When the player **does** have a
+lives (`elimination.py:453-456`). When the player **does** have a
 freipass, nothing changes from Case 9's decision (name → `freipass`) —
 freipass means any score > 0 passes, so the target number is irrelevant
 that turn and is deliberately **not** announced alongside it (the two

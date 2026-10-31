@@ -55,9 +55,9 @@ locally, `migrations apply ... --local` and `npm run dev` give a database to try
 
 The same database holds the locations (`0002_locations.sql`) and the matches they open for their links (`0003_open_matches.sql`, see PROTOCOL.md, "Locations"): registering, invitations, links and joining through a link need the `DB` binding and the migrations applied.
 
-## Voice chat
+## Circle, admin and usage
 
-The circle (PROTOCOL.md, "Circle" and "Admin") needs the migrations `0004_circle.sql` and `0005_circle_refetch.sql` (`wrangler d1 migrations apply` takes all pending ones), an R2 bucket for the records
+The circle (PROTOCOL.md, "Circle" and "Admin") needs the migrations `0004_circle.sql`, `0005_circle_refetch.sql` and `0006_circle_profiles.sql` (the color and voice entries of the circle players; `wrangler d1 migrations apply` takes all pending ones), an R2 bucket for the records
 (`npx wrangler r2 bucket create breakfast-records`) with the binding `"r2_buckets": [{ "binding": "RECORDS", "bucket_name": "breakfast-records" }]`
 in the config you deploy with (it is in `wrangler.jsonc`), and the admin login: `npm run admin-password -- -c <your config>` asks for
 the password (typed hidden, 12 characters at least, take a long one from your password manager), and writes its salted hash as the
@@ -69,6 +69,8 @@ The usage view of the admin page (`GET /admin/usage`) asks the GraphQL Analytics
 plan. It needs two secrets, `CF_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` (an API token with the permission Account > Account Analytics >
 Read), and optionally the variables `CF_SCRIPT_NAME` (default `breakfast-relay`), `CF_D1_DATABASE_ID` (without it all D1 databases of the
 account are counted) and `CF_R2_BUCKET` (default `breakfast-records`). Without the secrets the route answers `{"configured": false}`.
+
+## Voice chat
 
 The relay also serves the voice chat page (`/voice`) and the signaling of a match (see PROTOCOL.md, "Voice chat"). It
 needs the Durable Object `VOICE` (class `VoiceRoom`) and the migration `v2` in the config you deploy with (both are in
@@ -100,8 +102,8 @@ the relay). The others show "Waiting for ... to reconnect", and the site rejoins
 connection is back. If it stays away for three minutes the host decides: play on without it or end
 the match.
 
-Limits for now: a Breakfast that is restarted mid-match cannot rejoin (the match lives in its memory),
-and undo and turn corrections are off in online matches; tapping a wrong dart on your own turn works.
+Limits for now: a Breakfast that is restarted mid-match cannot rejoin (the match lives in its memory).
+The last turn can be undone or corrected in an online match; the relay decides and every site walks back.
 
 `pytest tests/test_online_e2e.py` plays whole matches between two sites against `wrangler dev`
 (it is skipped without `npm install` in `relay/`).

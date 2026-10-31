@@ -43,7 +43,7 @@ Download `breakfast-windows-vX.Y.Z.zip` from the latest release. It contains a s
 `breakfast.exe`; Python and Docker are not needed.
 
 1. Unzip it, for example to `C:\Breakfast`, and start `breakfast.exe`. Your browser opens the Settings page:
-   enter your Autodarts account under **Autodarts Source**, save, and press **Restart**.
+   enter your Autodarts account under **Board data source**, save, and press **Restart**.
 2. Windows asks once whether Breakfast may use the network. Allow it for private networks so that a TV or
    phone can reach `http://<pc>:8080`.
 3. Optional: run `install-autostart.ps1` with PowerShell to start Breakfast when you log in

@@ -110,7 +110,7 @@ earned achievement.
 |---|---|---|
 | `achievement_<id>` (e.g. `achievement_ton_up`) | That achievement is earned | Optional |
 | `achievement` | Any achievement is earned and there is no file for its own `achievement_<id>` | Optional |
-| any file of the folder, assigned to an achievement | Settings → Achievements (Dev tab) gives an achievement one or more files, uploaded there or put into the folder (the same page renames and deletes the files); one of them is picked at random and wins over the two file names above. Stored in `[achievements.sounds]` of `config.toml` | Optional |
+| any file of the folder, assigned to an achievement | Settings → Audio & Voice → Achievements gives an achievement one or more files, uploaded there or put into the folder (the same page renames and deletes the files); one of them is picked at random and wins over the two file names above. Stored in `[achievements.sounds]` of `config.toml` | Optional |
 
 Variants work as everywhere else (`achievement+1.mp3`, `achievement_ton_up+1.mp3`, ...).
 The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
@@ -133,7 +133,8 @@ The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
 `licence_to_breakfast`, `armed_immediately`, `first_blood`, `three_in_one`,
 `all_round_attack`, `finisher`, `double_knockout`, `unscathed`, `last_breath`,
 `double_agent`, `self_service`, `glass_cannon`, `friendly_to_the_end`,
-`own_worst_enemy`, `beast_mode`. Without any file nothing plays, the banner still shows.
+`own_worst_enemy`, `beast_mode`, `bull_drill`, `hundred_darts`, `triple_threat`, `grand_tour`,
+`black_belt`, `belt_progress`, `dead_eye`. Without any file nothing plays, the banner still shows.
 
 ### X01-specific
 
@@ -160,15 +161,18 @@ The ids: `first_breakfast`, `bullseye`, `shanghai`, `double_pack`, `maximum`,
 
 | Key(s) | When it plays | Required? |
 |---|---|---|
-| `freipass` | The very first player's opening turn (no target to beat yet), and again with 80% probability whenever a player restarts a fresh round with no target | Recommended |
+| `matchon` | The game starts | Recommended |
+| `<player name>` + `filler_after_name` | The game starts, after `matchon`: the first player is called | Recommended |
+| `<player name>` + `filler_target` + `{n}` (the lowest passing score) | A player is up later in the game and has a target to beat | Recommended |
+| `<player name>` + `freipass` (80% probability) | A player is up with no target to beat, after a player was eliminated | Recommended |
 | `miss` (35% probability) | A dart misses the board | Optional |
 | `{n}` | Running turn total, per dart | Recommended |
 | `close` (70% probability) | The turn total is close to the target | Optional |
 | `too_low` (50% probability) | The turn total falls well short of the target | Optional |
-| `nice` (40% probability) | A generic positive reaction | Optional |
+| `nice` (40% probability) | The turn total is at least twice the target | Optional |
 | `eliminated` | A player is eliminated | Recommended |
 | `life_lost` | A player loses a life without being eliminated | Recommended |
-| `matchshot` + `<winner name>` | The game ends | Recommended |
+| `<winner name>` + `matchshot` | The game ends | Recommended |
 
 ### Target Battle-specific
 
@@ -194,7 +198,7 @@ There is no call per dart. Undo and a corrected total make no calls.
 | `<player name>` + `starts_game` | The bull-off is won (and the numbers are thrown next); without the number throw the player is called as the first one up instead | Recommended |
 | `<player name>` + `throw_number` | The player throws for their number with the other hand | Recommended |
 | `<player name>` + `throw_again` | The throw gave no number (taken, the bull, a miss), the player throws again | Recommended |
-| `<player name>` + `your_number` + `{n}` | A number was thrown: the player is told it. With the numbers drawn at random it is told when the player is up for the first time instead of that it is their turn | | Recommended |
+| `<player name>` + `your_number` + `{n}` | A number was thrown: the player is told it. With the numbers drawn at random it is told when the player is up for the first time instead of that it is their turn | Recommended |
 | `<player name>` + `filler_after_name` | A player is up: from the first turn on when the numbers were thrown, else from the second | Recommended |
 | `<player name>` + `is_killer` | A double on the own number makes a killer | Recommended |
 | `<player name>` + `life_lost` | A killer took a life from this player (the victim is named, a hit that puts a player out is only called as `eliminated`) | Recommended |
@@ -258,9 +262,15 @@ variants = ["Anna", "Annie"]
 ```
 
 The generator reads that file on its own (or the one given with `--overlay`), and the Voice Pack tab saves
-a name there when you add one in the "Player names" group.
+a name there when you add one in the "Player names" group. A name without a file plays `unknown_player`
+instead.
 
-Then set `[audio] profile = "ryan"`. The Settings → Voice Pack tab edits,
+In a circle of friends the entries of a player follow him to the installations that know him, the latest change
+wins; only the text travels, each installation makes the voice files itself. Breakfast also generates the missing
+voice files by itself every 10 minutes (`[audio] auto_generate_minutes`, `0` switches it off), so a new entry gets
+its files without a click, and it plays them without a restart.
+
+Then set `[audio] profile = "ryan"`. The Settings → Audio & Voice → Voice Pack tab edits,
 listens to and regenerates single entries of either plan. A pack from another
 source (for example one of the darts-caller project) works too, if you put its
 files under `<audio dir>/profiles/<name>/` named as the call keys.

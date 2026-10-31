@@ -29,7 +29,7 @@ Keys that start with `ambient_` go to a second channel that never interrupts the
 parallel.
 
 Settings (`[caller]`): `per_dart` (true), `turn_total` (true), `checkout_limit` (1, 0 = off),
-`announce_change` (false), `call_player` (true), `ambient_volume` (0.6, 0 = ambient off),
+`announce_change` (true), `call_player` (true), `ambient_volume` (0.6, 0 = ambient off),
 `call_misses` (true).
 
 ### What happens today
@@ -40,20 +40,20 @@ channel, `(x missing)` a key that does not exist.
 
 | Situation | Calls, in order |
 |-----------|-----------------|
-| Match starts | `anna`, `matchon`, `ambient_matchon_ashi`~ |
+| Match starts | `anna`, `matchon`, `ambient_matchon_anna`~ |
 | Dart 1, T20 | `t20`! |
 | Dart 2, S5 | `5`! (`s5` is missing, the number is called) |
 | Dart 3, miss next to 7 | `m7`!, `65` (the turn total), `ambient_t20s5m7`~ |
 | Three T20 | `t20`!, `t20`!, `t20`!, `180`, `ambient_t20t20t20`~ |
-| Darts pulled, next player has 501 | `ambient_playerchange_bruno`~ (no name) |
+| Darts pulled, next player has 501 | `ben`, `ambient_playerchange_ben`~ |
 | Next player has 80 | `anna`, `you_require`, `require_80` |
-| Same player, again 80 (limit 1) | `ambient_checkout_call_limit`~, `ambient_playerchange_ashi`~ (no name) |
-| Next player has 169 (bogey) | `ambient_bogey_number_169`~, `ambient_playerchange_ashi`~ (no name) |
-| Next player has 40, `require_40` missing | `anna`, `you_require` (and then nothing) |
+| Same player, again 80 (limit 1) | `ambient_checkout_call_limit`~, `anna`, `ambient_playerchange_anna`~ |
+| Next player has 169 (bogey) | `ambient_bogey_number_169`~, `anna`, `ambient_playerchange_anna`~ |
+| Next player has 40, `require_40` missing | `anna`, `ambient_playerchange_anna`~ (no checkout call without the number) |
 | Bust | `busted`, `ambient_noscore`~ |
-| Leg won | `gameshot_l1_n`, `anna`, `ambient_gameshot_ashi`~ |
-| Next leg starts | `carl`, `gameon`, `ambient_gameon_bruno`~ |
-| Match won | `matchshot`, `anna`, `ambient_matchshot_ashi`~ |
+| Leg won | `anna`, `gameshot_l1_n`, `ambient_gameshot_anna`~ |
+| Next leg starts | `carl`, `gameon`, `ambient_gameon_carl`~ |
+| Match won | `anna`, `matchshot`, `ambient_matchshot_anna`~ |
 | Match cancelled | `matchcancel` |
 
 ---

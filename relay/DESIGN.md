@@ -5,9 +5,8 @@ Working record for GitHub issue #10, decided step by step with pmo on the
 
 ## 1. Where the relay lives and what it is written in
 
-- **Decision:** a top-level `relay/` folder in this repository, on the branch
-  `online-elimination` for now; written as a **Cloudflare Worker in TypeScript**
-  from the start, run locally with wrangler/miniflare.
+- **Decision:** a top-level `relay/` folder in this repository; written as a
+  **Cloudflare Worker in TypeScript** from the start, run locally with wrangler.
 - **Why:** the relay must not import anything from `breakfast/`, so it can move to
   its own repository later (`git filter-repo --subdirectory-filter relay`). Building
   the real target from the start avoids a port. The Python side (the client in
@@ -70,9 +69,9 @@ Working record for GitHub issue #10, decided step by step with pmo on the
   darts and positions of all players, with the `match_id` assigned by the relay. The
   placements come from the relay as the single source of truth, so all sites store the same
   result.
-- **Remote players are treated exactly like local ones:** a name is the identity of a player.
-  The same people may already have played X01 together on Autodarts, so they can exist in the
-  players table already. No hidden flag, no site label, no extra column.
+- **Remote players are guests:** a player of another site is stored as `name@site`, a hidden
+  player of the `guest` kind, so he never counts as, or merges with, a local player. The circle
+  admin can map a guest to a local player.
 - **Consequence:** the lobby must refuse a name that is already in it (two sites cannot both
   have "anna" in one match).
 
@@ -89,8 +88,7 @@ Working record for GitHub issue #10, decided step by step with pmo on the
 
 ## 10. Testing
 
-- **Decision:** shared protocol test cases (JSON) used by both the Worker (vitest with
-  miniflare) and the Python client (against a fake relay), a documented manual smoke test
+- **Decision:** shared protocol test cases (JSON) used by both the Worker (plain vitest) and the Python client (against a fake relay), a documented manual smoke test
   with two Breakfast instances against `wrangler dev`, and an automated end-to-end test in
   which two real Python clients play a whole match against a locally started Worker.
 - **Why:** differences between the two sides show up in the tests, not in a live match;

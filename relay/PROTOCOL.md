@@ -160,7 +160,7 @@ tries per 15 minutes per address. Without the secrets the routes answer 503.
 
 | Route | Purpose |
 |---|---|
-| `GET /admin/sites` | every registered location with what it reported: `{id, name, registered_at, approved, approved_at, last_seen, version, players, state}` |
+| `GET /admin/sites` | every registered location with what it reported: `{id, name, registered_at, approved, approved_at, last_seen, version, refetch, players, state}` |
 | `POST /admin/sites/<id>/approve` and `/remove` | put a site into the circle or take it out (its mappings and rules stay) |
 | `POST /admin/sites/<id>/refetch` | raise the `refetch` counter of an approved site (409 when it is not approved): it fetches all the records meant for it again, after a rule or a mapping changed |
 | `GET /admin/players`, `POST /admin/players` `{name}`, `DELETE /admin/players/<id>` | the circle players with their mappings and the sites of their rule; delete takes mappings and rules with it |
