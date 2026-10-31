@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Taking back the turn that ended a match no longer leaves the board count of its darts behind, so the next turn is read from an empty board and the sites stay in step. (#116)
+
 ## [1.12.1] - 2026-10-25
 
 ### Fixed

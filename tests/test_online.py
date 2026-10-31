@@ -584,6 +584,17 @@ class TestMatch:
         assert h.db._conn.execute("SELECT COUNT(*) FROM elimination_results").fetchone()[0] == 0
         assert h.db._conn.execute("SELECT ended_at FROM matches").fetchone()[0] is None
 
+    def test_the_turn_after_a_taken_back_match_end_is_replayed_from_an_empty_board(self, h):
+        conn = self._start(h)
+        self._small_turns(h, conn, 4)
+        conn.push({"type": "undone", "seq": 4, "player": "carl", "site": "Club", "epoch": 1})
+        assert _wait(lambda: h.ctrl.game.state == "playing" and h.ctrl.game.turn_seq == 3)
+        conn.push({"type": "turn", "seq": 4, "player": "carl", "throws": [_w(20, 3)] * 2,
+                   "next_player": "anna", "eliminated": [], "winner": None, "site": "Club"})
+        assert _wait(lambda: h.ctrl.game.turn_seq == 4)
+        game = h.ctrl.game
+        assert game.state == "playing" and game.current_player == "anna" and game.lives["carl"] == 1
+
     def test_a_refused_undo_is_shown_to_the_user(self, h):
         conn = self._start(h)
         conn.push({"type": "undo_rejected", "seq": 1, "reason": "only the last turn can be taken back"})

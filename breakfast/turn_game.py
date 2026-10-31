@@ -284,6 +284,10 @@ class TurnGame:
             self._forget_stored_turn(snap, was_finished)
         self._current_darts = []
         self._dart_overrides = {}
+        if was_finished:
+            # A finished game ignores the board, so the count of the darts that ended it is stale.
+            self._prev_count = 0
+            self._await_pull = self._board_count > 0
         self._turn_snapshot = None
         self._publish_state()
         self._publish_turn(reset=True)
