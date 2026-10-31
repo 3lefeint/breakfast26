@@ -140,7 +140,7 @@ class X01Game(TurnGame):
         self.opened = {p: in_mode == "straight" for p in players}
         self.winner = None
         self.phase = "bull_off" if self.bull_off else "playing"
-        self._bo = {"final": [], "todo": [bull_off_order], "dist": {}, "shown": {}}      # the bull-off: who is placed, who throws, the distances
+        self._bo = {"final": [], "todo": [bull_off_order], "dist": {}, "shown": {}, "throws": {}}      # the bull-off: who is placed, who throws, the distances
         self.current = self._bo_thrower() if self.bull_off else self.order[0]
         self._match_started = False
         self._silent = False             # a correction of a finished turn makes no calls
@@ -446,7 +446,7 @@ class X01Game(TurnGame):
         """Nobody checked out within the max rounds: everybody throws one dart at the bull, the closest wins the leg.
         Players tied for the closest throw again."""
         self.tiebreak, self.phase = True, "bull_off"
-        self._bo = {"final": [], "todo": [list(self.order)], "dist": {}, "shown": {}}
+        self._bo = {"final": [], "todo": [list(self.order)], "dist": {}, "shown": {}, "throws": {}}
         self._one_dart_taken = False
         self.current = self._bo_thrower()
         self._turn_start = self._state_of()
@@ -516,8 +516,15 @@ class X01Game(TurnGame):
         distance = self._bull_distance(throw)
         self._bo["dist"][player] = distance
         self._bo["shown"][player] = distance
+        self._bo.setdefault("throws", {})[player] = self._dart_marker(throw)
         self._last_turn_throws, self._last_turn_player = [throw], player
         self._changed()
+
+    def _dart_marker(self, throw):
+        """Where a dart of the bull-off sits on the board (rounded, it is part of what the sites compare), None for a
+        dart without a position."""
+        dart = self.board_dart(throw)
+        return {"x": round(float(dart["x"]), 4), "y": round(float(dart["y"]), 4)} if dart["x"] is not None else None
 
     def _bull_off_set_dart(self, throw):
         """The dart of the visit, or the new place of the dart that counted already (it was corrected)."""
@@ -528,6 +535,7 @@ class X01Game(TurnGame):
         distance = self._bull_distance(throw)
         self._bo["dist"][player] = distance
         self._bo["shown"][player] = distance
+        self._bo.setdefault("throws", {})[player] = self._dart_marker(throw)
         self._last_turn_throws = [throw]
         self._changed()
 
@@ -561,7 +569,8 @@ class X01Game(TurnGame):
                 if len(split[0]) == 1:
                     self._decide_leg(split[0][0])
                     return
-                self._bo = {"final": [], "todo": [split[0]], "dist": {}, "shown": self._bo["shown"]}
+                self._bo = {"final": [], "todo": [split[0]], "dist": {}, "shown": self._bo["shown"],
+                            "throws": self._bo.get("throws", {})}
                 tie = True
             else:
                 self._bo["todo"][0:1] = split
@@ -931,6 +940,7 @@ class X01Game(TurnGame):
                     "current": p == cp,
                     "bot": self.bot_levels.get(p),
                     "bull_off_mm": round(self._bo["shown"][p] * 170) if p in self._bo["shown"] else None,
+                    "bull_off_dart": (self._bo.get("throws") or {}).get(p),
                     "placed": p in self._bo["final"],
                 }
                 for p in (self.order if self.phase == "playing" else list(self._bo["final"]) + [

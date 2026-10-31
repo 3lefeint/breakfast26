@@ -14,6 +14,7 @@
   import OnlineBanner from '../../lib/components/OnlineBanner.svelte';
   import { abortTournament, roundName } from '../../lib/tournament.js';
   import DartBoard from '../../lib/components/DartBoard.svelte';
+  import { gameState } from '../../lib/stores/gameState.js';
   import DartCorrectModal from './DartCorrectModal.svelte';
 
   let { x, tournament = null, online = null } = $props();
@@ -22,8 +23,10 @@
 
   let starting = $derived(x.phase !== 'bull_off');
   let lastThrow = $derived(x.last_turn?.darts?.[0] || null);
-  // The dart is on the board until it is pulled: then it is shown, and nothing after that.
-  let markers = $derived(x.pull_darts && lastThrow ? [{ n: 1, x: lastThrow.x, y: lastThrow.y }] : []);
+  // Every dart of the bull-off stays on the board with the avatar of its player until the bull-off is over, so everybody
+  // sees who landed where.
+  let markers = $derived(x.players.filter((p) => p.bull_off_dart)
+    .map((p) => ({ n: p.name, x: p.bull_off_dart.x, y: p.bull_off_dart.y, avatar: { name: p.name, color: $gameState.player_colors?.[p.name] || null } })));
   let correcting = $state(false);
   let correctingLast = $state(null);
   // The bull-off after the max rounds, before anybody threw: the last turn can still be corrected, it may have been a

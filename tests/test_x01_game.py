@@ -953,7 +953,7 @@ class TestOnlineBullOff:
         game.remote_dart("bo", [hit(25, 1, x=0.05, y=0.0)])       # bo moved his dart
         game.remote_turn("bo", [hit(25, 1, x=0.05, y=0.0)])
         assert game.phase == "playing" and game.order == ["bo", "ana"]
-        assert round(game._bo["shown"]["bo"], 3) == 0.05
+        assert round(game._bo["shown"]["bo"], 3) == 0.05 and game._bo["throws"]["bo"] == {"x": 0.05, "y": 0.0}
 
     def test_both_sites_come_to_the_same_state_hash(self):
         a, _ = self.game()
@@ -971,4 +971,26 @@ class TestOnlineBullOff:
         a.remote_dart("bo", [hit(25, 1, x=0.3, y=0.0)])
         a.remote_dart("bo", [hit(25, 1, x=0.05, y=0.0)])
         a.remote_turn("bo", [hit(25, 1, x=0.05, y=0.0)])
+        assert a.state_hash() == b.state_hash()
+
+    def test_the_darts_stay_on_the_board_until_the_bull_off_is_over(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(25, 1, x=0.5, y=0.0)])
+        game.on_board_state(0, [])
+        snap = game.snapshot()
+        assert {p["name"]: p["bull_off_dart"] for p in snap["players"]} == {"ana": {"x": 0.5, "y": 0.0}, "bo": None}
+        game.remote_dart("bo", [hit(25, 1, x=-0.1, y=0.2)])
+        assert {p["name"]: p["bull_off_dart"] for p in game.snapshot()["players"]}["bo"] == {"x": -0.1, "y": 0.2}
+        assert {p["name"]: p["bull_off_dart"] for p in game.snapshot()["players"]}["ana"] == {"x": 0.5, "y": 0.0}
+
+    def test_a_position_that_came_over_the_wire_as_a_whole_number_gives_the_same_hash(self):
+        a, _ = self.game()
+        b_online = FakeOnline()
+        b = X01Game(["ana", "bo"], lambda e: None, start=301, start_delay=0, keep_order=True, online=b_online,
+                    local_players=["bo"], bull_off=True)
+        b.announce_start()
+        a.on_board_state(1, [hit(25, 1, x=0.4, y=0.0)])
+        a.on_board_state(0, [])
+        b.remote_dart("ana", [hit(25, 1, x=0.4, y=0)])                 # the relay passes 0.0 on as 0
+        b.remote_turn("ana", [hit(25, 1, x=0.4, y=0)])
         assert a.state_hash() == b.state_hash()
