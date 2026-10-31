@@ -614,6 +614,9 @@ class EliminationGame(TurnGame):
         if self.online and not self.is_local(self.current_player):
             return      # a remote player's darts are corrected at their own site
         super().correct_current_dart(dart_index, field, point)
+        if self.online and not self._remote and self._last_throws:
+            # a dart set or corrected by hand goes to the other sites as it changes, like those of the board (_dart_seen)
+            self.online.send_dart(self.turn_seq + 1, self.current_player, self._last_throws)
 
     def next_turn(self):
         if self.online and not self.is_local(self.current_player):

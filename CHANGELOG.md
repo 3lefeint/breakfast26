@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- A dart set or corrected by hand in an online Elimination match reaches the other sites at once, not only when the turn ends.
 - The copy button of an invitation code copies over plain http too, where the browser has no clipboard API.
 - Taking back the turn that ended a match no longer leaves the board count of its darts behind, so the next turn is read from an empty board and the sites stay in step. (#116)
 

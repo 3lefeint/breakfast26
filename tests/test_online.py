@@ -778,3 +778,21 @@ def test_a_match_of_the_same_game_is_joined(h):
                      "rules": {"start": 301, "in_mode": "straight", "out_mode": "double", "legs": 1, "bull_off": True, "max_rounds": None}})
     assert _wait(lambda: h.session.status()["lobby"]["game"] == "x01")
     assert h.session.status()["phase"] == "lobby"
+
+
+def test_a_dart_set_by_hand_goes_to_the_other_sites_as_it_changes(h):
+    h.session.create("ws://relay", "Home", "pw")
+    conn = h.conns[0]
+    conn.push(STARTED)
+    assert _wait(lambda: h.ctrl.game is not None)
+    game = h.ctrl.game
+    assert game.current_player == "anna"
+    game.correct_current_dart(0, "T20", {"x": 0.0, "y": 0.6})
+    game.correct_current_dart(1, "S5")
+    darts = [f for f in conn.sent if f["type"] == "dart"]
+    assert [len(f["throws"]) for f in darts] == [1, 2] and darts[0]["seq"] == 1 and darts[1]["player"] == "anna"
+    assert darts[0]["throws"][0]["number"] == 20 and darts[0]["throws"][0]["multiplier"] == 3
+    before = len(conn.sent)
+    game.current_idx = game.order.index("carl")                   # carl plays at the other site
+    game.correct_current_dart(0, "T20")
+    assert len(conn.sent) == before
