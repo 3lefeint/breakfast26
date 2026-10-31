@@ -378,7 +378,7 @@ class TestMatch:
         with pytest.raises(RelayError):
             h.session.rematch()                                 # still playing
         conn.push({"type": "ended", "reason": "aborted", "placements": []})
-        assert _wait(lambda: h.session.status()["phase"] == "ended")
+        assert _wait(lambda: h.session.status()["phase"] == "idle")
         with pytest.raises(RelayError):
             h.session.rematch()                                 # aborted, nothing to repeat
 
@@ -398,11 +398,19 @@ class TestMatch:
         assert _wait(lambda: h.ctrl.game.state == "finished")
         assert h.ctrl.game.winner == "anna"
 
-    def test_an_aborted_match_stops_the_game(self, h):
+    def test_an_aborted_match_stops_the_game_and_closes_the_session_at_once(self, h):
         conn = self._start(h)
         conn.push({"type": "ended", "reason": "aborted", "placements": []})
         assert _wait(lambda: h.ctrl.game is None)
-        assert h.session.status()["result"]["reason"] == "aborted"
+        assert _wait(lambda: not h.session.active)              # no result to close by hand, back to the start page
+        assert conn.closed and h.session.status()["message"] is None
+
+    def test_a_match_that_ended_in_a_desync_stays_open_with_its_message(self, h):
+        conn = self._start(h)
+        conn.push({"type": "desync", "seq": 1, "hashes": {"Home": "a", "Club": "b"}})
+        conn.push({"type": "ended", "reason": "desync", "placements": []})
+        assert _wait(lambda: h.session.status()["phase"] == "ended")
+        assert "no longer agree" in h.session.status()["message"]
 
     def test_pause_and_decision_are_kept(self, h):
         conn = self._start(h)
@@ -743,14 +751,14 @@ def test_the_steps_of_an_online_match_are_logged(h, caplog):
     h.session.set_players(["anna"])
     conn.push(STARTED)
     assert _wait(lambda: h.ctrl.game is not None)
-    conn.push({"type": "ended", "reason": "aborted", "placements": []})
+    conn.push({"type": "ended", "reason": "finished", "placements": [{"player": "anna", "placement": 1}, {"player": "carl", "placement": 2}]})
     assert _wait(lambda: h.session.status()["phase"] == "ended")
     h.session.leave()
     text = [r.getMessage() for r in caplog.records]
     for expected in ("opened the lobby K7M2QX as Home", "connected to the match K7M2QX as Home (host), lobby",
                      "the lobby is now Home: anna; Club: carl; x01 {'start': 301", "this site plays with ['anna']",
                      "the match m-online starts (elimination), order ['anna', 'carl'], played here: ['anna']",
-                     "the match ended (aborted)", "leaving the match K7M2QX"):
+                     "the match ended (finished)", "leaving the match K7M2QX"):
         assert any(expected in line for line in text), (expected, text)
 
 

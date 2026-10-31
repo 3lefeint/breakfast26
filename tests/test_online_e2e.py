@@ -478,3 +478,17 @@ def test_the_darts_of_a_turn_in_progress_reach_the_other_site_also_when_set_by_h
     assert _wait(lambda: other_site.ctrl.game.snapshot()["current_darts"] == [60, 5]), other_site.ctrl.game.snapshot()["current_darts"]
     home.session.leave()
     club.session.leave()
+
+
+def test_when_the_host_ends_the_match_every_site_is_back_at_the_start_at_once(relay_url):
+    home, club = _x01_site(["anna"]), _x01_site(["carl"])
+    code = home.session.create(relay_url, "Home", "pw")
+    club.session.join(relay_url, code, "Club", "pw")
+    home.session.set_players(home.players)
+    club.session.set_players(club.players)
+    assert _wait(lambda: sum(len(s["players"]) for s in home.session.status()["lobby"]["sites"]) == 2)
+    home.session.start(3, ["anna", "carl"], "x01", {**X01_RULES, "bull_off": False})
+    assert _wait(lambda: home.ctrl.game and club.ctrl.game)
+    home.session.leave()                                     # the host ends the match
+    assert _wait(lambda: not club.session.active and club.ctrl.game is None)
+    assert club.session.status()["message"] is None

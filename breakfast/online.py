@@ -702,18 +702,24 @@ class OnlineSession:
         """The match is of another game than the page this site joined from: leave again and say why."""
         label = {"x01": "X01", "elimination": "Elimination"}.get(kind, kind)
         log.info("Online: left the match %s, it is %s and not %s", self.code, kind, self.expected_game)
+        self._send({"type": "leave"})
+        self._end_quietly()
+        with self._lock:
+            self.phase = "ended"
+            self.message = f"This is an {label} match, join it on the {label} page."
+
+    def _end_quietly(self):
+        """Close the connection and forget the match: back to the start page, without a result and without a message."""
         with self._lock:
             conn, self._closing = self._conn, True
-        self._send({"type": "leave"})
         try:
-            conn.close()
+            if conn is not None:
+                conn.close()
         except Exception:
             pass
         with self._lock:
             self._conn = None
             self._reset()
-            self.phase = "ended"
-            self.message = f"This is an {label} match, join it on the {label} page."
             self._closing = False
 
     def _on_lobby(self, f):
@@ -839,6 +845,12 @@ class OnlineSession:
 
     def _on_ended(self, f):
         log.info("Online: the match ended (%s)", f["reason"])
+        if f["reason"] == "aborted":
+            # The host ended the match, left, or the code ran out: every site goes back to the start page at once.
+            controller = self.controller
+            self._end_quietly()
+            controller.stop()
+            return
         with self._lock:
             self.phase, self.result, self.paused, self.decision = "ended", {"reason": f["reason"], "placements": f["placements"]}, None, None
         if f["reason"] == "finished":

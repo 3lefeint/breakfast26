@@ -10,6 +10,7 @@
 
 ### Changed
 
+- An online match that the host ends or leaves ends at every site at once; nobody has to close it by hand.
 - The darts of the bull-off stay on the board with the avatar of their player until the bull-off is over.
 - The log tells the steps of an online match: opening and joining the lobby, the players and rules, the start, the end with its reason and every lost connection, at the installation and at the relay.
 - The online lobby has no ready button any more: the host starts the match when the players are there.
