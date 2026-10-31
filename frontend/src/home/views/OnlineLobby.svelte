@@ -9,6 +9,7 @@
   import { apiJson } from '../../lib/api.js';
   import { shownName } from '../../lib/util.js';
   import { openVoiceChat } from '../../lib/voice.js';
+  import Toggle from '../../lib/components/Toggle.svelte';
 
   let configured = $state(true);
   let site = $state('');
@@ -22,6 +23,7 @@
 
   let lives = $state(3);
   let order = $state([]);
+  let randomOrder = $state(true);       // drawn when the host starts, so nobody sees an order before
 
   onMount(async () => {
     const res = await fetch('/api/online').then((r) => r.json()).catch(() => null);
@@ -96,6 +98,7 @@
     if (key === proposed) return;
     proposed = key;
     order = lobby.order.filter((p) => everyone.includes(p));
+    randomOrder = false;        // the order of a rematch comes from the rules of the game
     if (lobby.lives) lives = lobby.lives;
   });
 
@@ -108,15 +111,15 @@
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j], order[i]];
   }
-  function shuffle() {
-    const a = order.slice();
+  function shuffled(arr) {
+    const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
     }
-    order = a;
+    return a;
   }
-  const start = () => run('/api/online/start', { lives, order });
+  const start = () => run('/api/online/start', { lives, order: randomOrder ? shuffled(order) : order });
   const ownerOf = (name) => $online.lobby.sites.find((s) => s.players.includes(name))?.site;
 </script>
 
@@ -190,17 +193,21 @@
     </div>
 
     {#if $online.host}
-      <div class="elim-section-title">{t('Order')} <span class="hint">{t('(order = play order)')}</span></div>
-      <ul class="order">
-        {#each order as name, i (name)}
-          <li>
-            <span class="num">{i + 1}</span>
-            <span class="player-name-text">{shownName(name)} <span class="hint">· {ownerOf(name)}</span></span>
-            <button class="btn-icon" onclick={() => move(i, -1)} disabled={i === 0}>↑</button>
-            <button class="btn-icon" onclick={() => move(i, +1)} disabled={i === order.length - 1}>↓</button>
-          </li>
-        {/each}
-      </ul>
+      <div class="elim-section-title">{t('Order')} {#if !randomOrder}<span class="hint">{t('(order = play order)')}</span>{/if}</div>
+      {#if randomOrder}
+        <p class="note">{t('The order is drawn when the match starts.')}</p>
+      {:else}
+        <ul class="order">
+          {#each order as name, i (name)}
+            <li>
+              <span class="num">{i + 1}</span>
+              <span class="player-name-text">{shownName(name)} <span class="hint">· {ownerOf(name)}</span></span>
+              <button class="btn-icon" onclick={() => move(i, -1)} disabled={i === 0}>↑</button>
+              <button class="btn-icon" onclick={() => move(i, +1)} disabled={i === order.length - 1}>↓</button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <div class="lives-row">
         <span class="label">{t('Lives per player')}</span>
         <div class="counter">
@@ -208,7 +215,7 @@
           <span class="counter-val">{lives}</span>
           <button class="btn-counter" onclick={() => (lives = Math.min(10, lives + 1))}>+</button>
         </div>
-        <button class="btn btn-add" onclick={shuffle} disabled={order.length < 2}>{t('🔀 Shuffle')}</button>
+        <Toggle bind:checked={randomOrder} label={t('Random order')} />
       </div>
       <button class="btn btn-start" disabled={busy || order.length < 2 || !othersReady} onclick={start}>{t('▶ Start')}</button>
       {#if !othersReady}<p class="note">{t('Waiting for the other sites to be ready…')}</p>{/if}

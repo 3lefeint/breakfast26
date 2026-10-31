@@ -89,6 +89,7 @@ export default {
   'Add new player (starts first)': 'Neuen Spieler hinzufügen (beginnt zuerst)',
   '(order = play order)': '(Reihenfolge = Spielreihenfolge)',
   'Random order': 'Zufällige Reihenfolge',
+  'The order is drawn when the match starts.': 'Die Reihenfolge wird beim Start ausgelost.',
   'Computer opponent': 'Computergegner',
   'Level (3-dart average)': 'Stufe (3-Dart-Average)',
   'Skill': 'Spielstärke',

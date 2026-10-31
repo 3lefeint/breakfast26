@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Online Elimination: a *Random order* switch draws the order when the match starts, instead of a Shuffle button that showed it beforehand; the arrows appear when it is off, and after a rematch it is off with the order of the rematch.
+
 ### Fixed
 
 - Taking back the turn that ended a match no longer leaves the board count of its darts behind, so the next turn is read from an empty board and the sites stay in step. (#116)
