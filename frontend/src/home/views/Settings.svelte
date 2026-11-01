@@ -17,6 +17,9 @@
   import { health } from '../../lib/stores/health.js';
   import { changesOf } from '../../lib/changelog.js';
   import AchievementSounds from './AchievementSounds.svelte';
+  import AchievementList from './AchievementList.svelte';
+  import Scenes from './Scenes.svelte';
+  import Sounds from './Sounds.svelte';
   import LocationsSection from './LocationsSection.svelte';
   import CircleSection from './CircleSection.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
@@ -34,7 +37,7 @@
     audio: { dir: '', profile: '' },
     caller: {
       enabled: true, per_dart: true, turn_total: true, checkout_limit: 1,
-      announce_change: true, call_player: true, ambient_volume: 0.6, call_misses: true,
+      announce_change: true, call_player: true, ambient_volume: 0.6, call_misses: true, fun: false,
     },
     record: { file: '' },
     online: { relay_url: '', site_name: '' },
@@ -55,8 +58,10 @@
     { id: 'caller', label: t('Caller') },
     { id: 'voicepack', label: t('Voice Pack') },
     { id: 'achievements', label: t('Achievements') },
+    { id: 'sounds', label: t('Sounds') },
+    { id: 'scenes', label: t('Scenes') },
   ];
-  let tabs = $derived(cfg.dev?.enabled ? [...TABS, { id: 'dev', label: t('Dev') }] : TABS);
+  let tabs = $derived(cfg.dev?.enabled ? [...TABS, { id: 'dev', label: t('Dev') }, { id: 'achievement-list', label: t('Achievement list') }] : TABS);
   let address = $derived($route.split('/'));   // ['settings', tab, sub-tab]
   let activeTab = $derived(tabs.some((tk) => tk.id === address[1]) ? address[1] : 'appearance');
   let audioTab = $derived(AUDIO_TABS.some((tk) => tk.id === address[2]) ? address[2] : 'caller');
@@ -400,7 +405,7 @@
     addIfDiffers('updates', 'auto_install', cfg.updates.auto_install);
     addIfDiffers('web', 'joke_of_the_day', cfg.web.joke_of_the_day);
     addIfDiffers('web', 'aurora_animation', cfg.web.aurora_animation);
-    for (const key of ['enabled', 'per_dart', 'turn_total', 'announce_change', 'call_player', 'call_misses']) {
+    for (const key of ['enabled', 'per_dart', 'turn_total', 'announce_change', 'call_player', 'call_misses', 'fun']) {
       addIfDiffers('caller', key, cfg.caller[key]);
     }
 
@@ -439,7 +444,7 @@
     'caller.enabled': t('Caller enabled'), 'caller.per_dart': t('Call every dart'),
     'caller.turn_total': t('Call turn total'), 'caller.checkout_limit': t('Repeat same Checkout limit'),
     'caller.announce_change': t('Call player change'), 'caller.call_player': t('Call player names'),
-    'caller.ambient_volume': t('Ambient volume (0 = off)'), 'caller.call_misses': t('Call a Miss'),
+    'caller.ambient_volume': t('Ambient volume (0 = off)'), 'caller.call_misses': t('Call a Miss'), 'caller.fun': t('Fun mode'),
     'record.file': t('Recording file'), 'web.port': t('Web UI port'),
   };
   const labelOf = (key) => KEY_LABELS[key] ?? key;
@@ -706,7 +711,19 @@
   <AchievementSounds />
 {/if}
 
-<form onsubmit={save} hidden={activeTab === 'audio' && audioTab === 'achievements'}>
+{#if activeTab === 'audio' && audioTab === 'sounds'}
+  <Sounds />
+{/if}
+
+{#if activeTab === 'audio' && audioTab === 'scenes'}
+  <Scenes />
+{/if}
+
+{#if activeTab === 'achievement-list'}
+  <AchievementList />
+{/if}
+
+<form onsubmit={save} hidden={activeTab === 'achievement-list' || (activeTab === 'audio' && (audioTab === 'achievements' || audioTab === 'sounds' || audioTab === 'scenes'))}>
   {#if activeTab === 'appearance'}
     <div class="settings-section">
       <div class="settings-section-title">{t('Display')}</div>
@@ -823,6 +840,7 @@
         <div class="settings-row"><label for="sCallerChange">{t('Call player change')}</label><input type="checkbox" id="sCallerChange" bind:checked={cfg.caller.announce_change}></div>
         <div class="settings-row"><label for="sCallerPlayer">{t('Call player names')}</label><input type="checkbox" id="sCallerPlayer" bind:checked={cfg.caller.call_player}></div>
         <div class="settings-row"><label for="sCallerAmbient">{t('Ambient volume (0 = off)')}</label><input type="number" id="sCallerAmbient" min="0" max="1" step="0.1" bind:value={cfg.caller.ambient_volume}></div>
+        <div class="settings-row"><label for="sCallerFun">{t('Fun mode')}</label><input type="checkbox" id="sCallerFun" bind:checked={cfg.caller.fun}></div>
       </div>
     {:else if audioTab === 'voicepack'}
       <div class="settings-section">

@@ -16,6 +16,7 @@ own account and needs no other add-on.
 - [Voice caller](#voice-caller-and-voice-packs): announces the game, with English and German voice packs and an editor for your own
 - [Statistics](#statistics): averages, records, heatmaps and leaderboards
 - [Achievements](#achievements): badges for milestones such as a 180 or a nine-dart leg
+- [Scenes](#scenes): sounds and effects at special moments of a game, drawn as a flow
 - [Online play](#online-play): play one Elimination or X01 match together with players at other locations
 - [Circle of friends](#circle-of-friends): installations of a group of friends share their matches and talk in voice chat channels, so a player has his statistics and achievements wherever he plays
 - [Usage reports](#usage-reports): optional anonymous usage and error reports, off by default
@@ -257,6 +258,23 @@ When a match ends, the TV announces what was earned, and the result page of the 
 match in the Stats page):
 
 <img src="media/achievement-banner.webp" alt="The achievement banner on the TV view" width="420">
+
+### Scenes
+
+A scene says what happens at a special moment of a game: a 180, a bust, a lost life, the start of a player's turn. It is drawn
+as a flow in **Settings → Audio & Voice → Scenes**. A *trigger* names the moment (X01 or Elimination), *conditions* let the flow
+go on or stop it (a score from 140 on, a chance of 1 in 10, one player), *actions* play a call of the voice pack or a sound of the
+sound library, show confetti, a flash or a banner on the TV view, or wait. Select a node and add the next one to connect them,
+or drag from the dot below a node to another node. The flows run from top to bottom. A condition leads on at **yes** or **no** (if / else, and an else-if is another condition on *no*). *Random* takes one of the next steps by chance (a connection can have a weight), *Once* lets the flow through the first time per match or leg, also per player, *Achievement* asks whether the player of the moment has earned an achievement before (from a tier on), and the **Fun mode** switch (Settings → Audio & Voice → Caller) is a fact every scene can ask for, so a sound can play only in the fun mode (`fun = true` under `[caller]` in `config.toml`). Upload sounds in the **Sounds** tab: the editor cuts the part you pick, sets a fade in and out (handles on the waveform, the white one for the length, the colored one for the curve) and brings every sound to the same loudness (needs `ffmpeg`, which the Docker image and the Windows build include); the waveform zooms with Ctrl + wheel, a click plays, the space bar starts and stops;
+**Test** plays a scene once with sample values, sound and effects, and names a step that could not run. A scene works as soon as it is saved.
+
+The editor can fill the whole window (the corner icon next to **Fit**), zooms with Ctrl + wheel, moves its view when you drag the background, selects several nodes with Shift and a frame, removes a connection or a node with a double or middle click, and undoes with Ctrl+Z and Ctrl+Y.
+
+The calls a game makes by itself are the **standard scenes** of the page, listed under the title of their game: for X01 the start
+of a match and of a leg, the turn start with the checkout call, the turn total with the ambient sound, a bust, a won leg and match
+(only the call of each dart stays in the program); for Elimination the start, the score, a lost life, `close` and the winner.
+Open one to see what the game does at that moment, change it, and **Back to the original** takes your change away. A sound
+of a scene of your own that is set to replace the call keeps the standard scenes of its moment from running.
 
 ### Online play
 

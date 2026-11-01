@@ -5,6 +5,7 @@ import time
 from breakfast.state import GameState
 from breakfast.output_console import print_state
 from breakfast.mqtt_output import MqttPublisher
+from breakfast.scenes import SceneEngine, run_x01
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,10 @@ def run_replay(file, speed, mqtt_enabled=True, mqtt_host=None, mqtt_port=1883,
         log.warning("[caller] is configured but [audio] dir is not set — "
                     "voice caller disabled")
 
+    scenes = SceneEngine(None, audio=audio)
+    if caller:
+        scenes.ambient_volume = caller.ambient_volume
+
     if web_port:
         web.wire(state, None, None, config_path=config_path, audio_engine=audio)
         web.start(web_port)
@@ -60,8 +65,8 @@ def run_replay(file, speed, mqtt_enabled=True, mqtt_host=None, mqtt_port=1883,
             data = entry["payload"]
 
             evt = state.update(data)
-            if caller:
-                caller.on_event(evt, state.snapshot())
+            if evt:
+                run_x01(scenes, caller, evt, state.snapshot())
             if log_events:
                 print_state(state)
 

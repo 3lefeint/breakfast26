@@ -28,6 +28,17 @@ class FakeAudio:
         return contextlib.nullcontext()
 
 
+def drive(caller, evt, snapshot):
+    """An event of the X01 stream the way the program handles it: the caller, then the scenes (the standard scenes make the
+    calls of the lifecycle)."""
+    from breakfast.scenes import SceneEngine, run_x01
+    engine = getattr(caller, "_test_scenes", None)
+    if engine is None:
+        engine = caller._test_scenes = SceneEngine(None, audio=caller.audio)
+        engine.ambient_volume = caller.ambient_volume
+    run_x01(engine, caller, evt, snapshot)
+
+
 @pytest.fixture
 def db():
     return StatsDB(":memory:")

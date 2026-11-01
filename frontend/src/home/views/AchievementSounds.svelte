@@ -1,10 +1,9 @@
 <script>
-  import { confirmDialog } from '../../lib/confirm.js';
   import { t } from '../../lib/i18n.js';
   // Settings → Achievements (shown with the Dev tab): which sound each achievement plays when it is
   // earned. Every achievement lists what plays now (an assignment, the `achievement_<id>` file or the
   // general `achievement` file) and can be given one or more files of the achievements folder, which are
-  // previewed here. The Files section uploads, renames and deletes the files themselves. A change is saved at once into `[achievements.sounds]`
+  // previewed here. The files themselves are managed in the Sounds tab. A change is saved at once into `[achievements.sounds]`
   // of config.toml and applies without a restart.
   import { onMount } from 'svelte';
   import { shownName } from '../../lib/util.js';
@@ -19,9 +18,6 @@
   let message = $state('');
   let search = $state('');
   let mode = $state('all');
-  let uploading = $state(false);
-  let renaming = $state(null);
-  let newName = $state('');
   let playing = null;
 
   async function load() {
@@ -56,53 +52,6 @@
   const add = (a, file) => file && assign(a, [...a.assigned, file]);
   const remove = (a, file) => assign(a, a.assigned.filter((f) => f !== file));
 
-  async function upload(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    uploading = true;
-    message = '';
-    try {
-      const res = await fetch(`${URL}/upload?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file })
-        .then((r) => r.json());
-      message = res.error ? t(res.error) : t('Uploaded {file}.', { file: res.file });
-      if (!res.error) await load();
-    } catch (e) {
-      message = t('The upload failed.');
-    } finally {
-      uploading = false;
-    }
-  }
-
-  function startRename(file) {
-    renaming = file;
-    newName = file;
-  }
-
-  async function rename(file) {
-    message = '';
-    const res = await fetch(`${URL}/files/${encodeURIComponent(file)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }),
-    }).then((r) => r.json());
-    if (res.error) { message = t(res.error); return; }
-    renaming = null;
-    await load();
-  }
-
-  async function removeFile(f) {
-    const users = f.used_by.map((u) => u.names?.en || u.id).join(', ');
-    const warning = users ? '\n\n' + t('It is assigned to: {users}. It is taken out there.', { users }) : '';
-    if (!await confirmDialog(t('Delete {name}?', { name: f.name }) + warning)) return;
-    message = '';
-    const res = await fetch(`${URL}/files/${encodeURIComponent(f.name)}`, { method: 'DELETE' }).then((r) => r.json());
-    if (res.error) { message = t(res.error); return; }
-    await load();
-  }
-
-  function size(bytes) {
-    return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
-  }
-
   function describe(a) {
     const now = a.plays_now;
     if (now.source === 'none') return t('No sound');
@@ -119,37 +68,7 @@
     {t('Without an assignment an achievement plays')} <code>achievement_&lt;id&gt;.mp3</code> {t('from the achievements folder, else')} <code>{t('achievement.mp3')}</code>{t('. Give it one or more files here and one of them is picked at random.')}
   </div>
 
-  <div class="files">
-    <div class="files-head">
-      <span class="files-title">{t('Files in the achievements folder')}</span>
-      <label class="upload" class:busy={uploading}>
-        {uploading ? t('Uploading…') : t('⬆ Upload an mp3')}
-        <input type="file" accept=".mp3,audio/mpeg" onchange={upload} disabled={uploading}>
-      </label>
-    </div>
-    {#if !data.file_details.length}
-      <div class="empty small">{t('No sound files yet. Upload an mp3.')}</div>
-    {:else}
-      <ul class="file-list">
-        {#each data.file_details as f (f.name)}
-          <li>
-            <button type="button" class="play" title={t('Preview')} onclick={() => preview(f.name)}>▶</button>
-            {#if renaming === f.name}
-              <input class="rename" type="text" bind:value={newName} aria-label={t('New name of {name}', { name: f.name })}
-                     onkeydown={(e) => { if (e.key === 'Enter') rename(f.name); if (e.key === 'Escape') renaming = null; }}>
-              <button type="button" class="act" onclick={() => rename(f.name)}>{t('Save')}</button>
-              <button type="button" class="act" onclick={() => (renaming = null)}>{t('Cancel')}</button>
-            {:else}
-              <span class="fname">{f.name}</span>
-              <span class="fmeta">{size(f.size)}{f.used_by.length ? ` · ${t('used by {n}', { n: f.used_by.length })}` : ''}</span>
-              <button type="button" class="act" onclick={() => startRename(f.name)}>{t('Rename')}</button>
-              <button type="button" class="act danger" onclick={() => removeFile(f)}>{t('Delete')}</button>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
+  <div class="note">{t('The files are uploaded, cut and renamed in the Sounds tab.')}</div>
 
   <div class="toolbar">
     <input type="search" placeholder={t('Search')} bind:value={search} aria-label={t('Search achievements')}>
@@ -200,25 +119,6 @@
     padding: 0.4rem 0.6rem; font-family: inherit; font-size: 0.85rem;
   }
   input[type="search"] { flex: 1; min-width: 10rem; }
-  .upload {
-    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; padding: 0.4rem 0.8rem;
-    font-size: 0.85rem; cursor: pointer; color: var(--text);
-  }
-  .upload:hover { border-color: var(--accent); }
-  .upload.busy { opacity: 0.6; cursor: default; }
-  .upload input { display: none; }
-  .files { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.65rem 0.8rem; margin-bottom: 1rem; }
-  .files-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
-  .files-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-  .file-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
-  .file-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--glass-border); flex-wrap: wrap; }
-  .file-list li:first-child { border-top: none; }
-  .fname { font-size: 0.85rem; flex: 1; min-width: 8rem; word-break: break-all; }
-  .fmeta { font-size: 0.75rem; color: var(--muted); }
-  .rename { flex: 1; min-width: 8rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text); padding: 0.25rem 0.5rem; font-family: inherit; font-size: 0.85rem; }
-  .act { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted); padding: 0.15rem 0.6rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; }
-  .act:hover { border-color: var(--accent); color: var(--text); }
-  .act.danger:hover { border-color: var(--red); color: var(--red); }
   .empty.small { padding: 0.5rem 0; font-size: 0.85rem; }
   .message { font-size: 0.85rem; color: var(--yellow); margin-bottom: 0.75rem; }
   .list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -238,4 +138,5 @@
   .play:hover { color: var(--accent); }
   .play:disabled { cursor: default; opacity: 0.4; }
   .remove:hover { color: var(--red); }
+  .note { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.8rem; }
 </style>

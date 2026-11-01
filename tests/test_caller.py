@@ -1,7 +1,7 @@
 from breakfast.caller import Caller, ModeHandler, from_config
 from breakfast.caller_x01 import X01Caller
 
-from conftest import FakeAudio
+from conftest import FakeAudio, drive
 
 
 def snap(player="anna", idx=0, leg=1, mode="X01"):
@@ -16,24 +16,24 @@ def snap(player="anna", idx=0, leg=1, mode="X01"):
 class TestMatchStart:
     def test_player_then_matchon(self):
         audio = FakeAudio({"anna", "matchon"})
-        Caller(audio).on_event({"type": "match_started", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "match_started", "mode": "X01"}, snap())
         assert audio.played() == ["anna", "matchon"]
 
     def test_matchon_falls_back_to_gameon(self):
         audio = FakeAudio({"anna", "gameon"})
-        Caller(audio).on_event({"type": "match_started", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "match_started", "mode": "X01"}, snap())
         assert audio.played() == ["anna", "gameon"]
 
     def test_unknown_player_falls_back_to_unknown_player_key(self):
         # Replaces the old player{N} numbering entirely.
         audio = FakeAudio({"unknown_player", "matchon"})
-        Caller(audio).on_event({"type": "match_started", "mode": "X01"},
+        drive(Caller(audio), {"type": "match_started", "mode": "X01"},
                                snap(player="unbekannt", idx=2))
         assert audio.played() == ["unknown_player", "matchon"]
 
     def test_player_announce_can_be_disabled(self):
         audio = FakeAudio({"anna", "matchon"})
-        Caller(audio, call_player=False).on_event(
+        drive(Caller(audio, call_player=False), 
             {"type": "match_started", "mode": "X01"}, snap())
         assert audio.played() == ["matchon"]
 
@@ -41,31 +41,31 @@ class TestMatchStart:
 class TestLegStart:
     def test_game_started_plays_gameon(self):
         audio = FakeAudio({"anna", "gameon"})
-        Caller(audio).on_event({"type": "game_started", "mode": "X01"}, snap(leg=2))
+        drive(Caller(audio), {"type": "game_started", "mode": "X01"}, snap(leg=2))
         assert audio.played() == ["anna", "gameon"]
 
 
 class TestWon:
     def test_match_won(self):
         audio = FakeAudio({"matchshot", "anna"})
-        Caller(audio).on_event({"type": "won", "scope": "match", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "won", "scope": "match", "mode": "X01"}, snap())
         assert audio.played() == ["anna", "matchshot"]
 
     def test_match_won_falls_back_to_gameshot(self):
         audio = FakeAudio({"gameshot", "anna"})
-        Caller(audio).on_event({"type": "won", "scope": "match", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "won", "scope": "match", "mode": "X01"}, snap())
         assert audio.played() == ["anna", "gameshot"]
 
     def test_leg_won_real_life_style(self):
         # snapshot leg already incremented by state.py: leg 2 => leg 1 finished
         audio = FakeAudio({"gameshot_l1_n", "anna"})
-        Caller(audio).on_event({"type": "won", "scope": "game", "mode": "X01"},
+        drive(Caller(audio), {"type": "won", "scope": "game", "mode": "X01"},
                                snap(leg=2))
         assert audio.played() == ["anna", "gameshot_l1_n"]
 
     def test_leg_won_fallback_plain_gameshot_plus_leg(self):
         audio = FakeAudio({"gameshot", "leg_3", "anna"})
-        Caller(audio).on_event({"type": "won", "scope": "game", "mode": "X01"},
+        drive(Caller(audio), {"type": "won", "scope": "game", "mode": "X01"},
                                snap(leg=4))
         assert audio.played() == ["anna", "gameshot", "leg_3"]
 
@@ -73,12 +73,12 @@ class TestWon:
 class TestBust:
     def test_bust_ambient_skipped_at_volume_zero(self):
         audio = FakeAudio({"busted", "ambient_noscore"})
-        Caller(audio, ambient_volume=0).on_event({"type": "bust", "mode": "X01"}, snap())
+        drive(Caller(audio, ambient_volume=0), {"type": "bust", "mode": "X01"}, snap())
         assert audio.calls == ["busted"]
 
     def test_bust_plays_ambient_when_on(self):
         audio = FakeAudio({"busted", "ambient_noscore"})
-        Caller(audio).on_event({"type": "bust", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "bust", "mode": "X01"}, snap())
         assert audio.played() == ["busted", "ambient_noscore"]
 
 
@@ -86,41 +86,41 @@ class TestMatchEnded:
     def test_cancelled_match_plays_matchcancel(self):
         audio = FakeAudio({"matchcancel"})
         c = Caller(audio)
-        c.on_event({"type": "match_started", "mode": "X01"}, snap())
-        c.on_event({"type": "match_ended"}, snap())
+        drive(c, {"type": "match_started", "mode": "X01"}, snap())
+        drive(c, {"type": "match_ended"}, snap())
         assert "matchcancel" in audio.played()
 
     def test_won_match_end_is_silent(self):
         audio = FakeAudio({"matchshot", "matchcancel", "anna"})
         c = Caller(audio)
-        c.on_event({"type": "match_started", "mode": "X01"}, snap())
-        c.on_event({"type": "won", "scope": "match", "mode": "X01"}, snap())
-        c.on_event({"type": "match_ended"}, snap())
+        drive(c, {"type": "match_started", "mode": "X01"}, snap())
+        drive(c, {"type": "won", "scope": "match", "mode": "X01"}, snap())
+        drive(c, {"type": "match_ended"}, snap())
         assert "matchcancel" not in audio.calls
 
 
 class TestBust:
     def test_bust_plays_busted(self):
         audio = FakeAudio({"busted"})
-        Caller(audio).on_event({"type": "bust", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "bust", "mode": "X01"}, snap())
         assert audio.played() == ["busted"]
 
 
 class TestAmbient:
     def test_player_specific_ambient_wins(self):
         audio = FakeAudio({"anna", "matchon", "ambient_matchon_anna", "ambient_matchon"})
-        Caller(audio).on_event({"type": "match_started", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "match_started", "mode": "X01"}, snap())
         assert "ambient_matchon_anna" in audio.played()
         assert "ambient_matchon" not in audio.played()
 
     def test_ambient_chain_falls_through_bases(self):
         audio = FakeAudio({"anna", "matchon", "ambient_gameon"})
-        Caller(audio).on_event({"type": "match_started", "mode": "X01"}, snap())
+        drive(Caller(audio), {"type": "match_started", "mode": "X01"}, snap())
         assert "ambient_gameon" in audio.played()
 
     def test_ambient_disabled_by_zero_volume(self):
         audio = FakeAudio({"anna", "matchon", "ambient_matchon"})
-        Caller(audio, ambient_volume=0).on_event(
+        drive(Caller(audio, ambient_volume=0), 
             {"type": "match_started", "mode": "X01"}, snap())
         assert "ambient_matchon" not in audio.calls
 
@@ -132,28 +132,24 @@ class SpyHandler(ModeHandler):
     def on_dart(self, evt, snapshot, audio):
         self.events.append(("dart", evt))
 
-    def on_turn_end(self, evt, snapshot, audio):
-        self.events.append(("turn_end", evt))
-
     def on_match_start(self, snapshot):
         self.events.append(("match_start", None))
 
 
 class TestModeDispatch:
-    def test_dart_and_turn_end_delegated_by_mode_prefix(self):
+    def test_dart_delegated_by_mode_prefix(self):
         audio = FakeAudio(set())
         c = Caller(audio)
         x01 = SpyHandler()
         c.register("X01", x01)
-        c.on_event({"type": "dart", "mode": "X01", "points": 60}, snap())
-        c.on_event({"type": "turn_end", "mode": "X01"}, snap())
-        assert [e[0] for e in x01.events] == ["dart", "turn_end"]
+        drive(c, {"type": "dart", "mode": "X01", "points": 60}, snap())
+        assert [e[0] for e in x01.events] == ["dart"]
 
     def test_unknown_mode_is_ignored(self):
         audio = FakeAudio(set())
         c = Caller(audio)
         c.register("X01", SpyHandler())
-        c.on_event({"type": "dart", "mode": "Shanghai"}, snap(mode="Shanghai"))
+        drive(c, {"type": "dart", "mode": "Shanghai"}, snap(mode="Shanghai"))
         assert audio.calls == []
 
     def test_match_start_resets_handler(self):
@@ -161,7 +157,7 @@ class TestModeDispatch:
         c = Caller(audio)
         x01 = SpyHandler()
         c.register("X01", x01)
-        c.on_event({"type": "match_started", "mode": "X01"}, snap())
+        drive(c, {"type": "match_started", "mode": "X01"}, snap())
         assert ("match_start", None) in x01.events
 
     def test_handler_exception_does_not_propagate(self):
@@ -171,7 +167,7 @@ class TestModeDispatch:
         audio = FakeAudio(set())
         c = Caller(audio)
         c.register("X01", Boom())
-        c.on_event({"type": "dart", "mode": "X01"}, snap())   # must not raise
+        drive(c, {"type": "dart", "mode": "X01"}, snap())   # must not raise
 
 
 class TestFromConfig:
@@ -207,8 +203,8 @@ class TestFromConfig:
 class TestNoOps:
     def test_none_event_ignored(self):
         audio = FakeAudio({"matchon"})
-        Caller(audio).on_event(None, snap())
+        drive(Caller(audio), None, snap())
         assert audio.calls == []
 
     def test_no_audio_engine_ignored(self):
-        Caller(None).on_event({"type": "match_started"}, snap())   # must not raise
+        drive(Caller(None), {"type": "match_started"}, snap())   # must not raise

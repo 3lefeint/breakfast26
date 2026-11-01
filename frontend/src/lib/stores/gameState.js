@@ -22,9 +22,9 @@ export function connect() {
 
   socket.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    // An earned achievement is announced in the TV view; Home has nothing to show for it, and it
-    // is not a state payload.
-    if (msg.type === 'achievement') return;
+    // An earned achievement and the effect of a scene are shown in the TV view; Home has nothing to show for
+    // them, and they are not state payloads.
+    if (msg.type === 'achievement' || msg.type === 'scene_overlay') return;
     gameState.set(msg);
   };
 

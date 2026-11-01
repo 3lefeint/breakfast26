@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from . import config as cfg_mod
+from . import sound_edit
 from .voicepack import ACHIEVEMENTS_SUBDIR
 
 SECTION = "achievements"
@@ -138,6 +139,7 @@ def rename_file(audio, config_path, old: str, new: str):
     if audio.resolve(new) or (folder / new).exists():
         return "a sound with this name exists already"
     (folder / old).rename(folder / new)
+    audio.files_changed()
     mine = assignments(cfg_mod.load(config_path))
     if any(old in fs for fs in mine.values()):
         _write(config_path, {i: [new if f == old else f for f in fs] for i, fs in mine.items()})
@@ -152,6 +154,7 @@ def delete_file(audio, config_path, name: str):
     if not playable(audio, name):
         return "not a sound of the achievements folder"
     (sound_dir(audio) / name).unlink()
+    audio.files_changed()
     mine = assignments(cfg_mod.load(config_path))
     if any(name in fs for fs in mine.values()):
         _write(config_path, {i: [f for f in fs if f != name] for i, fs in mine.items() if any(f != name for f in fs)})
@@ -159,7 +162,7 @@ def delete_file(audio, config_path, name: str):
     return None
 
 
-def check_upload(audio, name: str, data: bytes):
+def check_upload(audio, name: str, data: bytes, overwrite: bool = False):
     """None if the upload is fine, else why it is not."""
     if not _NAME.match(name or ""):
         return "the name must be letters, digits and . _ + - and end in .mp3"
@@ -171,18 +174,34 @@ def check_upload(audio, name: str, data: bytes):
         return "this does not look like an mp3 file"
     if sound_dir(audio) is None:
         return "no sound directory is configured"
-    if audio.resolve(name):
+    if audio.resolve(name) and not (overwrite and playable(audio, name)):
         return "a sound with this name exists already"
     return None
 
 
-def save_upload(audio, name: str, data: bytes):
+def save_upload(audio, name: str, data: bytes, overwrite: bool = False):
     """Write an uploaded mp3 into the achievements folder. Returns None when saved, else why not."""
-    problem = check_upload(audio, name, data)
+    problem = check_upload(audio, name, data, overwrite)
     if problem:
         return problem
     folder = sound_dir(audio)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / name).write_bytes(data)
     _forget(audio, name)
+    audio.files_changed()
     return None
+
+
+def save_edit(audio, name: str, data: bytes, start: float, end: float, fade_in: float, fade_out: float,
+              overwrite: bool = False, trim: float = 0, curve_in: float = 1, curve_out: float = 1):
+    """Cut, fade and level the sound in *data* and store the result under *name*. Returns None when saved, else why not."""
+    if not _NAME.match(name or ""):
+        return "the name must be letters, digits and . _ + - and end in .mp3"
+    if sound_dir(audio) is None:
+        return "no sound directory is configured"
+    if audio.resolve(name) and not (overwrite and playable(audio, name)):
+        return "a sound with this name exists already"
+    result = sound_edit.render(data, start, end, fade_in, fade_out, trim, curve_in, curve_out)
+    if isinstance(result, str):
+        return result
+    return save_upload(audio, name, result, overwrite)

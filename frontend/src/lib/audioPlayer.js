@@ -21,7 +21,7 @@ export function soundUrl(file, v) {
 }
 
 function clampVolume(v) {
-  return Math.max(0, Math.min(1, v ?? 1));
+  return Math.max(0, Math.min(1.2, v ?? 1));
 }
 
 function defaultContext() {

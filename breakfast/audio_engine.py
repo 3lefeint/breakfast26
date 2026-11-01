@@ -30,10 +30,13 @@ log = logging.getLogger(__name__)
 
 
 class AudioEngine:
-    def __init__(self, dirs, broadcast=None):
+    def __init__(self, dirs, broadcast=None, library_dirs=()):
         """*dirs*: one directory or an ordered search path (first match per
-        key wins — see voicepack.search_dirs())."""
+        key wins — see voicepack.search_dirs()). *library_dirs*: folders of
+        files that are only played by their file name (the sound library of
+        the scenes), never looked up as the sound of a key."""
         self.dirs = [dirs] if isinstance(dirs, str) else list(dirs)
+        self.library_dirs = list(library_dirs)
         self._broadcast = broadcast
         self._cache = {}
         self._batch_local = threading.local()
@@ -44,7 +47,8 @@ class AudioEngine:
         # restart with no profile/config change should not bust the cache,
         # and the profile can't change without a restart anyway (it's not in
         # config.py's RUNTIME_FIELDS).
-        self.version = hashlib.sha1("|".join(self.dirs).encode()).hexdigest()[:10]
+        self._revision = 0
+        self.version = self._hash()
         log.info("Audio engine started (browser playback), dirs=%s", self.dirs)
 
     def play(self, name, prob=1.0, volume=1.0, channel=None, break_last=False):
@@ -127,7 +131,7 @@ class AudioEngine:
         for unknown or unsafe names."""
         if "/" in filename or "\\" in filename or ".." in filename:
             return None
-        for d in self.dirs:
+        for d in self.dirs + self.library_dirs:
             path = os.path.join(d, filename)
             if os.path.isfile(path):
                 return path
@@ -136,6 +140,15 @@ class AudioEngine:
     @staticmethod
     def _default_channel(name):
         return "ambient" if name.startswith("ambient_") else "voice"
+
+    def _hash(self) -> str:
+        return hashlib.sha1(("|".join(self.dirs) + f"#{self._revision}").encode()).hexdigest()[:10]
+
+    def files_changed(self):
+        """A sound file was written, replaced or deleted: the players get a new version in their sound URLs, so a browser
+        does not keep playing the old file under the same name."""
+        self._revision += 1
+        self.version = self._hash()
 
     def invalidate(self, name: str):
         """Drop *name* from the variant-file cache so the next play()/

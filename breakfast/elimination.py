@@ -4,6 +4,7 @@ import logging
 import threading
 
 from .bot import StatsWithoutBots, aim_elimination, darts_elimination
+from .scenes import SceneEngine
 from .turn_game import TurnGame, TurnGameController, dart_positions, parse_field
 
 log = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class EliminationGame(TurnGame):
         self._remote = False       # True while a remote turn is being replayed
         self._outcome_published = False
         self._preview_fired = False
+        self.scenes = None         # the SceneEngine, set by the controller
         if self.stats_db:
             self.stats_db.open_match(self.match_id, self.MODE, lives_count)
         log.info("Game started: %s, %d lives", players, lives_count)
@@ -74,11 +76,18 @@ class EliminationGame(TurnGame):
         if self.audio and calls:
             threading.Timer(_START_ANNOUNCE_AUDIO_DELAY_S, self._play_start_calls).start()
 
+    def _scene(self, event, player, **facts):
+        """Tell the scenes about a moment of the game: its calls are the default scenes of the event (see
+        scenes_default.py). A replayed turn (a correction) makes none."""
+        if self._silent:
+            return
+        if self.scenes is None:
+            self.scenes = SceneEngine(None, audio=self.audio)
+        self.scenes.fire(event, {"player": player, **facts})
+
     def _play_start_calls(self):
         with self._audio_batch():
-            self.audio.play("matchon")
-            self._announce(self.current_player)
-            self.audio.play("filler_after_name")
+            self._scene("elim.match_start", self.current_player)
 
     @property
     def current_player(self):
@@ -128,11 +137,11 @@ class EliminationGame(TurnGame):
     def _dart_seen(self, count, is_new_dart, is_correction):
         if self.online and not self._remote:
             self.online.send_dart(self.turn_seq + 1, self.current_player, self._last_throws)
-        if is_new_dart and self.audio and not self._remote:
-            # Miss comment on any dart
+        if is_new_dart and not self._remote:
+            # A comment on a missed dart, any dart
             latest = self._current_darts[count - 1] if count <= len(self._current_darts) else 0
             if latest == 0:
-                self.audio.play("miss", prob=0.35)
+                self._scene("elim.dart_missed", self.current_player)
         if count == 3 and is_new_dart:
             self._publish_turn_preview()
 
@@ -153,13 +162,16 @@ class EliminationGame(TurnGame):
         self._preview_fired = True
 
         with self._audio_batch():
-            if self.audio:
-                self.audio.play(str(score))
-
-            if not passes:
+            if passes:
+                self._scene("elim.passed", player, score=score, target=self.target, margin=score - 2 * self.target,
+                            preview=1)
+            else:
                 future_lives = self.lives[player] - 1
                 event = "eliminated" if future_lives == 0 else "life_lost"
                 is_match_over = future_lives == 0 and len(self.active) == 2
+                gap = self.target - score
+                self._scene(f"elim.{event}", player, score=score, lives=future_lives, close=int(1 <= gap <= 10),
+                            preview=1, last=int(is_match_over))
                 self._publish_event(event, player, score)
                 if is_match_over:
                     self._record_turn(player, score, len(self._last_throws))
@@ -173,18 +185,6 @@ class EliminationGame(TurnGame):
                     self._after_turn(player, list(self._last_throws), eliminated_before)
                     return
                 self._outcome_published = True
-                if self.audio:
-                    if event == "eliminated":
-                        self._announce(player)
-                    self.audio.play(event)
-                    gap = self.target - score
-                    if 1 <= gap <= 10:
-                        self.audio.play("close", prob=0.7)
-                    elif score < 5:
-                        self.audio.play("too_low", prob=0.5)
-            else:
-                if self.audio and score >= 2 * self.target:
-                    self.audio.play("nice", prob=0.4)
 
     def _finish_match(self, player, score):
         """Complete the match — *player* just spent their last life and
@@ -200,16 +200,11 @@ class EliminationGame(TurnGame):
         self.state = "finished"
         self.current_idx = 0
         self._record_result()
-        if self.audio and not self._silent:
-            # Winner name before matchshot — reversed
-            # from the old matchshot-then-name order. Wrapped in its own
-            # batch (re-entrant with _publish_turn_preview()'s already-open
-            # one on the normal instant-finish path, so both merge into a
-            # single wire message) so the winner name + matchshot fetch in
-            # parallel rather than serially.
-            with self._audio_batch():
-                self._announce(self.winner)
-                self.audio.play("matchshot")
+        # The winner's name comes before matchshot (the default scene). In its own batch, re-entrant with
+        # _publish_turn_preview()'s already-open one on the normal instant-finish path, so both merge into a single
+        # wire message and the files are fetched in parallel rather than serially.
+        with self._audio_batch():
+            self._scene("elim.match_won", self.winner, score=score)
         if not self._silent:
             self._publish_event("game_won", self.winner, score)
         self._outcome_published = False
@@ -268,12 +263,8 @@ class EliminationGame(TurnGame):
         # flow still needs it).
         self._current_darts = []
         self._dart_overrides = {}
-        # If preview didn't fire (< 3 darts detected), announce score now.
-        # _outcome_published is only set on a *failed* turn, so it can't be
-        # used here — a passing turn always left it False, causing the
-        # preview's own score (already played) to be announced again.
-        if not self._preview_fired and self.audio and not self._silent:
-            self.audio.play(str(score))
+        if not self._preview_fired:
+            self._scene("elim.turn_counted", player, score=score)      # fewer than 3 darts: the score is called now
         self._apply_turn(player, score)
         self._after_turn(player, throws, eliminated_before)
 
@@ -399,10 +390,19 @@ class EliminationGame(TurnGame):
     def _apply_turn(self, player, score, silent=False):
         silent = silent or self._silent
         passes = score > (0 if self.freipass else self.target)
+        to_beat = self.target
         self.target = score
         self.freipass = False
 
         with self._audio_batch():
+            if not self._preview_fired and not silent:
+                # Fewer than three darts were read: the moment is told now, not right after the third dart.
+                if passes:
+                    self._scene("elim.passed", player, score=score, target=to_beat, margin=score - 2 * to_beat, preview=0)
+                else:
+                    is_last = self.lives[player] == 1 and len(self.active) == 2
+                    self._scene("elim.eliminated" if self.lives[player] == 1 else "elim.life_lost", player, score=score,
+                                lives=self.lives[player] - 1, close=0, preview=0, last=int(is_last))
             if passes:
                 if not silent:
                     self._publish_event("turn_pass", player, score)
@@ -415,9 +415,6 @@ class EliminationGame(TurnGame):
                     is_match_over = len(self.active) == 2
                     if not self._outcome_published and not silent:
                         self._publish_event("eliminated", player, score)
-                        if self.audio and not is_match_over:
-                            self._announce(player)
-                            self.audio.play("eliminated")
                     if is_match_over:
                         # Rare fallback only — the normal path already
                         # finished the match from the preview, before darts
@@ -435,25 +432,17 @@ class EliminationGame(TurnGame):
                 else:
                     if not self._outcome_published and not silent:
                         self._publish_event("life_lost", player, score)
-                        if self.audio:
-                            self.audio.play("life_lost")
                     self._advance()
 
             self._outcome_published = False
             self._preview_fired = False
             self._publish_state()
             self._publish_turn(reset=True)
-            if self.audio and not silent and self.state == "playing":
-                self._announce(self.current_player)
-                if self.freipass:
-                    # Freipass replaces the target entirely — any score > 0
-                    # passes, so there's nothing to announce a number for.
-                    self.audio.play("freipass", prob=0.8)
-                else:
-                    self.audio.play("filler_target")
-                    # passes = score > target, i.e. target itself is not
-                    # enough — announce the actual minimum passing score.
-                    self.audio.play(str(self.target + 1))
+            if not silent and self.state == "playing":
+                # Freipass replaces the target entirely, any score > 0 passes; otherwise the score that passes is
+                # target + 1: the target itself is not enough.
+                self._scene("elim.turn_start", self.current_player, target=self.target, next=self.target + 1,
+                            lives=self.lives.get(self.current_player, 0), freipass=int(self.freipass))
 
     def _may_correct_online(self):
         """An online match lets the site that threw the last turn correct it, while the match is played or after it
@@ -687,6 +676,7 @@ class EliminationController(TurnGameController):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.scenes = None                 # the SceneEngine, set after construction
         self._init_bots(aim_elimination, darts_elimination)
         self.on_remote_darts = None        # called with the darts of the remote player's turn in progress, [] when it ends
 
@@ -713,6 +703,7 @@ class EliminationController(TurnGameController):
                 saved["players"], saved["lives"], self.mqtt_pub.client, self.base_topic,
                 audio=self.audio, on_change=self._on_change, match_id=saved["match_id"],
                 stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db)
+            game.scenes = self.scenes
             game._restore(saved["state"])
             self.game = game
         game.announce_start(calls=False)
@@ -739,6 +730,7 @@ class EliminationController(TurnGameController):
                 match_id=match_id, online=online, local_players=local_players,
             )
             self.game.show_remote_darts = lambda throws: self.on_remote_darts and self.on_remote_darts(throws)
+            self.game.scenes = self.scenes
             self.game.announce_start()
 
     def remote_dart(self, player, throws):
@@ -790,6 +782,7 @@ class EliminationController(TurnGameController):
                 audio=self.audio, on_change=self._on_change,
                 stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db,
             )
+            self.game.scenes = self.scenes
         self.game.announce_start()
 
     def _command_start(self, cmd):

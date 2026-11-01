@@ -13,7 +13,7 @@ RUNTIME_FIELDS = {"log_level", "level", "language", "aurora_animation", "accent_
                   "aurora_intensity", "aurora_blur", "aurora_streaks", "aurora_pause_idle",
                   "glass_strength", "bar_opacity", "elimination_beat_hint", "check", "auto_install",
                   # `section.key` for a key whose name also exists in a section that needs a restart
-                  "online.relay_url", "online.site_name", "telemetry.enabled", "telemetry.url", "web.joke_of_the_day"}
+                  "online.relay_url", "online.site_name", "caller.fun", "telemetry.enabled", "telemetry.url", "web.joke_of_the_day"}
 
 
 def load(path: str | Path | None = None) -> dict:

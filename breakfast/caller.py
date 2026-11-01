@@ -1,9 +1,8 @@
 """Voice caller: turns GameState events into audio calls.
 
-The Caller handles the mode-independent lifecycle vocabulary (match/leg
-start, leg/match won, bust) and
-delegates per-dart / turn logic to a ModeHandler registered per game mode
-(caller_x01.py).
+The Caller handles what is left of the calls of a game in code: the call of a dart and the cancelled match. The rest of the
+X01 calls (match and leg start, turn start, turn total, bust, leg and match won) are the standard scenes of scenes_default.py,
+fired by `scenes.run_x01` after the Caller (see source_direct / source_replay).
 
 Wireup (source_direct / source_replay):
 
@@ -49,9 +48,6 @@ class ModeHandler:
     def on_dart(self, evt, snapshot, audio):
         pass
 
-    def on_turn_end(self, evt, snapshot, audio):
-        pass
-
     def on_match_start(self, snapshot):
         """Reset any per-match state."""
 
@@ -91,29 +87,9 @@ class Caller:
             self._match_won_seen = False
             if handler:
                 handler.on_match_start(snapshot)
-            with self.audio.batch():
-                self._announce_player(snapshot)
-                if not self.audio.play("matchon"):
-                    self.audio.play("gameon")
-                self._ambient_chain(snapshot, "matchon", "gameon")
-
-        elif etype == "game_started":
-            # Leg start (never the first leg — translator suppresses that one)
-            with self.audio.batch():
-                self._announce_player(snapshot)
-                self.audio.play("gameon")
-                self._ambient_chain(snapshot, "gameon")
 
         elif etype == "won":
             self._match_won_seen = True
-            if evt.get("scope") == "match":
-                with self.audio.batch():
-                    self._announce_player(snapshot)
-                    if not self.audio.play("matchshot"):
-                        self.audio.play("gameshot")
-                    self._ambient_chain(snapshot, "matchshot", "gameshot")
-            else:
-                self._leg_won(snapshot)
 
         elif etype == "match_ended":
             # Fires when the match closes; only a cancellation deserves a call
@@ -122,18 +98,9 @@ class Caller:
                 self.audio.play("matchcancel")
                 self._ambient_chain(snapshot, "matchcancel")
 
-        elif etype == "bust":
-            self.audio.play("busted")
-            if self.ambient_volume:
-                self.audio.play("ambient_noscore", volume=self.ambient_volume)
-
         elif etype == "dart":
             if handler:
                 handler.on_dart(evt, snapshot, self.audio)
-
-        elif etype == "turn_end":
-            if handler:
-                handler.on_turn_end(evt, snapshot, self.audio)
 
     # ── shared call helpers ───────────────────────────────────────────────────
 
@@ -145,30 +112,6 @@ class Caller:
             if m.startswith(prefix):
                 return handler
         return None
-
-    def _announce_player(self, snapshot):
-        if not self.call_player:
-            return
-        name = snapshot.get("active_player_name")
-        if name and self.audio.play(str(name).lower()):
-            return
-        self.audio.play("unknown_player")
-
-    def _leg_won(self, snapshot):
-        # state.py increments current_leg on game-won before we run,
-        # so the leg just finished is current_leg - 1.
-        leg = max(1, (snapshot.get("current_leg") or 2) - 1)
-        with self.audio.batch():
-            self._announce_player(snapshot)
-            # Real-life style first ("gameshot leg N" as one recording, which
-            # the own sound set has); plain gameshot + leg number as fallback
-            # chain.
-            if not self.audio.play(f"gameshot_l{leg}_n"):
-                gameshot_played = self.audio.play("gameshot")
-                self.audio.play(f"leg_{leg}")
-                if not gameshot_played:
-                    log.debug("No gameshot sound for leg %d", leg)
-            self._ambient_chain(snapshot, "gameshot")
 
     def _ambient_chain(self, snapshot, *bases):
         """Ambient fallback: for each base, try the
