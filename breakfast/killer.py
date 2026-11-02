@@ -32,6 +32,7 @@ import logging
 import random
 import threading
 
+from .achievements import open_killer_turn
 from .bot import StatsWithoutBots, aim_killer, darts_killer
 from .player_colors import assign_colors
 from .turn_game import TurnGame, TurnGameController, dart_positions
@@ -425,6 +426,14 @@ class KillerGame(TurnGame):
         super().correct_current_dart(dart_index, field, point)
         if before == "playing":
             self._replay_turn()
+            self._open_turn_changed()
+
+    def _open_turn_changed(self):
+        """What the darts of the turn in progress did so far goes to the achievements now, though the turn is stored
+        only when the darts are pulled. Every event of a dart is final, so each dart counts."""
+        if not self.stats_db or self.phase != "playing" or self.state != "playing" or self._one_dart_taken:
+            return
+        self.stats_db.open_turn(self.match_id, open_killer_turn(self._turn_start["player"], self.turn_events), False)
 
     def next_turn(self):
         if self.phase != "playing":

@@ -663,6 +663,17 @@ class StatsDB:
         except Exception:
             log.exception("Turn listener failed for %s", match_id)
 
+    def open_turn(self, match_id: str, pending: dict, complete: bool = True):
+        """A dart of a turn that is not stored yet: the achievements that can be decided at the throw look at it (see
+        AchievementEngine.evaluate_open_turn). Nothing is written; like _turn_stored() it never reaches the game."""
+        engine = self.achievement_engine
+        if engine is None:
+            return
+        try:
+            engine.evaluate_open_turn(match_id, pending, complete)
+        except Exception:
+            log.exception("Open turn listener failed for %s", match_id)
+
     def open_match(self, match_id: str, game_mode: str, points_start: int, tournament_id: str | None = None):
         log.debug("DB write: open_match match_id=%s game_mode=%s points_start=%s tournament_id=%s",
                   match_id, game_mode, points_start, tournament_id)
@@ -3895,6 +3906,7 @@ class StatsTracker:
                 "darts": [(field, dv, rem)],
                 "positions": [_position(game)],
             }
+            self._open_turn()
 
         elif ev == "dart2-thrown":
             if self._buf and self._buf["player"] == player:
@@ -3903,6 +3915,7 @@ class StatsTracker:
                 prev_rem = self._buf["darts"][-1][2]
                 self._buf["darts"].append((field, dv, prev_rem - dv))
                 self._buf["positions"].append(_position(game))
+                self._open_turn()
 
         elif ev == "dart3-thrown":
             if self._buf and self._buf["player"] == player:
@@ -3911,9 +3924,11 @@ class StatsTracker:
                 prev_rem = self._buf["darts"][-1][2]
                 self._buf["darts"].append((field, dv, prev_rem - dv))
                 self._buf["positions"].append(_position(game))
+                self._open_turn()
 
         elif ev == "busted" and self._is_x01():
             self._on_bust(player, game)
+            self._open_turn()
 
         elif ev == "darts-pulled":
             self._flush_turn()
@@ -4033,6 +4048,22 @@ class StatsTracker:
 
     def _is_x01(self) -> bool:
         return "01" in self._game_mode or self._game_mode == "Random Checkout"
+
+    def _open_turn(self):
+        """Tell the achievements about the darts of the turn in progress (a turn is stored only when the darts are
+        pulled). The turn is complete with its third dart, a bust or the dart that checks out; before that only an
+        achievement that one dart can decide looks at it. A turn of a bot is never stored and counts for nothing."""
+        buf = self._buf
+        if not buf or not self._match_id or not buf["player"] or buf["player"] in self._bots:
+            return
+        from breakfast import achievements
+        darts = buf["darts"]
+        total = sum(v for _, v, _ in darts)
+        is_checkout = (not buf["is_bust"]) and buf["remaining_before"] == total
+        pending = achievements.open_x01_turn(
+            buf["player"], self._turn_per_player.get(buf["player"], 0) + 1, buf["leg"], buf["remaining_before"],
+            darts, buf["is_bust"], is_checkout, _now_iso())
+        self._db.open_turn(self._match_id, pending, len(darts) >= 3 or buf["is_bust"] or is_checkout)
 
     def _flush_turn(self):
         if not self._buf or not self._match_id:

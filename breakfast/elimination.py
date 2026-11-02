@@ -4,8 +4,9 @@ import logging
 import threading
 
 from .bot import StatsWithoutBots, aim_elimination, darts_elimination
+from .achievements import open_elimination_turn
 from .scenes import SceneEngine
-from .turn_game import TurnGame, TurnGameController, dart_positions, parse_field
+from .turn_game import TurnGame, TurnGameController, dart_positions, parse_field, throw_fields
 
 log = logging.getLogger(__name__)
 
@@ -375,6 +376,17 @@ class EliminationGame(TurnGame):
             self.stats_db.replace_elimination_results(self.match_id, [
                 (self._stored(x["player"]), x["placement"], self.lives.get(x["player"]) if x["placement"] == 1 else None)
                 for x in placements])
+
+    def _open_turn_changed(self):
+        """With the third dart the turn is complete, though it is stored only when the darts are pulled: the
+        achievements look at it now."""
+        if not self.stats_db or self.state != "playing" or self._remote or len(self._last_throws) < 3:
+            return
+        player = self.current_player
+        score = sum(self.value_of(t) for t in self._last_throws)
+        self.stats_db.open_turn(self.match_id, open_elimination_turn(
+            self._stored(player), throw_fields(self._last_throws), score, 0 if self.freipass else self.target,
+            self.freipass, self.lives[player]), True)
 
     def _record_turn(self, player, score, darts_count):
         """Write a finished turn to the stats DB together with what it had to

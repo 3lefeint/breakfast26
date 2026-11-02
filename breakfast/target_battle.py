@@ -17,9 +17,10 @@ import random
 import threading
 import time
 
+from .achievements import open_target_battle_turn
 from .player_colors import assign_colors
 from .target_battle_scoring import SCORING
-from .turn_game import TurnGame, TurnGameController, dart_positions
+from .turn_game import TurnGame, TurnGameController, dart_positions, throw_fields
 
 log = logging.getLogger(__name__)
 
@@ -173,6 +174,15 @@ class TargetBattleGame(TurnGame):
     def _dart_seen(self, count, is_new_dart, is_correction):
         if count == 3 and is_new_dart and self.audio and not self._score_called:
             self._call_turn_score()
+
+    def _open_turn_changed(self):
+        """With the third dart the turn is complete, though it is stored only when the darts are pulled: the
+        achievements look at it now."""
+        if not self.stats_db or self.state != "playing" or len(self._last_throws) < 3:
+            return
+        self.stats_db.open_turn(self.match_id, open_target_battle_turn(
+            self.current_player, throw_fields(self._last_throws), self.round, self.target, self.in_tiebreak,
+            sum(self._current_darts)), True)
 
     def _end_turn(self):
         player = self.current_player
