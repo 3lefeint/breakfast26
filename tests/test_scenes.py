@@ -1618,3 +1618,37 @@ class TestSoundEffects:
         assert (folder / "fx.mp3").read_bytes() != (folder / "plain.mp3").read_bytes()
         assert "unknown" in c.post("/api/scenes/sounds/edit?name=bad.mp3&start=0&end=1.5&compress=huge", content=data).json()["error"]
         assert c.post("/api/scenes/sounds/preview?start=0&end=1.5&source=gone.mp3").json()["error"] == "not a sound of the library"
+
+
+@needs_ffmpeg
+class TestRecordings:
+    """What a browser records (MediaRecorder) is turned into an mp3 of the library when it is saved in the editor (#137)."""
+
+    @staticmethod
+    def recorded(codec, fmt, seconds=1.5):
+        import subprocess
+        # written to a pipe like a browser does: no duration in the header
+        return subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
+                               "-c:a", codec, "-f", fmt, "pipe:1"], capture_output=True, check=True).stdout
+
+    @pytest.mark.parametrize("codec,fmt", [("libopus", "webm"), ("libopus", "ogg"), ("libvorbis", "ogg")])
+    def test_a_recording_becomes_an_mp3_of_the_library(self, library, codec, fmt):
+        engine, *_ = library
+        data = self.recorded(codec, fmt)
+        assert scene_sounds.save_edit(engine, "rec.mp3", data, 0.1, 1.3, 0.02, 0.05) is None
+        saved = (scene_sounds.folder(engine) / "rec.mp3").read_bytes()
+        assert saved[:3] == b"ID3" and 1.0 < _seconds(saved) < 1.4
+        assert abs(loudness(saved) - sound_edit.TARGET_LUFS) < 2.5
+
+    def test_the_routes_take_a_recording_and_store_nothing_before_the_save(self, client):
+        c, engine, *_ = client
+        data = self.recorded("libopus", "webm")
+        assert c.get("/api/scenes").json()["sounds"] == []
+        assert c.post("/api/scenes/sounds/preview?start=0&end=1.2", content=data).headers["content-type"] == "audio/mpeg"
+        assert c.get("/api/scenes").json()["sounds"] == []
+        assert c.post("/api/scenes/sounds/edit?name=recording-20261102-211500.mp3&start=0&end=1.2", content=data).json()["ok"]
+        assert [s["name"] for s in c.get("/api/scenes").json()["sounds"]] == ["recording-20261102-211500.mp3"]
+
+    def test_something_that_is_not_audio_is_refused(self, library):
+        engine, *_ = library
+        assert "could not be read" in scene_sounds.save_edit(engine, "x.mp3", b"\x1aE\xdf\xa3" + b"\x00" * 200, 0, 1, 0, 0)
