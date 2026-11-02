@@ -21,7 +21,7 @@ from starlette.background import BackgroundTask
 
 from breakfast import __release_date__, __version__
 from breakfast import achievement_sounds as ach_sounds
-from breakfast import scene_sounds
+from breakfast import scene_slot, scene_sounds
 from breakfast import scenes as scenes_mod
 from breakfast import scenes_default as scenes_default_mod
 from breakfast.bot import X01_LEVELS
@@ -2855,6 +2855,15 @@ class SceneBody(BaseModel):
     graph: dict = {}
 
 
+class SceneOrderBody(BaseModel):
+    ids: list[int] = []
+
+
+class VoiceCheckBody(BaseModel):
+    id: int | None = None
+    graph: dict = {}
+
+
 def _scene_list() -> list:
     return _scene_engine.scenes() if _scene_engine else []
 
@@ -2895,6 +2904,25 @@ def _save_scene(ref, body: SceneBody):
 @app.post("/api/scenes")
 async def create_scene(body: SceneBody):
     return _save_scene(None, body)
+
+
+@app.post("/api/scenes/order")
+async def order_scenes(body: SceneOrderBody):
+    """Put the scenes of the user in this order (the first one that plays on the voice channel at a moment takes the slot)."""
+    if not _scene_engine:
+        return {"error": "scenes are not available"}
+    _scene_engine.reorder(body.ids)
+    return {"ok": True}
+
+
+@app.post("/api/scenes/voice-check")
+async def check_voice_slot(body: VoiceCheckBody):
+    """The earlier scenes of the user that take the voice slot before this scene (`id`, None when it is not saved yet) with
+    this graph: [{scene, name, event, level}], level `note` or `warning` (the earlier scene always takes it)."""
+    if not _scene_engine:
+        return {"overridden_by": []}
+    graph = scenes_mod.clean_graph(body.graph)
+    return {"overridden_by": scene_slot.overridden_by(_scene_engine.scenes(), body.id, graph)}
 
 
 @app.put("/api/scenes/{ref}")

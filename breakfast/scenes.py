@@ -247,6 +247,19 @@ def sound_files(graph: dict) -> list:
     return sorted({e["file"] for n in graph.get("nodes", []) if n.get("kind") == "sound" for e in sound_entries(n)})
 
 
+def plays_voice(node: dict) -> bool:
+    """Whether an action step plays on the voice channel: a sound with files set to "After the calls", a call set to the voice
+    channel (a key that only has `ambient_` options plays beside the calls whatever the setting says)."""
+    if node.get("type") != "action":
+        return False
+    if node.get("kind") == "sound":
+        return bool(node.get("files")) and node.get("channel") == "voice"
+    if node.get("kind") == "call":
+        key = node.get("key") or ""
+        return bool(key) and node.get("channel") != "ambient" and not all(o.strip().startswith("ambient_") for o in key.split("|"))
+    return False
+
+
 def x01_moments(evt: dict, snapshot: dict, caller=None) -> list:
     """The moments of the scenes in an event of the X01 stream: [(event id, facts)]. *caller*: the voice caller, whose
     settings (player calls, turn total, checkout calls) become facts of the moment."""
@@ -318,6 +331,11 @@ class MemoryScenes:
             self._scenes[scene_id] = {"id": scene_id, "slug": slug, **data}
             return scene_id
 
+    def order_scenes(self, ids: list):
+        with self._lock:
+            first = {i: self._scenes[i] for i in ids if i in self._scenes}
+            self._scenes = {**first, **{i: s for i, s in self._scenes.items() if i not in first}}
+
     def delete_scene(self, scene_id) -> bool:
         with self._lock:
             return self._scenes.pop(scene_id, None) is not None
@@ -386,18 +404,25 @@ class SceneEngine:
         self.changed()
         return deleted
 
+    def reorder(self, ids: list):
+        """Put the scenes of the user with these ids in this order. The order decides who gets the voice slot of a moment."""
+        self.store.order_scenes([i for i in ids if isinstance(i, int)])
+        self.changed()
+
     def fire(self, event: str, ctx: dict, only=None, trace=None, defaults=True) -> bool:
         """Run the scenes that start with *event*. *ctx* holds the facts of the moment (`player` and the fields the
         event lists). The scenes of the user run first; when one of them plays a sound marked "replace" the default scenes
         of the event stay out. *only*: run just this scene (a test), enabled or not. Returns True when a sound marked
-        "replace" was played. *defaults*: False leaves the standard scenes out (the game's calls are switched off). Never raises
-        into the game."""
+        "replace" was played. *defaults*: False leaves the standard scenes out (the game's calls are switched off). The first scene
+        of the user (in list order) that plays a sound or a call on the voice channel takes the voice slot of the moment: the
+        voice steps of the later scenes of the user are skipped. Never raises into the game."""
         replaced = False
         try:
             ctx = {"fun": 1 if self.fun else 0, **ctx}
             if only is None:
                 self._forget(event)
             everyone = self.scenes()
+            slot = {"owner": None}                  # the scene of the user that plays on the voice channel at this moment
             for batch in ([s for s in everyone if not s["default"]], [s for s in everyone if s["default"]]):
                 if only is None and (replaced or (batch and batch[0]["default"] and not defaults)):
                     break
@@ -406,7 +431,8 @@ class SceneEngine:
                         continue
                     if only is None and not scene.get("enabled"):
                         continue
-                    replaced |= self._start(scene, event, ctx, trace, only is not None)
+                    replaced |= self._start(scene, event, ctx, trace, only is not None,
+                                            None if only is not None or scene["default"] else slot)
         except Exception:
             log.exception("Scene error on %s", event)
         return replaced
@@ -419,13 +445,13 @@ class SceneEngine:
             if event in MATCH_STARTS or event in LEG_STARTS:
                 self._once["leg"].clear()
 
-    def _start(self, scene, event, ctx, trace, test=False) -> bool:
+    def _start(self, scene, event, ctx, trace, test=False, slot=None) -> bool:
         graph = scene["graph"]
         follow = {}
         for edge in graph["edges"]:
             follow.setdefault(edge["from"], []).append(edge)
         run = {"nodes": {n["id"]: n for n in graph["nodes"]}, "follow": follow, "ctx": ctx, "trace": trace,
-               "scene": scene["id"], "test": test}
+               "scene": scene["id"], "test": test, "slot": slot}
         replaced = False
         for node in graph["nodes"]:
             if node["type"] == "trigger" and node["event"] == event:
@@ -463,10 +489,17 @@ class SceneEngine:
                     timer.daemon = True
                     timer.start()
             else:
-                info = {}
-                done = self._act(node, run["ctx"], info)
-                self._note(run["trace"], node, "done" if done else "skipped",
-                           None if done or run["trace"] is None else self._why(node, run["ctx"]), info)
+                slot = run["slot"] if sync and plays_voice(node) else None      # a step behind a wait does not count
+                if slot is not None and slot["owner"] not in (None, run["scene"]):
+                    done, info = False, {}
+                    self._note(run["trace"], node, "skipped", "voice_slot_taken")
+                else:
+                    info = {}
+                    done = self._act(node, run["ctx"], info)
+                    if done and slot is not None:
+                        slot["owner"] = run["scene"]
+                    self._note(run["trace"], node, "done" if done else "skipped",
+                               None if done or run["trace"] is None else self._why(node, run["ctx"]), info)
                 replaced |= bool(done and sync and node["kind"] == "sound" and node.get("replace"))
                 replaced |= self._run(run, out, seen, sync)
         return replaced
