@@ -255,7 +255,7 @@ def run_direct(email, password, board_id, record_file=None,
         scene_engine.ambient_volume = caller.ambient_volume
 
     if achievements:
-        achievements.announce(web.push_achievement, audio, sounds=web.assigned_achievement_sounds)
+        achievements.announce(web.push_achievement, audio, sounds=web.assigned_achievement_sounds, scenes=scene_engine)
 
     if mqtt_enabled and mqtt_host:
         mqtt_pub = MqttPublisher(

@@ -1411,6 +1411,18 @@ ACHIEVEMENTS = (
 
 BY_ID = {a.id: a for a in ACHIEVEMENTS}
 
+# The rungs of the difficulty ladder as a number, for the scenes (the fact `difficulty` of an earned achievement). The
+# endurance achievements (counters of volume) and the secret ones are not on the ladder and count 0.
+DIFFICULTY_LEVEL = {"easy": 1, "medium": 2, "hard": 3, "very_hard": 4, "extreme": 5}
+
+
+def scene_facts(a: "Achievement", change: dict) -> dict:
+    """What a scene knows about an achievement that is announced: `player`, `id`, `tier` (1 for an event), `difficulty`
+    (1 to 5, 0 off the ladder), `secret` (1 or 0) and `first` (1 for the first tier, the achievement is new to the player)."""
+    tier = change.get("tier") or 1
+    return {"player": change["player"], "id": a.id, "tier": tier, "difficulty": DIFFICULTY_LEVEL.get(a.difficulty, 0),
+            "secret": 1 if a.hidden else 0, "first": 1 if tier <= 1 else 0}
+
 
 # ── Engine ───────────────────────────────────────────────────────────────────
 
@@ -1504,17 +1516,24 @@ class AchievementEngine:
                 continue            # an achievement that no longer exists
         return found
 
-    def announce(self, push, audio=None, sounds=None, spacing=UNLOCK_SPACING):
+    def announce(self, push, audio=None, sounds=None, spacing=UNLOCK_SPACING, scenes=None):
         """Send every newly earned achievement to the browsers with `push` and play its sound.
         `sounds(id)` gives the files assigned to the achievement; one of them is played. Without
         one: `achievement_<id>` if there is a file for that achievement, else the general
         `achievement`. No file means no sound. Revoked ones are not announced.
-        Several unlocks of one match come one banner apart, each with its own banner and sound."""
+        Several unlocks of one match come one banner apart, each with its own banner and sound.
+        *scenes*: the SceneEngine; its scenes for `achievement.earned` run with the banner (see scene_facts()), and a
+        sound of one of them marked "replace" keeps the assigned sound and the fallbacks out. The banner always shows."""
         pacer = _Pacer(spacing)
 
         def release(change):
             push(self.notification(change))
-            if not audio:
+            replaced = False
+            if scenes:
+                definition = next((d for d in self.definitions if d.id == change["achievement"]), None)
+                if definition:
+                    replaced = scenes.fire("achievement.earned", scene_facts(definition, change), defaults=False)
+            if not audio or replaced:
                 return
             assigned = sounds(change["achievement"]) if sounds else []
             if assigned and audio.play_file(random.choice(assigned)):

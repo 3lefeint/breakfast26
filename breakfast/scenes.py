@@ -67,6 +67,10 @@ EVENTS = {
     "elim.eliminated": {"label": "Player eliminated", "game": "Elimination",
                         "fields": {"score": "Turn score", "close": "Close", "preview": "Read after the 3rd dart", "last": "Ends the match"}},
     "elim.match_won": {"label": "Match won", "game": "Elimination", "fields": {"score": "Turn score"}},
+    "achievement.earned": {"label": "Achievement earned", "game": "Achievements",
+                           "fields": {"id": "Achievement", "tier": "Tier (1 for an achievement without tiers)",
+                                      "difficulty": "Difficulty (1 easy to 5 extreme, 0 off the ladder)",
+                                      "secret": "Secret", "first": "Earned for the first time"}},
 }
 OPERATORS = {
     ">=": lambda a, b: a >= b, ">": lambda a, b: a > b, "==": lambda a, b: a == b,

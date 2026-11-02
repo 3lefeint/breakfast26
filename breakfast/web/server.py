@@ -2846,7 +2846,8 @@ async def admin_upload_achievement_sound(request: Request, name: str = Query(...
 
 _SCENE_SAMPLE = {"score": 180, "remaining": 100, "leg": 1, "target": 60, "lives": 2, "next": 61, "freipass": 0, "margin": 60,
                  "close": 0, "preview": 1, "last": 0, "announce": 1, "change": 1, "total": 1, "checkout": 0,
-                 "combo": "t20t20t20", "bracket": 150, "number": 20, "multiplier": 3, "points": 60, "dart": 1, "miss": 0}
+                 "combo": "t20t20t20", "bracket": 150, "number": 20, "multiplier": 3, "points": 60, "dart": 1, "miss": 0,
+                 "id": "bullseye", "tier": 1, "difficulty": 2, "secret": 0, "first": 1}
 
 
 class SceneBody(BaseModel):
