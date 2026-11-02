@@ -22,6 +22,7 @@ from starlette.background import BackgroundTask
 from breakfast import __release_date__, __version__
 from breakfast import achievement_sounds as ach_sounds
 from breakfast import scene_slot, scene_sounds
+from breakfast import sound_edit as sound_edit_mod
 from breakfast import scenes as scenes_mod
 from breakfast import scenes_default as scenes_default_mod
 from breakfast.bot import X01_LEVELS
@@ -2809,9 +2810,10 @@ async def admin_delete_achievement_sound(filename: str):
 async def admin_edit_achievement_sound(request: Request, name: str = Query(...), start: float = Query(0),
                                        end: float = Query(...), fade_in: float = Query(0), fade_out: float = Query(0),
                                        source: str = Query(""), overwrite: bool = Query(False), trim: float = Query(0), curve_in: float = Query(1),
-                           curve_out: float = Query(1)):
+                           curve_out: float = Query(1), low_cut: bool = Query(False), noise: str = Query(""),
+                           compress: str = Query("")):
     """Cut, fade and level a sound into the achievements folder. The source is the request body (any audio file) or
-    `source`, a file of the folder."""
+    `source`, a file of the folder. `low_cut`, `noise` and `compress` are the optional effects of sound_edit."""
     locked = _admin_locked()
     if locked:
         return locked
@@ -2821,11 +2823,28 @@ async def admin_edit_achievement_sound(request: Request, name: str = Query(...),
             return {"error": "not a sound of the achievements folder"}
         data = (ach_sounds.sound_dir(_audio_engine) / source).read_bytes()
     problem = await asyncio.to_thread(ach_sounds.save_edit, _audio_engine, name, data, start, end, fade_in, fade_out,
-                                      overwrite, trim, curve_in, curve_out)
+                                      overwrite, trim, curve_in, curve_out, low_cut, noise, compress)
     if problem:
         return {"error": problem}
     log.info("Achievement sound edited: %s (%.2f to %.2f s)", name, start, end)
     return {"ok": True, "file": name}
+
+
+@app.post("/api/admin/achievement-sounds/preview")
+async def admin_preview_achievement_sound(request: Request, start: float = Query(0), end: float = Query(...),
+                                          fade_in: float = Query(0), fade_out: float = Query(0), source: str = Query(""),
+                                          trim: float = Query(0), curve_in: float = Query(1), curve_out: float = Query(1),
+                                          low_cut: bool = Query(False), noise: str = Query(""), compress: str = Query("")):
+    """As the edit route, to listen to: the first seconds of the selection as mp3, nothing is stored."""
+    locked = _admin_locked()
+    if locked:
+        return locked
+    data = await request.body()
+    if source:
+        if not ach_sounds.playable(_audio_engine, source):
+            return {"error": "not a sound of the achievements folder"}
+        data = (ach_sounds.sound_dir(_audio_engine) / source).read_bytes()
+    return await _sound_preview(data, start, end, fade_in, fade_out, trim, curve_in, curve_out, low_cut, noise, compress)
 
 
 @app.post("/api/admin/achievement-sounds/upload")
@@ -2978,9 +2997,10 @@ async def upload_scene_sound(request: Request, name: str = Query(...)):
 async def edit_scene_sound(request: Request, name: str = Query(...), start: float = Query(0), end: float = Query(...),
                            fade_in: float = Query(0), fade_out: float = Query(0), source: str = Query(""),
                            overwrite: bool = Query(False), trim: float = Query(0), curve_in: float = Query(1),
-                           curve_out: float = Query(1)):
+                           curve_out: float = Query(1), low_cut: bool = Query(False), noise: str = Query(""),
+                           compress: str = Query("")):
     """Cut, fade and level a sound into the library under *name*. The source is the request body (any audio file) or
-    `source`, a file of the library."""
+    `source`, a file of the library. `low_cut`, `noise` and `compress` are the optional effects of sound_edit."""
     data = await request.body()
     if source:
         path = scene_sounds.folder(_audio_engine)
@@ -2988,11 +3008,36 @@ async def edit_scene_sound(request: Request, name: str = Query(...), start: floa
             return {"error": "not a sound of the library"}
         data = (path / source).read_bytes()
     problem = await asyncio.to_thread(scene_sounds.save_edit, _audio_engine, name, data, start, end, fade_in, fade_out,
-                                      overwrite, trim, curve_in, curve_out)
+                                      overwrite, trim, curve_in, curve_out, low_cut, noise, compress)
     if problem:
         return {"error": problem}
     log.info("Scene sound edited: %s (%.2f to %.2f s)", name, start, end)
     return {"ok": True, "file": name}
+
+
+async def _sound_preview(data, start, end, fade_in, fade_out, trim, curve_in, curve_out, low_cut, noise, compress):
+    """The first seconds of an edited sound as audio, or {error}: for "Listen with effects", the browser cannot play the
+    filters of ffmpeg."""
+    result = await asyncio.to_thread(sound_edit_mod.preview, data, start, end, fade_in, fade_out, trim, curve_in, curve_out,
+                                     low_cut, noise, compress)
+    if isinstance(result, str):
+        return {"error": result}
+    return Response(content=result, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/scenes/sounds/preview")
+async def preview_scene_sound(request: Request, start: float = Query(0), end: float = Query(...), fade_in: float = Query(0),
+                              fade_out: float = Query(0), source: str = Query(""), trim: float = Query(0),
+                              curve_in: float = Query(1), curve_out: float = Query(1), low_cut: bool = Query(False),
+                              noise: str = Query(""), compress: str = Query("")):
+    """As the edit route, to listen to: the first seconds of the selection as mp3, nothing is stored."""
+    data = await request.body()
+    if source:
+        path = scene_sounds.folder(_audio_engine)
+        if source not in scene_sounds.files(_audio_engine) or path is None:
+            return {"error": "not a sound of the library"}
+        data = (path / source).read_bytes()
+    return await _sound_preview(data, start, end, fade_in, fade_out, trim, curve_in, curve_out, low_cut, noise, compress)
 
 
 class SpeechBody(BaseModel):

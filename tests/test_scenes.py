@@ -1524,3 +1524,97 @@ class TestSpeech:
         monkeypatch.setattr("tools.generate_voicepack.synthesize", broken)
         answer = c.post("/api/scenes/sounds/speech", json={"text": "x", "pack": "ryan", "name": "a.mp3"}).json()
         assert "no connection" in answer["error"] and c.get("/api/scenes").json()["sounds"] == []
+
+
+def _stat(mp3: bytes, name: str) -> float:
+    import re, subprocess
+    done = subprocess.run(["ffmpeg", "-nostdin", "-i", "pipe:0", "-af", "astats", "-f", "null", "-"], input=mp3, capture_output=True)
+    return float(re.findall(name + r" dB: (-?[\d.]+)", done.stderr.decode())[-1])
+
+
+def _seconds(mp3: bytes) -> float:
+    import re, subprocess
+    done = subprocess.run(["ffmpeg", "-nostdin", "-i", "pipe:0", "-f", "null", "-"], input=mp3, capture_output=True)
+    h, m, s = re.findall(r"time=(\d+):(\d+):([\d.]+)", done.stderr.decode())[-1]
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def _hits(seconds=2.0):
+    """A loud hit followed by a quiet tail."""
+    import subprocess
+    return subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                           f"sine=frequency=300:duration={seconds},volume='if(lt(t,0.5),4.8,0.24)':eval=frame", "-f", "wav", "pipe:1"],
+                          capture_output=True, check=True).stdout
+
+
+@needs_ffmpeg
+class TestSoundEffects:
+    def test_the_effects_run_in_a_fixed_order_and_unknown_steps_are_refused(self):
+        assert sound_edit.effects() == []
+        assert sound_edit.effects(True, "medium", "light") == [sound_edit.LOW_CUT, sound_edit.NOISE["medium"], sound_edit.COMPRESS["light"]]
+        assert sound_edit.effects(False, "", "strong") == [sound_edit.COMPRESS["strong"]]
+        assert "noise" in sound_edit.effects(noise="loud") and "compressor" in sound_edit.effects(compress="huge")
+        assert "noise" in sound_edit.render(tone(), 0, 1, noise="loud")
+
+    def test_all_effects_are_off_unless_asked_for(self):
+        data = tone(1.5, 0.2)
+        assert sound_edit.render(data, 0, 1.5) == sound_edit.render(data, 0, 1.5, low_cut=False, noise="", compress="")
+
+    def test_every_step_renders_a_playable_file(self):
+        import subprocess
+        noisy = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "anoisesrc=d=1.5:a=0.1", "-f", "wav", "pipe:1"],
+                               capture_output=True, check=True).stdout
+        plain = sound_edit.render(noisy, 0, 1.5)
+        for kwargs in ({"low_cut": True}, {"noise": "light"}, {"noise": "medium"}, {"noise": "strong"},
+                       {"compress": "light"}, {"compress": "strong"}, {"low_cut": True, "noise": "medium", "compress": "light"}):
+            out = sound_edit.render(noisy, 0, 1.5, **kwargs)
+            assert isinstance(out, bytes) and out[:3] == b"ID3" and 1.2 < _seconds(out) < 1.8, kwargs
+            assert out != plain, kwargs
+
+    def test_the_low_cut_takes_out_a_rumble(self):
+        import re, subprocess
+        mixed = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=30:duration=1.5",
+                                "-f", "lavfi", "-i", "sine=frequency=1000:duration=1.5", "-filter_complex",
+                                "[0]volume=6[a];[1]volume=2[b];[a][b]amix=inputs=2:normalize=0", "-f", "wav", "pipe:1"],
+                               capture_output=True, check=True).stdout
+
+        def rumble_share(mp3):             # the level of everything below 60 Hz against the level of the whole sound, in dB
+            low = subprocess.run(["ffmpeg", "-nostdin", "-i", "pipe:0", "-af", "lowpass=f=60,astats", "-f", "null", "-"],
+                                 input=mp3, capture_output=True).stderr.decode()
+            return float(re.findall(r"RMS level dB: (-?[\d.]+)", low)[-1]) - _stat(mp3, "RMS level")
+
+        before, after = rumble_share(sound_edit.render(mixed, 0, 1.5)), rumble_share(sound_edit.render(mixed, 0, 1.5, low_cut=True))
+        assert before > -3 and after < before - 5
+
+    def test_the_compressor_evens_out_loud_and_quiet_parts(self):
+        data = _hits()
+        spread = lambda mp3: _stat(mp3, "RMS peak") - _stat(mp3, "RMS trough")      # loudest against quietest stretch
+        plain = sound_edit.render(data, 0, 2)
+        assert spread(sound_edit.render(data, 0, 2, compress="light")) < spread(plain)
+        assert spread(sound_edit.render(data, 0, 2, compress="strong")) < spread(sound_edit.render(data, 0, 2, compress="light"))
+
+    def test_the_level_is_set_after_the_effects(self):
+        data = tone(2.0, 0.05)
+        assert abs(loudness(sound_edit.render(data, 0, 2, compress="strong")) - sound_edit.TARGET_LUFS) < 2.5
+
+    def test_the_preview_is_the_first_seconds_without_the_fade_out(self):
+        data = tone(20.0, 0.2)
+        long = sound_edit.preview(data, 0, 20, fade_out=2)
+        assert 14 < _seconds(long) < 16
+        assert long == sound_edit.preview(data, 0, 20, fade_out=0)      # the fade out would be in the middle of the selection
+        short = sound_edit.preview(data, 0, 3, fade_out=1)
+        assert 2.5 < _seconds(short) < 3.5
+
+    def test_the_routes_take_the_effects(self, client):
+        c, *_ = client
+        data = tone(1.5, 0.2)
+        assert c.post("/api/scenes/sounds/upload?name=src.mp3", content=MP3).json()["ok"]
+        res = c.post("/api/scenes/sounds/preview?start=0&end=1.5&low_cut=true&noise=light&compress=light", content=data)
+        assert res.status_code == 200 and res.headers["content-type"] == "audio/mpeg" and res.content[:3] == b"ID3"
+        assert "noise" in c.post("/api/scenes/sounds/preview?start=0&end=1.5&noise=loud", content=data).json()["error"]
+        assert c.post("/api/scenes/sounds/edit?name=plain.mp3&start=0&end=1.5", content=data).json()["ok"]
+        assert c.post("/api/scenes/sounds/edit?name=fx.mp3&start=0&end=1.5&compress=strong&low_cut=true", content=data).json()["ok"]
+        folder = scene_sounds.folder(client[1].audio)
+        assert (folder / "fx.mp3").read_bytes() != (folder / "plain.mp3").read_bytes()
+        assert "unknown" in c.post("/api/scenes/sounds/edit?name=bad.mp3&start=0&end=1.5&compress=huge", content=data).json()["error"]
+        assert c.post("/api/scenes/sounds/preview?start=0&end=1.5&source=gone.mp3").json()["error"] == "not a sound of the library"

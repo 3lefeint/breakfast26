@@ -1,5 +1,7 @@
 """Cut, fade and level a sound with ffmpeg: the part between two marks, a fade in and out, the loudness of the library.
 
+Optionally a low cut, a noise reduction and a compressor run before that (in this order), see `effects()`.
+
 Every sound of the library is brought to the same loudness, so a scene only has to set a volume when one sound should be
 quieter or louder than the rest. The level is the mean of two measures: the loudness of the part (LUFS) and its highest
 sample, taken back by what a pure tone peaks above its loudness. The sounds are short effects, and neither measure alone
@@ -25,10 +27,40 @@ MIN_SECONDS = 0.05
 MAX_SECONDS = 60
 MAX_SOURCE_BYTES = 20 * 1024 * 1024
 TIMEOUT = 60
+PREVIEW_SECONDS = 15          # how much of the selection "Listen with effects" renders
+
+# The filters of the optional effects, all off unless asked for. The steps were chosen with ffmpeg 6 and are a starting
+# point: a strong noise reduction sounds "glassy" on speech, hence the preview. `arnndn` (a neural filter) is left out, it
+# needs a model file.
+LOW_CUT = "highpass=f=80"
+NOISE = {"light": "afftdn=nr=8:nf=-45", "medium": "afftdn=nr=15:nf=-40", "strong": "afftdn=nr=25:nf=-35"}
+# The thresholds are linear (0.063 is -24 dB, 0.032 is -30 dB) and fixed: a recording that peaks far below them is hardly
+# compressed.
+COMPRESS = {"light": "acompressor=threshold=0.063:ratio=2.5:attack=10:release=150:makeup=1",
+            "strong": "acompressor=threshold=0.032:ratio=6:attack=5:release=120:makeup=1"}
+
+
+def preview(data: bytes, start: float, end: float, fade_in: float = 0, fade_out: float = 0, trim: float = 0,
+            curve_in: float = 1, curve_out: float = 1, low_cut: bool = False, noise: str = "", compress: str = ""):
+    """As render(), for listening: only the first PREVIEW_SECONDS of the selection, and without the fade out when the
+    selection is longer (it would fade out in the middle of it)."""
+    if end - start > PREVIEW_SECONDS:
+        end, fade_out = start + PREVIEW_SECONDS, 0
+    return render(data, start, end, fade_in, fade_out, trim, curve_in, curve_out, low_cut, noise, compress)
 
 
 def available() -> bool:
     return shutil.which("ffmpeg") is not None
+
+
+def effects(low_cut: bool = False, noise: str = "", compress: str = "") -> list | str:
+    """The filters of the chosen effects in the order they run (low cut, noise reduction, compressor), or why a choice is
+    not valid."""
+    if noise and noise not in NOISE:
+        return "unknown noise reduction"
+    if compress and compress not in COMPRESS:
+        return "unknown compressor"
+    return [f for f in (LOW_CUT if low_cut else "", NOISE.get(noise, ""), COMPRESS.get(compress, "")) if f]
 
 
 def _run(args, timeout=TIMEOUT):
@@ -70,11 +102,15 @@ def _fades(length, fade_in, fade_out, curve_in, curve_out) -> str:
 
 
 def render(data: bytes, start: float, end: float, fade_in: float = 0, fade_out: float = 0, trim: float = 0,
-           curve_in: float = 1, curve_out: float = 1):
+           curve_in: float = 1, curve_out: float = 1, low_cut: bool = False, noise: str = "", compress: str = ""):
     """The mp3 bytes of the part from *start* to *end* seconds, or the reason why not as a string.
 
     The fades lie inside the part and are applied after the loudness is set. *trim* (dB, at most TRIM_MAX either way)
-    makes this one sound quieter or louder than the level of the library."""
+    makes this one sound quieter or louder than the level of the library. *low_cut*, *noise* (light, medium, strong) and
+    *compress* (light, strong) run on the part before its loudness is measured and set, in this order."""
+    filters = effects(low_cut, noise, compress)
+    if isinstance(filters, str):
+        return filters
     trim = max(-TRIM_MAX, min(TRIM_MAX, trim))
     curve_in, curve_out = (max(CURVE_MIN, min(CURVE_MAX, c)) for c in (curve_in, curve_out))
     if not available():
@@ -95,10 +131,11 @@ def render(data: bytes, start: float, end: float, fade_in: float = 0, fade_out: 
         source, target = Path(tmp, "in"), Path(tmp, "out.mp3")
         source.write_bytes(data)
         try:
-            chain = [cut]
-            peak = _peak(source, cut)
+            chain = [cut, *filters]
+            part = ",".join(chain)                                    # what is measured: the part with its effects
+            peak = _peak(source, part)
             if peak is not None and peak > -70:
-                average = _integrated(source, cut) if length >= WINDOW else None
+                average = _integrated(source, part) if length >= WINDOW else None
                 if average is None:                                   # too short to be measured by loudness
                     chain.append(f"volume={SHORT_PEAK - peak + trim:.2f}dB")
                 else:

@@ -5,6 +5,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { t } from '../../lib/i18n.js';
   import { confirmDialog } from '../../lib/confirm.js';
+  import { proposeTrim } from '../../lib/soundTrim.js';
 
   let { file = null, library = '', taken = [], folder = 'scenes', onsaved, oncancel } = $props();
   const BASE = { scenes: '/api/scenes/sounds', achievements: '/api/admin/achievement-sounds' };
@@ -36,6 +37,11 @@
   let curveIn = $state(1);          // the power the level follows along a fade: 1 linear, above 1 starts quietly
   let curveOut = $state(1);
   let trim = $state(0);             // dB, this sound louder or quieter than the level of the library
+  let lowCut = $state(false);       // the optional effects of the server, all off: a low cut, a noise reduction, a compressor
+  let noise = $state('');           // '', 'light', 'medium', 'strong'
+  let compress = $state('');        // '', 'light', 'strong'
+  let rendering = $state(false);    // "Listen with effects" is waiting for the server
+  let trimNote = $state('');
   let playing = $state(false);
   let head = $state(null);          // seconds of the play position, null when not playing
 
@@ -45,6 +51,7 @@
   let began = 0;                    // context time of the play start
   let from = 0;
   let drag = null;
+  let effectsAudio = null;
 
   let duration = $derived(buffer ? buffer.duration : 0);
   let span = $derived(viewTo - viewFrom);
@@ -99,7 +106,7 @@
     viewTo = buffer.duration;
   });
 
-  onDestroy(() => { stop(); try { ctx?.close(); } catch (_) { /* already closed */ } });
+  onDestroy(() => { stop(); effectsAudio?.pause(); try { ctx?.close(); } catch (_) { /* already closed */ } });
 
   // Seconds on the screen: a point (xOf), a length (px) and back (timeOf).
   const xOf = (seconds) => (span > 0 ? ((seconds - viewFrom) / span) * width : 0);
@@ -367,7 +374,55 @@
     if (playing) stop(); else play(start);
   }
 
+  // Auto trim: the marks go to the first and the last point above about -40 dB with a little room, and short fades are
+  // proposed. It is only a proposal, everything can be changed afterwards and the button can propose again.
+  function autoTrim() {
+    trimNote = '';
+    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+    const found = proposeTrim(channels, buffer.sampleRate);
+    if (!found) { trimNote = t('Nothing in this sound is louder than -40 dB.'); return; }
+    start = found.start;
+    end = Math.min(found.end, start + MAX_SECONDS);
+    fadeIn = found.fadeIn;
+    fadeOut = found.fadeOut;
+    fitFades();
+    showSelection();
+  }
+
+  function query(extra = {}) {
+    const q = new URLSearchParams({ start: start.toFixed(3), end: end.toFixed(3), fade_in: fadeIn.toFixed(3), fade_out: fadeOut.toFixed(3),
+                                    trim: String(trim), curve_in: String(curveIn), curve_out: String(curveOut),
+                                    low_cut: String(lowCut), noise, compress, ...extra });
+    if (!file) q.set('source', library);
+    return q;
+  }
+
+  // The browser cannot play the filters of ffmpeg, so the server renders the first seconds of the selection with the
+  // effects (and the level of the library) and this plays the result.
+  async function listenWithEffects() {
+    message = '';
+    stop();
+    effectsAudio?.pause();
+    rendering = true;
+    try {
+      const res = await fetch(`${BASE[folder]}/preview?${query()}`, { method: 'POST', body: file || undefined });
+      if ((res.headers.get('content-type') || '').includes('json')) {
+        message = t((await res.json()).error || 'The preview failed.');
+      } else {
+        const url = URL.createObjectURL(await res.blob());
+        effectsAudio = new Audio(url);
+        effectsAudio.onended = () => URL.revokeObjectURL(url);
+        await effectsAudio.play();
+      }
+    } catch (e) {
+      message = t('The preview failed.');
+    } finally {
+      rendering = false;
+    }
+  }
+
   function stop() {
+    effectsAudio?.pause();
     cancelAnimationFrame(raf);
     if (source) {
       source.onended = null;
@@ -423,11 +478,8 @@
     if (!replace && taken.includes(name)) { message = t('A sound with this name exists already.'); return; }
     saving = true;
     try {
-      const query = new URLSearchParams({ name, start: start.toFixed(3), end: end.toFixed(3), fade_in: fadeIn.toFixed(3),
-                                           fade_out: fadeOut.toFixed(3), trim: String(trim),
-                                           curve_in: String(curveIn), curve_out: String(curveOut), overwrite: replace ? 'true' : 'false' });
-      if (!file) query.set('source', library);
-      const res = await fetch(`${BASE[folder]}/edit?${query}`, { method: 'POST', body: file || undefined }).then((r) => r.json());
+      const res = await fetch(`${BASE[folder]}/edit?${query({ name, overwrite: replace ? 'true' : 'false' })}`,
+                              { method: 'POST', body: file || undefined }).then((r) => r.json());
       if (res.error) { message = t(res.error); return; }
       stop();
       onsaved?.(res.file);
@@ -478,6 +530,8 @@
       <label>{t('Start')} <input type="number" min="0" max={duration} step="0.01" value={seconds(start)} onchange={(e) => setStart(e.target.value)}> s</label>
       <label>{t('End')} <input type="number" min="0" max={duration} step="0.01" value={seconds(end)} onchange={(e) => setEnd(e.target.value)}> s</label>
       <span class="note" class:warn={tooLong}>{t('Selection {seconds} s', { seconds: seconds(length) })}</span>
+      <button type="button" class="act" onclick={autoTrim}>{t('Auto trim')}</button>
+      {#if trimNote}<span class="note warn">{trimNote}</span>{/if}
     </div>
     {#each [['in', t('Fade in')], ['out', t('Fade out')]] as [side, label]}
       {@const curve = side === 'in' ? curveIn : curveOut}
@@ -510,6 +564,23 @@
       <span class="note">{t('0 is the level of all sounds. Change it only for a sound that stays too quiet or too loud.')}</span>
     </div>
 
+    <div class="row">
+      <label class="check"><input type="checkbox" bind:checked={lowCut}> {t('Low cut')}</label>
+      <label>{t('Noise reduction')}
+        <select bind:value={noise}>
+          <option value="">{t('Off')}</option><option value="light">{t('Light')}</option>
+          <option value="medium">{t('Medium')}</option><option value="strong">{t('Strong')}</option>
+        </select>
+      </label>
+      <label>{t('Compressor')}
+        <select bind:value={compress}>
+          <option value="">{t('Off')}</option><option value="light">{t('Light')}</option><option value="strong">{t('Strong')}</option>
+        </select>
+      </label>
+      <button type="button" class="act" onclick={listenWithEffects} disabled={rendering || tooLong}>▶ {t('Listen with effects')}</button>
+    </div>
+    <div class="note">{t('The effects change the saved sound: first the low cut, then the noise reduction and the compressor, then the level is set. The waveform and Play selection show the sound as it is; Listen with effects plays the first seconds of the selection as they will be saved.')}</div>
+
     {#if tooLong}<div class="message">{t('The selection is longer than {n} seconds.', { n: MAX_SECONDS })}</div>{/if}
     {#if message}<div class="message">{message}</div>{/if}
     <div class="row">
@@ -541,6 +612,7 @@
     padding: 0.1rem 0.6rem; font-family: inherit; font-size: 0.75rem; cursor: pointer;
   }
   .chip.active { border-color: var(--accent); color: var(--text); }
+  .check { cursor: pointer; }
   .value { min-width: 3.2rem; color: var(--text); font-variant-numeric: tabular-nums; }
   .note { font-size: 0.78rem; color: var(--muted); }
   .note.warn, .message { color: var(--yellow); }
