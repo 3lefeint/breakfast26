@@ -314,6 +314,101 @@ class TestWeightedSounds:
             assert nodes["w"]["files"] == [{"file": "new.mp3", "weight": 7}, {"file": "other.mp3", "weight": 2}]
 
 
+class TestSwitch:
+    @staticmethod
+    def switch(field="player", mode="values", outputs=()):
+        return {"id": "w", "type": "condition", "kind": "switch", "field": field, "mode": mode, "outputs": list(outputs)}
+
+    @staticmethod
+    def flow(switch, audio, targets):
+        """A scene: trigger -> switch -> one sound per (output id, file) in *targets*."""
+        nodes, edges = [trigger("x01.bust"), switch], [{"from": "t", "to": "w"}]
+        for i, (match, name) in enumerate(targets):
+            nodes.append(sound(f"s{i}", name))
+            edges.append({"from": "w", "to": f"s{i}", "match": match})
+        store = sc.MemoryScenes()
+        store.save_scene(None, sc.clean_scene({"name": "x", "graph": {"nodes": nodes, "edges": edges}}))
+        return sc.SceneEngine(store, audio=audio)
+
+    def played(self, engine, audio, ctx):
+        audio.played.clear()
+        trace = []
+        engine.fire("x01.bust", ctx, only=mine(engine)[0]["id"], trace=trace)
+        return [p[0] for p in audio.played], trace
+
+    def test_values_take_the_output_that_names_the_value_without_regard_to_case(self):
+        audio = FakeAudio(files=("a.mp3", "b.mp3", "c.mp3"))
+        outputs = [{"id": "o1", "values": ["Anna", "ben"]}, {"id": "o2", "values": ["carl"]}]
+        engine = self.flow(self.switch(outputs=outputs), audio, [("o1", "a.mp3"), ("o2", "b.mp3"), ("else", "c.mp3")])
+        assert self.played(engine, audio, {"player": "BEN"})[0] == ["a.mp3"]
+        assert self.played(engine, audio, {"player": "carl"})[0] == ["b.mp3"]
+        assert self.played(engine, audio, {"player": "tom"})[0] == ["c.mp3"]
+
+    def test_a_value_sits_on_one_output_only(self):
+        node = sc.clean_node(self.switch(outputs=[{"id": "o1", "values": "anna, Ben"}, {"id": "o2", "values": ["BEN", "carl"]}]))
+        assert [o["values"] for o in node["outputs"]] == [["anna", "Ben"], ["carl"]]
+
+    def test_a_number_is_a_value_too(self):
+        audio = FakeAudio(files=("a.mp3", "c.mp3"))
+        engine = self.flow(self.switch("tier", outputs=[{"id": "o1", "values": ["2"]}]), audio, [("o1", "a.mp3"), ("else", "c.mp3")])
+        assert self.played(engine, audio, {"tier": 2})[0] == ["a.mp3"]
+        assert self.played(engine, audio, {"tier": 2.0})[0] == ["a.mp3"]
+        assert self.played(engine, audio, {"tier": 3})[0] == ["c.mp3"]
+
+    def test_bands_end_at_their_limit_and_the_first_match_wins(self):
+        audio = FakeAudio(files=("a.mp3", "b.mp3", "c.mp3", "d.mp3"))
+        outputs = [{"id": "o2", "limit": 15}, {"id": "o1", "limit": 10}]
+        node = sc.clean_node(self.switch("score", "bands", outputs))
+        assert [o["id"] for o in node["outputs"]] == ["o1", "o2"]          # ascending, so no gap and no overlap
+        engine = self.flow(node, audio, [("o1", "a.mp3"), ("o2", "b.mp3"), ("else", "c.mp3")])
+        assert self.played(engine, audio, {"score": 0})[0] == ["a.mp3"]
+        assert self.played(engine, audio, {"score": 10})[0] == ["a.mp3"]
+        assert self.played(engine, audio, {"score": 10.5})[0] == ["b.mp3"]
+        assert self.played(engine, audio, {"score": 15})[0] == ["b.mp3"]
+        assert self.played(engine, audio, {"score": 16})[0] == ["c.mp3"]
+
+    def test_a_missing_fact_takes_otherwise_and_the_trace_names_it(self):
+        audio = FakeAudio(files=("a.mp3", "c.mp3"))
+        engine = self.flow(self.switch("score", "bands", [{"id": "o1", "limit": 10}]), audio, [("o1", "a.mp3"), ("else", "c.mp3")])
+        files, trace = self.played(engine, audio, {})
+        assert files == ["c.mp3"] and trace[0] == {"node": "w", "result": "pass", "why": "missing_fact:score", "output": "else"}
+        assert self.played(engine, audio, {"score": "high"})[1][0]["why"] == "not_a_number"
+
+    def test_an_output_without_a_connection_does_nothing_and_the_trace_says_so(self):
+        audio = FakeAudio(files=("c.mp3",))
+        engine = self.flow(self.switch(outputs=[{"id": "o1", "values": ["anna"]}]), audio, [("else", "c.mp3")])
+        files, trace = self.played(engine, audio, {"player": "anna"})
+        assert files == [] and trace == [{"node": "w", "result": "stop", "why": "no_output", "output": "o1"}]
+
+    def test_several_steps_can_hang_on_one_output(self):
+        audio = FakeAudio(files=("a.mp3", "b.mp3"))
+        engine = self.flow(self.switch(outputs=[{"id": "o1", "values": ["anna"]}]), audio, [("o1", "a.mp3"), ("o1", "b.mp3")])
+        assert self.played(engine, audio, {"player": "anna"})[0] == ["a.mp3", "b.mp3"]
+
+    def test_the_edges_of_a_switch_carry_a_known_output(self):
+        graph = sc.clean_graph({"nodes": [trigger("x01.bust"), self.switch(outputs=[{"id": "o1", "values": ["a"]}]), sound("s1"), sound("s2"), sound("s3")],
+                                "edges": [{"from": "w", "to": "s1", "match": "o1", "branch": "no"}, {"from": "w", "to": "s2", "match": "nope"},
+                                          {"from": "w", "to": "s3"}, {"from": "t", "to": "w", "match": "o1"}]})
+        assert graph["edges"] == [{"from": "w", "to": "s1", "match": "o1"}, {"from": "t", "to": "w"}]
+
+    def test_the_outputs_are_limited_and_cleaned(self):
+        many = [{"id": f"o{i}", "values": [f"v{i}"]} for i in range(30)]
+        assert len(sc.clean_node(self.switch(outputs=many))["outputs"]) == sc.MAX_SWITCH_OUTPUTS
+        bad = [{"id": "else", "values": ["x"]}, {"id": "bad id"}, {"id": "o1"}, {"id": "o1"}, "x"]
+        assert sc.clean_node(self.switch(outputs=bad))["outputs"] == [{"id": "o1", "values": []}]
+        node = sc.clean_node({"id": "w", "type": "condition", "kind": "switch"})
+        assert (node["field"], node["mode"], node["outputs"]) == ("player", "values", [])
+
+    def test_a_switch_survives_the_routes(self):
+        store = sc.MemoryScenes()
+        engine = sc.SceneEngine(store, audio=FakeAudio())
+        raw = {"name": "s", "graph": {"nodes": [trigger("x01.bust"), self.switch(outputs=[{"id": "o1", "values": ["anna"]}]), sound()],
+                                      "edges": [{"from": "t", "to": "w"}, {"from": "w", "to": "s", "match": "o1"}]}}
+        engine.save(None, sc.clean_scene(raw))
+        saved = mine(engine)[0]["graph"]
+        assert saved["edges"][1] == {"from": "w", "to": "s", "match": "o1"}
+
+
 class TestX01Moments:
     def test_the_third_dart_is_a_scored_turn(self):
         moments = sc.x01_moments({"type": "dart", "dart": 3, "mode": "X01"}, snapshot(turn_score=180, remaining=321))
