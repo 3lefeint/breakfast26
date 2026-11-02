@@ -4,12 +4,20 @@ A scene plays a file by its name. The folder is a library folder of the audio en
 for the sound of a key (a file called `nice.mp3` here is not the `nice` call).
 """
 
+import logging
+import os
 import re
+import tempfile
 from pathlib import Path
 
 from . import scenes, sound_edit
 
+log = logging.getLogger(__name__)
+
 MAX_UPLOAD_BYTES = 3 * 1024 * 1024
+MAX_SPEECH_CHARS = 200
+SPEECH_RATE = (-50, 100)       # percent, relative to the voice
+SPEECH_PITCH = (-50, 50)       # Hz, relative to the voice
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\.mp3$")
 
 
@@ -63,6 +71,50 @@ def save_upload(audio, name: str, data: bytes, overwrite: bool = False):
     (path / name).write_bytes(data)
     audio.files_changed()
     return None
+
+
+def name_problem(audio, name: str, overwrite: bool = False):
+    """None if a file of this name can be written to the library, else why not."""
+    if not _NAME.match(name or ""):
+        return "the name must be letters, digits and . _ + - and end in .mp3"
+    if folder(audio) is None:
+        return "no sound directory is configured"
+    if name in files(audio) and not overwrite:
+        return "a sound with this name exists already"
+    return None
+
+
+def speech_problem(text: str, rate: int, pitch: int):
+    """None if this text and these settings can be spoken, else why not."""
+    if not (text or "").strip():
+        return "the text is empty"
+    if len(text) > MAX_SPEECH_CHARS:
+        return f"the text is longer than {MAX_SPEECH_CHARS} characters"
+    if not SPEECH_RATE[0] <= rate <= SPEECH_RATE[1]:
+        return f"the speed must be between {SPEECH_RATE[0]} and {SPEECH_RATE[1]} %"
+    if not SPEECH_PITCH[0] <= pitch <= SPEECH_PITCH[1]:
+        return f"the pitch must be between {SPEECH_PITCH[0]} and {SPEECH_PITCH[1]} Hz"
+    return None
+
+
+async def speak(voice: str, text: str, rate: int, pitch: int):
+    """The mp3 of *text* spoken by *voice* (a voice of the voice-pack plans), silence at both ends trimmed as for the voice
+    packs. Returns the bytes, or a string saying why not. The text goes to the speech service, so this needs the internet."""
+    try:
+        from tools.generate_voicepack import synthesize
+    except ImportError:
+        return "speech is not available here"
+    fd, tmp = tempfile.mkstemp(suffix=".mp3", prefix="scene-speech-")
+    os.close(fd)
+    dest = Path(tmp)
+    try:
+        await synthesize(voice, text.strip(), f"{rate:+d}%", f"{pitch:+d}Hz", "+0%", dest, trim=sound_edit.available())
+        return dest.read_bytes()
+    except Exception as e:
+        log.warning("Scene speech failed: %s", e)
+        return f"the speech could not be created: {e}"
+    finally:
+        dest.unlink(missing_ok=True)
 
 
 def delete_file(audio, name: str):
