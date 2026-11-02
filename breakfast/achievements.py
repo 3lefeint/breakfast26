@@ -21,7 +21,7 @@ import re
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from .target_battle_scoring import SCORING
@@ -63,13 +63,64 @@ class Turn:
     at: str | None = None      # X01: when the turn was stored (UTC, ISO)
 
 
+PENDING_TURN_ID = -1       # the turn id of the events of a Killer turn that is not stored yet
+
+
+def participants_of(db, match_id: str, pending: dict | None = None) -> list:
+    """The players of a match, with the one whose turn is in progress (he may not have a stored turn yet)."""
+    names = db.match_participants(match_id)
+    if pending and pending["player"] not in names:
+        names = sorted([*names, pending["player"]])
+    return names
+
+
+def open_x01_turn(player, number, leg, remaining_before, darts, is_bust, is_checkout, at=None) -> dict:
+    """The X01 turn in progress as the checks see a stored one. *darts*: [(field, value, remaining after)] as the
+    tracker collects them."""
+    fields = tuple(f.upper() for f, _, _ in darts if f)
+    total = sum(v for _, v, _ in darts)
+    score = 0 if is_bust else total
+    return {"player": player,
+            "turn": Turn(number=number, score=score, is_bust=is_bust, darts=fields, is_checkout=is_checkout,
+                         remaining_before=remaining_before, leg=leg, at=at),
+            "x01_row": {"player": player, "leg": leg, "remaining_before": remaining_before, "score": score,
+                        "is_bust": is_bust, "is_checkout": is_checkout}}
+
+
+def open_elimination_turn(player, fields, score, to_beat, freipass, lives_before) -> dict:
+    """The Elimination turn in progress; *to_beat* is what it has to beat (0 on a free pass)."""
+    return {"player": player,
+            "turn": Turn(number=0, score=None, is_bust=False, darts=tuple((f or "").upper() for f in fields)),
+            "elim_row": {"player": player, "score": score, "to_beat": to_beat or 0, "freipass": bool(freipass),
+                         "passed": score > (to_beat or 0), "lives_before": lives_before}}
+
+
+def open_target_battle_turn(player, fields, round_no, target, tiebreak, score) -> dict:
+    """The Target Battle turn in progress."""
+    return {"player": player,
+            "turn": Turn(number=0, score=score, is_bust=False, darts=tuple((f or "").upper() for f in fields),
+                         target=target, round_no=round_no, tiebreak=bool(tiebreak)),
+            "tb_row": {"player": player, "round_no": round_no, "tiebreak": bool(tiebreak), "score": score}}
+
+
+def open_killer_turn(player, events) -> dict:
+    """The Killer turn in progress; *events*: what its darts did so far, as the game keeps them (kind, dart, victim,
+    number, lives)."""
+    return {"player": player,
+            "killer_events": [{"turn_id": PENDING_TURN_ID, "player": e["player"], "kind": e["kind"], "victim": e.get("victim"),
+                               "dart_no": e["dart"], "number": e.get("number"), "lives_after": e.get("lives")}
+                              for e in events]}
+
+
 class MatchContext:
     """One player's view of one match, loaded lazily for the checks."""
 
-    def __init__(self, db, match: dict, player: str):
+    def __init__(self, db, match: dict, player: str, pending: dict | None = None):
+        """*pending*: the turn in progress, see `open_turn()`: it is part of the turns the checks see."""
         self.db = db
         self.match = match
         self.player = player
+        self.pending = pending
         self._turns = None
         self._participants = None
         self._tb_results = None
@@ -111,12 +162,15 @@ class MatchContext:
             rows = self.db.turns_for_achievements(self.match["match_id"], self.player,
                                                   self.match["game_mode"])
             self._turns = [Turn(**r) for r in rows]
+            pending = self.pending
+            if pending and pending.get("turn") and pending["player"] == self.player:
+                self._turns.append(replace(pending["turn"], number=len(self._turns) + 1))
         return self._turns
 
     @property
     def participants(self) -> list:
         if self._participants is None:
-            self._participants = self.db.match_participants(self.match["match_id"])
+            self._participants = participants_of(self.db, self.match["match_id"], self.pending)
         return self._participants
 
     @property
@@ -131,6 +185,8 @@ class MatchContext:
         """Target Battle: every turn of every player."""
         if self._tb_turns is None:
             self._tb_turns = self.db.target_battle_turn_rows(self.match["match_id"])
+            if self.pending and self.pending.get("tb_row"):
+                self._tb_turns.append(self.pending["tb_row"])
         return self._tb_turns
 
     @property
@@ -138,6 +194,8 @@ class MatchContext:
         """Killer: every event of the game, see StatsDB.killer_event_rows()."""
         if self._killer_events is None:
             self._killer_events = self.db.killer_event_rows(self.match["match_id"])
+            if self.pending and self.pending.get("killer_events"):
+                self._killer_events.extend(self.pending["killer_events"])
         return self._killer_events
 
     @property
@@ -159,6 +217,8 @@ class MatchContext:
         """X01: every turn of every player, in the order played."""
         if self._x01_turns is None:
             self._x01_turns = self.db.x01_turn_rows(self.match["match_id"])
+            if self.pending and self.pending.get("x01_row"):
+                self._x01_turns.append(self.pending["x01_row"])
         return self._x01_turns
 
     @property
@@ -166,6 +226,8 @@ class MatchContext:
         """Elimination: every turn of every player, in the order played."""
         if self._elim_turns is None:
             self._elim_turns = self.db.elimination_turn_rows(self.match["match_id"])
+            if self.pending and self.pending.get("elim_row"):
+                self._elim_turns.append(self.pending["elim_row"])
         return self._elim_turns
 
     @property
@@ -202,6 +264,7 @@ class Achievement:
     motif: str | None = None   # id of the badge motif to share, default: its own
     practice: bool = False     # also decided by a Field Training run that is only practice
     live: bool = False         # event: can be decided while the match is still running (see the engine)
+    at_dart: bool = False      # live: what it needs only grows with the darts of a turn, so a dart of the open turn can decide it
 
     def applies_to(self, game_mode: str) -> bool:
         if self.game_modes == ANY:
@@ -896,7 +959,7 @@ ACHIEVEMENTS = (
                 check=_first_breakfast),
     Achievement("bullseye", "general", "easy", {"en": "Bullseye", "de": "Bullseye"},
                 {"en": "Hit the inner bull.", "de": "Das innere Bull treffen."},
-                check=_bullseye, live=True),
+                check=_bullseye, live=True, at_dart=True),
     Achievement("shanghai", "general", "medium", {"en": "Shanghai", "de": "Shanghai"},
                 {"en": "Hit a single, a double and a triple of the same number in one turn, in any order.",
                  "de": "Single, Double und Triple derselben Zahl in einer Aufnahme treffen, Reihenfolge beliebig."},
@@ -1288,32 +1351,32 @@ ACHIEVEMENTS = (
     Achievement("licence_to_breakfast", "killer", "easy",
                 {"en": "Licence to Breakfast", "de": "Lizenz zum Frühstücken"},
                 {"en": "Become a killer for the first time.", "de": "Erstmals den Killer-Status aktivieren."},
-                game_modes=KILLER, check=_licence_to_breakfast, live=True),
+                game_modes=KILLER, check=_licence_to_breakfast, live=True, at_dart=True),
     Achievement("armed_immediately", "killer", "medium",
                 {"en": "Armed Immediately", "de": "Sofort scharf"},
                 {"en": "Become a killer with your first dart of the game.",
                  "de": "Mit dem ersten eigenen Dart des Spiels den Killer-Status aktivieren."},
-                game_modes=KILLER, check=_armed_immediately, live=True),
+                game_modes=KILLER, check=_armed_immediately, live=True, at_dart=True),
     Achievement("first_blood", "killer", "easy", {"en": "First Blood", "de": "Erster Treffer"},
                 {"en": "Take a life from an opponent for the first time.",
                  "de": "Erstmals einem Gegner ein Leben abziehen."},
-                game_modes=KILLER, check=_first_blood, live=True),
+                game_modes=KILLER, check=_first_blood, live=True, at_dart=True),
     Achievement("three_in_one", "killer", "medium", {"en": "Three in One", "de": "Drei auf einen Streich"},
                 {"en": "Take three lives from opponents in one turn.",
                  "de": "In einer Aufnahme insgesamt drei gegnerische Leben abziehen."},
-                game_modes=KILLER, label="3", check=_three_in_one, live=True),
+                game_modes=KILLER, label="3", check=_three_in_one, live=True, at_dart=True),
     Achievement("all_round_attack", "killer", "hard", {"en": "All-Round Attack", "de": "Rundumschlag"},
                 {"en": "Take a life from three different opponents in one turn, in a game of at least four players.",
                  "de": "In einer Aufnahme drei unterschiedlichen Gegnern je ein Leben abziehen, bei mindestens vier Teilnehmern."},
-                game_modes=KILLER, label="3", check=_all_round_attack, live=True),
+                game_modes=KILLER, label="3", check=_all_round_attack, live=True, at_dart=True),
     Achievement("finisher", "killer", "easy", {"en": "Finisher", "de": "Vollstrecker"},
                 {"en": "Put an opponent out with one of your hits.",
                  "de": "Mit einem eigenen Treffer einen Gegner auf null Leben bringen."},
-                game_modes=KILLER, check=_finisher, live=True),
+                game_modes=KILLER, check=_finisher, live=True, at_dart=True),
     Achievement("double_knockout", "killer", "hard", {"en": "Double Knockout", "de": "Doppeltes Aus"},
                 {"en": "Put two different opponents out in one turn.",
                  "de": "In einer Aufnahme zwei unterschiedliche Gegner durch eigene Treffer ausschalten."},
-                game_modes=KILLER, label="2", check=_double_knockout, live=True),
+                game_modes=KILLER, label="2", check=_double_knockout, live=True, at_dart=True),
     Achievement("unscathed", "killer", "hard", {"en": "Unscathed", "de": "Unversehrt"},
                 {"en": "Win a game of at least three players without losing a life.",
                  "de": "Mit mindestens drei Teilnehmern gewinnen, ohne ein Leben zu verlieren."},
@@ -1328,11 +1391,11 @@ ACHIEVEMENTS = (
     Achievement("self_service", "killer", "hidden", {"en": "Self-Service", "de": "Selbstbedienung"},
                 {"en": "Lose your last life to your own hit and be out, with own goals on.",
                  "de": "Bei aktivierten Eigentoren durch einen eigenen Treffer das letzte Leben verlieren und ausscheiden."},
-                game_modes=KILLER, hidden=True, check=_self_service, live=True),
+                game_modes=KILLER, hidden=True, check=_self_service, live=True, at_dart=True),
     Achievement("glass_cannon", "killer", "hidden", {"en": "Glass Cannon", "de": "Glaskanone"},
                 {"en": "As a killer with one life left, take two lives from opponents in a turn and then put yourself out with an own goal.",
                  "de": "Als aktiver Killer mit einem verbleibenden Leben in einer Aufnahme zuerst zwei gegnerische Leben abziehen und anschliessend durch ein Eigentor ausscheiden."},
-                game_modes=KILLER, hidden=True, check=_glass_cannon, live=True),
+                game_modes=KILLER, hidden=True, check=_glass_cannon, live=True, at_dart=True),
     Achievement("friendly_to_the_end", "killer", "hidden", {"en": "Friendly to the End", "de": "Freundlich bis zuletzt"},
                 {"en": "Be out in a game of at least three players without having taken a life from anyone.",
                  "de": "In einem Spiel mit mindestens drei Teilnehmern ausscheiden, ohne einem Gegner ein Leben abgezogen zu haben."},
@@ -1340,7 +1403,7 @@ ACHIEVEMENTS = (
     Achievement("own_worst_enemy", "killer", "hidden", {"en": "Own Worst Enemy", "de": "Eigene Baustelle"},
                 {"en": "Lose all three lives to own goals alone, with own goals on.",
                  "de": "Bei aktivierten Eigentoren alle drei eigenen Leben ausschliesslich durch Eigentore verlieren."},
-                game_modes=KILLER, hidden=True, check=_own_worst_enemy, live=True),
+                game_modes=KILLER, hidden=True, check=_own_worst_enemy, live=True, at_dart=True),
     Achievement("beast_mode", "easter_egg", "hidden", {"en": "Beast Mode", "de": "Beast Mode"},
                 {"en": "Hit three S6 in one turn.", "de": "Drei S6 in einer Aufnahme treffen."},
                 hidden=True, label="666", check=_beast_mode, live=True),
@@ -1556,6 +1619,22 @@ class AchievementEngine:
         self._notify(result)
         return result
 
+    def evaluate_open_turn(self, match_id: str, pending: dict, complete: bool = True) -> dict:
+        """A dart of a turn that is not stored yet (it is stored when the darts are pulled): look at the live
+        achievements with the darts so far as part of the match, so an unlock comes at the throw and not at the pull.
+        *pending*: see open_x01_turn() and its siblings. *complete*: the turn has all its darts (or ended by a bust or
+        a checkout); before that only the achievements marked `at_dart` are looked at, because the others need the
+        whole turn (its score, its three darts). Nothing is stored; the unlock is provisional like any other of a
+        running match, forgotten again when an undo or a correction takes the turn back, and not announced a second
+        time when the turn is stored or the match closes."""
+        result = {"earned": [], "revoked": [], "provisional": []}
+        match = self.db.match_row(match_id)
+        if not match or match["ended_at"] is not None or match["started_at"] < self.db.achievements_start():
+            return result
+        self._live_pass(match, self._shown.get(match_id, set()), result, pending=pending, partial=not complete)
+        self._notify(result)
+        return result
+
     def _reconcile_match(self, match, start, result):
         hidden = set(self.db.hidden_players())
         for player in self.db.match_participants(match["match_id"]):
@@ -1569,7 +1648,7 @@ class AchievementEngine:
                 else:
                     self._reconcile_counter(achievement, player, match, start, result)
 
-    def _live_pass(self, match, shown, result):
+    def _live_pass(self, match, shown, result, pending=None, partial=False):
         """The live achievements of a match that is still running: a newly reached one is announced
         at once as provisional and remembered in memory, nothing is stored, the match decides when
         it closes. One that no longer holds, because an undo or a correction took its turn back, is
@@ -1577,24 +1656,30 @@ class AchievementEngine:
         match_id = match["match_id"]
         hidden = set(self.db.hidden_players())
         holding = set()
-        for player in self.db.match_participants(match_id):
+        looked_at = set()
+        for player in participants_of(self.db, match_id, pending):
             if player in hidden:
                 continue
             context = None
             for a in self.definitions:
                 if not (a.live and a.applies_to(match["game_mode"]) and a.counts_match(match)):
                     continue
+                if partial and not a.at_dart:
+                    continue
+                looked_at.add(a.id)
                 if self.db.earned_rows(player, a.id):
                     continue
-                context = context or self._context(match, player)
+                context = context or self._context(match, player, pending)
                 if a.check(context):
                     holding.add((player, a.id))
                     if (player, a.id) not in shown:
                         result["provisional"].append(_change(player, a, 0))
+        if partial:                                  # what was not looked at this time keeps its state
+            holding |= {key for key in shown if key[1] not in looked_at}
         self._shown = {match_id: holding}          # a match that is not this one was abandoned
 
-    def _context(self, match, player):
-        return MatchContext(self.db, match, player)
+    def _context(self, match, player, pending=None):
+        return MatchContext(self.db, match, player, pending)
 
     def _reconcile_event(self, a, player, match, start, result):
         final = match["ended_at"] is not None

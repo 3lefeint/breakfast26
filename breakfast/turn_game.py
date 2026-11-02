@@ -58,6 +58,11 @@ def parse_field(field, point=None):
     return throw
 
 
+def throw_fields(throws):
+    """The field name of each dart of a turn ('' for a dart without one)."""
+    return [(p or {}).get("field") or "" for p in dart_positions(throws)]
+
+
 def dart_positions(throws):
     """Where each dart of a turn landed, None for a dart without a field."""
     positions = []
@@ -131,6 +136,10 @@ class TurnGame:
     def _dart_seen(self, count, is_new_dart, is_correction):
         """A dart was added to the turn in progress or one of them was corrected."""
 
+    def _open_turn_changed(self):
+        """The turn in progress changed (a dart, a correction): a game that stores its turns only when the darts are
+        pulled tells the achievements here what the turn holds so far (`stats_db.open_turn`)."""
+
     def _snapshot_state(self, player):
         """Everything `_restore` needs to bring the game back to before `player`'s turn."""
         raise NotImplementedError
@@ -173,6 +182,7 @@ class TurnGame:
                 if is_correction:
                     log.debug("Live correction detected: %s", new_vals)
                 self._dart_seen(len(self._last_throws), is_new_dart, is_correction)
+                self._open_turn_changed()
         if count == 0 and self._prev_count > 0:
             self._end_turn()
         self._prev_count = count
@@ -196,6 +206,7 @@ class TurnGame:
         self._apply_dart_overrides()
         self._publish_turn()
         self._changed()
+        self._open_turn_changed()
         log.info("Dart %d corrected: %s%s", dart_index + 1, field,
                  f" at x={point['x']:.3f} y={point['y']:.3f}" if point else "")
 

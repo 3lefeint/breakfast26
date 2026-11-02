@@ -279,6 +279,10 @@ class StatsWithoutBots:
     def set_winner(self, match_id, winner):
         self._db.set_winner(match_id, None if winner in self._bots else winner)
 
+    def open_turn(self, match_id, pending, complete=True):
+        if pending["player"] not in self._bots:
+            self._db.open_turn(match_id, pending, complete)
+
     def insert_elimination_turn(self, match_id, player, *args, **kwargs):
         if player not in self._bots:
             self._db.insert_elimination_turn(match_id, player, *args, **kwargs)

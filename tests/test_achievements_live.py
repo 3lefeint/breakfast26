@@ -134,3 +134,151 @@ class TestMarker:
     def test_a_well_known_live_one_is_marked(self):
         for aid in ("bullseye", "maximum", "raising_the_bar", "first_blood", "target_acquired", "job_done"):
             assert ach.BY_ID[aid].live, aid
+
+
+# ── the open turn: an unlock comes at the throw, not when the darts are pulled (#135) ────────────
+
+OPEN_DEFINITIONS = tuple(ach.BY_ID[i] for i in ("bullseye", "maximum", "shanghai", "raising_the_bar", "first_blood", "three_in_one"))
+
+
+@pytest.fixture
+def open_engine(db, announced):
+    db.set_achievements_start("2000-01-01T00:00:00")
+    return AchievementEngine(db, definitions=OPEN_DEFINITIONS,
+                             on_earned=lambda c: announced.append((c["player"], c["achievement"]))).attach()
+
+
+def _event(name, player="ana", **game):
+    return {"event": name, "player": player, "game": game}
+
+
+def _dart(n, field, value, left):
+    return _event(f"dart{n}-thrown", dartValue=str(value), pointsLeft=str(left), fieldName=field)
+
+
+class TestOpenTurnX01:
+    def _start(self, tracker, mode="X01", start="501"):
+        tracker.process({"event": "match-started", "id": "m1", "game": {"mode": mode, "pointsStart": start}})
+
+    def test_a_bull_is_announced_with_the_dart_and_not_a_second_time(self, db, tracker, open_engine, announced):
+        self._start(tracker)
+        tracker.process(_dart(1, "50", 50, 451))
+        assert announced == [("ana", "bullseye")]
+        assert _earned(db, "ana") == set()                      # nothing is stored before the turn is
+        tracker.process(_dart(2, "S20", 20, 431))
+        tracker.process(_dart(3, "S20", 20, 411))
+        tracker.process(_event("darts-pulled"))
+        db.close_match("m1")
+        assert announced == [("ana", "bullseye")]               # not at the pull, not at the end of the match
+        assert _earned(db, "ana") == {("bullseye", 0)}
+
+    def test_what_needs_the_whole_turn_comes_with_the_third_dart(self, db, tracker, open_engine, announced):
+        self._start(tracker)
+        tracker.process(_dart(1, "T20", 60, 441))
+        tracker.process(_dart(2, "T20", 60, 381))
+        assert announced == []
+        tracker.process(_dart(3, "T20", 60, 321))
+        assert announced == [("ana", "maximum")]
+        tracker.process(_event("darts-pulled"))
+        assert announced == [("ana", "maximum")]
+
+    def test_a_turn_taken_back_is_forgotten_and_can_come_again(self, db, tracker, open_engine, announced):
+        self._start(tracker)
+        tracker.process(_dart(1, "50", 50, 451))
+        tracker.process(_event("x01-resync"))                   # an undo or a correction
+        tracker.process(_dart(1, "S20", 20, 481))               # the dart was a 20 after all
+        tracker.process(_dart(2, "S20", 20, 461))
+        assert announced == [("ana", "bullseye")]
+        tracker.process(_event("x01-resync"))
+        tracker.process(_dart(1, "50", 50, 451))                # and it is a bull again
+        assert announced == [("ana", "bullseye"), ("ana", "bullseye")]
+
+    def test_a_turn_of_a_bot_counts_for_nothing(self, db, tracker, open_engine, announced):
+        self._start(tracker)
+        tracker.process({"event": "match-started", "id": "m1", "game": {"mode": "X01", "pointsStart": "501", "bots": ["ana"]}})
+        tracker.process(_dart(1, "50", 50, 451))
+        assert announced == []
+
+    def test_a_hidden_player_earns_nothing(self, db, tracker, open_engine, announced):
+        db.upsert_player("ana", hidden=True)
+        self._start(tracker)
+        tracker.process(_dart(1, "50", 50, 451))
+        assert announced == []
+
+    def test_a_bust_completes_the_turn(self, db, tracker, open_engine, announced):
+        self._start(tracker, start="40")
+        tracker.process(_event("busted", dartNumber="1", dartValue="50", field_name="50", pointsBeforeTurn="40"))
+        assert announced == [("ana", "bullseye")]
+
+    def test_the_other_modes_x01_checks_are_not_run_by_a_partial_turn(self, db, tracker, open_engine, announced):
+        self._start(tracker)
+        tracker.process(_dart(1, "S20", 20, 481))
+        assert announced == []
+
+
+def _elimination_game(db):
+    from breakfast.elimination import EliminationGame
+    from tests.test_target_battle import FakeMqttClient
+    game = EliminationGame(["ana", "bo"], 3, FakeMqttClient(), "autodarts", stats_db=db)
+    game.announce_start()
+    return game
+
+
+def _throws_so_far(game, *throws):
+    for i in range(len(throws)):
+        game.on_board_state(i + 1, list(throws[:i + 1]))
+
+
+class TestOpenTurnTurnGames:
+    def test_elimination_announces_with_the_third_dart_and_not_again(self, db, open_engine, announced):
+        from tests.test_target_battle import BULL, hit
+        game = _elimination_game(db)
+        _throws_so_far(game, hit(20, 1), hit(20, 1), hit(20, 1))      # ana: a free pass, 60 to beat
+        game.on_board_state(0, [])
+        assert announced == []
+        _throws_so_far(game, hit(20, 1), hit(20, 1))
+        assert announced == []                                        # bo's turn is not complete
+        _throws_so_far(game, hit(20, 1), hit(20, 1), BULL)            # 90 beats 60
+        assert announced == [("bo", "bullseye"), ("bo", "raising_the_bar")]
+        game.on_board_state(0, [])                                    # the pull stores the turn
+        assert announced == [("bo", "bullseye"), ("bo", "raising_the_bar")]
+        assert _earned(db, "bo") == set()
+
+    def test_elimination_forgets_a_corrected_turn(self, db, open_engine, announced):
+        from tests.test_target_battle import BULL, hit
+        game = _elimination_game(db)
+        _throws_so_far(game, hit(20, 1), hit(20, 1), hit(20, 1))
+        game.on_board_state(0, [])
+        _throws_so_far(game, hit(20, 1), hit(20, 1), BULL)
+        assert {("bo", "bullseye"), ("bo", "raising_the_bar")} <= set(announced)
+        game.correct_current_dart(2, "S20")                           # the third dart was a 20, not the bull
+        assert open_engine._shown[game.match_id] == set()
+        game.correct_current_dart(2, "50")
+        assert announced.count(("bo", "bullseye")) == 2               # it comes again when it is earned again
+
+    def test_target_battle_announces_with_the_third_dart(self, db, open_engine, announced):
+        from tests.test_target_battle import BULL, new_game
+        game = new_game(db=db, rounds=1, targets=[20])
+        _throws_so_far(game, BULL)
+        assert announced == []                                   # a bull in the first dart of a turn: not complete yet
+        _throws_so_far(game, BULL, BULL, BULL)
+        assert announced == [("ana", "bullseye")]
+        game.on_board_state(0, [])
+        assert announced == [("ana", "bullseye")]
+
+    def test_killer_announces_with_the_dart(self, db, open_engine, announced):
+        from tests.test_killer_stats import NUMBERS, new_game
+        from tests.test_target_battle import MISS, hit
+        game = new_game(db, players=("ana", "bo"))
+        _throws_so_far(game, hit(NUMBERS["ana"], 2))
+        game.on_board_state(0, [])                               # ana is a killer now
+        _throws_so_far(game, MISS)
+        game.on_board_state(0, [])                               # bo
+        _throws_so_far(game, hit(NUMBERS["bo"], 2))              # ana hits bo: the unlock comes with the dart
+        assert announced == [("ana", "first_blood")]
+        game.on_board_state(2, [hit(NUMBERS["bo"], 2)] * 2)
+        assert announced == [("ana", "first_blood")]
+        game.on_board_state(3, [hit(NUMBERS["bo"], 2)] * 3)
+        assert ("ana", "three_in_one") in announced
+        game.on_board_state(0, [])
+        assert announced.count(("ana", "first_blood")) == 1 and announced.count(("ana", "three_in_one")) == 1
