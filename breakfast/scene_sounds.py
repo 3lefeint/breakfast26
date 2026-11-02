@@ -128,7 +128,8 @@ def delete_file(audio, name: str):
 
 
 def save_edit(audio, name: str, data: bytes, start: float, end: float, fade_in: float, fade_out: float,
-              overwrite: bool = False, trim: float = 0, curve_in: float = 1, curve_out: float = 1):
+              overwrite: bool = False, trim: float = 0, curve_in: float = 1, curve_out: float = 1,
+              low_cut: bool = False, noise: str = "", compress: str = ""):
     """Cut, fade and level the sound in *data* and store the result under *name*. Returns None when saved, else why not."""
     if not _NAME.match(name or ""):
         return "the name must be letters, digits and . _ + - and end in .mp3"
@@ -136,7 +137,7 @@ def save_edit(audio, name: str, data: bytes, start: float, end: float, fade_in: 
         return "no sound directory is configured"
     if name in files(audio) and not overwrite:
         return "a sound with this name exists already"
-    result = sound_edit.render(data, start, end, fade_in, fade_out, trim, curve_in, curve_out)
+    result = sound_edit.render(data, start, end, fade_in, fade_out, trim, curve_in, curve_out, low_cut, noise, compress)
     if isinstance(result, str):
         return result
     return save_upload(audio, name, result, overwrite)

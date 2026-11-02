@@ -313,6 +313,20 @@ class TestRoutes:
         assert "locked" in c.put(f"{URL}/ton_up", json={"files": ["fanfare.mp3"]}).json()["error"]
         assert "locked" in c.post(f"{URL}/upload?name=x.mp3", content=MP3).json()["error"]
 
+    @pytest.mark.skipif(not sound_edit.available(), reason="ffmpeg is not installed")
+    def test_the_editor_routes_take_the_effects_and_the_preview_is_locked_too(self, client):
+        import subprocess
+        c, engine, config = client
+        data = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                               "-f", "wav", "pipe:1"], capture_output=True, check=True).stdout
+        assert "locked" in c.post(f"{URL}/preview?start=0&end=1", content=data).json()["error"]
+        c.post("/api/dev/unlock")
+        res = c.post(f"{URL}/preview?start=0&end=1&low_cut=true&noise=light&compress=strong", content=data)
+        assert res.headers["content-type"] == "audio/mpeg" and res.content[:3] == b"ID3"
+        assert "noise" in c.post(f"{URL}/preview?start=0&end=1&noise=loud", content=data).json()["error"]
+        assert c.post(f"{URL}/edit?name=clean.mp3&start=0&end=1&low_cut=true&compress=light", content=data).json() == {"ok": True, "file": "clean.mp3"}
+        assert "clean.mp3" in snd.files(engine)
+
     def test_the_unlock_opens_it(self, client):
         c, *_ = client
         c.post("/api/dev/unlock")
