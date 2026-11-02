@@ -9,6 +9,7 @@
 - Scenes: a switch node takes one output by the value of a fact (a player) or by a band of a number (a score up to 10, up to 15, ...), with an "otherwise" output; it grows with its outputs, up to 18 (#131)
 - Scenes: of the scenes of the user only the first in the list that plays on the voice channel at a moment speaks, the voice steps of later ones are skipped; scenes can be moved in the list, and an "i" in the editor names the earlier scenes that can take the voice first (#133)
 - Scenes: a trigger "Achievement earned" with the id, tier, difficulty (1 to 5), secret and first of the achievement; a sound of a scene marked as replacing keeps the assigned sound of the achievement out (#134)
+- Scenes: a sound step can create speech from a text: a voice of the voice-pack plans, speed and pitch, a preview, saved as a file of the sound library (#136)
 
 ### Changed
 - Achievements that can be decided during a match are announced when the dart is thrown (a bullseye with the dart, a 180 or a Shanghai with the third dart) and not when the darts are pulled, in X01, Elimination, Target Battle and Killer (#135)

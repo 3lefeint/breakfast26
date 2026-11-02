@@ -14,7 +14,7 @@ from typing import Annotated
 import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import AfterValidator, BaseModel, Field
 from starlette.background import BackgroundTask
@@ -2993,6 +2993,55 @@ async def edit_scene_sound(request: Request, name: str = Query(...), start: floa
         return {"error": problem}
     log.info("Scene sound edited: %s (%.2f to %.2f s)", name, start, end)
     return {"ok": True, "file": name}
+
+
+class SpeechBody(BaseModel):
+    text: str = ""
+    pack: str = ""           # the voice: the name of a voice-pack plan, see /api/voicepack/packs
+    rate: int = 0            # percent, -50 to 100
+    pitch: int = 0           # Hz, -50 to 50
+    name: str = ""
+    overwrite: bool = False
+
+
+def _speech_voice(pack: str):
+    """The voice of the plan *pack* (edge-tts name), None for a pack that does not exist."""
+    path = _voicepack_plans().get(pack)
+    if path is None:
+        return None
+    with open(path, "rb") as f:
+        return tomllib.load(f)["voice"]
+
+
+@app.post("/api/scenes/sounds/speech/preview")
+async def preview_scene_speech(body: SpeechBody):
+    """The text spoken by a voice of the voice-pack plans, as mp3 for listening. Nothing is stored."""
+    voice = _speech_voice(body.pack)
+    problem = "unknown voice" if voice is None else scene_sounds.speech_problem(body.text, body.rate, body.pitch)
+    if problem:
+        return {"error": problem}
+    result = await scene_sounds.speak(voice, body.text, body.rate, body.pitch)
+    if isinstance(result, str):
+        return {"error": result}
+    return Response(content=result, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/scenes/sounds/speech")
+async def create_scene_speech(body: SpeechBody):
+    """Speak the text and store it as a file of the sound library (made once, playing it needs no internet)."""
+    voice = _speech_voice(body.pack)
+    problem = ("unknown voice" if voice is None else scene_sounds.speech_problem(body.text, body.rate, body.pitch)
+               or scene_sounds.name_problem(_audio_engine, body.name, body.overwrite))
+    if problem:
+        return {"error": problem}
+    result = await scene_sounds.speak(voice, body.text, body.rate, body.pitch)
+    if isinstance(result, str):
+        return {"error": result}
+    problem = scene_sounds.save_upload(_audio_engine, body.name, result, body.overwrite)
+    if problem:
+        return {"error": problem}
+    log.info("Scene speech created: %s", body.name)
+    return {"ok": True, "file": body.name}
 
 
 class SoundRenameBody(BaseModel):

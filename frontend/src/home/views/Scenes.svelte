@@ -311,6 +311,7 @@
   }
 
   function onKey(e) {
+    if (e.key === 'Escape' && speech) { if (!speech.busy) speech = null; return; }
     if (e.key === 'Escape' && focus) { focus = false; return; }
     if ((e.ctrlKey || e.metaKey) && draft && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
       const key = e.key.toLowerCase();
@@ -600,6 +601,79 @@
     if (!there(entry)) return '';
     const total = node.files.filter(there).reduce((sum, e) => sum + (Number(e.weight) || 0), 0);
     return total ? `${Math.round((Number(entry.weight) || 0) / total * 100)} %` : '';
+  }
+
+  // ── speech from text ───────────────────────────────────────────────────────
+
+  // A dialog on top of the page (it never moves the editor): the text, a voice of the voice-pack plans, speed and pitch.
+  // The text is spoken once, stored as a file of the sound library and added to the sound step.
+  let speech = $state(null);         // { node, text, pack, rate, pitch, name, nameEdited, busy, error }
+  let packs = $state([]);
+  let speechAudio = null;
+
+  let defaultPack = '';
+
+  async function openSpeech(n) {
+    if (!packs.length) {
+      try {
+        const res = await apiJson('GET', '/api/voicepack/packs');
+        packs = res.packs || [];
+        defaultPack = res.default || '';
+      } catch (e) {
+        packs = [];
+      }
+    }
+    speech = { node: n.id, text: '', pack: defaultPack || packs[0]?.name || '', rate: 0, pitch: 0, name: '', nameEdited: false, busy: false, error: '' };
+  }
+
+  // The name of the file follows the text until it is typed by hand.
+  function nameFromText() {
+    if (speech.nameEdited) return;
+    const slug = speech.text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+    speech.name = slug ? `${slug}.mp3` : '';
+  }
+
+  const speechBody = () => ({ text: speech.text, pack: speech.pack, rate: Number(speech.rate), pitch: Number(speech.pitch), name: speech.name });
+
+  async function previewSpeech() {
+    speech.error = '';
+    speech.busy = true;
+    try {
+      const res = await fetch('/api/scenes/sounds/speech/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(speechBody()),
+      });
+      if ((res.headers.get('content-type') || '').includes('json')) {
+        speech.error = t((await res.json()).error || 'The speech could not be created.');
+      } else {
+        if (speechAudio) speechAudio.pause();
+        speechAudio = new Audio(URL.createObjectURL(await res.blob()));
+        await speechAudio.play().catch(() => { speech.error = t('Could not play the preview.'); });
+      }
+    } catch (e) {
+      speech.error = t('The speech could not be created.');
+    }
+    speech.busy = false;
+  }
+
+  async function saveSpeech() {
+    speech.error = '';
+    speech.busy = true;
+    let res;
+    try {
+      res = await apiJson('POST', '/api/scenes/sounds/speech', speechBody());
+    } catch (e) {
+      res = { error: 'The speech could not be created.' };
+    }
+    speech.busy = false;
+    if (res.error) { speech.error = t(res.error); return; }
+    const n = nodes.find((x) => x.id === speech.node);
+    if (n) {
+      const empty = n.files.findIndex((e) => !e.file);
+      if (empty >= 0) n.files[empty].file = res.file; else n.files.push({ file: res.file, weight: 1 });
+      touch();
+    }
+    speech = null;
+    await load();
   }
 
   // ── the voice slot ─────────────────────────────────────────────────────────
@@ -1156,6 +1230,7 @@
               <div class="row-edit">
                 <div class="row-head">
                   <span>{t('Sounds')}</span>
+                  <button type="button" class="act" onclick={() => openSpeech(node)}>{t('Create speech')}</button>
                   <button type="button" class="act" onclick={() => addSoundFile(node)} disabled={node.files.length >= MAX_SOUND_FILES}>+ {t('Add sound')}</button>
                 </div>
                 <ul class="rows">
@@ -1206,6 +1281,39 @@
         </div>
       {/if}
     </section>
+  </div>
+{/if}
+
+{#if speech}
+  <div class="modal-back" role="presentation" onpointerdown={(e) => { if (e.target === e.currentTarget && !speech.busy) speech = null; }}>
+    <div class="modal" role="dialog" aria-modal="true" aria-label={t('Create speech')}>
+      <div class="modal-title">{t('Create speech')}</div>
+      <label>{t('Text')}
+        <input type="text" maxlength="200" bind:value={speech.text} oninput={nameFromText}>
+      </label>
+      <label>{t('Voice')}
+        <select bind:value={speech.pack}>
+          {#each packs as p}<option value={p.name}>{p.name} · {p.voice}</option>{/each}
+        </select>
+      </label>
+      <label>{t('Speed')}
+        <span class="slider"><input type="range" min="-50" max="100" step="5" bind:value={speech.rate}><span class="percent">{speech.rate} %</span></span>
+      </label>
+      <label>{t('Pitch')}
+        <span class="slider"><input type="range" min="-50" max="50" step="1" bind:value={speech.pitch}><span class="percent">{speech.pitch} Hz</span></span>
+      </label>
+      <label>{t('File name')}
+        <input type="text" maxlength="64" bind:value={speech.name} oninput={() => (speech.nameEdited = true)}>
+      </label>
+      <span class="note">{t('The text is sent to an online speech service while it is created. The file then plays without the internet.')}</span>
+      <div class="modal-msg">{speech.error}</div>
+      <div class="modal-actions">
+        <button type="button" class="act" onclick={previewSpeech} disabled={speech.busy || !speech.text.trim() || !speech.pack}>▶ {t('Preview')}</button>
+        <span class="spacer"></span>
+        <button type="button" class="act" onclick={() => (speech = null)} disabled={speech.busy}>{t('Cancel')}</button>
+        <button type="button" class="act primary" onclick={saveSpeech} disabled={speech.busy || !speech.text.trim() || !speech.name || !speech.pack}>{t('Save')}</button>
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -1330,6 +1438,18 @@
   .rows .weight { width: 4rem; flex: none; }
   .rows .wide, .rows input[type="number"]:not(.weight) { flex: 1; min-width: 0; }
   .share { width: 2.8rem; flex: none; text-align: right; font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .modal-back { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); }
+  .modal {
+    display: flex; flex-direction: column; gap: 0.7rem; width: min(30rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto;
+    padding: 1rem 1.2rem; border-radius: 12px; background: var(--bg, #0f1115); border: 1px solid var(--glass-border);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+  .modal-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .modal label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; color: var(--muted); }
+  .modal .slider { display: flex; align-items: center; gap: 0.6rem; }
+  .modal .slider input { flex: 1; }
+  .modal-msg { min-height: 1.2rem; font-size: 0.8rem; color: var(--yellow); }
+  .modal-actions { display: flex; align-items: center; gap: 0.5rem; }
   .percent { font-size: 0.78rem; color: var(--muted); margin-left: 0.3rem; }
   .inspector :global(.option-row) { margin-bottom: 0; }
 </style>

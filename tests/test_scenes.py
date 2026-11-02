@@ -1452,3 +1452,75 @@ class TestAchievementTrigger:
             [trigger("achievement.earned"), sound("b", "b.mp3", channel="voice")])
         engine.fire("achievement.earned", {"player": "ana", "id": "bullseye"}, defaults=False)
         assert [p[0] for p in engine.audio.played] == ["a.mp3"]
+
+
+class TestSpeech:
+    """Speech from text in the sound library (#136): the speech service is replaced by a stub."""
+
+    @pytest.fixture
+    def spoken(self, monkeypatch):
+        calls = []
+
+        async def synthesize(voice, text, rate, pitch, volume, dest, trim):
+            calls.append({"voice": voice, "text": text, "rate": rate, "pitch": pitch, "volume": volume, "trim": trim})
+            dest.write_bytes(MP3)
+
+        monkeypatch.setattr("tools.generate_voicepack.synthesize", synthesize)
+        return calls
+
+    def test_the_preview_returns_audio_and_stores_nothing(self, client, spoken):
+        c, engine, *_ = client
+        res = c.post("/api/scenes/sounds/speech/preview", json={"text": "Well done", "pack": "ryan", "rate": 10, "pitch": -5})
+        assert res.status_code == 200 and res.headers["content-type"] == "audio/mpeg" and res.content == MP3
+        assert spoken == [{"voice": "en-GB-RyanNeural", "text": "Well done", "rate": "+10%", "pitch": "-5Hz", "volume": "+0%",
+                           "trim": sound_edit.available()}]
+        assert c.get("/api/scenes").json()["sounds"] == []
+
+    def test_a_saved_speech_is_a_normal_file_of_the_library(self, client, spoken):
+        c, engine, sent, _ = client
+        body = {"text": "Nice one", "pack": "leni", "name": "nice-one.mp3"}
+        assert c.post("/api/scenes/sounds/speech", json=body).json() == {"ok": True, "file": "nice-one.mp3"}
+        assert [s["name"] for s in c.get("/api/scenes").json()["sounds"]] == ["nice-one.mp3"]
+        assert spoken[0]["voice"] == "de-CH-LeniNeural" and spoken[0]["rate"] == "+0%"
+        assert c.post("/api/scenes/sounds/nice-one.mp3/rename", json={"name": "nice.mp3"}).json()["ok"]
+        assert c.delete("/api/scenes/sounds/nice.mp3").json()["ok"]
+
+    def test_it_can_be_played_by_a_scene_and_is_picked_by_weight(self, client, spoken):
+        c, engine, sent, _ = client
+        c.post("/api/scenes/sounds/speech", json={"text": "One", "pack": "ryan", "name": "one.mp3"})
+        c.post("/api/scenes/sounds/speech", json={"text": "Two", "pack": "ryan", "name": "two.mp3"})
+        node = {"id": "s", "type": "action", "kind": "sound", "files": [{"file": "one.mp3", "weight": 1}, {"file": "two.mp3", "weight": 1}], "channel": "voice"}
+        made = c.post("/api/scenes", json={"name": "Speech", "graph": graph(trigger("x01.bust"), node, edges=[("t", "s")])}).json()
+        assert c.post(f"/api/scenes/{made['id']}/test").json()["trace"][0]["file"] in ("one.mp3", "two.mp3")
+
+    @pytest.mark.parametrize("body,why", [
+        ({"text": " ", "pack": "ryan", "name": "a.mp3"}, "the text is empty"),
+        ({"text": "x" * 201, "pack": "ryan", "name": "a.mp3"}, "longer than 200"),
+        ({"text": "x", "pack": "nobody", "name": "a.mp3"}, "unknown voice"),
+        ({"text": "x", "pack": "ryan", "name": "a.mp3", "rate": 101}, "speed"),
+        ({"text": "x", "pack": "ryan", "name": "a.mp3", "pitch": -51}, "pitch"),
+        ({"text": "x", "pack": "ryan", "name": "../a.mp3"}, "the name must be"),
+        ({"text": "x", "pack": "ryan", "name": "a.wav"}, "the name must be"),
+    ])
+    def test_a_request_that_cannot_be_spoken_is_refused_before_the_service_is_asked(self, client, spoken, body, why):
+        c, *_ = client
+        assert why in c.post("/api/scenes/sounds/speech", json=body).json()["error"]
+        assert spoken == []
+
+    def test_an_existing_name_is_kept_unless_overwritten(self, client, spoken):
+        c, *_ = client
+        body = {"text": "x", "pack": "ryan", "name": "a.mp3"}
+        assert c.post("/api/scenes/sounds/speech", json=body).json()["ok"]
+        assert "exists already" in c.post("/api/scenes/sounds/speech", json=body).json()["error"]
+        assert len(spoken) == 1
+        assert c.post("/api/scenes/sounds/speech", json={**body, "overwrite": True}).json()["ok"]
+
+    def test_a_failing_service_is_reported(self, client, monkeypatch):
+        c, *_ = client
+
+        async def broken(*args, **kwargs):
+            raise RuntimeError("no connection")
+
+        monkeypatch.setattr("tools.generate_voicepack.synthesize", broken)
+        answer = c.post("/api/scenes/sounds/speech", json={"text": "x", "pack": "ryan", "name": "a.mp3"}).json()
+        assert "no connection" in answer["error"] and c.get("/api/scenes").json()["sounds"] == []
