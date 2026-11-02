@@ -1346,3 +1346,109 @@ class TestFunMode:
         engine.fun = True
         engine.fire("x01.bust", {}, defaults=False)
         assert audio.calls == ["calm", "loud"]
+
+
+class TestAchievementTrigger:
+    """The trigger `achievement.earned` fires when an achievement is announced (#134)."""
+
+    @staticmethod
+    def setup_announce(nodes, edges, audio=None, spacing=0, **kw):
+        from breakfast.achievements import AchievementEngine
+        store = sc.MemoryScenes()
+        store.save_scene(None, sc.clean_scene({"name": "x", "graph": graph(*nodes, edges=edges)}))
+        audio = audio or FakeAudio(files=("cheer.mp3", "fallback.mp3"))
+        scenes = sc.SceneEngine(store, audio=audio)
+        pushed = []
+        ach = AchievementEngine(StatsDB(":memory:")).announce(
+            pushed.append, audio, sounds=lambda a: [], scenes=scenes, spacing=spacing, **kw)
+        return ach, audio, pushed, scenes
+
+    def test_the_facts_of_an_unlock(self):
+        from breakfast import achievements as a
+        assert a.scene_facts(a.BY_ID["bullseye"], {"player": "ana", "tier": 0}) == {
+            "player": "ana", "id": "bullseye", "tier": 1, "difficulty": 1, "secret": 0, "first": 1}
+        counter = next(d for d in a.ACHIEVEMENTS if d.tiers)
+        facts = a.scene_facts(counter, {"player": "ana", "tier": 2})
+        assert facts["tier"] == 2 and facts["first"] == 0
+        secret = next(d for d in a.ACHIEVEMENTS if d.hidden)
+        assert a.scene_facts(secret, {"player": "ana", "tier": 0})["secret"] == 1 and a.scene_facts(secret, {"player": "ana", "tier": 0})["difficulty"] == 0
+        ladder = {d.difficulty: a.scene_facts(d, {"player": "x", "tier": 0})["difficulty"] for d in a.ACHIEVEMENTS}
+        assert {k: v for k, v in ladder.items() if v} == {"easy": 1, "medium": 2, "hard": 3, "very_hard": 4, "extreme": 5}
+        assert set(ladder) == {"easy", "medium", "hard", "very_hard", "extreme", "endurance", "hidden"}
+
+    def test_the_event_is_offered_with_its_facts(self):
+        event = sc.EVENTS["achievement.earned"]
+        assert event["game"] == "Achievements" and set(event["fields"]) == {"id", "tier", "difficulty", "secret", "first"}
+
+    def test_a_scene_plays_with_the_banner_and_the_assigned_sound_stays(self):
+        ach, audio, pushed, scenes = self.setup_announce([trigger("achievement.earned"), sound("s", "cheer.mp3")], [("t", "s")])
+        ach.on_earned({"player": "ana", "achievement": "bullseye", "tier": 0})
+        assert [p[0] for p in audio.played] == ["cheer.mp3"] and pushed and pushed[0]["id"] == "bullseye"
+        assert audio.calls == ["achievement_bullseye"]            # the fallback plays as before
+
+    def test_a_sound_that_replaces_keeps_the_assigned_sound_and_the_fallbacks_out(self):
+        ach, audio, pushed, scenes = self.setup_announce(
+            [trigger("achievement.earned"), sound("s", "cheer.mp3", replace=True)], [("t", "s")])
+        ach.on_earned({"player": "ana", "achievement": "bullseye", "tier": 0})
+        assert [p[0] for p in audio.played] == ["cheer.mp3"] and audio.calls == [] and len(pushed) == 1     # the banner is not affected
+
+    def test_a_scene_that_plays_nothing_replaces_nothing(self):
+        ach, audio, pushed, scenes = self.setup_announce(
+            [trigger("achievement.earned"), sound("s", "gone.mp3", replace=True)], [("t", "s")])
+        ach.on_earned({"player": "ana", "achievement": "bullseye", "tier": 0})
+        assert audio.calls == ["achievement_bullseye"]
+
+    def test_the_conditions_see_the_facts(self):
+        nodes = [trigger("achievement.earned"), condition("d", "compare", field="difficulty", op=">=", value=3),
+                 condition("p", "player", names=["ana"]), sound("s", "cheer.mp3", replace=True)]
+        ach, audio, pushed, scenes = self.setup_announce(nodes, [("t", "d"), ("d", "p"), ("p", "s")])
+        ach.on_earned({"player": "ana", "achievement": "bullseye", "tier": 0})                  # easy
+        assert audio.played == []
+        hard = next(d.id for d in __import__("breakfast.achievements", fromlist=["x"]).ACHIEVEMENTS if d.difficulty == "hard")
+        ach.on_earned({"player": "ana", "achievement": hard, "tier": 1})
+        assert [p[0] for p in audio.played] == ["cheer.mp3"] and audio.calls == ["achievement_bullseye"]   # the easy one fell back
+        ach.on_earned({"player": "ben", "achievement": hard, "tier": 1})
+        assert len(audio.played) == 1 and audio.calls == ["achievement_bullseye", f"achievement_{hard}"]
+
+    def test_a_switch_can_tell_the_achievements_apart(self):
+        sw = {"id": "w", "type": "condition", "kind": "switch", "field": "id", "mode": "values",
+              "outputs": [{"id": "o1", "values": ["bullseye"]}]}
+        store = sc.MemoryScenes()
+        nodes = [trigger("achievement.earned"), sw, sound("s", "cheer.mp3", replace=True)]
+        edges = [{"from": "t", "to": "w"}, {"from": "w", "to": "s", "match": "o1"}]
+        store.save_scene(None, sc.clean_scene({"name": "x", "graph": {"nodes": nodes, "edges": edges}}))
+        audio = FakeAudio(files=("cheer.mp3",))
+        from breakfast.achievements import AchievementEngine
+        ach = AchievementEngine(StatsDB(":memory:")).announce(lambda m: None, audio, scenes=sc.SceneEngine(store, audio=audio), spacing=0)
+        ach.on_earned({"player": "ana", "achievement": "shanghai", "tier": 0})
+        assert audio.played == []
+        ach.on_earned({"player": "ana", "achievement": "bullseye", "tier": 0})
+        assert [p[0] for p in audio.played] == ["cheer.mp3"]
+
+    def test_the_unlocks_of_a_match_come_one_banner_apart(self):
+        import time
+        ach, audio, pushed, scenes = self.setup_announce(
+            [trigger("achievement.earned"), sound("s", "cheer.mp3")], [("t", "s")], spacing=0.15)
+        ach.on_earned({"player": "ana", "achievement": "bullseye", "tier": 0})
+        ach.on_earned({"player": "ana", "achievement": "shanghai", "tier": 0})
+        assert len(audio.played) == 1                      # the second waits for the banner of the first
+        time.sleep(0.5)
+        assert len(audio.played) == 2 and len(pushed) == 2
+
+    def test_the_test_button_has_values_for_the_facts(self, client):
+        c, engine, sent, _ = client
+        c.post("/api/scenes/sounds/upload?name=a.mp3", content=MP3)
+        sw = {"id": "w", "type": "condition", "kind": "switch", "field": "difficulty", "mode": "bands",
+              "outputs": [{"id": "o1", "limit": 1}, {"id": "o2", "limit": 3}]}
+        nodes = [trigger("achievement.earned"), sw, sound("s", "a.mp3")]
+        made = c.post("/api/scenes", json={"name": "Hard ones", "graph": {
+            "nodes": nodes, "edges": [{"from": "t", "to": "w"}, {"from": "w", "to": "s", "match": "o2"}]}}).json()
+        trace = c.post(f"/api/scenes/{made['id']}/test").json()["trace"]
+        assert trace[0] == {"node": "w", "result": "pass", "output": "o2"} and trace[1]["result"] == "done"
+
+    def test_a_voice_sound_of_an_earlier_scene_takes_the_slot(self):
+        engine = TestVoiceSlot.engine(
+            [trigger("achievement.earned"), sound("a", "a.mp3", channel="voice")],
+            [trigger("achievement.earned"), sound("b", "b.mp3", channel="voice")])
+        engine.fire("achievement.earned", {"player": "ana", "id": "bullseye"}, defaults=False)
+        assert [p[0] for p in engine.audio.played] == ["a.mp3"]

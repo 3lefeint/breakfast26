@@ -27,8 +27,9 @@
     'elim.match_start': t('Match starts'), 'elim.dart_missed': t('Missed dart'), 'elim.turn_counted': t('Score read late'),
     'elim.turn_start': t('Turn starts'), 'elim.passed': t('Turn passed'), 'elim.life_lost': t('Life lost'),
     'elim.eliminated': t('Player eliminated'), 'elim.match_won': t('Match won'),
+    'achievement.earned': t('Achievement earned'),
   };
-  const GAME_LABEL = { X01: 'X01', Elimination: t('Elimination') };
+  const GAME_LABEL = { X01: 'X01', Elimination: t('Elimination'), Achievements: t('Achievements') };
   const FIELD_LABEL = {
     player: t('Player'),
     score: t('Score'), remaining: t('Remaining'), leg: t('Leg'), target: t('Target'), lives: t('Lives'),
@@ -37,11 +38,12 @@
     number: t('Field'), multiplier: t('Field type'),
     points: t('Points'), dart: t('Dart of the turn'), miss: t('Missed'), fun: t('Fun mode'),
     announce: t('Player calls on'), change: t('Player change calls on'), total: t('Turn total calls on'),
-    checkout: t('Checkout'),
+    checkout: t('Checkout'), id: t('Achievement'), tier: t('Tier'), difficulty: t('Difficulty'), secret: t('Secret'),
+    first: t('Earned for the first time'),
   };
   const ANIMATION_LABEL = { confetti: t('Confetti'), flash: t('Flash'), banner: t('Banner') };
   const CHANNEL_LABEL = { voice: t('After the calls'), ambient: t('Next to the calls') };
-  const FLAGS = ['freipass', 'preview', 'close', 'last', 'announce', 'change', 'total', 'miss', 'fun'];    // facts that are 1 or 0
+  const FLAGS = ['freipass', 'preview', 'close', 'last', 'announce', 'change', 'total', 'miss', 'fun', 'secret', 'first'];    // facts that are 1 or 0
   const SCOPE_LABEL = { match: t('once per match'), leg: t('once per leg') };
   const ICON = { trigger: '⚡', condition: '◆', action: '♪' };
 
@@ -235,7 +237,8 @@
   const FIELD_NOTE = {
     score: t('0 to 180'), points: t('0 to 60'), number: t('1 to 20, 25 is the bull (25 with field type 2 is the bullseye)'), dart: t('1 to 3'),
     multiplier: t('0 miss, 1 single, 2 double, 3 triple'), checkout: t('1 call, 2 bogey number, 3 call limit reached'),
-    close: t('1 to 10 short'),
+    close: t('1 to 10 short'), difficulty: t('1 easy, 2 medium, 3 hard, 4 very hard, 5 extreme, 0 for endurance and secret ones'),
+    tier: t('1 for an achievement without tiers'),
   };
 
   // What a condition on a fact starts with: a switch asks yes or no, a number a typical value.
@@ -639,7 +642,7 @@
 
   // ── the switch node ─────────────────────────────────────────────────────────
 
-  const TEXT_FACTS = ['player'];       // facts that are names, read as values; the others are numbers, read as bands
+  const TEXT_FACTS = ['player', 'id'];       // facts that are names, read as values; the others are numbers, read as bands
   let switchFields = $derived([...new Set(['player', ...facts, ...(node?.kind === 'switch' ? [node.field] : [])])]);
 
   // The label of an output: its values or its upper limit; the last row takes what no output did.
