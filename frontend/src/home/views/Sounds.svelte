@@ -7,6 +7,7 @@
   import { confirmDialog } from '../../lib/confirm.js';
   import { apiJson } from '../../lib/api.js';
   import SoundEditor from './SoundEditor.svelte';
+  import SoundRecorder from './SoundRecorder.svelte';
 
   const FOLDERS = { scenes: t('Scenes'), achievements: t('Achievements') };
   const BASE = { scenes: '/api/scenes/sounds', achievements: '/api/admin/achievement-sounds' };
@@ -19,6 +20,11 @@
   let renaming = $state(null);
   let newName = $state('');
   let playing = null;
+  let recording = $state(false);       // the recorder dialog is open
+
+  // The browser allows the microphone only on https or on localhost, so on a plain http address the button stays off.
+  const canRecord = typeof window !== 'undefined' && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
+    && typeof MediaRecorder !== 'undefined';
 
   let sounds = $state([]);
 
@@ -54,6 +60,12 @@
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    message = '';
+    editing = { file };
+  }
+
+  function recorded(file) {
+    recording = false;
     message = '';
     editing = { file };
   }
@@ -121,11 +133,18 @@
     <div class="box">
       <div class="box-head">
         <span class="box-title">{t('Sound library')}</span>
-        <label class="upload">
-          {t('⬆ Upload a sound')}
-          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" onchange={pick}>
-        </label>
+        <span class="actions">
+          <button type="button" class="act" disabled={!canRecord} onclick={() => (recording = true)}
+                  title={canRecord ? '' : t('Recording needs https or localhost. Uploading works on any address.')}>● {t('Record')}</button>
+          <label class="upload">
+            {t('⬆ Upload a sound')}
+            <input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" onchange={pick}>
+          </label>
+        </span>
       </div>
+      {#if !canRecord}
+        <div class="note">{t('Recording needs https or localhost. Uploading works on any address.')}</div>
+      {/if}
       {#if !sounds.length}
         <div class="empty small">{t('No sound files yet. Upload a sound.')}</div>
       {:else}
@@ -151,6 +170,10 @@
       {/if}
     </div>
   {/if}
+{/if}
+
+{#if recording}
+  <SoundRecorder onrecorded={recorded} oncancel={() => (recording = false)} />
 {/if}
 
 <style>
@@ -180,6 +203,8 @@
   .upload:hover, .act:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
   .act.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
   .upload input { display: none; }
+  .actions { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .note { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.4rem; }
   .rename {
     flex: 1; min-width: 8rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px;
     color: var(--text); padding: 0.25rem 0.5rem; font-family: inherit; font-size: 0.85rem;

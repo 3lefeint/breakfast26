@@ -11,6 +11,7 @@
 - Scenes: a trigger "Achievement earned" with the id, tier, difficulty (1 to 5), secret and first of the achievement; a sound of a scene marked as replacing keeps the assigned sound of the achievement out (#134)
 - Scenes: a sound step can create speech from a text: a voice of the voice-pack plans, speed and pitch, a preview, saved as a file of the sound library (#136)
 - Sound editor: Auto trim proposes the marks and fades; optional low cut, noise reduction and compressor, tried with Listen with effects before saving (#138)
+- Sounds: a Record button next to the upload records with the microphone in the browser (start, stop, level meter) and opens the recording in the sound editor; it needs https or localhost (#137)
 
 ### Changed
 - Achievements that can be decided during a match are announced when the dart is thrown (a bullseye with the dart, a 180 or a Shanghai with the third dart) and not when the darts are pulled, in X01, Elimination, Target Battle and Killer (#135)
