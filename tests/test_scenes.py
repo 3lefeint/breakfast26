@@ -43,7 +43,8 @@ def trigger(event, node_id="t"):
 
 
 def sound(node_id="s", file="boom.mp3", **extra):
-    return {"id": node_id, "type": "action", "kind": "sound", "file": file, **extra}
+    files = [{"file": file, "weight": 1}] if file else []
+    return {"id": node_id, "type": "action", "kind": "sound", "files": files, **extra}
 
 
 def condition(node_id, kind, **extra):
@@ -186,7 +187,7 @@ class TestEngine:
         scene_id = mine(engine)[0]["id"]
         trace = []
         engine.fire("x01.bust", {}, only=scene_id, trace=trace)
-        assert trace == [{"node": "s", "result": "done"}] and len(audio.played) == 1
+        assert trace == [{"node": "s", "result": "done", "file": "boom.mp3"}] and len(audio.played) == 1
 
     def test_the_trace_says_why_a_step_was_skipped(self):
         class Silent(FakeAudio):
@@ -222,6 +223,95 @@ class TestEngine:
 
 def snapshot(**cur):
     return {"game_mode": "X01", "active_player_name": "anna", "current_leg": 3, "current": cur}
+
+
+class TestWeightedSounds:
+    @staticmethod
+    def weighted(*entries, **extra):
+        return {"id": "s", "type": "action", "kind": "sound", "files": [{"file": f, "weight": w} for f, w in entries], **extra}
+
+    @staticmethod
+    def fire(node, audio, times=1, trace=None):
+        engine = engine_with(graph(trigger("x01.bust"), node, edges=[("t", "s")]), audio)
+        for _ in range(times):
+            engine.fire("x01.bust", {}, only=mine(engine)[0]["id"] if trace is not None else None, trace=trace)
+        return engine
+
+    def test_a_single_file_of_an_older_step_is_one_entry_of_weight_one(self):
+        old = {"id": "s", "type": "action", "kind": "sound", "file": "boom.mp3", "volume": 1, "channel": "voice"}
+        assert sc.clean_node(old)["files"] == [{"file": "boom.mp3", "weight": 1}] and "file" not in sc.clean_node(old)
+        stored = {"nodes": [trigger("x01.bust"), old], "edges": [{"from": "t", "to": "s"}]}
+        store = sc.MemoryScenes()
+        store.save_scene(None, {"name": "old", "enabled": True, "graph": stored})
+        engine = sc.SceneEngine(store, audio=FakeAudio())
+        assert mine(engine)[0]["graph"]["nodes"][1]["files"] == [{"file": "boom.mp3", "weight": 1}]
+        assert sc.sound_files(stored) == ["boom.mp3"]
+        engine.fire("x01.bust", {})
+        assert engine.audio.played == [("boom.mp3", 1, "voice")]
+
+    def test_the_entries_are_cleaned(self):
+        node = sc.clean_node(self.weighted(("a.mp3", 30), ("b.mp3", 0), ("a.mp3", 5), ("", 9), ("c.mp3", 500)))
+        assert node["files"] == [{"file": "a.mp3", "weight": 35}, {"file": "b.mp3", "weight": 1}, {"file": "c.mp3", "weight": 100}]
+        many = sc.clean_node(self.weighted(*[(f"f{i}.mp3", 1) for i in range(40)]))
+        assert len(many["files"]) == sc.MAX_SOUND_FILES
+
+    def test_the_pick_follows_the_weights(self):
+        import random
+        random.seed(7)
+        audio = FakeAudio(files=("a.mp3", "b.mp3"))
+        self.fire(self.weighted(("a.mp3", 75), ("b.mp3", 25)), audio, times=2000)
+        a = sum(1 for p in audio.played if p[0] == "a.mp3")
+        assert len(audio.played) == 2000 and 1400 < a < 1600
+
+    def test_volume_and_channel_are_those_of_the_step(self):
+        audio = FakeAudio(files=("a.mp3", "b.mp3"))
+        self.fire(self.weighted(("a.mp3", 1), ("b.mp3", 1), volume=0.5, channel="voice"), audio, times=20)
+        assert {(p[1], p[2]) for p in audio.played} == {(0.5, "voice")}
+
+    def test_a_missing_file_is_left_out_and_the_others_share_its_weight(self):
+        audio = FakeAudio(files=("a.mp3", "b.mp3"))
+        trace = []
+        self.fire(self.weighted(("gone.mp3", 90), ("a.mp3", 5), ("b.mp3", 5)), audio, times=200, trace=trace)
+        assert len(audio.played) == 200 and {p[0] for p in audio.played} == {"a.mp3", "b.mp3"}
+        assert all(step["result"] == "done" and step["file"] in ("a.mp3", "b.mp3") for step in trace)
+        assert any(step.get("missing") == ["gone.mp3"] for step in trace)
+
+    def test_a_step_without_any_file_in_the_library_is_skipped_and_names_them(self):
+        audio = FakeAudio(files=())
+        trace = []
+        self.fire(self.weighted(("x.mp3", 1), ("y.mp3", 3)), audio, trace=trace)
+        assert trace[0]["result"] == "skipped" and trace[0]["why"] == "file_missing"
+        assert sorted(trace[0]["missing"]) == ["x.mp3", "y.mp3"] and "file" not in trace[0]
+
+    def test_replace_counts_when_a_file_played(self):
+        audio = FakeAudio(files=("a.mp3",))
+        engine = engine_with(graph(trigger("x01.bust"), self.weighted(("gone.mp3", 50), ("a.mp3", 1), replace=True),
+                                   edges=[("t", "s")]), audio)
+        assert engine.fire("x01.bust", {}) is True
+        assert self.fire(self.weighted(("gone.mp3", 1), replace=True), FakeAudio(files=())).fire("x01.bust", {}) is False
+
+    def test_a_rename_follows_into_every_entry_and_merges_a_clash(self):
+        class Lib:
+            def __init__(self, folder):
+                self.library_dirs = [folder]
+
+            def files_changed(self):
+                pass
+
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "a.mp3").write_bytes(MP3)
+            store = sc.MemoryScenes()
+            store.save_scene(None, {"name": "x", "enabled": True, "graph": {
+                "nodes": [trigger("x01.bust"), {"id": "s", "type": "action", "kind": "sound", "file": "a.mp3", "volume": 1},
+                          self.weighted(("a.mp3", 3), ("other.mp3", 2), ("new.mp3", 4)) | {"id": "w"}],
+                "edges": []}})
+            engine = sc.SceneEngine(store)
+            assert scene_sounds.rename_file(Lib(tmp), engine, "a.mp3", "new.mp3") is None
+            nodes = {n["id"]: n for n in store.list_scenes()[0]["graph"]["nodes"] if n["type"] == "action"}
+            assert nodes["s"]["files"] == [{"file": "new.mp3", "weight": 1}]
+            assert nodes["w"]["files"] == [{"file": "new.mp3", "weight": 7}, {"file": "other.mp3", "weight": 2}]
 
 
 class TestX01Moments:

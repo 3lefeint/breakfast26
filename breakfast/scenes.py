@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 
 MAX_NODES = 60
 MAX_VOLUME = 1.2      # a sound can be set 20 % louder than the library level
+MAX_SOUND_FILES = 20  # files one sound step picks from
+MAX_WEIGHT = 100
 AMBIENT_VOLUME = 0.6
 MATCH_STARTS = ("x01.match_start", "elim.match_start")
 LEG_STARTS = ("x01.leg_start",)
@@ -86,6 +88,21 @@ def _text(value, limit=MAX_TEXT):
     return str(value or "").strip()[:limit]
 
 
+def sound_entries(raw) -> list:
+    """The files of a sound step as [{"file", "weight"}]: the list `files`, or a single `file` of a step stored before the
+    list existed (weight 1). A name appears once (weights add up), an empty name is dropped."""
+    items = raw.get("files") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        items = [raw.get("file")] if isinstance(raw, dict) and raw.get("file") else []
+    entries = {}
+    for item in items:
+        name = _text(item.get("file") if isinstance(item, dict) else item, 80)
+        if name:
+            weight = round(_number(item.get("weight") if isinstance(item, dict) else 1, 1, MAX_WEIGHT, 1))
+            entries[name] = min(MAX_WEIGHT, entries.get(name, 0) + weight)
+    return [{"file": name, "weight": weight} for name, weight in list(entries.items())[:MAX_SOUND_FILES]]
+
+
 def clean_node(raw: dict):
     """One node with only the fields its kind knows and sane values, None when it is not a node."""
     if not isinstance(raw, dict) or not _NODE_ID.match(str(raw.get("id", ""))):
@@ -125,7 +142,7 @@ def clean_node(raw: dict):
             return None
         node.update(type="action", kind=what)
         if what == "sound":
-            node.update(file=_text(raw.get("file"), 80), volume=_number(raw.get("volume"), 0, MAX_VOLUME, 1),
+            node.update(files=sound_entries(raw), volume=_number(raw.get("volume"), 0, MAX_VOLUME, 1),
                         replace=bool(raw.get("replace")),
                         channel=raw.get("channel") if raw.get("channel") in CHANNELS else "ambient")
         elif what == "call":
@@ -171,9 +188,23 @@ def clean_scene(raw: dict) -> dict:
             "graph": clean_graph(raw.get("graph"))}
 
 
+def upgrade_graph(graph: dict) -> dict:
+    """The graph with every sound step in the shape with a list of files (a step stored with a single `file` becomes one
+    entry of weight 1). A graph that needs nothing is returned as it is."""
+    nodes = graph.get("nodes", [])
+    if not any(n.get("kind") == "sound" and "files" not in n for n in nodes):
+        return graph
+    upgraded = []
+    for node in nodes:
+        if node.get("kind") == "sound" and "files" not in node:
+            node = {**{k: v for k, v in node.items() if k != "file"}, "files": sound_entries(node)}
+        upgraded.append(node)
+    return {**graph, "nodes": upgraded}
+
+
 def sound_files(graph: dict) -> list:
     """The library files a graph plays."""
-    return sorted({n["file"] for n in graph.get("nodes", []) if n.get("kind") == "sound" and n.get("file")})
+    return sorted({e["file"] for n in graph.get("nodes", []) if n.get("kind") == "sound" for e in sound_entries(n)})
 
 
 def x01_moments(evt: dict, snapshot: dict, caller=None) -> list:
@@ -280,9 +311,10 @@ class SceneEngine:
                 for d in scenes_default.DEFAULTS:
                     row = edited.get(d["slug"])
                     merged.append({"id": d["slug"], "name": d["name"], "enabled": row["enabled"] if row else True,
-                                   "graph": row["graph"] if row else d["graph"], "default": True, "customized": bool(row),
-                                   "game": d["game"]})
-                merged += [{**r, "default": False, "customized": False} for r in rows if not r.get("slug")]
+                                   "graph": upgrade_graph(row["graph"] if row else d["graph"]), "default": True,
+                                   "customized": bool(row), "game": d["game"]})
+                merged += [{**r, "graph": upgrade_graph(r["graph"]), "default": False, "customized": False}
+                           for r in rows if not r.get("slug")]
                 self._cache = merged
             return self._cache
 
@@ -385,17 +417,19 @@ class SceneEngine:
                     timer.daemon = True
                     timer.start()
             else:
-                done = self._act(node, run["ctx"])
+                info = {}
+                done = self._act(node, run["ctx"], info)
                 self._note(run["trace"], node, "done" if done else "skipped",
-                           None if done or run["trace"] is None else self._why(node, run["ctx"]))
+                           None if done or run["trace"] is None else self._why(node, run["ctx"]), info)
                 replaced |= bool(done and sync and node["kind"] == "sound" and node.get("replace"))
                 replaced |= self._run(run, out, seen, sync)
         return replaced
 
     @staticmethod
-    def _note(trace, node, result, why=None):
+    def _note(trace, node, result, why=None, info=None):
+        """Add a step to the trace of a test. *info*: more the step tells (a sound step: `file` it played, `missing`)."""
         if trace is not None:
-            trace.append({"node": node["id"], "result": result, **({"why": why} if why else {})})
+            trace.append({"node": node["id"], "result": result, **({"why": why} if why else {}), **(info or {})})
 
     def _why(self, node, ctx) -> str:
         """Why an action did not run, for the trace of a test: no_display, no_audio, no_file, file_missing, no_key,
@@ -406,7 +440,7 @@ class SceneEngine:
         if not self.audio:
             return "no_audio"
         if kind == "sound":
-            return "file_missing" if node["file"] else "no_file"
+            return "file_missing" if node["files"] else "no_file"
         key = node.get("key") or ""
         if not key:
             return "no_key"
@@ -458,13 +492,13 @@ class SceneEngine:
                 seen.add(key)
             return True
 
-    def _act(self, node, ctx) -> bool:
+    def _act(self, node, ctx, info=None) -> bool:
+        """Do an action. *info*: a dict that a sound step fills with the file it played and those it had to leave out."""
         kind = node["kind"]
         if kind == "call":
             return self._call(node["key"], ctx, node.get("channel"))
         if kind == "sound":
-            return bool(self.audio and node["file"] and self.audio.play_file(
-                node["file"], volume=node["volume"], channel=node["channel"]))
+            return self._play_sound(node, {} if info is None else info)
         if kind == "overlay" and self.overlay:
             text = node["text"].replace("{player}", str(ctx.get("player") or ""))
             if "score" in ctx:
@@ -473,6 +507,22 @@ class SceneEngine:
                           "seconds": node["seconds"]})
             return True
         return False
+
+    def _play_sound(self, node, info) -> bool:
+        """Play one file of the step, picked by weight. A file that is not in the library is left out and the others
+        share its weight, so the pick goes on with the rest."""
+        if not self.audio:
+            return False
+        pool, missing = [(e["file"], e["weight"]) for e in node["files"]], []
+        while pool:
+            name, _ = pool.pop(random.choices(range(len(pool)), weights=[w for _, w in pool])[0])
+            if self.audio.play_file(name, volume=node["volume"], channel=node["channel"]):
+                info["file"] = name
+                break
+            missing.append(name)
+        if missing:
+            info["missing"] = missing
+        return "file" in info
 
     def _call(self, key, ctx, channel=None) -> bool:
         """Play a key of the voice pack. `{player}`, `{score}` and `{next}` alone are what the moment knows. Inside a key any

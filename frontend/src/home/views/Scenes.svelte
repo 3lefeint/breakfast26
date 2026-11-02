@@ -246,7 +246,7 @@
     once: { type: 'condition', kind: 'once', scope: 'match', per_player: false },
     pick: { type: 'condition', kind: 'pick' },
     achievement: { type: 'condition', kind: 'achievement', achievement: '', tier: 1 },
-    sound: { type: 'action', kind: 'sound', file: '', volume: 1, replace: false, channel: 'ambient' },
+    sound: { type: 'action', kind: 'sound', files: [{ file: '', weight: 1 }], volume: 1, replace: false, channel: 'ambient' },
     overlay: { type: 'action', kind: 'overlay', animation: 'confetti', text: '', seconds: 4 },
     delay: { type: 'action', kind: 'delay', seconds: 1 },
     call: { type: 'action', kind: 'call', key: '', channel: 'voice' },
@@ -536,9 +536,33 @@
     if (n.kind === 'achievement') return [t('If'), cut(n.achievement ? t('has {name}', { name: achievementName(n.achievement) }) : t('has an achievement'))];
     if (n.kind === 'pick') return [t('Random'), cut(t('one of the next steps'))];
     if (n.kind === 'call') return [t('Play call'), cut(n.key || t('(no call)'))];
-    if (n.kind === 'sound') return [t('Play sound'), cut((n.file || t('(no file)')) + (n.replace ? ' ⇄' : ''))];
+    if (n.kind === 'sound') {
+      const named = n.files.filter((e) => e.file);
+      const label = named.length > 1 ? t('{n} sounds', { n: named.length }) : (named[0]?.file || t('(no file)'));
+      return [t('Play sound'), cut(label + (n.replace ? ' ⇄' : ''))];
+    }
     if (n.kind === 'overlay') return [t('Show'), cut(ANIMATION_LABEL[n.animation] + (n.text ? ` · ${n.text}` : ''))];
     return [t('Wait'), t('{seconds} s', { seconds: n.seconds })];
+  }
+
+  const MAX_SOUND_FILES = 20;
+
+  function addSoundFile(node) {
+    node.files.push({ file: '', weight: 1 });
+    touch();
+  }
+
+  function removeSoundFile(node, index) {
+    node.files.splice(index, 1);
+    touch();
+  }
+
+  // The share of a file in percent; a file that is not in the library is left out when it plays, the others share its weight.
+  function shareOf(node, entry) {
+    const there = (e) => e.file && library.some((f) => f.name === e.file);
+    if (!there(entry)) return '';
+    const total = node.files.filter(there).reduce((sum, e) => sum + (Number(e.weight) || 0), 0);
+    return total ? `${Math.round((Number(entry.weight) || 0) / total * 100)} %` : '';
   }
 
   // ── saving, testing ────────────────────────────────────────────────────────
@@ -586,6 +610,10 @@
       return;
     }
     message = res.trace.length ? t('Played the scene with sample values.') : t('Nothing happened: add an action after a trigger.');
+    const played = res.trace.filter((s) => s.file).map((s) => s.file);
+    if (played.length) message += ' ' + t('Sound: {files}.', { files: played.join(', ') });
+    const left = res.trace.flatMap((s) => s.missing || []);
+    if (left.length) message += ' ' + t('Not in the library, left out: {files}.', { files: left.join(', ') });
     if (res.trace.length && others) message += ' ' + t('The sound comes from the connected audio page.');
   }
 
@@ -905,16 +933,30 @@
               <datalist id="call-keys">{#each data.call_keys as key}<option value={key}></option>{/each}</datalist>
               <span class="note">{t('{player}, {score} and {next} are the name of the player, the score of the turn and the score that passes.')}</span>
             {:else if node.kind === 'sound'}
-              <label>{t('Sound')}
-                <select bind:value={node.file} onchange={touch}>
-                  <option value="">{t('(choose a file)')}</option>
-                  {#each library as f}<option value={f.name}>{f.name}</option>{/each}
-                  {#if node.file && !library.some((f) => f.name === node.file)}
-                    <option value={node.file}>{node.file} {t('(missing)')}</option>
-                  {/if}
-                </select>
-              </label>
-              <button type="button" class="act" onclick={() => preview(node.file)} disabled={!node.file}>▶ {t('Preview')}</button>
+              <div class="sound-files">
+                <div class="sound-head">
+                  <span>{t('Sounds')}</span>
+                  <button type="button" class="act" onclick={() => addSoundFile(node)} disabled={node.files.length >= MAX_SOUND_FILES}>+ {t('Add sound')}</button>
+                </div>
+                <ul class="sound-rows">
+                  {#each node.files as entry, i}
+                    <li>
+                      <select bind:value={entry.file} onchange={touch} aria-label={t('Sound')}>
+                        <option value="">{t('(choose a file)')}</option>
+                        {#each library as f}<option value={f.name}>{f.name}</option>{/each}
+                        {#if entry.file && !library.some((f) => f.name === entry.file)}
+                          <option value={entry.file}>{entry.file} {t('(missing)')}</option>
+                        {/if}
+                      </select>
+                      <input type="number" class="weight" min="1" max="100" step="1" bind:value={entry.weight} oninput={touch} aria-label={t('Weight')}>
+                      <span class="share">{shareOf(node, entry)}</span>
+                      <button type="button" class="play" onclick={() => preview(entry.file)} disabled={!entry.file} title={t('Preview')}>▶</button>
+                      <button type="button" class="play" onclick={() => removeSoundFile(node, i)} title={t('Remove')}>✕</button>
+                    </li>
+                  {/each}
+                </ul>
+                <span class="note">{t('One of the sounds is picked each time. A sound with the weight 2 is played twice as often as one with 1.')}</span>
+              </div>
               <label>{t('Volume')}
                 <input type="range" min="0" max="1.2" step="0.05" bind:value={node.volume} oninput={touch}>
                 <span class="percent">{Math.round(node.volume * 100)} %</span>
@@ -1055,6 +1097,13 @@
   .insp-title { flex-basis: 100%; font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .note.warn { color: var(--yellow); }
   .note { font-size: 0.75rem; color: var(--muted); align-self: center; }
+  .sound-files { display: flex; flex-direction: column; gap: 0.35rem; flex: 1 1 22rem; min-width: 0; }
+  .sound-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
+  .sound-rows { max-height: 9.5rem; overflow-y: auto; }
+  .sound-rows li { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
+  .sound-rows select { flex: 1; min-width: 0; }
+  .sound-rows .weight { width: 4rem; flex: none; }
+  .share { width: 2.8rem; flex: none; text-align: right; font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .percent { font-size: 0.78rem; color: var(--muted); margin-left: 0.3rem; }
   .inspector :global(.option-row) { margin-bottom: 0; }
 </style>
