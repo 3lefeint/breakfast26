@@ -409,6 +409,237 @@ class TestSwitch:
         assert saved["edges"][1] == {"from": "w", "to": "s", "match": "o1"}
 
 
+class TestVoiceSlot:
+    @staticmethod
+    def call(node_id="c", key="line", channel="voice"):
+        return {"id": node_id, "type": "action", "kind": "call", "key": key, "channel": channel}
+
+    @staticmethod
+    def engine(*scenes, audio=None, defaults=False):
+        """An engine with these scenes of the user, in this order; each is a list of nodes (trigger "t" first) that
+        follow each other from the trigger on, or a (nodes, edges) pair."""
+        store = sc.MemoryScenes()
+        for i, spec in enumerate(scenes):
+            nodes, edges = spec if isinstance(spec, tuple) else (spec, None)
+            edges = edges if edges is not None else [(nodes[k]["id"], nodes[k + 1]["id"]) for k in range(len(nodes) - 1)]
+            store.save_scene(None, sc.clean_scene({"name": f"scene {i + 1}", "graph": graph(*nodes, edges=edges)}))
+        return sc.SceneEngine(store, audio=audio or FakeAudio(files=("a.mp3", "b.mp3", "c.mp3")))
+
+    def test_the_first_scene_that_plays_a_voice_sound_takes_the_slot(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "a.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        trace = []
+        engine.fire("x01.bust", {}, trace=trace)
+        assert [p[0] for p in engine.audio.played] == ["a.mp3"]
+        assert [t for t in trace if t["node"] in ("a", "b")] == [
+            {"node": "a", "result": "done", "file": "a.mp3"}, {"node": "b", "result": "skipped", "why": "voice_slot_taken"}]
+
+    def test_a_scene_whose_conditions_stop_does_not_take_the_slot(self):
+        engine = self.engine([trigger("x01.bust"), condition("p", "player", names=["anna"]), sound("a", "a.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        engine.fire("x01.bust", {"player": "ben"})
+        assert [p[0] for p in engine.audio.played] == ["b.mp3"]
+        engine.audio.played.clear()
+        engine.fire("x01.bust", {"player": "anna"})
+        assert [p[0] for p in engine.audio.played] == ["a.mp3"]
+
+    def test_a_step_that_plays_nothing_does_not_take_the_slot(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "gone.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        engine.fire("x01.bust", {})
+        assert [p[0] for p in engine.audio.played] == ["b.mp3"]
+
+    def test_ambient_sounds_and_overlays_are_never_skipped(self):
+        overlays = []
+        store = sc.MemoryScenes()
+        for nodes in ([trigger("x01.bust"), sound("a", "a.mp3", channel="voice")],
+                      [trigger("x01.bust"), sound("b", "b.mp3", channel="ambient"), self.call("k", "ambient_x"),
+                       {"id": "o", "type": "action", "kind": "overlay", "animation": "flash", "text": "x", "seconds": 1}]):
+            store.save_scene(None, sc.clean_scene({"name": "x", "graph": graph(*nodes, edges=[(nodes[i]["id"], nodes[i + 1]["id"]) for i in range(len(nodes) - 1)])}))
+        engine = sc.SceneEngine(store, audio=FakeAudio(files=("a.mp3", "b.mp3")), overlay=overlays.append)
+        engine.fire("x01.bust", {}, defaults=False)
+        assert [p[0] for p in engine.audio.played] == ["a.mp3", "b.mp3"] and engine.audio.calls == ["ambient_x"] and len(overlays) == 1
+
+    def test_calls_on_the_voice_channel_take_the_slot(self):
+        engine = self.engine([trigger("x01.bust"), self.call("c", "line")], [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        engine.fire("x01.bust", {}, defaults=False)
+        assert engine.audio.calls == ["line"] and engine.audio.played == []
+
+    def test_a_call_that_plays_beside_the_calls_does_not(self):
+        for first in (self.call("c", "line", channel="ambient"), self.call("c", "ambient_line|ambient_other")):
+            engine = self.engine([trigger("x01.bust"), first], [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+            engine.fire("x01.bust", {})
+            assert [p[0] for p in engine.audio.played] == ["b.mp3"]
+
+    def test_inside_one_scene_nothing_changes(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "a.mp3", channel="voice"), sound("b", "b.mp3", channel="voice"), self.call("c")])
+        engine.fire("x01.bust", {}, defaults=False)
+        assert [p[0] for p in engine.audio.played] == ["a.mp3", "b.mp3"] and engine.audio.calls == ["line"]
+
+    def test_the_standard_scenes_are_not_held_back(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "a.mp3", channel="voice")])
+        engine.fire("x01.bust", {})
+        assert [p[0] for p in engine.audio.played] == ["a.mp3"] and engine.audio.calls      # the call of the standard scene follows
+
+    def test_a_step_behind_a_wait_does_not_count(self):
+        import time
+        wait = {"id": "d", "type": "action", "kind": "delay", "seconds": 0}
+        engine = self.engine([trigger("x01.bust"), wait, sound("a", "a.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        engine.fire("x01.bust", {})
+        time.sleep(0.2)
+        assert sorted(p[0] for p in engine.audio.played) == ["a.mp3", "b.mp3"]
+
+    def test_a_skipped_sound_does_not_replace_the_call(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "a.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice", replace=True)])
+        assert engine.fire("x01.bust", {}) is False
+
+    def test_a_test_run_ignores_the_slot(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "a.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        engine.fire("x01.bust", {}, only=mine(engine)[1]["id"])
+        assert [p[0] for p in engine.audio.played] == ["b.mp3"]
+
+    def test_the_order_decides(self):
+        engine = self.engine([trigger("x01.bust"), sound("a", "a.mp3", channel="voice")],
+                             [trigger("x01.bust"), sound("b", "b.mp3", channel="voice")])
+        first, second = (s["id"] for s in mine(engine))
+        engine.reorder([second, first])
+        engine.fire("x01.bust", {})
+        assert [p[0] for p in engine.audio.played] == ["b.mp3"] and [s["id"] for s in mine(engine)] == [second, first]
+
+
+class TestSceneOrder:
+    def test_scenes_keep_their_order_and_new_ones_go_to_the_end(self, tmp_path):
+        db = StatsDB(str(tmp_path / "s.db"))
+        ids = [db.save_scene(None, sc.clean_scene({"name": n})) for n in "abc"]
+        assert [s["id"] for s in db.list_scenes()] == ids
+        db.order_scenes([ids[2], ids[0]])
+        assert [s["id"] for s in db.list_scenes()] == [ids[2], ids[0], ids[1]]
+        new = db.save_scene(None, sc.clean_scene({"name": "d"}))
+        assert [s["id"] for s in db.list_scenes()][-1] == new
+        db.save_scene(ids[1], sc.clean_scene({"name": "renamed"}))              # saving does not move a scene
+        assert [s["id"] for s in db.list_scenes()] == [ids[2], ids[0], ids[1], new]
+
+    def test_scenes_made_before_the_position_get_the_order_of_their_ids(self, tmp_path):
+        import sqlite3
+        path = str(tmp_path / "old.db")
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE scenes (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, graph TEXT NOT NULL, slug TEXT)")
+        for name in ("one", "two", "three"):
+            conn.execute("INSERT INTO scenes (name, graph) VALUES (?, '{\"nodes\": [], \"edges\": []}')", (name,))
+        conn.commit()
+        conn.close()
+        db = StatsDB(path)
+        assert [s["name"] for s in db.list_scenes()] == ["one", "two", "three"]
+        db.save_scene(None, sc.clean_scene({"name": "four"}))
+        assert [s["name"] for s in db.list_scenes()][-1] == "four"
+        assert [s["name"] for s in StatsDB(path).list_scenes()][-1] == "four"       # the migration runs once
+
+    def test_the_memory_store_orders_too(self):
+        store = sc.MemoryScenes()
+        ids = [store.save_scene(None, sc.clean_scene({"name": n})) for n in "ab"]
+        store.order_scenes([ids[1]])
+        assert [s["id"] for s in store.list_scenes()] == [ids[1], ids[0]]
+
+
+class TestVoiceCheck:
+    @staticmethod
+    def scene(sid, *nodes, edges=None, enabled=True, name=None):
+        edges = edges if edges is not None else [(nodes[i]["id"], nodes[i + 1]["id"]) for i in range(len(nodes) - 1)]
+        return {"id": sid, "name": name or f"scene {sid}", "enabled": enabled, "default": False,
+                "graph": sc.clean_graph(graph(*nodes, edges=edges))}
+
+    @staticmethod
+    def voice(node_id="v"):
+        return sound(node_id, "a.mp3", channel="voice")
+
+    def check(self, scenes, sid, graph_of_it=None):
+        found = next(s for s in scenes if s["id"] == sid)["graph"] if graph_of_it is None else graph_of_it
+        from breakfast import scene_slot
+        return scene_slot.overridden_by(scenes, sid, found)
+
+    def test_an_earlier_scene_without_a_condition_always_wins(self):
+        scenes = [self.scene(1, trigger("x01.bust"), self.voice()), self.scene(2, trigger("x01.bust"), self.voice())]
+        assert self.check(scenes, 2) == [{"scene": 1, "name": "scene 1", "event": "x01.bust", "level": "warning"}]
+        assert self.check(scenes, 1) == []
+
+    def test_an_earlier_scene_behind_a_condition_is_a_note(self):
+        scenes = [self.scene(1, trigger("x01.bust"), condition("c", "chance", percent=50), self.voice()),
+                  self.scene(2, trigger("x01.bust"), self.voice())]
+        assert self.check(scenes, 2)[0]["level"] == "note"
+
+    def test_another_moment_or_no_voice_sound_gives_nothing(self):
+        scenes = [self.scene(1, trigger("x01.leg_won"), self.voice()), self.scene(2, trigger("x01.bust"), self.voice()),
+                  self.scene(3, trigger("x01.bust"), sound("s", "a.mp3", channel="ambient")),
+                  self.scene(4, trigger("x01.bust"), {"id": "d", "type": "action", "kind": "delay", "seconds": 1}, self.voice())]
+        assert self.check(scenes, 2) == []
+        assert self.check(scenes, 3) == []
+        assert self.check([scenes[2], scenes[3], self.scene(5, trigger("x01.bust"), self.voice())], 5) == []      # 3 and 4 play no voice at once
+
+    def test_a_disabled_earlier_scene_does_not_count(self):
+        scenes = [self.scene(1, trigger("x01.bust"), self.voice(), enabled=False), self.scene(2, trigger("x01.bust"), self.voice())]
+        assert self.check(scenes, 2) == []
+
+    def test_a_scene_that_is_not_saved_yet_comes_last(self):
+        scenes = [self.scene(1, trigger("x01.bust"), self.voice())]
+        from breakfast import scene_slot
+        draft = sc.clean_graph(graph(trigger("x01.bust"), self.voice(), edges=[("t", "v")]))
+        assert scene_slot.overridden_by(scenes, None, draft)[0]["level"] == "warning"
+
+    def test_other_players_do_not_compete(self):
+        def only(names, sid):
+            return self.scene(sid, trigger("x01.bust"), condition("p", "player", names=names), self.voice())
+        assert self.check([only(["anna", "Ben"], 1), only(["carl"], 2)], 2) == []
+        assert self.check([only(["anna", "Ben"], 1), only(["BEN", "carl"], 2)], 2)[0]["level"] == "note"
+        no_branch = self.scene(1, trigger("x01.bust"), condition("p", "player", names=["anna"]), self.voice(),
+                               edges=[("t", "p")])
+        no_branch["graph"]["edges"].append({"from": "p", "to": "v", "branch": "no"})
+        assert self.check([no_branch, only(["anna"], 2)], 2) == []                  # anna takes the yes side, the other scene waits for anna
+        assert self.check([no_branch, only(["tom"], 2)], 2)[0]["level"] == "note"
+
+    def test_bands_that_do_not_meet_do_not_compete(self):
+        def band(op, value, sid):
+            return self.scene(sid, trigger("x01.turn_scored"), condition("c", "compare", field="score", op=op, value=value), self.voice())
+        assert self.check([band("<=", 10, 1), band(">=", 140, 2)], 2) == []
+        assert self.check([band("<=", 10, 1), band("<", 10, 2)], 2)[0]["level"] == "note"
+        assert self.check([band("<=", 10, 1), band(">", 10, 2)], 2) == []
+        assert self.check([band("<=", 10, 1), band(">=", 10, 2)], 2)[0]["level"] == "note"
+        assert self.check([band("==", 180, 1), band(">=", 140, 2)], 2)[0]["level"] == "note"
+
+    def test_the_outputs_of_a_switch_do_not_compete_with_each_other(self):
+        def at(output, sid, mode="values", field="player", outputs=None):
+            outputs = outputs or [{"id": "o1", "values": ["anna"]}, {"id": "o2", "values": ["ben"]}]
+            nodes = [trigger("x01.bust"), {"id": "w", "type": "condition", "kind": "switch", "field": field, "mode": mode, "outputs": outputs},
+                     self.voice()]
+            return self._switch_scene(sid, nodes, output)
+        assert self.check([at("o1", 1), at("o2", 2)], 2) == []
+        assert self.check([at("o1", 1), at("o1", 2)], 2)[0]["level"] == "note"
+        assert self.check([at("o1", 1), at("else", 2)], 2) == []                    # anna against everybody else
+        bands = [{"id": "o1", "limit": 10}, {"id": "o2", "limit": 15}]
+        assert self.check([at("o1", 1, "bands", "score", bands), at("o2", 2, "bands", "score", bands)], 2) == []
+        assert self.check([at("o1", 1, "bands", "score", bands), at("else", 2, "bands", "score", bands)], 2) == []
+        assert self.check([at("else", 1, "bands", "score", bands), at("else", 2, "bands", "score", bands)], 2)[0]["level"] == "note"
+
+    def _switch_scene(self, sid, nodes, output):
+        edges = [{"from": "t", "to": "w"}, {"from": "w", "to": "v", "match": output}]
+        return {"id": sid, "name": f"scene {sid}", "enabled": True, "default": False,
+                "graph": sc.clean_graph({"nodes": nodes, "edges": edges})}
+
+    def test_the_route_answers_for_a_draft(self, client):
+        c, engine, *_ = client
+        body = {"name": "first", "graph": graph(trigger("x01.bust"), self.voice(), edges=[("t", "v")])}
+        first = c.post("/api/scenes", json=body).json()["id"]
+        second = c.post("/api/scenes", json={**body, "name": "second"}).json()["id"]
+        answer = c.post("/api/scenes/voice-check", json={"id": second, "graph": body["graph"]}).json()
+        assert answer == {"overridden_by": [{"scene": first, "name": "first", "event": "x01.bust", "level": "warning"}]}
+        assert c.post("/api/scenes/voice-check", json={"id": first, "graph": body["graph"]}).json() == {"overridden_by": []}
+        assert c.post("/api/scenes/order", json={"ids": [second, first]}).json() == {"ok": True}
+        assert [s["id"] for s in c.get("/api/scenes").json()["scenes"] if not s["default"]] == [second, first]
+        assert c.post("/api/scenes/voice-check", json={"id": first, "graph": body["graph"]}).json()["overridden_by"][0]["scene"] == second
+
+
 class TestX01Moments:
     def test_the_third_dart_is_a_scored_turn(self):
         moments = sc.x01_moments({"type": "dart", "dart": 3, "mode": "X01"}, snapshot(turn_score=180, remaining=321))

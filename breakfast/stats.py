@@ -281,7 +281,8 @@ CREATE TABLE IF NOT EXISTS scenes (
     name    TEXT    NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     graph   TEXT    NOT NULL,
-    slug    TEXT
+    slug    TEXT,
+    position INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_turns_player ON turns (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_player ON dart_positions (player);
@@ -429,7 +430,8 @@ class StatsDB:
 
     def list_scenes(self) -> list:
         with self._lock:
-            rows = self._conn.execute("SELECT id, name, enabled, graph, slug FROM scenes ORDER BY id").fetchall()
+            rows = self._conn.execute(
+                "SELECT id, name, enabled, graph, slug FROM scenes ORDER BY position, id").fetchall()
         return [{"id": r["id"], "name": r["name"], "enabled": bool(r["enabled"]), "graph": json.loads(r["graph"]),
                  "slug": r["slug"]} for r in rows]
 
@@ -440,12 +442,21 @@ class StatsDB:
         with self._lock:
             if scene_id is None:
                 scene_id = self._conn.execute(
-                    "INSERT INTO scenes (name, enabled, graph, slug) VALUES (?, ?, ?, ?)", (*values, slug)).lastrowid
+                    "INSERT INTO scenes (name, enabled, graph, slug, position) "
+                    "VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM scenes))", (*values, slug)).lastrowid
             elif not self._conn.execute(
                     "UPDATE scenes SET name = ?, enabled = ?, graph = ? WHERE id = ?", (*values, scene_id)).rowcount:
                 return None
             self._conn.commit()
         return scene_id
+
+    def order_scenes(self, ids: list):
+        """Put the scenes with these ids in this order, ahead of the others (which keep their order)."""
+        with self._lock:
+            rest = [r["id"] for r in self._conn.execute("SELECT id FROM scenes ORDER BY position, id") if r["id"] not in ids]
+            for position, scene_id in enumerate([*ids, *rest], 1):
+                self._conn.execute("UPDATE scenes SET position = ? WHERE id = ?", (position, scene_id))
+            self._conn.commit()
 
     def delete_scene(self, scene_id) -> bool:
         with self._lock:
@@ -459,6 +470,9 @@ class StatsDB:
         if "slug" not in cols:
             self._conn.execute("ALTER TABLE scenes ADD COLUMN slug TEXT")
         self._conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_scenes_slug ON scenes (slug) WHERE slug IS NOT NULL")
+        if "position" not in cols:      # the order of the scenes of the user; the scenes made so far keep the order of their ids
+            self._conn.execute("ALTER TABLE scenes ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+            self._conn.execute("UPDATE scenes SET position = id")
 
     def _migrate_matches_winner(self):
         """CREATE TABLE IF NOT EXISTS matches doesn't add columns to an

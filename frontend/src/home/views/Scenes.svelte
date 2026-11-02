@@ -599,6 +599,44 @@
     return total ? `${Math.round((Number(entry.weight) || 0) / total * 100)} %` : '';
   }
 
+  // ── the voice slot ─────────────────────────────────────────────────────────
+
+  // Per moment the first scene of the user (in list order) that plays on the voice channel takes the voice. The server works
+  // out which earlier scenes can take it before the scene being edited, with the unsaved changes.
+  let slotNotes = $state([]);
+  let slotTimer = null;
+  $effect(() => {
+    if (!draft || draft.default) { slotNotes = []; return; }
+    const body = { id: draft.id, graph: JSON.parse(JSON.stringify(draft.graph)) };
+    void data;                          // the saved scenes and their order
+    clearTimeout(slotTimer);
+    slotTimer = setTimeout(async () => {
+      try {
+        slotNotes = (await apiJson('POST', '/api/scenes/voice-check', body)).overridden_by || [];
+      } catch (e) {
+        slotNotes = [];
+      }
+    }, 400);
+  });
+  const momentName = (event) => `${GAME_LABEL[events[event]?.game] || events[event]?.game} · ${EVENT_LABEL[event] || event}`;
+
+  const mineOf = (list) => list.filter((x) => !x.default);
+  const canMove = (list, scene, delta) => {
+    const i = mineOf(list).findIndex((x) => x.id === scene.id);
+    return i + delta >= 0 && i + delta < mineOf(list).length;
+  };
+  async function move(list, scene, delta) {
+    if (!canMove(list, scene, delta)) return;
+    const mine = mineOf(list);
+    const other = mine[mine.findIndex((x) => x.id === scene.id) + delta];
+    const ids = data.scenes.filter((x) => !x.default).map((x) => x.id);
+    const a = ids.indexOf(scene.id), b = ids.indexOf(other.id);
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+    const res = await apiJson('POST', '/api/scenes/order', { ids });
+    if (res.error) { message = t(res.error); return; }
+    await load();
+  }
+
   // ── the switch node ─────────────────────────────────────────────────────────
 
   const TEXT_FACTS = ['player'];       // facts that are names, read as values; the others are numbers, read as bands
@@ -674,7 +712,8 @@
   const WHY = {
     no_audio: t('no audio output is set up'), no_file: t('no file chosen'), file_missing: t('the file is not in the library'),
     no_key: t('no call chosen'), no_sound: t('the voice pack has no sound for it'), ambient_muted: t('the ambient volume is 0'),
-    no_display: t('no view is connected to show it'), no_output: t('nothing is connected to the output it took'),
+    no_display: t('no view is connected to show it'), voice_slot_taken: t('an earlier scene already plays the voice at this moment'),
+    no_output: t('nothing is connected to the output it took'),
     not_a_number: t('the value is not a number'),
   };
   function whyText(why = '') {
@@ -794,6 +833,12 @@
                 <button type="button" class="scene-name" onclick={() => open(s)}>
                   {s.default ? momentOf(s) : s.name}{#if s.customized}<span class="edited"> · {t('edited')}</span>{/if}
                 </button>
+                {#if !s.default}
+                  <button type="button" class="play" disabled={!canMove(list, s, -1)} title={t('Move up')} aria-label={t('Move {name} up', { name: s.name })}
+                          onclick={() => move(list, s, -1)}>▲</button>
+                  <button type="button" class="play" disabled={!canMove(list, s, 1)} title={t('Move down')} aria-label={t('Move {name} down', { name: s.name })}
+                          onclick={() => move(list, s, 1)}>▼</button>
+                {/if}
                 <input type="checkbox" checked={s.enabled} title={t('On')} aria-label={t('{name} is on', { name: s.name })}
                        onchange={() => toggleScene(s)}>
               </li>
@@ -818,6 +863,25 @@
                  oninput={(e) => { draft.name = e.target.value; touch(); }} aria-label={t('Name of the scene')}>
           {#if draft.default}
             <InfoTip>{t('A standard scene makes the calls the game made on its own. What you change here replaces it, until you go back to the original.')}</InfoTip>
+          {:else}
+            <span class="slot-info" class:warn={slotNotes.some((n) => n.level === 'warning')}>
+              {#if slotNotes.length}
+                <InfoTip>
+                  <p>{t('Per moment only one of your scenes plays a voice: the first one in the list that plays a sound or a call on the voice channel. The voice steps of the scenes after it are skipped; ambient sounds and effects always play.')}</p>
+                  <ul>
+                    {#each slotNotes as n}
+                      <li>
+                        {#if n.level === 'warning'}
+                          <strong>{t('Always overridden')}</strong>: {t('"{name}" comes first at {moment} and always takes the voice. Move this scene above it or give the other one a condition.', { name: n.name, moment: momentName(n.event) })}
+                        {:else}
+                          {t('"{name}" comes first at {moment} and can take the voice before this scene.', { name: n.name, moment: momentName(n.event) })}
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                </InfoTip>
+              {/if}
+            </span>
           {/if}
           <Toggle bind:checked={draft.enabled} label={t('On')} wide onchange={touch} />
           <span class="spacer"></span>
@@ -1173,7 +1237,8 @@
   .fname { font-size: 0.82rem; flex: 1; min-width: 6rem; word-break: break-all; }
   .fmeta { font-size: 0.72rem; color: var(--muted); }
   .play { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.8rem; padding: 0 0.25rem; }
-  .play:hover { color: var(--accent); }
+  .play:hover:not(:disabled) { color: var(--accent); }
+  .play:disabled { opacity: 0.3; cursor: default; }
   .upload, .act {
     background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--muted);
     padding: 0.2rem 0.65rem; font-family: inherit; font-size: 0.78rem; cursor: pointer;
@@ -1192,6 +1257,8 @@
   .scene-head > :global(*) { flex-shrink: 0; }
   @media (max-width: 760px) { .scene-head { flex-wrap: wrap; } }
   .scene-head :global(.option-row) { margin-bottom: 0; }
+  .slot-info { display: inline-block; flex: none; width: 1.65rem; height: 1.15rem; }
+  .slot-info.warn :global(.dot) { color: var(--yellow); border-color: var(--yellow); }
   .scene-head > .scene-title { flex: 1 1 8rem; min-width: 4rem; max-width: 30rem; font-weight: 700; font-size: 1rem; }
   .spacer { flex: 1; }
   .dirty { font-size: 0.78rem; color: var(--yellow); }
