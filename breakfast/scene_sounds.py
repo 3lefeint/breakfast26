@@ -101,9 +101,12 @@ def rename_file(audio, engine, old: str, new: str):
     (folder(audio) / old).rename(folder(audio) / new)
     audio.files_changed()
     for scene in engine.store.list_scenes() if engine else []:
-        hits = [n for n in scene["graph"].get("nodes", []) if n.get("kind") == "sound" and n.get("file") == old]
+        graph = scenes.upgrade_graph(scene["graph"])
+        hits = [n for n in graph.get("nodes", []) if n.get("kind") == "sound" and any(e["file"] == old for e in n["files"])]
         for node in hits:
-            node["file"] = new
+            node["files"] = scenes.sound_entries({"files": [{**e, "file": new if e["file"] == old else e["file"]} for e in node["files"]]})
         if hits:
-            engine.store.save_scene(scene["id"], scene, slug=scene.get("slug"))
+            engine.store.save_scene(scene["id"], {**scene, "graph": graph}, slug=scene.get("slug"))
+    if engine:
+        engine.changed()
     return None
