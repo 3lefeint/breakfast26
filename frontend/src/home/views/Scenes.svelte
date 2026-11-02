@@ -17,6 +17,10 @@
   const H = 62;
   const GAP_X = 40;
   const GAP_Y = 48;
+  const ROW = 26;                    // a row of a switch: one output
+  const MAX_SWITCH_OUTPUTS = 18;     // not counting "otherwise"
+  // The height of a node: a switch grows downward with each output (and "otherwise"), inside the canvas.
+  const hOf = (n) => (n.kind === 'switch' ? H + ((n.outputs?.length || 0) + 1) * ROW + 4 : H);
   const EVENT_LABEL = {
     'x01.dart': t('Dart thrown'), 'x01.match_start': t('Match starts'), 'x01.leg_start': t('Leg starts'), 'x01.turn_start': t('Turn starts'), 'x01.turn_scored': t('Turn scored'),
     'x01.bust': t('Bust'), 'x01.leg_won': t('Leg won'), 'x01.match_won': t('Match won'),
@@ -26,6 +30,7 @@
   };
   const GAME_LABEL = { X01: 'X01', Elimination: t('Elimination') };
   const FIELD_LABEL = {
+    player: t('Player'),
     score: t('Score'), remaining: t('Remaining'), leg: t('Leg'), target: t('Target'), lives: t('Lives'),
     freipass: t('Free pass'), next: t('Score to pass'), margin: t('Over twice the target'),
     preview: t('Read after the 3rd dart'), close: t('Nearly enough'), last: t('Ends the match'),
@@ -80,28 +85,37 @@
   // The nodes in rows by depth, one column per end of the flow. A flow that was drawn from left to right is laid out so
   // when it is opened, the nodes stay where they are otherwise.
   function arrange(graph) {
-    const kids = {};
-    for (const e of [...graph.edges.filter((x) => x.branch !== 'no'), ...graph.edges.filter((x) => x.branch === 'no')]) (kids[e.from] ||= []).push(e.to);
     const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
+    // The children of a node in the order of its outputs: yes before no, the outputs of a switch top to bottom.
+    const rank = (e) => {
+      const from = byId[e.from];
+      if (from?.kind === 'switch') {
+        const i = from.outputs.findIndex((o) => o.id === e.match);
+        return i < 0 ? from.outputs.length : i;
+      }
+      return e.branch === 'no' ? 1 : 0;
+    };
+    const kids = {};
+    for (const e of [...graph.edges].sort((a, b) => rank(a) - rank(b))) (kids[e.from] ||= []).push(e.to);
     const done = new Set();
     let column = 0;
-    function place(id, depth) {
+    function place(id, y) {
       const n = byId[id];
       if (!n || done.has(id)) return null;
       done.add(id);
-      n.y = 40 + depth * (H + GAP_Y);
-      const xs = (kids[id] || []).map((c) => place(c, depth + 1)).filter((x) => x != null);
+      n.y = y;
+      const xs = (kids[id] || []).map((c) => place(c, y + hOf(n) + GAP_Y)).filter((x) => x != null);
       n.x = xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 40 + column++ * (W + GAP_X);
       return n.x;
     }
     const starts = graph.nodes.filter((n) => n.type === 'trigger').map((n) => n.id);
-    for (const id of [...starts, ...graph.nodes.map((n) => n.id)]) place(id, 0);
+    for (const id of [...starts, ...graph.nodes.map((n) => n.id)]) place(id, 40);
   }
 
   const flowsDown = (graph) => graph.edges.every((e) => {
     const a = graph.nodes.find((n) => n.id === e.from);
     const b = graph.nodes.find((n) => n.id === e.to);
-    return !a || !b || b.y >= a.y + H;
+    return !a || !b || b.y >= a.y + hOf(a);
   });
 
   function tidy() {
@@ -240,6 +254,7 @@
   }
 
   const DEFAULTS = {
+    switch: { type: 'condition', kind: 'switch', field: 'player', mode: 'values', outputs: [{ id: 'o1', values: [] }, { id: 'o2', values: [] }] },
     compare: { type: 'condition', kind: 'compare', field: 'score', op: '>=', value: 100 },
     chance: { type: 'condition', kind: 'chance', percent: 10 },
     player: { type: 'condition', kind: 'player', names: [] },
@@ -263,7 +278,7 @@
     let y = 40;
     if (from) {
       x = from.x + edges.filter((e) => e.from === from.id).length * (W + GAP_X);
-      y = from.y + H + GAP_Y;
+      y = from.y + hOf(from) + GAP_Y;
     }
     draft.graph.nodes.push({ id, x, y, ...JSON.parse(JSON.stringify(spec)) });
     if (from) draft.graph.edges.push({ from: from.id, to: id });
@@ -319,7 +334,7 @@
     const box = svgEl.getBoundingClientRect();
     if (!nodes.length || !box.width) { view = { x: 40, y: 40, k: 1 }; return; }
     const x0 = Math.min(...nodes.map((n) => n.x)), x1 = Math.max(...nodes.map((n) => n.x + W));
-    const y0 = Math.min(...nodes.map((n) => n.y)), y1 = Math.max(...nodes.map((n) => n.y + H + 30));
+    const y0 = Math.min(...nodes.map((n) => n.y)), y1 = Math.max(...nodes.map((n) => n.y + hOf(n) + 30));
     const k = Math.max(0.25, Math.min(1, (box.width - 80) / (x1 - x0), (box.height - 80) / (y1 - y0)));
     view = { k, x: (box.width - (x1 - x0) * k) / 2 - x0 * k, y: 40 - y0 * k };
   }
@@ -400,14 +415,23 @@
   }
 
   // A condition leads on from two outputs, yes (left) and no (right); a random pick and every other node from one.
-  const twoWay = (n) => n.type === 'condition' && n.kind !== 'pick';
-  const portX = (n, branch) => n.x + (twoWay(n) ? (branch === 'no' ? W * 0.7 : W * 0.3) : W / 2);
+  const twoWay = (n) => n.type === 'condition' && n.kind !== 'pick' && n.kind !== 'switch';
 
-  function startLink(e, n, branch) {
+  // Where a connection leaves a node: *key* is yes or no for a condition, the id of an output (or "else") for a switch.
+  function outPort(n, key) {
+    if (n.kind === 'switch') {
+      const i = n.outputs.findIndex((o) => o.id === key);
+      return { x: n.x + W, y: n.y + H + (i < 0 ? n.outputs.length : i) * ROW + ROW / 2, side: true };
+    }
+    return { x: n.x + (twoWay(n) ? (key === 'no' ? W * 0.7 : W * 0.3) : W / 2), y: n.y + H, side: false };
+  }
+  const keyOf = (n, edge) => (n.kind === 'switch' ? edge.match : edge.branch);
+
+  function startLink(e, n, key) {
     e.stopPropagation();
     selNode = n.id;
     selEdge = null;
-    link = { from: n.id, branch, ...point(e) };
+    link = { from: n.id, key, ...point(e) };
     svgEl.setPointerCapture(e.pointerId);
   }
 
@@ -431,17 +455,19 @@
   function onUp(e) {
     if (link) {
       const p = point(e);
-      const target = nodes.find((n) => p.x >= n.x && p.x <= n.x + W && p.y >= n.y && p.y <= n.y + H);
+      const target = nodes.find((n) => p.x >= n.x && p.x <= n.x + W && p.y >= n.y && p.y <= n.y + hOf(n));
       if (target && target.id !== link.from && target.type !== 'trigger'
           && !edges.some((x) => x.from === link.from && x.to === target.id)) {
-        draft.graph.edges.push(link.branch === 'no' ? { from: link.from, to: target.id, branch: 'no' } : { from: link.from, to: target.id });
+        const from = nodes.find((n) => n.id === link.from);
+        if (from?.kind === 'switch') draft.graph.edges.push({ from: link.from, to: target.id, match: link.key });
+        else draft.graph.edges.push(link.key === 'no' ? { from: link.from, to: target.id, branch: 'no' } : { from: link.from, to: target.id });
         dirty = true;
       }
     }
     if (marquee) {
       const x0 = Math.min(marquee.x0, marquee.x1), x1 = Math.max(marquee.x0, marquee.x1);
       const y0 = Math.min(marquee.y0, marquee.y1), y1 = Math.max(marquee.y0, marquee.y1);
-      const inside = nodes.filter((n) => n.x < x1 && n.x + W > x0 && n.y < y1 && n.y + H > y0).map((n) => n.id);
+      const inside = nodes.filter((n) => n.x < x1 && n.x + W > x0 && n.y < y1 && n.y + hOf(n) > y0).map((n) => n.id);
       picked = inside.length > 1 ? inside : [];
       selNode = inside.length === 1 ? inside[0] : null;
     }
@@ -451,26 +477,33 @@
     drag = null;
   }
 
-  const curve = (x1, y1, x2, y2) => {
+  // A connection leaves a node downward, that of a switch to the right first.
+  const curve = (x1, y1, x2, y2, side = false) => {
     const dy = Math.max(30, Math.abs(y2 - y1) / 2);
-    return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
+    return side ? `M${x1},${y1} C${x1 + 60},${y1} ${x2},${y2 - dy} ${x2},${y2}` : `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   };
 
   function edgePath(edge) {
     const a = nodes.find((n) => n.id === edge.from);
     const b = nodes.find((n) => n.id === edge.to);
-    return a && b ? curve(portX(a, edge.branch), a.y + H, b.x + W / 2, b.y) : '';
+    if (!a || !b) return '';
+    const from = outPort(a, keyOf(a, edge));
+    return curve(from.x, from.y, b.x + W / 2, b.y, from.side);
   }
 
   function edgeMid(edge) {
     const a = nodes.find((n) => n.id === edge.from);
     const b = nodes.find((n) => n.id === edge.to);
-    return a && b ? { x: (portX(a, edge.branch) + b.x + W / 2) / 2, y: (a.y + H + b.y) / 2 } : { x: 0, y: 0 };
+    if (!a || !b) return { x: 0, y: 0 };
+    const from = outPort(a, keyOf(a, edge));
+    return { x: (from.x + b.x + W / 2) / 2, y: (from.y + b.y) / 2 };
   }
 
   function linkPath() {
     const a = nodes.find((n) => n.id === link.from);
-    return a ? curve(portX(a, link.branch), a.y + H, link.x, link.y) : '';
+    if (!a) return '';
+    const from = outPort(a, link.key);
+    return curve(from.x, from.y, link.x, link.y, from.side);
   }
 
   // A standard scene is named after the moment it belongs to, in the language of the interface.
@@ -518,7 +551,7 @@
     }
     return text.slice(0, lo) + '…';
   }
-  const cut = (text) => fitText(text, W - 32);
+  const cut = (text, width = W - 32) => fitText(text, width);
 
   function describe(n) {
     if (n.type === 'trigger') {
@@ -535,6 +568,7 @@
     if (n.kind === 'once') return [t('If'), cut(SCOPE_LABEL[n.scope] + (n.per_player ? ` · ${t('per player')}` : ''))];
     if (n.kind === 'achievement') return [t('If'), cut(n.achievement ? t('has {name}', { name: achievementName(n.achievement) }) : t('has an achievement'))];
     if (n.kind === 'pick') return [t('Random'), cut(t('one of the next steps'))];
+    if (n.kind === 'switch') return [t('Switch'), cut(FIELD_LABEL[n.field] || n.field)];
     if (n.kind === 'call') return [t('Play call'), cut(n.key || t('(no call)'))];
     if (n.kind === 'sound') {
       const named = n.files.filter((e) => e.file);
@@ -565,6 +599,65 @@
     return total ? `${Math.round((Number(entry.weight) || 0) / total * 100)} %` : '';
   }
 
+  // ── the switch node ─────────────────────────────────────────────────────────
+
+  const TEXT_FACTS = ['player'];       // facts that are names, read as values; the others are numbers, read as bands
+  let switchFields = $derived([...new Set(['player', ...facts, ...(node?.kind === 'switch' ? [node.field] : [])])]);
+
+  // The label of an output: its values or its upper limit; the last row takes what no output did.
+  function outputLabel(n, o) {
+    if (n.mode === 'bands') return `≤ ${o.limit}`;
+    return o.values.length ? o.values.join(', ') : t('(no value)');
+  }
+  function switchRows(n) {
+    return [...n.outputs.map((o) => ({ id: o.id, label: outputLabel(n, o) })), { id: 'else', label: t('otherwise') }];
+  }
+
+  function setSwitchField(n, field) {
+    n.field = field;
+    setSwitchMode(n, TEXT_FACTS.includes(field) ? 'values' : 'bands');
+  }
+
+  // A change of the mode keeps the outputs (and what hangs on them) and gives them fresh values.
+  function setSwitchMode(n, mode) {
+    if (n.mode !== mode) {
+      n.outputs = n.outputs.map((o, i) => (mode === 'bands' ? { id: o.id, limit: (i + 1) * 10 } : { id: o.id, values: [] }));
+      n.mode = mode;
+    }
+    touch();
+  }
+
+  function addOutput(n) {
+    if (n.outputs.length >= MAX_SWITCH_OUTPUTS) return;
+    let i = n.outputs.length + 1;
+    while (n.outputs.some((o) => o.id === 'o' + i)) i++;
+    const last = n.outputs[n.outputs.length - 1];
+    n.outputs.push(n.mode === 'bands' ? { id: 'o' + i, limit: last ? last.limit + 10 : 10 } : { id: 'o' + i, values: [] });
+    touch();
+  }
+
+  function removeOutput(n, index) {
+    const [gone] = n.outputs.splice(index, 1);
+    draft.graph.edges = draft.graph.edges.filter((e) => !(e.from === n.id && e.match === gone.id));
+    selEdge = null;
+    touch();
+  }
+
+  // Values are typed with commas. A value sits on one output only: the output it was typed into keeps it.
+  function setValues(n, output, text) {
+    output.values = [...new Set(text.split(',').map((v) => v.trim()).filter(Boolean))];
+    const mine = new Set(output.values.map((v) => v.toLowerCase()));
+    for (const o of n.outputs) if (o !== output) o.values = o.values.filter((v) => !mine.has(v.toLowerCase()));
+    touch();
+  }
+
+  // A band starts where the one before it ends, so the limits are kept in ascending order.
+  function sortBands(n) {
+    for (const o of n.outputs) o.limit = Number(o.limit) || 0;
+    n.outputs.sort((a, b) => a.limit - b.limit);
+    touch();
+  }
+
   // ── saving, testing ────────────────────────────────────────────────────────
 
   async function save() {
@@ -581,7 +674,8 @@
   const WHY = {
     no_audio: t('no audio output is set up'), no_file: t('no file chosen'), file_missing: t('the file is not in the library'),
     no_key: t('no call chosen'), no_sound: t('the voice pack has no sound for it'), ambient_muted: t('the ambient volume is 0'),
-    no_display: t('no view is connected to show it'),
+    no_display: t('no view is connected to show it'), no_output: t('nothing is connected to the output it took'),
+    not_a_number: t('the value is not a number'),
   };
   function whyText(why = '') {
     const [code, rest = ''] = why.split(':');
@@ -612,6 +706,11 @@
     message = res.trace.length ? t('Played the scene with sample values.') : t('Nothing happened: add an action after a trigger.');
     const played = res.trace.filter((s) => s.file).map((s) => s.file);
     if (played.length) message += ' ' + t('Sound: {files}.', { files: played.join(', ') });
+    const notes = res.trace.filter((s) => s.result !== 'skipped' && s.why).map((s) => {
+      const n = nodes.find((x) => x.id === s.node);
+      return `${n ? describe(n).join(' ') : s.node}: ${whyText(s.why)}`;
+    });
+    if (notes.length) message += ' ' + notes.join('; ') + '.';
     const left = res.trace.flatMap((s) => s.missing || []);
     if (left.length) message += ' ' + t('Not in the library, left out: {files}.', { files: left.join(', ') });
     if (res.trace.length && others) message += ' ' + t('The sound comes from the connected audio page.');
@@ -747,6 +846,7 @@
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.once)}>{t('+ Once')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.achievement)}>{t('+ Achievement')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.pick)}>{t('+ Random')}</button>
+          <button type="button" class="act" onclick={() => addNode(DEFAULTS.switch)}>{t('+ Switch')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.call)}>{t('+ Call')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.sound)}>{t('+ Sound')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.overlay)}>{t('+ Effect')}</button>
@@ -802,11 +902,18 @@
                  onpointerdown={(e) => startDrag(e, n)}
                  onauxclick={(e) => { if (e.button === 1) removeNode(n.id); }}
                  onkeydown={(e) => { if (e.key === 'Enter') { selNode = n.id; selEdge = null; } }}>
-                <rect width={W} height={H} rx="10" />
+                <rect width={W} height={hOf(n)} rx="10" />
                 <text class="title" x="14" y="24">{ICON[n.type]} {title}</text>
                 <text class="detail" x="14" y="46">{detail}</text>
                 {#if n.type !== 'trigger'}<circle class="port" cx={W / 2} cy="0" r="6" />{/if}
-                {#if twoWay(n)}
+                {#if n.kind === 'switch'}
+                  {#each switchRows(n) as row, i (row.id)}
+                    <line class="row-line" x1="0" x2={W} y1={H + i * ROW} y2={H + i * ROW} />
+                    <text class="row-label" x="14" y={H + i * ROW + 18}>{cut(row.label, W - 60)}</text>
+                    <circle class="port out" cx={W} cy={H + i * ROW + ROW / 2} r="8" role="button" tabindex="-1"
+                            aria-label={t('Drag to connect from {output}', { output: row.label })} onpointerdown={(e) => startLink(e, n, row.id)} />
+                  {/each}
+                {:else if twoWay(n)}
                   <circle class="port out yes" cx={W * 0.3} cy={H} r="8" role="button" tabindex="-1"
                           aria-label={t('Drag to connect on yes')} onpointerdown={(e) => startLink(e, n, 'yes')} />
                   <circle class="port out no" cx={W * 0.7} cy={H} r="8" role="button" tabindex="-1"
@@ -839,6 +946,12 @@
                         onchange={(e) => { if (e.target.value === 'no') edge.branch = 'no'; else delete edge.branch; touch(); }}>
                   <option value="yes">{t('yes')}</option>
                   <option value="no">{t('no')}</option>
+                </select>
+              </label>
+            {:else if source?.kind === 'switch'}
+              <label>{t('Leaves the node at')}
+                <select value={edge.match} onchange={(e) => { edge.match = e.target.value; touch(); }}>
+                  {#each switchRows(source) as row}<option value={row.id}>{row.label}</option>{/each}
                 </select>
               </label>
             {:else if source?.kind === 'pick'}
@@ -903,6 +1016,46 @@
               <span class="note">{t('The first time the flow gets here it goes on at yes, after that at no, until the next match (or leg).')}</span>
             {:else if node.kind === 'pick'}
               <span class="note">{t('Takes one of the next steps by chance. Select a connection to give it a weight.')}</span>
+            {:else if node.kind === 'switch'}
+              <label>{t('Fact')}
+                <select value={node.field} onchange={(e) => setSwitchField(node, e.target.value)}>
+                  {#each switchFields as f}<option value={f}>{FIELD_LABEL[f] || f}{f === 'player' || facts.has(f) ? '' : ` (${t('not given by the trigger')})`}</option>{/each}
+                </select>
+              </label>
+              <label>{t('Reads as')}
+                <select value={node.mode} onchange={(e) => setSwitchMode(node, e.target.value)}>
+                  <option value="values">{t('Values')}</option>
+                  <option value="bands">{t('Bands')}</option>
+                </select>
+              </label>
+              <div class="row-edit">
+                <div class="row-head">
+                  <span>{node.mode === 'bands' ? t('Upper limit of each output') : t('Values of each output')}</span>
+                  <button type="button" class="act" onclick={() => addOutput(node)} disabled={node.outputs.length >= MAX_SWITCH_OUTPUTS}>+ {t('Add output')}</button>
+                </div>
+                <ul class="rows">
+                  {#each node.outputs as o, i (o.id)}
+                    <li>
+                      <span class="share">{i + 1}</span>
+                      {#if node.mode === 'bands'}
+                        <input type="number" step="any" value={o.limit} aria-label={t('Upper limit')}
+                               onchange={(e) => { o.limit = Number(e.target.value) || 0; sortBands(node); }}>
+                      {:else}
+                        <input type="text" class="wide" value={o.values.join(', ')} placeholder={t('anna, ben')} aria-label={t('Values')}
+                               onchange={(e) => setValues(node, o, e.target.value)}>
+                      {/if}
+                      <button type="button" class="play" onclick={() => removeOutput(node, i)} title={t('Remove')}>✕</button>
+                    </li>
+                  {/each}
+                </ul>
+                {#if FIELD_NOTE[node.field]}<span class="note">{FIELD_NOTE[node.field]}</span>{/if}
+                <span class="note">
+                  {node.mode === 'bands'
+                    ? t('A turn takes the first output whose limit it does not exceed; the next output starts where the one before ends. What is above the last limit takes "otherwise".')
+                    : t('Takes the output that names the value (any case). A value sits on one output only; everything else takes "otherwise".')}
+                </span>
+                <span class="note">{t('A missing value takes "otherwise". An output with no connection does nothing.')}</span>
+              </div>
             {:else if node.kind === 'achievement'}
               <label>{t('Achievement')}
                 <select bind:value={node.achievement} onchange={touch}>
@@ -933,12 +1086,12 @@
               <datalist id="call-keys">{#each data.call_keys as key}<option value={key}></option>{/each}</datalist>
               <span class="note">{t('{player}, {score} and {next} are the name of the player, the score of the turn and the score that passes.')}</span>
             {:else if node.kind === 'sound'}
-              <div class="sound-files">
-                <div class="sound-head">
+              <div class="row-edit">
+                <div class="row-head">
                   <span>{t('Sounds')}</span>
                   <button type="button" class="act" onclick={() => addSoundFile(node)} disabled={node.files.length >= MAX_SOUND_FILES}>+ {t('Add sound')}</button>
                 </div>
-                <ul class="sound-rows">
+                <ul class="rows">
                   {#each node.files as entry, i}
                     <li>
                       <select bind:value={entry.file} onchange={touch} aria-label={t('Sound')}>
@@ -1084,6 +1237,8 @@
   .port { fill: var(--surface); stroke: var(--muted); stroke-width: 2; }
   .port.out { cursor: crosshair; stroke: var(--accent); fill: var(--accent-soft); }
   .port.out:hover { fill: var(--accent); }
+  .row-line { stroke: var(--border); stroke-width: 1; stroke-opacity: 0.6; }
+  .row-label { fill: var(--text); font-size: 13px; }
   .port.out.yes { stroke: var(--green); }
   .port.out.no { stroke: var(--red); }
   .branch { font-size: 11px; font-weight: 700; }
@@ -1097,12 +1252,13 @@
   .insp-title { flex-basis: 100%; font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .note.warn { color: var(--yellow); }
   .note { font-size: 0.75rem; color: var(--muted); align-self: center; }
-  .sound-files { display: flex; flex-direction: column; gap: 0.35rem; flex: 1 1 22rem; min-width: 0; }
-  .sound-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
-  .sound-rows { max-height: 9.5rem; overflow-y: auto; }
-  .sound-rows li { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
-  .sound-rows select { flex: 1; min-width: 0; }
-  .sound-rows .weight { width: 4rem; flex: none; }
+  .row-edit { display: flex; flex-direction: column; gap: 0.35rem; flex: 1 1 22rem; min-width: 0; }
+  .row-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
+  .rows { max-height: 9.5rem; overflow-y: auto; }
+  .rows li { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
+  .rows select { flex: 1; min-width: 0; }
+  .rows .weight { width: 4rem; flex: none; }
+  .rows .wide, .rows input[type="number"]:not(.weight) { flex: 1; min-width: 0; }
   .share { width: 2.8rem; flex: none; text-align: right; font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .percent { font-size: 0.78rem; color: var(--muted); margin-left: 0.3rem; }
   .inspector :global(.option-row) { margin-bottom: 0; }

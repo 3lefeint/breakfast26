@@ -24,6 +24,9 @@ MAX_NODES = 60
 MAX_VOLUME = 1.2      # a sound can be set 20 % louder than the library level
 MAX_SOUND_FILES = 20  # files one sound step picks from
 MAX_WEIGHT = 100
+MAX_SWITCH_OUTPUTS = 18   # outputs of a switch, not counting "otherwise"
+MAX_SWITCH_VALUES = 20
+OTHERWISE = "else"        # the `match` of an edge that leaves a switch at "otherwise"
 AMBIENT_VOLUME = 0.6
 MATCH_STARTS = ("x01.match_start", "elim.match_start")
 LEG_STARTS = ("x01.leg_start",)
@@ -69,7 +72,7 @@ OPERATORS = {
     ">=": lambda a, b: a >= b, ">": lambda a, b: a > b, "==": lambda a, b: a == b,
     "<=": lambda a, b: a <= b, "<": lambda a, b: a < b, "!=": lambda a, b: a != b,
 }
-CONDITIONS = ("compare", "chance", "player", "once", "pick", "achievement")
+CONDITIONS = ("compare", "chance", "player", "once", "pick", "achievement", "switch")
 ONCE_SCOPES = ("match", "leg")
 ACTIONS = ("sound", "overlay", "delay", "call")
 ANIMATIONS = ("confetti", "flash", "banner")
@@ -103,6 +106,35 @@ def sound_entries(raw) -> list:
     return [{"file": name, "weight": weight} for name, weight in list(entries.items())[:MAX_SOUND_FILES]]
 
 
+def switch_outputs(raw) -> list:
+    """The outputs of a switch node. Values: [{"id", "values": [...]}], a value sits on the first output that names it
+    (compared without regard to case). Bands: [{"id", "limit"}] in ascending order of the limit, so a band starts where the
+    one before it ends."""
+    bands = isinstance(raw, dict) and raw.get("mode") == "bands"
+    items = raw.get("outputs") if isinstance(raw, dict) and isinstance(raw.get("outputs"), list) else []
+    outputs, ids, taken = [], {OTHERWISE}, set()
+    for item in items:
+        if not isinstance(item, dict) or not _NODE_ID.match(str(item.get("id", ""))) or item["id"] in ids:
+            continue
+        if len(outputs) >= MAX_SWITCH_OUTPUTS:
+            break
+        ids.add(item["id"])
+        if bands:
+            outputs.append({"id": item["id"], "limit": _number(item.get("limit"), -100000, 100000, 0)})
+            continue
+        values = item.get("values")
+        values = values if isinstance(values, list) else str(values or "").split(",")
+        own = []
+        for value in (v.strip() for v in map(str, values)):
+            if value and value.lower() not in taken and len(own) < MAX_SWITCH_VALUES:
+                taken.add(value.lower())
+                own.append(value[:40])
+        outputs.append({"id": item["id"], "values": own})
+    if bands:
+        outputs.sort(key=lambda o: o["limit"])
+    return outputs
+
+
 def clean_node(raw: dict):
     """One node with only the fields its kind knows and sane values, None when it is not a node."""
     if not isinstance(raw, dict) or not _NODE_ID.match(str(raw.get("id", ""))):
@@ -130,6 +162,9 @@ def clean_node(raw: dict):
                         per_player=bool(raw.get("per_player")))
         elif what == "pick":
             pass
+        elif what == "switch":
+            mode = "bands" if raw.get("mode") == "bands" else "values"
+            node.update(field=_text(raw.get("field"), 24) or "player", mode=mode, outputs=switch_outputs({**raw, "mode": mode}))
         elif what == "achievement":
             node.update(achievement=_text(raw.get("achievement"), 60), tier=int(_number(raw.get("tier"), 1, 20, 1)))
         else:
@@ -166,16 +201,21 @@ def clean_graph(raw) -> dict:
         if node and node["id"] not in seen:
             seen.add(node["id"])
             nodes.append(node)
+    switches = {n["id"]: {OTHERWISE, *(o["id"] for o in n["outputs"])} for n in nodes if n.get("kind") == "switch"}
     edges, pairs = [], set()
     for item in (raw.get("edges") if isinstance(raw.get("edges"), list) else [])[:MAX_NODES * 4]:
         if not isinstance(item, dict):
             continue
         a, b = item.get("from"), item.get("to")
         if a in seen and b in seen and a != b and (a, b) not in pairs:
-            pairs.add((a, b))
             edge = {"from": a, "to": b}
-            if item.get("branch") == "no":
+            if a in switches:                      # an edge of a switch says which output it leaves
+                if item.get("match") not in switches[a]:
+                    continue
+                edge["match"] = item["match"]
+            elif item.get("branch") == "no":
                 edge["branch"] = "no"
+            pairs.add((a, b))
             weight = _number(item.get("weight"), 1, 100, 1)
             if weight != 1:
                 edge["weight"] = weight
@@ -406,6 +446,12 @@ class SceneEngine:
                 if out:
                     chosen = random.choices(out, weights=[e.get("weight", 1) for e in out])[0]
                     replaced |= self._run(run, [chosen], seen, sync)
+            elif node["type"] == "condition" and node["kind"] == "switch":
+                chosen, why = self._switch(node, run["ctx"])
+                targets = [e for e in out if e.get("match") == chosen]
+                self._note(run["trace"], node, "pass" if targets else "stop", why or (None if targets else "no_output"),
+                           {"output": chosen})
+                replaced |= self._run(run, targets, seen, sync)
             elif node["type"] == "condition":
                 ok = self._check(node, run, run["ctx"])
                 self._note(run["trace"], node, "pass" if ok else "stop")
@@ -450,6 +496,22 @@ class SceneEngine:
         if not self.ambient_volume and all(o.strip().startswith("ambient_") for o in key.split("|")):
             return "ambient_muted"
         return "no_sound"
+
+    @staticmethod
+    def _switch(node, ctx):
+        """The output a switch takes and why it is "otherwise" when the fact does not decide: (output id, None or
+        `missing_fact:<name>`, `not_a_number`)."""
+        field = node["field"]
+        value = ctx.get(field)
+        if value is None or value == "":
+            return OTHERWISE, "missing_fact:" + field
+        if node["mode"] == "bands":
+            if not isinstance(value, (int, float)):
+                return OTHERWISE, "not_a_number"
+            return next((o["id"] for o in node["outputs"] if value <= o["limit"]), OTHERWISE), None
+        text = str(int(value)) if isinstance(value, float) and value.is_integer() else str(value)
+        text = text.strip().lower()
+        return next((o["id"] for o in node["outputs"] if text in {v.lower() for v in o["values"]}), OTHERWISE), None
 
     def _check(self, node, run, ctx) -> bool:
         kind = node["kind"]
