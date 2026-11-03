@@ -11,10 +11,12 @@ first save. tools/generate_voicepack.py's own bulk-generate path is
 untouched by this module and keeps using tomllib (read-only, so no risk).
 """
 
+import re
 from pathlib import Path
 
 import tomlkit
 
+from breakfast import voicepack
 from breakfast import voicepack_overlay as vo
 
 
@@ -87,8 +89,8 @@ def write_overlay(path: Path, changes: dict[str, dict]):
 
 def profile_dir_name(doc) -> str:
     """"de-CH-LeniNeural" -> "leni" — same derivation server.py's bulk
-    generate endpoint and generate_voicepack.py's main() both use."""
-    return doc["voice"].split("-")[-1].removesuffix("Neural").lower()
+    generate endpoint and generate_voicepack.py's main() both use (`voicepack.profile_name`)."""
+    return voicepack.profile_name(doc)
 
 
 def list_groups(doc) -> list[dict]:
@@ -213,32 +215,39 @@ def remove_variant(doc, group_name: str, key: str, index: int) -> dict | None:
     return {"stem": _filename_stem(group, key), "new_count": len(variants)}
 
 
-def prune_extra_variant_files(out_dir: Path, stem: str, keep_count: int):
+def prune_extra_variant_files(out_dir: Path, stem: str, keep_count: int, recorded=()):
     """Delete <stem>+N.mp3 files at or beyond *keep_count* — used after a
     save shrinks a key's variant list, so no file survives past what the
-    plan (and AudioEngine's gap-stops-the-scan convention) says exists."""
+    plan (and AudioEngine's gap-stops-the-scan convention) says exists.
+    The first recorded file and the ones after it stay: a recording is never deleted by a plan."""
     i = keep_count
     while True:
         p = out_dir / variant_filename(stem, i)
-        if not p.is_file():
+        if not p.is_file() or p.name in recorded:
             break
         p.unlink()
         i += 1
 
 
-def renumber_after_delete(out_dir: Path, stem: str, deleted_index: int, new_count: int):
+def renumber_after_delete(out_dir: Path, stem: str, deleted_index: int, new_count: int, recorded=None):
     """After removing the variant at *deleted_index*, delete its file and
-    shift every higher-indexed file down by one so the remaining
-    *new_count* files stay contiguous from index 0."""
+    shift every higher-indexed file down by one so the remaining files stay
+    contiguous from index 0. *recorded*, a set of file names, follows the files."""
     (out_dir / variant_filename(stem, deleted_index)).unlink(missing_ok=True)
-    for i in range(deleted_index + 1, new_count + 1):
-        src = out_dir / variant_filename(stem, i)
-        if src.is_file():
-            src.rename(out_dir / variant_filename(stem, i - 1))
+    if recorded is not None:
+        recorded.discard(variant_filename(stem, deleted_index))
+    i = deleted_index + 1
+    while (out_dir / variant_filename(stem, i)).is_file():
+        src, dest = variant_filename(stem, i), variant_filename(stem, i - 1)
+        (out_dir / src).rename(out_dir / dest)
+        if recorded is not None and src in recorded:
+            recorded.discard(src)
+            recorded.add(dest)
+        i += 1
 
 
 async def synthesize_entry(voice, rate, pitch, volume, out_dir: Path, stem: str,
-                            texts: list[str], trim: bool = True):
+                            texts: list[str], trim: bool = True, keep=()):
     """(Re)generate every variant file for one key, overwriting any that
     already exist — matches editing the TOML by hand and re-running the
     CLI generator with --force for just that one key.
@@ -251,4 +260,105 @@ async def synthesize_entry(voice, rate, pitch, volume, out_dir: Path, stem: str,
     out_dir.mkdir(parents=True, exist_ok=True)
     for i, text in enumerate(texts):
         dest = out_dir / variant_filename(stem, i)
+        if dest.name in keep:                    # a recording stays
+            continue
         await synthesize(voice, text, rate, pitch, volume, dest, trim)
+
+
+# ── Recording a pack with your own voice ──────────────────────────────────────
+
+_FILE = re.compile(r"^(.+?)(?:\+(\d+))?\.mp3$")
+
+
+def _first_text(value, default: str) -> str:
+    """The text to read for an entry of a plan: its first variant, its text, the plain string, else *default*."""
+    if isinstance(value, dict):
+        variants = value.get("variants")
+        if variants:
+            return str(variants[0])
+        return str(value.get("text", default))
+    return str(value) if value is not None else default
+
+
+def group_keys(group) -> list[dict]:
+    """Every key of a group as {"key": the file stem, "text": what to read}, whether or not it has a file yet."""
+    rows = []
+    if "range" in group:
+        rng = group["range"]
+        prefix = rng.get("key_prefix", "")
+        exclude = set(rng.get("exclude", []))
+        overrides = rng.get("overrides", {})
+        for n in range(rng["start"], rng["end"] + 1):
+            if n not in exclude:
+                rows.append({"key": f"{prefix}{n}", "text": _first_text(overrides.get(str(n)), str(n))})
+    else:
+        for key, value in group.get("keys", {}).items():
+            rows.append({"key": str(key), "text": _first_text(value, str(key))})
+    return rows
+
+
+def _files_of(present: set, stem: str) -> list[str]:
+    """The contiguous variant files of a key, the way AudioEngine finds them."""
+    files, i = [], 0
+    while variant_filename(stem, i) in present:
+        files.append(variant_filename(stem, i))
+        i += 1
+    return files
+
+
+def _present(out_dir: Path) -> set:
+    return {p.name for p in out_dir.iterdir() if p.is_file()} if out_dir.is_dir() else set()
+
+
+def _status(files: list, recorded) -> str:
+    if not files:
+        return "missing"
+    return "recorded" if any(f in recorded for f in files) else "generated"
+
+
+def recording_rows(doc, group_name: str, out_dir: Path, recorded) -> list[dict] | None:
+    """The keys of a group for the recording view: key, text, status (recorded, generated, missing) and the variant files
+    with a flag for the recorded ones. None if the group does not exist."""
+    group = _find_group(doc, group_name)
+    if group is None:
+        return None
+    present = _present(out_dir)
+    rows = []
+    for item in group_keys(group):
+        files = _files_of(present, item["key"])
+        rows.append({**item, "status": _status(files, recorded),
+                     "variants": [{"index": i, "filename": f, "recorded": f in recorded} for i, f in enumerate(files)]})
+    return rows
+
+
+def recording_counts(doc, out_dir: Path, recorded) -> dict:
+    """{"total", "recorded", "generated", "missing"} over the keys of every group, and the same for each group."""
+    present = _present(out_dir)
+    total = {"total": 0, "recorded": 0, "generated": 0, "missing": 0}
+    groups = {}
+    for group in doc["group"]:
+        counts = {"total": 0, "recorded": 0, "generated": 0, "missing": 0}
+        for item in group_keys(group):
+            status = _status(_files_of(present, item["key"]), recorded)
+            counts["total"] += 1
+            counts[status] += 1
+        groups[group["name"]] = counts
+        for k, v in counts.items():
+            total[k] += v
+    return {**total, "groups": groups}
+
+
+def recording_target(doc, filename: str, out_dir: Path):
+    """(stem, index) for a file name a recording may be stored under: a key of the plan, and the index of an existing variant
+    (replaced) or the next one (added). Else the reason why not as a string."""
+    m = _FILE.match(filename or "")
+    if not m:
+        return "not a voice-pack file name"
+    stem, index = m.group(1), int(m.group(2) or 0)
+    if m.group(2) is not None and (index < 1 or str(index) != m.group(2)):
+        return "not a voice-pack file name"
+    if stem not in {item["key"] for group in doc["group"] for item in group_keys(group)}:
+        return "not a key of this pack"
+    if index > len(_files_of(_present(out_dir), stem)):
+        return "the variants of a key follow each other without a gap"
+    return stem, index

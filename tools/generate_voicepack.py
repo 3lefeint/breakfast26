@@ -44,7 +44,7 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # `breakfast` when run as a script
-from breakfast import voicepack_overlay  # noqa: E402
+from breakfast import voicepack, voicepack_overlay  # noqa: E402
 
 try:
     import aiohttp
@@ -150,7 +150,8 @@ async def trim_silence(path):
         print(f"Warning: silence trim failed for {path}, keeping untrimmed file", file=sys.stderr)
 
 
-async def run(plan, out_dir, only, force, dry_run, trim, on_progress=None):
+async def run(plan, out_dir, only, force, dry_run, trim, on_progress=None, keep=()):
+    """*keep*: file names that are never written, not even with *force* (the recorded files of the pack)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     entries = list(resolve_entries(plan))
     if only:
@@ -164,7 +165,7 @@ async def run(plan, out_dir, only, force, dry_run, trim, on_progress=None):
     async def worker(group_name, key, text, rate, pitch, volume):
         nonlocal done, skipped, current_group
         dest = out_dir / f"{key}.mp3"
-        if dest.exists() and not force:
+        if dest.exists() and (not force or dest.name in keep):
             skipped += 1
             if on_progress:
                 on_progress(done, skipped, total)
@@ -213,7 +214,7 @@ def main():
         plan = tomllib.load(f)
 
     # "de-CH-LeniNeural" -> "leni"
-    short_name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
+    short_name = voicepack.profile_name(plan)
     out_dir = Path(args.out) if args.out else Path("sounds/profiles") / short_name
 
     overlay = Path(args.overlay) if args.overlay else voicepack_overlay.overlay_path("data", short_name)
@@ -224,7 +225,8 @@ def main():
             print(f"Cannot read the player-name file: {e}", file=sys.stderr)
             sys.exit(1)
 
-    asyncio.run(run(plan, out_dir, args.only, args.force, args.dry_run, not args.no_trim))
+    asyncio.run(run(plan, out_dir, args.only, args.force, args.dry_run, not args.no_trim,
+                    keep=voicepack.read_recorded(out_dir)))
 
 
 if __name__ == "__main__":

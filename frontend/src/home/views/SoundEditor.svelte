@@ -1,13 +1,14 @@
 <script>
   // Cuts a sound: two marks on the waveform, a fade in and a fade out, a click plays from there. The server cuts the
   // part, sets it to the loudness of the library and stores the mp3 (POST /api/scenes/sounds/edit). The sound is a file
-  // picked from the computer (`file`) or one of the library (`library`).
+  // picked from the computer (`file`) or one of the library (`library`). `target` points the editor at another place than the
+  // library, a file of a voice pack: { base, fileUrl(name), extra } (the routes, where the file is read, more query values).
   import { onDestroy, onMount } from 'svelte';
   import { t } from '../../lib/i18n.js';
   import { confirmDialog } from '../../lib/confirm.js';
   import { proposeTrim } from '../../lib/soundTrim.js';
 
-  let { file = null, library = '', taken = [], folder = 'scenes', suggest = '', onsaved, oncancel } = $props();
+  let { file = null, library = '', taken = [], folder = 'scenes', suggest = '', target = null, onsaved, oncancel } = $props();
   const BASE = { scenes: '/api/scenes/sounds', achievements: '/api/admin/achievement-sounds' };
 
   const MAX_SECONDS = 60;
@@ -89,7 +90,7 @@
     name = library || suggest || cleanName(file?.name || '');
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const bytes = file ? await file.arrayBuffer() : await fetch(`/api/sound/${encodeURIComponent(library)}?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.arrayBuffer());
+      const bytes = file ? await file.arrayBuffer() : await fetch(target ? target.fileUrl(library) : `/api/sound/${encodeURIComponent(library)}?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.arrayBuffer());
       buffer = await ctx.decodeAudioData(bytes);
     } catch (e) {
       error = t('This file could not be read as audio.');
@@ -394,6 +395,7 @@
                                     trim: String(trim), curve_in: String(curveIn), curve_out: String(curveOut),
                                     low_cut: String(lowCut), noise, compress, ...extra });
     if (!file) q.set('source', library);
+    for (const [key, value] of Object.entries(target?.extra || {})) q.set(key, value);
     return q;
   }
 
@@ -405,7 +407,7 @@
     effectsAudio?.pause();
     rendering = true;
     try {
-      const res = await fetch(`${BASE[folder]}/preview?${query()}`, { method: 'POST', body: file || undefined });
+      const res = await fetch(`${target ? target.base : BASE[folder]}/preview?${query()}`, { method: 'POST', body: file || undefined });
       if ((res.headers.get('content-type') || '').includes('json')) {
         message = t((await res.json()).error || 'The preview failed.');
       } else {
@@ -478,7 +480,7 @@
     if (!replace && taken.includes(name)) { message = t('A sound with this name exists already.'); return; }
     saving = true;
     try {
-      const res = await fetch(`${BASE[folder]}/edit?${query({ name, overwrite: replace ? 'true' : 'false' })}`,
+      const res = await fetch(`${target ? target.base : BASE[folder]}/edit?${query({ name, overwrite: replace ? 'true' : 'false' })}`,
                               { method: 'POST', body: file || undefined }).then((r) => r.json());
       if (res.error) { message = t(res.error); return; }
       stop();
@@ -504,7 +506,7 @@
   {:else}
     <div class="row">
       <label class="grow">{t('Name')}
-        <input type="text" bind:value={name} maxlength="64">
+        <input type="text" bind:value={name} maxlength="64" disabled={!!target}>
       </label>
       <span class="note">{t('Length {seconds} s', { seconds: seconds(duration) })}</span>
     </div>

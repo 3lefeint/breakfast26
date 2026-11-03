@@ -2235,16 +2235,23 @@ def _run_async_in_thread(coro_fn):
 _TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
 
 
+def _own_plans_dir() -> Path | None:
+    """The folder of the plans that were copied for recording, next to `config.toml`; None without a config file."""
+    return Path(_config_path).parent / "voicepack" / "plans" if _config_path else None
+
+
 def _voicepack_plans() -> dict[str, Path]:
-    """Every plan file `tools/voicepack_*.toml`, by the name of the profile folder it generates."""
+    """Every plan file `tools/voicepack_*.toml` and every plan copied for recording, by the name of the profile folder it
+    generates."""
     plans = {}
-    for path in sorted(_TOOLS_DIR.glob("voicepack_*.toml")):
+    own = _own_plans_dir()
+    for path in [*sorted(_TOOLS_DIR.glob("voicepack_*.toml")), *(sorted(own.glob("*.toml")) if own and own.is_dir() else [])]:
         try:
             with open(path, "rb") as f:
-                voice = tomllib.load(f)["voice"]
+                name = voicepack.profile_name(tomllib.load(f))
         except (OSError, tomllib.TOMLDecodeError, KeyError):
             continue
-        plans[voice.split("-")[-1].removesuffix("Neural").lower()] = path
+        plans.setdefault(name, path)
     return plans
 
 
@@ -2317,7 +2324,7 @@ async def voicepack_packs():
     for name, path in plans.items():
         with open(path, "rb") as f:
             voice = tomllib.load(f)["voice"]
-        packs.append({"name": name, "voice": voice, "plan": path.name})
+        packs.append({"name": name, "voice": voice, "plan": path.name, "own": path.parent != _TOOLS_DIR})
     return {"packs": packs, "default": default_name}
 
 
@@ -2336,7 +2343,7 @@ def _voicepack_generate_start(pack: str | None, force: bool, only_if_missing: bo
         return {"error": "unknown voice pack" if pack else "no voice-pack plan"}
     with open(plan_path, "rb") as f:
         plan = tomllib.load(f)
-    name = plan["voice"].split("-")[-1].removesuffix("Neural").lower()
+    name = voicepack.profile_name(plan)
     file = _voicepack_overlay_file(name)
     if file is not None:
         try:
@@ -2357,7 +2364,8 @@ def _voicepack_generate_start(pack: str | None, force: bool, only_if_missing: bo
             push()
         try:
             await generate_run(plan, out_dir, only=None, force=force,
-                                dry_run=False, trim=True, on_progress=on_progress)
+                                dry_run=False, trim=True, on_progress=on_progress,
+                                keep=voicepack.read_recorded(out_dir))
             log.info("Voice-pack generation finished: done=%d skipped=%d",
                       _voicepack_status["done"], _voicepack_status["skipped"])
         except Exception as e:
@@ -2387,8 +2395,9 @@ def _voice_entry_changed(pack: str, key: str):
     out_dir = _voicepack_out_dir(pack)
     if out_dir.is_dir():
         stale = re.compile(rf"{re.escape(key)}(\+\d+)?\.mp3")
+        recorded = voicepack.read_recorded(out_dir)
         for file in out_dir.iterdir():
-            if stale.fullmatch(file.name):
+            if stale.fullmatch(file.name) and file.name not in recorded:
                 file.unlink()
     if _audio_engine:
         _audio_engine.invalidate(key)
@@ -2535,16 +2544,17 @@ async def voicepack_save_entry(body: VoicepackEntryBody):
 
     prosody = ve.entry_prosody(doc, body.group, key)
     out_dir = _voicepack_out_dir(ve.profile_dir_name(doc))
+    recorded = voicepack.read_recorded(out_dir)
     result = ve.upsert_entry(doc, body.group, key, variants)
 
     try:
         await ve.synthesize_entry(doc["voice"], prosody["rate"], prosody["pitch"],
-                                   prosody["volume"], out_dir, result["stem"], variants)
+                                   prosody["volume"], out_dir, result["stem"], variants, keep=recorded)
     except Exception as e:
         log.warning("Voice-pack entry synth failed for key=%s: %s", key, e)
         return {"error": f"synthesis failed: {e}"}
 
-    ve.prune_extra_variant_files(out_dir, result["stem"], keep_count=len(variants))
+    ve.prune_extra_variant_files(out_dir, result["stem"], keep_count=len(variants), recorded=recorded)
     error = _voicepack_save(plan_path, doc, body.group)
     if error:
         return error
@@ -2578,12 +2588,150 @@ async def voicepack_delete_variant(body: VoicepackDeleteVariantBody):
     error = _voicepack_save(plan_path, doc, body.group)
     if error:
         return error
-    ve.renumber_after_delete(out_dir, result["stem"], body.variant_index, result["new_count"])
+    recorded = voicepack.read_recorded(out_dir)
+    ve.renumber_after_delete(out_dir, result["stem"], body.variant_index, result["new_count"], recorded)
+    voicepack.write_recorded(out_dir, recorded)
     if _audio_engine:
         _audio_engine.invalidate(result["stem"])
     log.info("Voice-pack variant deleted: group=%s key=%s index=%d",
               body.group, body.key, body.variant_index)
     return {"ok": True}
+
+
+# ── REST: recording a voice pack ──────────────────────────────────────────────
+
+def _recording_ctx(pack: str | None):
+    """(doc, out_dir, None) for the pack to record, or (None, None, error answer)."""
+    plan_path, doc = _voicepack_doc(pack)
+    if plan_path is None:
+        return None, None, doc
+    return doc, _voicepack_out_dir(ve.profile_dir_name(doc)), None
+
+
+@app.get("/api/voicepack/recording")
+async def voicepack_recording(group: str, pack: str | None = None):
+    """The keys of a group for the recording view with their status (recorded, generated, missing), and the counts of
+    the whole pack."""
+    doc, out_dir, error = _recording_ctx(pack)
+    if error:
+        return error
+    recorded = voicepack.read_recorded(out_dir)
+    rows = ve.recording_rows(doc, group, out_dir, recorded)
+    if rows is None:
+        return {"error": "unknown group"}
+    return {"rows": rows, "counts": ve.recording_counts(doc, out_dir, recorded)}
+
+
+async def _recording_source(request: Request, out_dir: Path, source: str):
+    """The sound to edit: the request body, or *source*, a file of the profile folder. (bytes, None) or (None, error)."""
+    if source:
+        if "/" in source or "\\" in source or ".." in source or not (out_dir / source).is_file():
+            return None, {"error": "not a file of this pack"}
+        return (out_dir / source).read_bytes(), None
+    return await request.body(), None
+
+
+@app.post("/api/voicepack/recording/edit")
+async def voicepack_store_recording(request: Request, name: str = Query(...), pack: str | None = Query(None),
+                                    start: float = Query(0), end: float = Query(...), fade_in: float = Query(0),
+                                    fade_out: float = Query(0), source: str = Query(""), trim: float = Query(0),
+                                    curve_in: float = Query(1), curve_out: float = Query(1), low_cut: bool = Query(False),
+                                    noise: str = Query(""), compress: str = Query(""), overwrite: bool = Query(True)):
+    """Cut, fade and level a sound and store it as the file *name* of the pack, marked as recorded: an existing variant is
+    replaced, the next free index adds one. The sound is the request body (a recording) or *source*, a file of the pack."""
+    doc, out_dir, error = _recording_ctx(pack)
+    if error:
+        return error
+    target = ve.recording_target(doc, name, out_dir)
+    if isinstance(target, str):
+        return {"error": target}
+    data, error = await _recording_source(request, out_dir, source)
+    if error:
+        return error
+    result = await asyncio.to_thread(sound_edit_mod.render, data, start, end, fade_in, fade_out, trim, curve_in, curve_out,
+                                     low_cut, noise, compress)
+    if isinstance(result, str):
+        return {"error": result}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp = out_dir / f"{name}.part"
+    tmp.write_bytes(result)
+    tmp.replace(out_dir / name)
+    recorded = voicepack.read_recorded(out_dir)
+    recorded.add(name)
+    voicepack.write_recorded(out_dir, recorded)
+    if _audio_engine:
+        _audio_engine.invalidate(target[0])
+        _audio_engine.files_changed()
+    log.info("Voice-pack recording stored: pack=%s file=%s (%.2f to %.2f s)", pack, name, start, end)
+    return {"ok": True, "file": name}
+
+
+@app.post("/api/voicepack/recording/preview")
+async def voicepack_preview_recording(request: Request, pack: str | None = Query(None), start: float = Query(0),
+                                      end: float = Query(...), fade_in: float = Query(0), fade_out: float = Query(0),
+                                      source: str = Query(""), trim: float = Query(0), curve_in: float = Query(1),
+                                      curve_out: float = Query(1), low_cut: bool = Query(False), noise: str = Query(""),
+                                      compress: str = Query("")):
+    """As the edit route, to listen to: the first seconds of the selection as mp3, nothing is stored."""
+    doc, out_dir, error = _recording_ctx(pack)
+    if error:
+        return error
+    data, error = await _recording_source(request, out_dir, source)
+    if error:
+        return error
+    return await _sound_preview(data, start, end, fade_in, fade_out, trim, curve_in, curve_out, low_cut, noise, compress)
+
+
+@app.delete("/api/voicepack/recording")
+async def voicepack_delete_recording(filename: str, pack: str | None = None):
+    """Delete one variant file of a key (recorded or generated); the higher variants move down so that none is left behind
+    a gap. The plan is not changed."""
+    doc, out_dir, error = _recording_ctx(pack)
+    if error:
+        return error
+    target = ve.recording_target(doc, filename, out_dir)
+    if isinstance(target, str):
+        return {"error": target}
+    if not (out_dir / filename).is_file():
+        return {"error": "not a file of this pack"}
+    recorded = voicepack.read_recorded(out_dir)
+    ve.renumber_after_delete(out_dir, target[0], target[1], 0, recorded)
+    voicepack.write_recorded(out_dir, recorded)
+    if _audio_engine:
+        _audio_engine.invalidate(target[0])
+        _audio_engine.files_changed()
+    log.info("Voice-pack file deleted: pack=%s file=%s", pack, filename)
+    return {"ok": True}
+
+
+class VoicepackCopyBody(BaseModel):
+    source: str
+    name: str
+
+
+@app.post("/api/voicepack/packs/copy")
+async def voicepack_copy_pack(body: VoicepackCopyBody):
+    """Copy a plan as a new pack for recordings: the keys and the texts to read, a folder of its own for the files. The copy
+    lives next to config.toml, never in the tracked plans."""
+    name = body.name.strip().lower()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", name):
+        return {"error": "the name must be 2 to 32 letters, digits and _ and start with a letter"}
+    own = _own_plans_dir()
+    if own is None:
+        return {"error": "no config file, so no place for the copy"}
+    if name in _voicepack_plans():
+        return {"error": "a pack with this name exists already"}
+    source = _voicepack_plan_path(body.source)
+    if source is None:
+        return {"error": "unknown voice pack"}
+    text = re.sub(r"^profile\s*=.*\n", "", source.read_text(encoding="utf-8"), flags=re.M)
+    text, n = re.subn(r"^(voice\s*=.*)$", lambda m: f'{m.group(1)}\nprofile = "{name}"', text, count=1, flags=re.M)
+    if not n:
+        return {"error": "the plan has no voice"}
+    own.mkdir(parents=True, exist_ok=True)
+    (own / f"{name}.toml").write_text(text, encoding="utf-8")
+    log.info("Voice-pack plan copied: %s to %s", body.source, name)
+    return {"ok": True, "name": name}
 
 
 # ── REST: checkout training ───────────────────────────────────────────────────

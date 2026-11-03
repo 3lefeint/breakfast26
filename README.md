@@ -231,6 +231,10 @@ names of your players are kept, and shows how to record a pack of your own. Play
 shown in upper case, so the voice file of a player is `<name>.mp3` whatever the spelling when the player was created.
 A player can also get one or more sounds of the sound library as their name call (**Players → Name sounds**, picked
 from the library or recorded in the browser); they join the voice file of the name, and one of all is played at random.
+**Voice Pack → Record** lists every key of a group with the text to read and records your own voice for it in the browser:
+the recording is cut and faded by itself, kept as the file of the key (another one becomes the next variant) and can be
+adjusted in the sound editor. Recorded files are never overwritten when the pack is generated. A copy of a plan makes a pack
+of your own for the recordings. It needs https or localhost for the microphone.
 Breakfast also fills in the voice files that are missing, for example for a new player, by itself every 10 minutes
 (`[audio] auto_generate_minutes`, `0` switches it off), and uses a new file without a restart.
 
