@@ -33,6 +33,11 @@
 #   mkdir -p data
 #   mv config.toml stats.db sessions sounds data/
 #
+# Both services run as root unless BREAKFAST_UID and BREAKFAST_GID are set in the untracked `.env` next to this file
+# (the ids of the user who owns the checkout; `id -u` and `id -g`). The updater also needs the group of the Docker socket
+# on the host in BREAKFAST_DOCKER_GID (`stat -c %g /var/run/docker.sock`). An installation that ran as root hands the
+# checkout over once before it switches, see the README ("Run as a normal user").
+#
 # Run with: docker compose up -d
 
 services:
@@ -41,6 +46,7 @@ services:
     container_name: breakfast
     restart: unless-stopped
     command: ["direct"]
+    user: "${BREAKFAST_UID:-0}:${BREAKFAST_GID:-0}"
     ports:
       # The port at the host is BREAKFAST_PORT from the untracked `.env` (Settings > Dev sets it); inside
       # the container the app always listens on 8080.
@@ -84,6 +90,10 @@ services:
       dockerfile: updater/Dockerfile
     container_name: breakfast-updater
     restart: unless-stopped
+    user: "${BREAKFAST_UID:-0}:${BREAKFAST_GID:-0}"
+    group_add:
+      # The group that owns the Docker socket on the host; 0 (root) while the updater runs as root.
+      - "${BREAKFAST_DOCKER_GID:-0}"
     environment:
       - REPO_DIR=${PWD}
       - "GIT_CONFIG_COUNT=1"

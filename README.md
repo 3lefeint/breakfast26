@@ -68,6 +68,18 @@ Autodarts itself keeps running natively on the host; only Breakfast is container
 `docker-compose.yml` explains the one setting Breakfast needs to reach the board from inside the container
 (`board_ws_url`).
 
+**Run as a normal user.** By default both containers run as root, so the files they create in the checkout and in `data/`
+belong to root. To run them as your own user, put your ids into the untracked `.env` next to `docker-compose.yml`:
+
+```bash
+printf 'BREAKFAST_UID=%s\nBREAKFAST_GID=%s\nBREAKFAST_DOCKER_GID=%s\n' "$(id -u)" "$(id -g)" "$(stat -c %g /var/run/docker.sock)" >> .env
+```
+
+An installation that has run as root first hands the checkout over once, otherwise the updater cannot change the files root
+created and rolls the update back: `docker compose down`, then
+`docker run --rm -v "$PWD":/w alpine chown -R "$(id -u):$(id -g)" /w`, then `docker compose up -d`.
+Without these variables nothing changes. Windows (Docker Desktop) does not need this.
+
 ### From source
 
 Needs Python 3.11+ and Node.js 22+.
