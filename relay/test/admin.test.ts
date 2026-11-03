@@ -10,6 +10,7 @@ let t = NOW;
 let env: AdminEnv & { DB: FakeD1 };
 let refuseLimit = false;
 let limitedCalls: string[] = [];
+let refunds: string[] = [];
 let fetcher: (url: string, init: RequestInit) => Promise<Response> = async () => { throw new Error("no network in tests"); };
 const limited = async (purpose: string) => { limitedCalls.push(purpose); return refuseLimit; };
 
@@ -20,7 +21,8 @@ async function login(password = PASSWORD) {
 async function call(token: string | null, method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = {};
   if (token) headers.authorization = `Bearer ${token}`;
-  const response = await handleAdmin(new Request(`https://relay.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, limited, t, fetcher);
+  const response = await handleAdmin(new Request(`https://relay.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, limited, t, fetcher,
+    async (purpose) => { refunds.push(purpose); });
   return { status: response!.status, body: response!.status === 204 ? null : await response!.json() as Record<string, any>, headers: response!.headers };
 }
 
@@ -30,6 +32,7 @@ beforeEach(async () => {
   t = NOW;
   refuseLimit = false;
   limitedCalls = [];
+  refunds = [];
   env = { DB: new FakeD1(), ADMIN_PASSWORD_HASH: await passwordHash(PASSWORD, "ab".repeat(16)), ADMIN_TOKEN_KEY: KEY } as never;
   token = (await login()).body!.token;
 });
@@ -54,10 +57,19 @@ describe("password and token", () => {
 
   it("a wrong password is refused and counts as an attempt", async () => {
     limitedCalls = [];
+    refunds = [];
     expect((await login("wrong")).status).toBe(401);
     expect(limitedCalls).toEqual(["admin-login"]);
+    expect(refunds).toEqual([]);
     refuseLimit = true;
     expect((await login()).status).toBe(429);
+    expect(refunds).toEqual([]);
+  });
+
+  it("a successful login gives its attempt back", async () => {
+    refunds = [];
+    expect((await login()).status).toBe(200);
+    expect(refunds).toEqual(["admin-login"]);
   });
 
   it("refuses a missing, forged, tampered or expired token", async () => {

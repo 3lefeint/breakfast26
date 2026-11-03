@@ -17,6 +17,7 @@
 - Voice Pack: Record lists every key of a group with the text to read, a counter and a filter for the missing ones, and records your own voice per key in the browser (cut and faded automatically, another recording is the next variant, record again, adjust in the sound editor, delete, Space starts and stops, Record next missing); recorded files are marked and never overwritten by generating or saving an entry, and a copy of a plan makes a pack for recordings (#140)
 
 ### Changed
+- Admin: the login stays across reloads of the page (kept in the browser tab until it runs out or Log out), and only failed logins count towards the limit of 5 per 15 minutes (#124)
 - Achievements that can be decided during a match are announced when the dart is thrown (a bullseye with the dart, a 180 or a Shanghai with the third dart) and not when the darts are pulled, in X01, Elimination, Target Battle and Killer (#135)
 
 ## [1.13.0] - 2026-10-31

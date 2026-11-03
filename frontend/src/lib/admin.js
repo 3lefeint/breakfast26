@@ -1,9 +1,11 @@
 import { get, writable } from 'svelte/store';
 
 // The admin of the circle (see relay/PROTOCOL.md, "Admin"): the page talks to the relay directly from the browser. Only the address
-// of the relay is remembered in this browser (it is no secret); the password is typed per session and the token the login answers
-// lives in memory only, so it is gone when the page is closed and nothing of it is stored on an installation.
+// of the relay is remembered in this browser (it is no secret); the password is typed per session and never stored. The token the
+// login answers (valid for about an hour) is kept in the sessionStorage of the browser tab: a reload keeps the login, closing the
+// tab or Log out ends it, and nothing of it is stored on an installation.
 const KEY = 'adminRelay';
+const SESSION_KEY = 'adminSession';
 
 function remembered() {
   try {
@@ -21,11 +23,22 @@ export function relayBase(text) {
   return /^https?:\/\/[^\s/]+$/.test(url) ? url : '';
 }
 
-export const adminRelay = writable(remembered());
-export const adminLoggedIn = writable(false);
+// The login of this tab, if it is still valid and belongs to the remembered relay.
+function restoredSession() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+    if (s && typeof s.token === 'string' && s.relay === remembered() && Date.now() < s.expiresAt) return s;
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch (e) { /* no storage: the login lasts until the page is reloaded */ }
+  return null;
+}
 
-let token = null;
-let expiresAt = 0;
+const restored = restoredSession();
+export const adminRelay = writable(remembered());
+export const adminLoggedIn = writable(!!restored);
+
+let token = restored ? restored.token : null;
+let expiresAt = restored ? restored.expiresAt : 0;
 
 export class AdminError extends Error {
   constructor(message, status = 0) {
@@ -58,6 +71,7 @@ export async function adminLogin(relay, password) {
   token = body.token;
   expiresAt = body.expires_at;
   try { localStorage.setItem(KEY, base); } catch (e) { /* remembering is optional */ }
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ relay: base, token, expiresAt })); } catch (e) { /* kept in memory only */ }
   adminRelay.set(base);
   adminLoggedIn.set(true);
 }
@@ -65,6 +79,7 @@ export async function adminLogin(relay, password) {
 export function adminLogout() {
   token = null;
   expiresAt = 0;
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { /* nothing stored */ }
   adminLoggedIn.set(false);
 }
 
