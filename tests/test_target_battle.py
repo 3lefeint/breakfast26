@@ -643,6 +643,9 @@ class FakeAudio:
         self.kwargs = []
         self.missing = set(missing)
 
+    def play_name(self, name, **kwargs):
+        return self.play(name, **kwargs)
+
     def play(self, name, **kwargs):
         self.played.append(name)
         self.kwargs.append((name, kwargs))

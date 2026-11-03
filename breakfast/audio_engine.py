@@ -37,6 +37,8 @@ class AudioEngine:
         the scenes), never looked up as the sound of a key."""
         self.dirs = [dirs] if isinstance(dirs, str) else list(dirs)
         self.library_dirs = list(library_dirs)
+        # Name -> the library files assigned to that player, wired by the stats database; None without one.
+        self.player_sounds = None
         self._broadcast = broadcast
         self._cache = {}
         self._batch_local = threading.local()
@@ -85,6 +87,31 @@ class AudioEngine:
         else:
             self._send(filename, channel, volume, False)
         return True
+
+    def name_files(self, name):
+        """The files assigned to a player as the name call that exist in the sound library, empty when there are none."""
+        if not self.player_sounds:
+            return []
+        try:
+            assigned = self.player_sounds(name)
+        except Exception:
+            log.exception("Could not read the name sounds of %s", name)
+            return []
+        return [f for f in assigned if self.resolve(f)]
+
+    def play_name(self, name, **kwargs):
+        """Say a player: one file at random out of the voice-pack variants of the name and the sounds assigned to it, all
+        equally likely. Returns False when there is none, the caller then plays `unknown_player`. *name* is the stored
+        (lower case) name."""
+        assigned = self.name_files(name)
+        if not assigned:
+            return self.play(name, **kwargs)
+        pool = assigned + [f for f in self._variants(name) if f not in assigned]
+        return self.play_file(random.choice(pool), **{k: v for k, v in kwargs.items() if k in ("volume", "channel")})
+
+    def has_name_audio(self, name):
+        """True if a player has a name call: an assigned sound or a voice-pack file."""
+        return bool(self.name_files(name)) or self.has_audio(name)
 
     def variants(self, name):
         """The file names of every variant of a key, empty when there is none."""

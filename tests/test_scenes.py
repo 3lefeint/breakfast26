@@ -26,6 +26,9 @@ class FakeAudio:
         self.played.append((filename, volume, channel))
         return True
 
+    def play_name(self, name, **kwargs):
+        return self.play(name, **kwargs)
+
     def play(self, name, **kwargs):
         self.calls.append(name)
         return True
@@ -1117,6 +1120,9 @@ class RecordingAudio(FakeAudio):
         super().__init__(files)
         self.keys = set(keys)
         self.heard = []
+
+    def play_name(self, name, **kwargs):
+        return self.play(name, **kwargs)
 
     def play(self, name, **kwargs):
         self.calls.append(name)

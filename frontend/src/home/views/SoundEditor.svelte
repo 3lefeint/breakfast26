@@ -7,7 +7,7 @@
   import { confirmDialog } from '../../lib/confirm.js';
   import { proposeTrim } from '../../lib/soundTrim.js';
 
-  let { file = null, library = '', taken = [], folder = 'scenes', onsaved, oncancel } = $props();
+  let { file = null, library = '', taken = [], folder = 'scenes', suggest = '', onsaved, oncancel } = $props();
   const BASE = { scenes: '/api/scenes/sounds', achievements: '/api/admin/achievement-sounds' };
 
   const MAX_SECONDS = 60;
@@ -86,7 +86,7 @@
   }
 
   onMount(async () => {
-    name = library || cleanName(file?.name || '');
+    name = library || suggest || cleanName(file?.name || '');
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       const bytes = file ? await file.arrayBuffer() : await fetch(`/api/sound/${encodeURIComponent(library)}?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.arrayBuffer());
