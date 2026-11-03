@@ -317,7 +317,7 @@ class TurnGame:
 
     def _announce(self, name):
         """Play *name*'s audio cue, `unknown_player` if there is no recording of it."""
-        if not self.audio.play(name.lower()):
+        if not self.audio.play_name(name.lower()):
             self.audio.play("unknown_player")
 
     def _topic(self, suffix):

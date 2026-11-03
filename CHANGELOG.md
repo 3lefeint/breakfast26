@@ -12,6 +12,7 @@
 - Scenes: a sound step can create speech from a text: a voice of the voice-pack plans, speed and pitch, a preview, saved as a file of the sound library (#136)
 - Sound editor: Auto trim proposes the marks and fades; optional low cut, noise reduction and compressor, tried with Listen with effects before saving (#138)
 - Sounds: a Record button next to the upload records with the microphone in the browser (start, stop, level meter) and opens the recording in the sound editor; it needs https or localhost (#137)
+- Players: Name sounds assigns one or more sounds of the sound library to a player as their name call, picked or recorded in the browser; they join the voice-pack file of the name and one of all is played at random, also for `{player}` in scenes (#141)
 
 ### Changed
 - Achievements that can be decided during a match are announced when the dart is thrown (a bullseye with the dart, a 180 or a Shanghai with the third dart) and not when the darts are pulled, in X01, Elimination, Target Battle and Killer (#135)

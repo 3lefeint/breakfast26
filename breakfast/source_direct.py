@@ -245,6 +245,8 @@ def run_direct(email, password, board_id, record_file=None,
         from breakfast.audio_engine import AudioEngine
         audio = AudioEngine(voicepack.search_dirs(audio_dir, audio_profile), broadcast=web.push_sound,
                             library_dirs=[os.path.join(audio_dir, voicepack.SCENES_SUBDIR)])
+        if stats_db_instance:
+            audio.player_sounds = lambda name: stats_db_instance.player_sounds().get(name, [])
         caller = caller_mod.from_config(audio, caller_cfg)
     elif caller_cfg:
         log.warning("[caller] is configured but [audio] dir is not set — "

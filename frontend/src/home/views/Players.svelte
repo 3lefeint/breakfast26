@@ -11,6 +11,7 @@
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import Panel from '../../lib/components/Panel.svelte';
   import Icon from '../../lib/components/Icon.svelte';
+  import PlayerNameSounds from './PlayerNameSounds.svelte';
 
   let newPlayerName = $state('');
 
@@ -114,6 +115,10 @@
     <button class="btn-add" onclick={addPlayer}><Icon name="plus" size={18} stroke={2.2} /> {t('Add')}</button>
   </div>
 </Panel>
+
+{#if $players.known.length}
+  <PlayerNameSounds />
+{/if}
 
 {#if allPlayers.length > 1}
   <Panel title={t('Merge players')}>

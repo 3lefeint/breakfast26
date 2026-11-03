@@ -631,7 +631,7 @@ class SceneEngine:
             return False
         if key == "{player}":
             name = str(ctx.get("player") or "").lower()
-            return bool(name and self._play(name, channel)) or self._play("unknown_player", channel)
+            return bool(name and self._play(name, channel, player=True)) or self._play("unknown_player", channel)
         if key in ("{score}", "{next}"):
             value = ctx.get("score" if key == "{score}" else "next")
             return value is not None and self._play(str(int(value)), channel)
@@ -659,11 +659,12 @@ class SceneEngine:
         name = _FACT.sub(fill, part)
         return bool(name) and not missing and self._play(name, channel)
 
-    def _play(self, name, channel) -> bool:
-        """Play a key. Those that start with `ambient_` follow the ambient volume of the settings."""
+    def _play(self, name, channel, player=False) -> bool:
+        """Play a key. Those that start with `ambient_` follow the ambient volume of the settings. *player*: the key is the
+        name of a player, which plays an assigned name sound before the voice-pack file."""
         args = {"channel": "ambient"} if channel == "ambient" else {}
         if name.startswith("ambient_"):
             if not self.ambient_volume:
                 return False
             args["volume"] = self.ambient_volume
-        return self.audio.play(name, **args)
+        return self.audio.play_name(name, **args) if player else self.audio.play(name, **args)

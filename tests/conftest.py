@@ -11,6 +11,9 @@ class FakeAudio:
         self.available = set(available)
         self.calls = []
 
+    def play_name(self, name, **kwargs):
+        return self.play(name, **kwargs)
+
     def play(self, name, prob=1.0, volume=1.0, channel=None, break_last=False):
         self.calls.append(name)
         return name in self.available

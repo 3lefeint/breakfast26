@@ -229,6 +229,8 @@ To change a single entry, use **Settings → Audio & Voice → Voice Pack**: pic
 listen to a preview and save. [VOICE_PACKS.md](VOICE_PACKS.md) lists every call key, explains where the
 names of your players are kept, and shows how to record a pack of your own. Player names are stored in lower case and
 shown in upper case, so the voice file of a player is `<name>.mp3` whatever the spelling when the player was created.
+A player can also get one or more sounds of the sound library as their name call (**Players → Name sounds**, picked
+from the library or recorded in the browser); they join the voice file of the name, and one of all is played at random.
 Breakfast also fills in the voice files that are missing, for example for a new player, by itself every 10 minutes
 (`[audio] auto_generate_minutes`, `0` switches it off), and uses a new file without a restart.
 

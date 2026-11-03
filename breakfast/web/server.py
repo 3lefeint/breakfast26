@@ -229,7 +229,7 @@ def _build_payload() -> dict:
         "elimination_wins": kp.load_wins(_stats_db),
         "x01_wins": kp.load_x01_wins(_stats_db),
         "players_missing_audio": (
-            [n for n in known_players if not _audio_engine.has_audio(n.lower())]
+            [n for n in known_players if not _audio_engine.has_name_audio(n.lower())]
             if _audio_engine else []
         ),
         "has_cloud_control": _cloud_client is not None,
@@ -3098,6 +3098,8 @@ async def rename_scene_sound(filename: str, body: SoundRenameBody):
     problem = scene_sounds.rename_file(_audio_engine, _scene_engine, filename, body.name)
     if problem:
         return {"error": problem}
+    if _stats_db:
+        _stats_db.rename_player_sound_file(filename, body.name)
     log.info("Scene sound renamed: %s to %s", filename, body.name)
     return {"ok": True, "file": body.name}
 
@@ -3340,6 +3342,37 @@ async def set_player_hidden(name: str, body: HiddenBody):
     _stats_db.upsert_player(name, hidden=body.hidden)
     push()
     return {"ok": True}
+
+
+class NameSoundsBody(BaseModel):
+    files: list[str] = []
+
+
+@app.get("/api/players/sounds")
+async def player_name_sounds():
+    """The sounds assigned to players as their name call, and the files of the sound library to pick from."""
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    library = scene_sounds.files(_audio_engine)
+    return {"sounds": _stats_db.player_sounds(), "files": library}
+
+
+@app.put("/api/players/{name}/sounds")
+async def set_player_name_sounds(name: str, body: NameSoundsBody):
+    """Replace the sounds of a player's name call (files of the sound library; several play at random)."""
+    if not _stats_db:
+        return {"error": "stats not enabled"}
+    name = names_mod.normalize(name)
+    library = scene_sounds.files(_audio_engine)
+    files = list(dict.fromkeys(body.files))
+    unknown = [f for f in files if f not in library]
+    if unknown:
+        return {"error": "not a sound of the library"}
+    if not _stats_db.set_player_sounds(name, files):
+        return {"error": f"unknown player: {name}"}
+    log.info("Name sounds of %s: %s", name, files)
+    push()
+    return {"ok": True, "files": files}
 
 
 class ColorBody(BaseModel):

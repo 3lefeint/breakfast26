@@ -284,6 +284,11 @@ CREATE TABLE IF NOT EXISTS scenes (
     slug    TEXT,
     position INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS player_sounds (
+    player TEXT NOT NULL,
+    file   TEXT NOT NULL,
+    PRIMARY KEY (player, file)
+);
 CREATE INDEX IF NOT EXISTS idx_turns_player ON turns (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_player ON dart_positions (player);
 CREATE INDEX IF NOT EXISTS idx_dart_positions_match  ON dart_positions (match_id);
@@ -819,6 +824,34 @@ class StatsDB:
         with self._lock:
             rows = self._conn.execute("SELECT name, color FROM players WHERE color IS NOT NULL").fetchall()
         return {r["name"]: r["color"] for r in rows}
+
+    def player_sounds(self) -> dict:
+        """Name -> the files of the sound library that are the name call of the player, in the order they were added."""
+        with self._lock:
+            rows = self._conn.execute("SELECT player, file FROM player_sounds ORDER BY rowid").fetchall()
+        sounds: dict = {}
+        for r in rows:
+            sounds.setdefault(r["player"], []).append(r["file"])
+        return sounds
+
+    def set_player_sounds(self, name: str, files: list) -> bool:
+        """Replace the name call files of a player. Returns False when there is no such player."""
+        log.debug("DB write: set_player_sounds name=%s files=%s", name, files)
+        with self._lock:
+            if not self._conn.execute("SELECT 1 FROM players WHERE name = ?", (name,)).fetchone():
+                return False
+            self._conn.execute("DELETE FROM player_sounds WHERE player = ?", (name,))
+            self._conn.executemany("INSERT OR IGNORE INTO player_sounds (player, file) VALUES (?, ?)",
+                                   [(name, f) for f in files])
+            self._conn.commit()
+        return True
+
+    def rename_player_sound_file(self, old: str, new: str):
+        """A file of the sound library got a new name: the players that use it follow."""
+        with self._lock:
+            self._conn.execute("UPDATE OR IGNORE player_sounds SET file = ? WHERE file = ?", (new, old))
+            self._conn.execute("DELETE FROM player_sounds WHERE file = ?", (old,))
+            self._conn.commit()
 
     def list_players(self) -> list:
         """Every known player, shown by default in the Players tab /
@@ -2493,6 +2526,7 @@ class StatsDB:
                     self._anonymise_in_match(match_id, player)
                 self._anonymise_in_tournaments(player)
                 self._conn.execute("DELETE FROM achievements_earned WHERE player = ?", (player,))
+                self._conn.execute("DELETE FROM player_sounds WHERE player = ?", (player,))
                 self._conn.execute("DELETE FROM players WHERE name = ?", (player,))
                 self._conn.commit()
             except Exception:
@@ -2624,6 +2658,8 @@ class StatsDB:
         c.execute("UPDATE players SET created_at = MIN(created_at, COALESCE("
                   "(SELECT created_at FROM players WHERE name = ?), created_at)) WHERE name = ?", (source, target))
         c.execute("DELETE FROM players WHERE name = ?", (source,))
+        c.execute("UPDATE OR IGNORE player_sounds SET player = ? WHERE player = ?", (target, source))
+        c.execute("DELETE FROM player_sounds WHERE player = ?", (source,))
         c.execute("UPDATE bot_turns SET player = ? WHERE player = ?", (target, source))
         for table, key, column in (("tournaments", "id", "data"), ("running_match", "mode", "data")):
             for row in c.execute(f"SELECT {key}, {column} FROM {table} WHERE {column} LIKE ?",
