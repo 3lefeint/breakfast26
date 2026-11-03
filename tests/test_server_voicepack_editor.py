@@ -234,7 +234,7 @@ def two_packs(tmp_path, monkeypatch):
 def test_packs_lists_every_plan_and_skips_a_broken_one(two_packs):
     res = asyncio.run(server.voicepack_packs())
     assert [p["name"] for p in res["packs"]] == ["leni", "ryan"]
-    assert res["packs"][1] == {"name": "ryan", "voice": "en-GB-RyanNeural", "plan": "voicepack_ryan.toml"}
+    assert res["packs"][1] == {"name": "ryan", "voice": "en-GB-RyanNeural", "plan": "voicepack_ryan.toml", "own": False}
 
 
 def test_packs_starts_on_the_active_profile(two_packs):

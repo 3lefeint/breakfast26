@@ -20,6 +20,7 @@
   import AchievementList from './AchievementList.svelte';
   import Scenes from './Scenes.svelte';
   import Sounds from './Sounds.svelte';
+  import VoicePackRecording from './VoicePackRecording.svelte';
   import LocationsSection from './LocationsSection.svelte';
   import CircleSection from './CircleSection.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
@@ -93,6 +94,7 @@
   let vpFormKey = $state('');
   let vpFormVariants = $state(['']);
   let vpSaving = $state(false);
+  let vpView = $state('entries');       // entries (write and generate) or record (your own voice)
 
   onMount(async () => {
     await loadConfig();
@@ -118,6 +120,14 @@
 
   const packQuery = () => (vpPack ? '&pack=' + encodeURIComponent(vpPack) : '');
   let vpPlan = $derived(vpPacks.find((p) => p.name === vpPack)?.plan || '');
+  let vpOwn = $derived(!!vpPacks.find((p) => p.name === vpPack)?.own);
+
+  // A pack was copied for recordings: list it and select it.
+  async function onVpPackCreated(name) {
+    await loadVoicepackPacks();
+    vpPack = name;
+    await onVpPackChange();
+  }
 
   async function onVpPackChange() {
     vpSelectedGroup = '';
@@ -854,7 +864,7 @@
               {/each}
             </select>
           </div>
-          <p class="note">{t('Edits the plan {plan}. A downloaded pack without a plan file is not listed.', { plan: 'tools/' + vpPlan })}</p>
+          <p class="note">{vpOwn ? t('Edits your copy {plan}.', { plan: vpPlan }) : t('Edits the plan {plan}. A downloaded pack without a plan file is not listed.', { plan: 'tools/' + vpPlan })}</p>
         {:else}
           <p class="note">{t('No voice-pack plan found.')}</p>
         {/if}
@@ -872,6 +882,16 @@
         </div>
       </div>
 
+      <div class="settings-section">
+        <div class="vp-views">
+          <button type="button" class="tab-chip" class:active={vpView === 'entries'} onclick={() => (vpView = 'entries')}>{t('Entries')}</button>
+          <button type="button" class="tab-chip" class:active={vpView === 'record'} onclick={() => (vpView = 'record')}>{t('Record')}</button>
+        </div>
+      </div>
+
+      {#if vpView === 'record'}
+        <VoicePackRecording pack={vpPack} group={vpSelectedGroup} onpackcreated={onVpPackCreated} />
+      {:else}
       <div class="settings-section">
         <div class="settings-section-title">{t('Add / edit entry')}</div>
         <p class="note">{t('Key: a player-roster name, a phrase key, or a number (for a numbers group). Add one or more variant texts — spelled however makes the voice say it right — preview each, then save. Saving (re)writes the .mp3 file(s) for this key and updates the plan; an existing key with the same name is replaced entirely.')}</p>
@@ -915,6 +935,7 @@
           </div>
         {/each}
       </div>
+      {/if}
     {/if}
   {:else if activeTab === 'connections'}
     <div class="settings-section">
@@ -1182,6 +1203,7 @@
   .aurora-colors .settings-row { align-items: start; }
   .aurora-colors .settings-row label { padding-top: 0.5rem; }
   .voicepack-progress { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+  .vp-views { display: flex; gap: 0.5rem; }
   .vp-entry { border-bottom: 1px solid var(--glass-border); padding: 0.6rem 0; }
   .vp-entry:last-child { border-bottom: none; }
   .vp-entry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
