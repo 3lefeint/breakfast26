@@ -186,7 +186,7 @@
   <div class="shell">
     <TopBar {boardConnected} mqttOk={$health.mqttOk} autodartsOk={$health.autodartsOk} wsConnected={$wsStatus === 'connected'} {connLabel}
             updateAvailable={!!$gameState.update?.available} />
-    <Sidebar route={$route} {boardAddress} version={$health.version} {onVersionTap} />
+    <Sidebar route={$route} {boardAddress} version={$health.version} build={$health.build} {onVersionTap} />
 
     <main>
         <div class="page">

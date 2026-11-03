@@ -5,7 +5,7 @@ import { writable } from 'svelte/store';
 // secondsSinceActivity) — same 30s interval as the original
 // index.html and tv.html. Shared between Home and TV.
 export const health = writable({
-  mqttOk: null, autodartsOk: null, version: null, releaseDate: null,
+  mqttOk: null, autodartsOk: null, version: null, releaseDate: null, build: null,
   matchActive: false, secondsSinceActivity: null,
 });
 
@@ -19,6 +19,7 @@ async function poll() {
       autodartsOk: h.autodarts?.connected ?? null,
       version: h.version ?? null,
       releaseDate: h.release_date ?? null,
+      build: h.build?.branch ? h.build : null,
       matchActive: h.autodarts?.match_active ?? false,
       secondsSinceActivity: h.autodarts?.seconds_since_activity ?? null,
     });
