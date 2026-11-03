@@ -76,6 +76,12 @@ async function limited(env: Env, request: Request, purpose: string, cfg: { limit
   return res.status === 429;
 }
 
+/** Gives one attempt back (a login that succeeded does not use up the limit). */
+async function refund(env: Env, request: Request, purpose: string, key?: string): Promise<void> {
+  const who = key ?? request.headers.get("cf-connecting-ip") ?? "local";
+  await env.LIMITER.get(env.LIMITER.idFromName(`${purpose}:${who}`)).fetch("https://limiter/refund");
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -156,7 +162,8 @@ export default {
     const located = await handleLocations(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key), rooms(env));
     if (located) return located;
 
-    const admin = await handleAdmin(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
+    const admin = await handleAdmin(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key),
+      Date.now(), fetch, (purpose, key) => refund(env, request, purpose, key));
     if (admin) return admin;
 
     const circle = await handleCircle(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
@@ -467,6 +474,11 @@ export class VoiceRoom extends DurableObject<Env> {
 export class RateLimiter extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/refund") {
+      const current = await this.ctx.storage.get<{ start: number; count: number }>("w");
+      if (current && current.count > 0) await this.ctx.storage.put("w", { ...current, count: current.count - 1 });
+      return new Response(null, { status: 200 });
+    }
     const limit = Number(url.searchParams.get("limit"));
     const windowMs = Number(url.searchParams.get("window"));
     const now = Date.now();

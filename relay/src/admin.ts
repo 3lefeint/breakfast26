@@ -86,7 +86,8 @@ async function readBody(request: Request): Promise<Record<string, unknown> | Res
 const parse = <T>(text: string, fallback: T): T => { try { return JSON.parse(text) as T; } catch { return fallback; } };
 
 /** The routes of the admin; null when the request is none of them. */
-export async function handleAdmin(request: Request, env: AdminEnv, limited: Limiter, now = Date.now(), fetcher: Fetcher = fetch): Promise<Response | null> {
+export async function handleAdmin(request: Request, env: AdminEnv, limited: Limiter, now = Date.now(), fetcher: Fetcher = fetch,
+                                  refund: (purpose: string, key?: string) => Promise<void> = async () => {}): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
   if (!path.startsWith("/admin/")) return null;
@@ -100,6 +101,7 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
     const body = await readBody(request);
     if (body instanceof Response) return body;
     if (typeof body.password !== "string" || !(await verifyPassword(env.ADMIN_PASSWORD_HASH, body.password))) return json({ error: "wrong password" }, 401);
+    await refund("admin-login");                 // only failed logins use up the limit
     const expiresAt = now + ADMIN_LIMITS.TOKEN_TTL_MS;
     return json({ token: await makeToken(env.ADMIN_TOKEN_KEY, expiresAt), expires_at: expiresAt });
   }

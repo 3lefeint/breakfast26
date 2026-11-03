@@ -165,8 +165,8 @@ JSON routes under `/admin` for the admin page in Breakfast (there is no web page
 installation, so the routes allow any origin (`access-control-allow-origin: *`, `OPTIONS` answers 204); there are no cookies.
 `POST /admin/login` `{password}` answers `{token, expires_at}` (the token lasts one hour); every other route takes it as
 `Authorization: Bearer <token>`. The password is stored only as a salted hash in the Worker secret `ADMIN_PASSWORD_HASH`
-(`sha256$<salt>$<hash>`, written by `npm run admin-password`), the token is signed with the secret `ADMIN_TOKEN_KEY`; 5 login
-tries per 15 minutes per address. Without the secrets the routes answer 503.
+(`sha256$<salt>$<hash>`, written by `npm run admin-password`), the token is signed with the secret `ADMIN_TOKEN_KEY`; 5 failed
+login tries per 15 minutes per address (a successful login does not count). Without the secrets the routes answer 503.
 
 | Route | Purpose |
 |---|---|
