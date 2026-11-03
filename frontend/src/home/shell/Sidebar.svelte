@@ -8,7 +8,11 @@
   import Icon from '../../lib/components/Icon.svelte';
   import { adminRelay } from '../../lib/admin.js';
 
-  let { route, boardAddress = null, version = '', onVersionTap = () => {} } = $props();
+  let { route, boardAddress = null, version = '', build = null, onVersionTap = () => {} } = $props();
+
+  // A test build copied without .git names its branch under the version: the name without a leading feature/ or fix/,
+  // cut by the CSS, the full name and the commit on hover.
+  let buildName = $derived(build ? build.branch.replace(/^(feature|fix)\//, '') : '');
 
   const PLAY_ROUTES = ['', 'home', 'elimination', 'target-battle', 'killer', 'x01', 'tournament', 'field-training', 'black-belt', 'warm-up', 'checkout-trainer', 'checkout-training', 'checkout-quiz', 'setup-shots'];
 
@@ -46,7 +50,10 @@
   </a>
 
   <div class="meta">
-    <button type="button" class="version" onclick={onVersionTap}>{version ? `v${version}` : ''}</button>
+    <div class="version-box">
+      <button type="button" class="version" onclick={onVersionTap}>{version ? `v${version}` : ''}</button>
+      {#if build}<span class="build" title={`${build.branch} ${build.commit}`}>{buildName}</span>{/if}
+    </div>
     <a class="about" href="#about" class:active={route === 'about'} aria-label={t('About')} title={t('About')}><Icon name="info" size={18} /></a>
   </div>
  </div>
@@ -80,6 +87,8 @@
   .item.disabled { opacity: 0.4; pointer-events: none; }
   .settings { margin-top: auto; }
   .meta { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 0.9rem 0.1rem; }
+  .version-box { display: flex; flex-direction: column; min-width: 0; }
+  .build { color: var(--yellow); font-size: 0.7rem; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .version { color: var(--muted); font: inherit; font-size: 0.8rem; background: none; border: none; padding: 0; cursor: pointer; user-select: none; }
   .about { color: var(--muted); line-height: 0; }
   .about:hover, .about.active { color: var(--text); }
@@ -97,6 +106,6 @@
     .item.active { border-left-color: transparent; }
     .settings { margin-top: 0; }
     .meta { padding: 0 0.4rem; gap: 0.5rem; }
-    .version { display: none; }
+    .version-box { display: none; }
   }
 </style>

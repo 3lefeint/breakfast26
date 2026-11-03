@@ -81,6 +81,22 @@ _mqtt_pub = None
 _start_time: float = time.time()
 _config_path: str | None = None
 _CHANGELOG_PATH = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
+_BUILD_INFO_PATH = Path(__file__).resolve().parents[1] / "build_info.txt"
+
+
+def read_build_info(path: Path = _BUILD_INFO_PATH) -> dict:
+    """Branch and short commit of a test build: the file `breakfast/build_info.txt` ("<branch> <commit>") is added
+    to a `git archive` by the deploy command; a release does not have it. {} without a usable file."""
+    try:
+        parts = path.read_text(encoding="utf-8").split()
+    except OSError:
+        return {}
+    if len(parts) != 2:
+        return {}
+    return {"branch": parts[0], "commit": parts[1]}
+
+
+_build_info: dict = read_build_info()
 _audio_engine = None
 _scene_engine = None
 _board_manager_url: str | None = None
@@ -521,6 +537,7 @@ async def get_health():
     return {
         "version": __version__,
         "release_date": __release_date__,
+        "build": _build_info,
         "uptime_s": round(time.time() - _start_time, 1),
         "mqtt": {
             "connected": _mqtt_pub.connected if _mqtt_pub else None,
