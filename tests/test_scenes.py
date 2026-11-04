@@ -643,6 +643,101 @@ class TestVoiceCheck:
         assert c.post("/api/scenes/voice-check", json={"id": first, "graph": body["graph"]}).json()["overridden_by"][0]["scene"] == second
 
 
+class TestCombine:
+    @staticmethod
+    def combo(mode, *checks):
+        return condition("c", "combine", mode=mode, checks=list(checks))
+
+    @staticmethod
+    def hit(field, op, value):
+        return {"kind": "compare", "field": field, "op": op, "value": value}
+
+    def run(self, mode, checks, facts, branch="yes"):
+        """The files played at yes (edge from the combination) and at no, for the facts of a moment."""
+        audio = FakeAudio(("yes.mp3", "no.mp3"))
+        flow = graph(trigger("x01.bust"), self.combo(mode, *checks), sound("y", "yes.mp3"), sound("n", "no.mp3"),
+                     edges=[("t", "c"), ("c", "y")])
+        flow["edges"].append({"from": "c", "to": "n", "branch": "no"})
+        engine = engine_with(flow, audio)
+        engine.fire("x01.bust", facts)
+        return [p[0] for p in audio.played]
+
+    def test_all_of_needs_every_check(self):
+        checks = [self.hit("score", ">=", 100), self.hit("remaining", "<", 50)]
+        assert self.run("all", checks, {"score": 120, "remaining": 40}) == ["yes.mp3"]
+        assert self.run("all", checks, {"score": 120, "remaining": 80}) == ["no.mp3"]
+
+    def test_any_of_needs_one_check(self):
+        checks = [self.hit("score", ">=", 100), {"kind": "player", "names": ["anna"]}]
+        assert self.run("any", checks, {"score": 10, "player": "anna"}) == ["yes.mp3"]
+        assert self.run("any", checks, {"score": 120, "player": "ben"}) == ["yes.mp3"]
+        assert self.run("any", checks, {"score": 10, "player": "ben"}) == ["no.mp3"]
+
+    def test_none_of_is_yes_when_no_check_holds(self):
+        checks = [self.hit("score", ">=", 100), {"kind": "chance", "percent": 0}]
+        assert self.run("none", checks, {"score": 10}) == ["yes.mp3"]
+        assert self.run("none", checks, {"score": 120}) == ["no.mp3"]
+
+    def test_a_chance_of_100_percent_always_holds(self):
+        assert self.run("all", [{"kind": "chance", "percent": 100}, self.hit("score", ">", 0)], {"score": 5}) == ["yes.mp3"]
+
+    def test_a_missing_fact_makes_its_check_fail_like_a_condition(self):
+        assert self.run("all", [self.hit("score", ">=", 1), self.hit("lives", ">=", 1)], {"score": 5}) == ["no.mp3"]
+        assert self.run("any", [self.hit("score", ">=", 1), self.hit("lives", ">=", 1)], {"score": 5}) == ["yes.mp3"]
+
+    def test_the_trace_names_the_answer(self):
+        engine = engine_with(graph(trigger("x01.bust"), self.combo("all", self.hit("score", ">=", 100), self.hit("remaining", "<", 50)),
+                                   edges=[("t", "c")]), FakeAudio())
+        trace = []
+        engine.fire("x01.bust", {"score": 120, "remaining": 80}, only=mine(engine)[0]["id"], trace=trace)
+        assert trace[0]["node"] == "c" and trace[0]["result"] == "stop"
+
+    def test_cleaning_keeps_known_checks_and_drops_the_rest(self):
+        raw = {"id": "c", "type": "condition", "kind": "combine", "mode": "sideways", "checks": [
+            {"kind": "compare", "field": "score", "op": "??", "value": "x"},
+            {"kind": "combine", "mode": "all", "checks": []},                  # no combination inside a combination
+            {"kind": "once", "scope": "match"},                                # not offered inside
+            {"kind": "player", "names": "Anna, ben"},
+            {"kind": "achievement", "achievement": "ton_up", "tier": 99},
+            {"kind": "chance", "percent": 150},
+            "nonsense",
+            {"kind": "compare", "field": "points", "op": "<", "value": 5},
+            {"kind": "compare", "field": "dart", "op": ">", "value": 1},
+            {"kind": "compare", "field": "miss", "op": "==", "value": 1}]}
+        node = sc.clean_graph({"nodes": [raw], "edges": []})["nodes"][0]
+        assert node["mode"] == "all" and len(node["checks"]) == sc.MAX_CHECKS
+        assert node["checks"][0] == {"kind": "compare", "field": "score", "op": ">=", "value": 0}
+        assert node["checks"][1] == {"kind": "player", "names": ["Anna", "ben"]}
+        assert node["checks"][2] == {"kind": "achievement", "achievement": "ton_up", "tier": 20}
+        assert node["checks"][3] == {"kind": "chance", "percent": 100}
+
+    def test_a_combination_without_checks_is_kept_and_does_not_decide(self):
+        node = sc.clean_graph({"nodes": [{"id": "c", "type": "condition", "kind": "combine", "mode": "any"}], "edges": []})["nodes"][0]
+        assert node["checks"] == [] and node["mode"] == "any"
+
+    def test_the_other_conditions_are_cleaned_as_before(self):
+        nodes = sc.clean_graph({"nodes": [
+            {"id": "a", "type": "condition", "kind": "compare", "field": "score", "op": ">", "value": 5},
+            {"id": "b", "type": "condition", "kind": "chance", "percent": 33},
+            {"id": "d", "type": "condition", "kind": "player", "names": ["x"]},
+            {"id": "e", "type": "condition", "kind": "achievement", "achievement": "ton_up", "tier": 2}], "edges": []})["nodes"]
+        assert [{k: v for k, v in n.items() if k not in ("x", "y")} for n in nodes] == [
+            {"id": "a", "type": "condition", "kind": "compare", "field": "score", "op": ">", "value": 5},
+            {"id": "b", "type": "condition", "kind": "chance", "percent": 33},
+            {"id": "d", "type": "condition", "kind": "player", "names": ["x"]},
+            {"id": "e", "type": "condition", "kind": "achievement", "achievement": "ton_up", "tier": 2}]
+
+    def test_a_combination_does_not_exclude_the_voice_slot_of_another_scene(self):
+        from breakfast import scene_slot
+        earlier = graph(trigger("x01.bust"), self.combo("all", self.hit("score", ">=", 100)), sound("s", "boom.mp3", channel="voice"),
+                        edges=[("t", "c"), ("c", "s")])
+        later = graph(trigger("x01.bust"), sound("s", "boom.mp3", channel="voice"), edges=[("t", "s")])
+        scenes = [{"id": 1, "name": "a", "enabled": True, "default": False, "graph": earlier},
+                  {"id": 2, "name": "b", "enabled": True, "default": False, "graph": later}]
+        found = scene_slot.overridden_by(scenes, 2, later)
+        assert found and found[0]["level"] == "note"            # it can take the voice, it does not always
+
+
 class TestX01Moments:
     def test_the_third_dart_is_a_scored_turn(self):
         moments = sc.x01_moments({"type": "dart", "dart": 3, "mode": "X01"}, snapshot(turn_score=180, remaining=321))

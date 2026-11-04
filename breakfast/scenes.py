@@ -78,7 +78,10 @@ OPERATORS = {
     ">=": lambda a, b: a >= b, ">": lambda a, b: a > b, "==": lambda a, b: a == b,
     "<=": lambda a, b: a <= b, "<": lambda a, b: a < b, "!=": lambda a, b: a != b,
 }
-CONDITIONS = ("compare", "chance", "player", "once", "pick", "achievement", "switch")
+CONDITIONS = ("compare", "chance", "player", "once", "pick", "achievement", "switch", "combine")
+COMBINE_MODES = ("all", "any", "none")
+COMBINE_CHECKS = ("compare", "chance", "player", "achievement")     # what a combination can hold
+MAX_CHECKS = 6
 ONCE_SCOPES = ("match", "leg")
 ACTIONS = ("sound", "overlay", "delay", "call")
 ANIMATIONS = ("confetti", "flash", "banner")
@@ -157,12 +160,11 @@ def clean_node(raw: dict):
         if what not in CONDITIONS:
             return None
         node.update(type="condition", kind=what)
-        if what == "compare":
-            node.update(field=_text(raw.get("field"), 24) or "score",
-                        op=raw.get("op") if raw.get("op") in OPERATORS else ">=",
-                        value=_number(raw.get("value"), -100000, 100000, 0))
-        elif what == "chance":
-            node["percent"] = _number(raw.get("percent"), 0, 100, 10)
+        if what in COMBINE_CHECKS:
+            node.update(check_fields(what, raw))
+        elif what == "combine":
+            checks = [c for c in map(clean_check, raw.get("checks") if isinstance(raw.get("checks"), list) else []) if c]
+            node.update(mode=raw.get("mode") if raw.get("mode") in COMBINE_MODES else "all", checks=checks[:MAX_CHECKS])
         elif what == "once":
             node.update(scope=raw.get("scope") if raw.get("scope") in ONCE_SCOPES else "match",
                         per_player=bool(raw.get("per_player")))
@@ -171,12 +173,6 @@ def clean_node(raw: dict):
         elif what == "switch":
             mode = "bands" if raw.get("mode") == "bands" else "values"
             node.update(field=_text(raw.get("field"), 24) or "player", mode=mode, outputs=switch_outputs({**raw, "mode": mode}))
-        elif what == "achievement":
-            node.update(achievement=_text(raw.get("achievement"), 60), tier=int(_number(raw.get("tier"), 1, 20, 1)))
-        else:
-            names = raw.get("names")
-            names = names if isinstance(names, list) else str(names or "").split(",")
-            node["names"] = [n.strip() for n in map(str, names) if n.strip()][:20]
     elif kind == "action":
         what = raw.get("kind")
         if what not in ACTIONS:
@@ -196,6 +192,29 @@ def clean_node(raw: dict):
     else:
         return None
     return node
+
+
+def check_fields(what: str, raw: dict) -> dict:
+    """The settings of a compare, chance, player or achievement check, cleaned. The same fields make a condition node and
+    one check of a combination."""
+    if what == "compare":
+        return {"field": _text(raw.get("field"), 24) or "score",
+                "op": raw.get("op") if raw.get("op") in OPERATORS else ">=",
+                "value": _number(raw.get("value"), -100000, 100000, 0)}
+    if what == "chance":
+        return {"percent": _number(raw.get("percent"), 0, 100, 10)}
+    if what == "achievement":
+        return {"achievement": _text(raw.get("achievement"), 60), "tier": int(_number(raw.get("tier"), 1, 20, 1))}
+    names = raw.get("names")
+    names = names if isinstance(names, list) else str(names or "").split(",")
+    return {"names": [n.strip() for n in map(str, names) if n.strip()][:20]}
+
+
+def clean_check(raw):
+    """One check of a combination, None when it is none (a combination holds no combination)."""
+    if not isinstance(raw, dict) or raw.get("kind") not in COMBINE_CHECKS:
+        return None
+    return {"kind": raw["kind"], **check_fields(raw["kind"], raw)}
 
 
 def clean_graph(raw) -> dict:
@@ -556,6 +575,9 @@ class SceneEngine:
 
     def _check(self, node, run, ctx) -> bool:
         kind = node["kind"]
+        if kind == "combine":
+            checks = (self._check(c, run, ctx) for c in node["checks"])
+            return {"all": all, "any": any}.get(node["mode"], lambda hits: not any(hits))(checks)
         if kind == "chance":
             return random.random() * 100 < node["percent"]
         if kind == "player":

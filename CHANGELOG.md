@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Scenes: a condition "Combine" answers yes or no for 2 to 6 checks (a fact compared with a number, a chance, players, an achievement): yes when all, any or none of them hold (#144)
 - Scenes: the trigger "Dart thrown" gives the points of the turn so far (with this dart) and the points of dart 1 and dart 2 as facts for conditions and switches (#143)
 
 ## [1.14.0] - 2026-11-04
