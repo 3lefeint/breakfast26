@@ -495,10 +495,12 @@ class SceneEngine:
             seen = path | {node_id}
             out = run["follow"].get(node_id, [])
             if node["type"] == "condition" and node["kind"] == "pick":
-                self._note(run["trace"], node, "pick")
                 if out:
                     chosen = random.choices(out, weights=[e.get("weight", 1) for e in out])[0]
+                    self._note(run["trace"], node, "pick", None, {"chosen": chosen["to"]})
                     replaced |= self._run(run, [chosen], seen, sync)
+                else:
+                    self._note(run["trace"], node, "pick")
             elif node["type"] == "condition" and node["kind"] == "switch":
                 chosen, why = self._switch(node, run["ctx"])
                 targets = [e for e in out if e.get("match") == chosen]
@@ -507,7 +509,7 @@ class SceneEngine:
                 replaced |= self._run(run, targets, seen, sync)
             elif node["type"] == "condition":
                 ok = self._check(node, run, run["ctx"])
-                self._note(run["trace"], node, "pass" if ok else "stop")
+                self._note(run["trace"], node, "pass" if ok else "stop", None, {"output": "yes" if ok else "no"})
                 replaced |= self._run(run, [e for e in out if (e.get("branch") == "no") != ok], seen, sync)
             elif node["kind"] == "delay":
                 self._note(run["trace"], node, "wait")
