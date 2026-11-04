@@ -36,7 +36,8 @@
     freipass: t('Free pass'), next: t('Score to pass'), margin: t('Over twice the target'),
     preview: t('Read after the 3rd dart'), close: t('Nearly enough'), last: t('Ends the match'),
     number: t('Field'), multiplier: t('Field type'),
-    points: t('Points'), dart: t('Dart of the turn'), miss: t('Missed'), fun: t('Fun mode'),
+    points: t('Points'), turn_points: t('Turn points so far'), dart1_points: t('Points of dart 1'), dart2_points: t('Points of dart 2'),
+    dart: t('Dart of the turn'), miss: t('Missed'), fun: t('Fun mode'),
     announce: t('Player calls on'), change: t('Player change calls on'), total: t('Turn total calls on'),
     checkout: t('Checkout'), id: t('Achievement'), tier: t('Tier'), difficulty: t('Difficulty'), secret: t('Secret'),
     first: t('Earned for the first time'),
@@ -234,10 +235,10 @@
   });
   let fields = $derived([...facts, ...(node?.kind === 'compare' && !facts.has(node.field) ? [node.field] : [])]);
   const isFlag = (f) => FLAGS.includes(f);
-  const FIELD_DEFAULT = { score: 100, points: 60, remaining: 100, lives: 1, number: 20, multiplier: 3, dart: 1, checkout: 1, leg: 1, target: 60, next: 61 };
+  const FIELD_DEFAULT = { score: 100, points: 60, turn_points: 120, dart1_points: 60, dart2_points: 60, remaining: 100, lives: 1, number: 20, multiplier: 3, dart: 1, checkout: 1, leg: 1, target: 60, next: 61 };
   // What a fact means and which values it takes, shown beside the condition (not in the name of the node).
   const FIELD_NOTE = {
-    score: t('0 to 180'), points: t('0 to 60'), number: t('1 to 20, 25 is the bull (25 with field type 2 is the bullseye)'), dart: t('1 to 3'),
+    score: t('0 to 180'), points: t('0 to 60'), turn_points: t('0 to 180, including this dart'), dart1_points: t('0 to 60, 0 until it is thrown'), dart2_points: t('0 to 60, 0 until it is thrown'), number: t('1 to 20, 25 is the bull (25 with field type 2 is the bullseye)'), dart: t('1 to 3'),
     multiplier: t('0 miss, 1 single, 2 double, 3 triple'), checkout: t('1 call, 2 bogey number, 3 call limit reached'),
     close: t('1 to 10 short'), difficulty: t('1 easy, 2 medium, 3 hard, 4 very hard, 5 extreme, 0 for endurance and secret ones'),
     tier: t('1 for an achievement without tiers'),

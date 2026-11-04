@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Scenes: the trigger "Dart thrown" gives the points of the turn so far (with this dart) and the points of dart 1 and dart 2 as facts for conditions and switches (#143)
+
 ## [1.14.0] - 2026-11-04
 
 ### Added
