@@ -47,6 +47,10 @@
   const FLAGS = ['freipass', 'preview', 'close', 'last', 'announce', 'change', 'total', 'miss', 'fun', 'secret', 'first'];    // facts that are 1 or 0
   const SCOPE_LABEL = { match: t('once per match'), leg: t('once per leg') };
   const ICON = { trigger: '⚡', condition: '◆', action: '♪' };
+  const MODE_LABEL = { all: t('all of'), any: t('any of'), none: t('none of') };
+  const CHECK_KINDS = { compare: t('Fact'), player: t('Player'), achievement: t('Achievement'), chance: t('Chance') };
+  const CHECKS_MIN = 2;
+  const CHECKS_MAX = 6;
 
   let data = $state(null);
   let error = $state('');
@@ -267,11 +271,51 @@
     once: { type: 'condition', kind: 'once', scope: 'match', per_player: false },
     pick: { type: 'condition', kind: 'pick' },
     achievement: { type: 'condition', kind: 'achievement', achievement: '', tier: 1 },
+    combine: { type: 'condition', kind: 'combine', mode: 'all', checks: [] },
     sound: { type: 'action', kind: 'sound', files: [{ file: '', weight: 1 }], volume: 1, replace: false, channel: 'ambient' },
     overlay: { type: 'action', kind: 'overlay', animation: 'confetti', text: '', seconds: 4 },
     delay: { type: 'action', kind: 'delay', seconds: 1 },
     call: { type: 'action', kind: 'call', key: '', channel: 'voice' },
   };
+
+  // A check of a combination: the settings of a compare, player, achievement or chance condition.
+  function newCheck(kind) {
+    if (kind === 'compare') {
+      const first = facts.has('score') ? 'score' : ([...facts].find((f) => f !== 'fun') || 'fun');
+      return { kind, ...compareFor(first) };
+    }
+    if (kind === 'player') return { kind, names: [] };
+    if (kind === 'achievement') return { kind, achievement: '', tier: 1 };
+    return { kind: 'chance', percent: 50 };
+  }
+  function setCheckKind(check, kind) {
+    for (const key of Object.keys(check)) delete check[key];
+    Object.assign(check, newCheck(kind));
+    touch();
+  }
+  function setCheckField(check, field) {
+    Object.assign(check, compareFor(field));
+    touch();
+  }
+  function addCheck(n) {
+    if (n.checks.length >= CHECKS_MAX) return;
+    n.checks.push(newCheck('compare'));
+    touch();
+  }
+  function removeCheck(n, index) {
+    if (n.checks.length <= CHECKS_MIN) return;
+    n.checks.splice(index, 1);
+    touch();
+  }
+  const setCheckNames = (check, value) => { check.names = value.split(',').map((x) => x.trim()).filter(Boolean); touch(); };
+  function checkText(c) {
+    if (c.kind === 'compare') {
+      return isFlag(c.field) && c.op === '==' ? `${FIELD_LABEL[c.field]}: ${c.value ? t('yes') : t('no')}` : `${FIELD_LABEL[c.field] || c.field} ${c.op} ${c.value}`;
+    }
+    if (c.kind === 'chance') return `${c.percent} %`;
+    if (c.kind === 'player') return c.names.length ? c.names.join(', ') : t('any player');
+    return c.achievement ? t('has {name}', { name: achievementName(c.achievement) }) : t('has an achievement');
+  }
 
   function addNode(spec) {
     const from = nodes.find((n) => n.id === selNode);
@@ -280,6 +324,7 @@
       const first = facts.has('score') ? 'score' : ([...facts].find((f) => f !== 'fun') || 'fun');
       spec = { ...spec, ...compareFor(first) };
     }
+    if (spec.kind === 'combine') spec = { ...spec, checks: [newCheck('compare'), newCheck('compare')] };
     let x = nodes.length ? Math.max(...nodes.map((n) => n.x)) + W + GAP_X : 40;
     let y = 40;
     if (from) {
@@ -597,6 +642,10 @@
     }
     if (n.kind === 'compare') return [t('If'), cut(`${FIELD_LABEL[n.field] || n.field} ${n.op} ${n.value}${missing}`)];
     if (n.kind === 'chance') return [t('If'), cut(t('{percent} % chance', { percent: n.percent }))];
+    if (n.kind === 'combine') {
+      const unknown = hasTrigger && n.checks.some((c) => c.kind === 'compare' && !facts.has(c.field)) ? ' ⚠' : '';
+      return [t('If'), cut(`${MODE_LABEL[n.mode]}: ${n.checks.map(checkText).join(' · ')}${unknown}`)];
+    }
     if (n.kind === 'player') return [t('If'), cut((n.names.length ? t('player is {names}', { names: n.names.join(', ') }) : t('any player')) + flag(n))];
     if (n.kind === 'once') return [t('If'), cut(SCOPE_LABEL[n.scope] + (n.per_player ? ` · ${t('per player')}` : ''))];
     if (n.kind === 'achievement') return [t('If'), cut(n.achievement ? t('has {name}', { name: achievementName(n.achievement) }) : t('has an achievement'))];
@@ -1035,6 +1084,7 @@
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.achievement)}>{t('+ Achievement')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.pick)}>{t('+ Random')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.switch)}>{t('+ Switch')}</button>
+          <button type="button" class="act" onclick={() => addNode(DEFAULTS.combine)}>{t('+ Combine')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.call)}>{t('+ Call')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.sound)}>{t('+ Sound')}</button>
           <button type="button" class="act" onclick={() => addNode(DEFAULTS.overlay)}>{t('+ Effect')}</button>
@@ -1190,6 +1240,59 @@
               {#if hasTrigger && !facts.has(node.field)}
                 <span class="note warn">{t('The trigger of this scene gives no value for this fact, so the condition is never met.')}</span>
               {/if}
+            {:else if node.kind === 'combine'}
+              <label>{t('Yes when')}
+                <select bind:value={node.mode} onchange={touch}>
+                  {#each Object.entries(MODE_LABEL) as [id, label]}<option value={id}>{label}</option>{/each}
+                </select>
+              </label>
+              <div class="checks">
+                {#each node.checks as c, i (i)}
+                  <div class="check">
+                    <div class="check-head">
+                      <select value={c.kind} aria-label={t('Kind of check')} onchange={(e) => setCheckKind(c, e.target.value)}>
+                        {#each Object.entries(CHECK_KINDS) as [id, label]}<option value={id}>{label}</option>{/each}
+                      </select>
+                      <button type="button" class="act" title={t('Remove check')} aria-label={t('Remove check')}
+                              disabled={node.checks.length <= CHECKS_MIN} onclick={() => removeCheck(node, i)}>×</button>
+                    </div>
+                    {#if c.kind === 'compare'}
+                      <select value={c.field} aria-label={t('Fact')} onchange={(e) => setCheckField(c, e.target.value)}>
+                        {#each [...facts, ...(facts.has(c.field) ? [] : [c.field])] as f}<option value={f}>{FIELD_LABEL[f] || f}{facts.has(f) ? '' : ` (${t('not given by the trigger')})`}</option>{/each}
+                      </select>
+                      {#if isFlag(c.field)}
+                        <select value={c.value ? '1' : '0'} aria-label={t('Is')} onchange={(e) => { c.op = '=='; c.value = Number(e.target.value); touch(); }}>
+                          <option value="1">{t('yes')}</option>
+                          <option value="0">{t('no')}</option>
+                        </select>
+                      {:else}
+                        <div class="check-row">
+                          <select bind:value={c.op} aria-label={t('Is')} onchange={touch}>
+                            {#each data.operators as op}<option value={op}>{op}</option>{/each}
+                          </select>
+                          <input type="number" aria-label={t('Value')} bind:value={c.value} oninput={touch}>
+                        </div>
+                      {/if}
+                      {#if hasTrigger && !facts.has(c.field)}<span class="note warn">{t('The trigger of this scene gives no value for this fact, so the condition is never met.')}</span>{/if}
+                    {:else if c.kind === 'chance'}
+                      <input type="number" min="0" max="100" step="any" aria-label={t('Chance in percent')} bind:value={c.percent} oninput={touch}>
+                    {:else if c.kind === 'player'}
+                      <input type="text" aria-label={t('Players, separated by commas')} placeholder={t('Players, separated by commas')}
+                             value={c.names.join(', ')} oninput={(e) => setCheckNames(c, e.target.value)}>
+                    {:else}
+                      <select bind:value={c.achievement} aria-label={t('Achievement')} onchange={touch}>
+                        <option value="">{t('(none)')}</option>
+                        {#each achievements as a}<option value={a.id}>{a.name}</option>{/each}
+                      </select>
+                      {#if (achievements.find((a) => a.id === c.achievement)?.tiers || 1) > 1}
+                        <input type="number" min="1" max={achievements.find((a) => a.id === c.achievement).tiers} aria-label={t('From tier')} bind:value={c.tier} oninput={touch}>
+                      {/if}
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+              <button type="button" class="act" disabled={node.checks.length >= CHECKS_MAX} onclick={() => addCheck(node)}>{t('+ Add a check')}</button>
+              <span class="note">{t('2 to 6 checks. All of: every check holds. Any of: at least one. None of: no check holds. The answer leaves the node at yes or no.')}</span>
             {:else if node.kind === 'chance'}
               <label>{t('Chance in percent')}
                 <input type="number" min="0" max="100" step="any" bind:value={node.percent} oninput={touch}>
@@ -1475,6 +1578,10 @@
     display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.7rem 1rem; margin-top: 0.7rem;
     background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.65rem 0.8rem;
   }
+  .checks { flex: 1 1 22rem; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 18rem; overflow-y: auto; }
+  .check { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.4rem; border: 1px solid var(--glass-border); border-radius: 8px; }
+  .check-head, .check-row { display: flex; gap: 0.3rem; }
+  .check-head select, .check-row select, .check-row input { flex: 1; min-width: 0; }
   .inspector label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; color: var(--muted); }
   .insp-title { flex-basis: 100%; font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .note.warn { color: var(--yellow); }
