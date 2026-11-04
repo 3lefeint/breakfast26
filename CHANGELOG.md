@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-04
+
 ### Added
 - Docker: both services can run as a normal user with `BREAKFAST_UID`, `BREAKFAST_GID` and `BREAKFAST_DOCKER_GID` in `.env`; without them they run as root as before (#104)
 - A test build copied with `git archive` shows its branch under the version in the sidebar (`build` in `/api/health`), read from the untracked file `breakfast/build_info.txt` (#139)
@@ -16,7 +18,6 @@
 - Sounds: a Record button next to the upload records with the microphone in the browser (start, stop, level meter) and opens the recording in the sound editor; it needs https or localhost (#137)
 - Players: Name sounds assigns one or more sounds of the sound library to a player as their name call, picked or recorded in the browser; they join the voice-pack file of the name and one of all is played at random, also for `{player}` in scenes (#141)
 - Voice Pack: Record lists every key of a group with the text to read, a counter and a filter for the missing ones, and records your own voice per key in the browser (cut and faded automatically, another recording is the next variant, record again, adjust in the sound editor, delete, Space starts and stops, Record next missing); recorded files are marked and never overwritten by generating or saving an entry, and a copy of a plan makes a pack for recordings (#140)
-
 - Scenes: a scene of your own can be shared with the circle; the other installations get it as a read-only copy marked with the name of the site, with the sounds it plays (2 MB each at most), and "Edit a copy" makes a scene of your own from it. Changing or deleting the scene changes or removes the copies; a step that cannot run on a site (a sound, a call or a player that is missing) is marked on the copy. (#126)
 - Achievement sounds: the sounds assigned to achievements can be shared with the circle; the other installations use a shared sound for an achievement they have no sound of their own for, an own assignment or file always wins. The Achievements page lists a shared sound with the name of the site and can take it over as an own assignment. (#127)
 
