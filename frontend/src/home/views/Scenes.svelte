@@ -66,7 +66,7 @@
   let playing = null;
   let focus = $state(false);         // the editor fills the whole window
   let view = $state({ x: 40, y: 40, k: 1 });    // the part of the canvas on the screen: offset and zoom
-  let failed = $state([]);           // the nodes that could not run in the last test
+  let run = $state(null);            // the way the last test went, drawn on the canvas: { ran, stop, edges, ports }
   let picked = $state([]);           // the ids of several selected nodes (one selected node is `selNode`)
   let pan = null;                    // the view being moved: { x, y, vx, vy }
   let marquee = $state(null);        // a selection frame being drawn, in canvas coordinates: { x0, y0, x1, y1 }
@@ -134,7 +134,7 @@
 
   function pick(scene) {
     resetHistory();
-    failed = [];
+    run = null;
     draft = JSON.parse(JSON.stringify(scene));
     draft.shared = !!draft.shared;          // the switch is bound to it and needs a value
     if (!flowsDown(draft.graph)) arrange(draft.graph);
@@ -155,14 +155,14 @@
     if (dirty && !await confirmDialog(t('Discard the unsaved changes of this scene?'))) return;
     resetHistory();
     draft = { id: null, name: t('New scene'), enabled: true, shared: false, graph: { nodes: [], edges: [] } };
-    dirty = true;
+    dirty = true; run = null;
     selNode = null;
     selEdge = null;
     picked = [];
     fitSoon();
   }
 
-  const touch = () => { dirty = true; };
+  const touch = () => { dirty = true; run = null; };
 
   // ── undo and redo of the flow (Ctrl+Z, Ctrl+Y) ─────────────────────────────
 
@@ -202,7 +202,7 @@
   function goTo(snap) {
     applying = true;
     draft.graph = JSON.parse(snap);
-    dirty = true;
+    dirty = true; run = null;
     const ids = new Set(draft.graph.nodes.map((n) => n.id));
     if (selNode && !ids.has(selNode)) selNode = null;
     picked = picked.filter((id) => ids.has(id));
@@ -336,7 +336,7 @@
     selNode = id;
     selEdge = null;
     picked = [];
-    dirty = true;
+    dirty = true; run = null;
   }
 
   function addTrigger(event) {
@@ -349,7 +349,7 @@
     draft.graph.edges = draft.graph.edges.filter((e) => !ids.includes(e.from) && !ids.includes(e.to));
     selNode = null;
     picked = [];
-    dirty = true;
+    dirty = true; run = null;
   }
   const removeNode = (id) => removeNodes([id]);
 
@@ -357,7 +357,7 @@
     if (isCopy) return;
     draft.graph.edges = draft.graph.edges.filter((e) => `${e.from}>${e.to}` !== key);
     selEdge = null;
-    dirty = true;
+    dirty = true; run = null;
   }
 
   function onKey(e) {
@@ -517,7 +517,7 @@
         const from = nodes.find((n) => n.id === link.from);
         if (from?.kind === 'switch') draft.graph.edges.push({ from: link.from, to: target.id, match: link.key });
         else draft.graph.edges.push(link.key === 'no' ? { from: link.from, to: target.id, branch: 'no' } : { from: link.from, to: target.id });
-        dirty = true;
+        dirty = true; run = null;
       }
     }
     if (marquee) {
@@ -888,8 +888,44 @@
     return WHY[code] || t('it did not run');
   }
 
+  // The way a test went, for the canvas: only what ran is marked. A node that ran, the connections the flow went through, and
+  // where it stopped: a step that could not run, or a condition whose answer has no connection (the output it took is marked).
+  function runMarks(trace) {
+    const byNode = new Map();
+    for (const s of trace) byNode.set(s.node, [...(byNode.get(s.node) || []), s]);
+    const leaves = (from, e, s) => {            // does the flow of this entry leave `from` along the edge e
+      if (from.kind === 'pick') return s.chosen === e.to;
+      if (from.kind === 'switch') return s.output === e.match;
+      if (from.type === 'condition') return (s.output === 'no') === (e.branch === 'no');
+      return true;
+    };
+    const marks = { ran: new Set(), stop: new Map(), edges: new Set(), ports: new Map() };
+    for (const e of edges) {
+      const from = nodes.find((n) => n.id === e.from);
+      if (!from || !byNode.has(e.to)) continue;
+      if (from.type === 'trigger' ? true : (byNode.get(e.from) || []).some((s) => leaves(from, e, s))) {
+        marks.edges.add(`${e.from}>${e.to}`);
+        if (from.type === 'trigger') marks.ran.add(from.id);
+      }
+    }
+    for (const [id, entries] of byNode) {
+      const n = nodes.find((x) => x.id === id);
+      if (!n) continue;
+      marks.ran.add(id);
+      for (const s of entries) {
+        if (s.result === 'skipped') { marks.stop.set(id, whyText(s.why)); continue; }
+        if (n.type !== 'condition') continue;
+        if (!edges.some((e) => e.from === id && leaves(n, e, s))) {
+          marks.stop.set(id, t('Stopped here: nothing is connected to the output it took.'));
+          if (s.output) marks.ports.set(id, s.output);
+        }
+      }
+    }
+    return marks;
+  }
+
   async function test() {
-    failed = [];
+    run = null;
     const listening = listenForTest();    // first, while the click still counts for the browser
     if (dirty && !await save()) return;
     await listening;
@@ -899,16 +935,14 @@
     const res = await apiJson('POST', `/api/scenes/${draft.id}/test`);
     if (res.error) { message = t(res.error); return; }
     const skipped = res.trace.filter((s) => s.result === 'skipped');
-    failed = skipped.map((s) => s.node);
-    if (skipped.length) {
-      const list = skipped.map((s) => {
-        const n = nodes.find((x) => x.id === s.node);
-        return n ? `${describe(n).join(' ')}: ${whyText(s.why)}` : whyText(s.why);
-      }).join('; ');
-      message = skipped.length === 1 ? t('1 step could not run: {list}', { list }) : t('{n} steps could not run: {list}', { n: skipped.length, list });
+    run = runMarks(res.trace);
+    if (skipped.length) {          // the reason of each is the hover text of its node
+      message = skipped.length === 1 ? t('1 step could not run.') : t('{n} steps could not run.', { n: skipped.length });
       return;
     }
-    message = res.trace.length ? t('Played the scene with sample values.') : t('Nothing happened: add an action after a trigger.');
+    const done = res.trace.some((s) => s.result === 'done');
+    message = done ? t('Played the scene with sample values.')
+      : res.trace.length ? t('Nothing was played.') : t('Nothing happened: add an action after a trigger.');
     const played = res.trace.filter((s) => s.file).map((s) => s.file);
     if (played.length) message += ' ' + t('Sound: {files}.', { files: played.join(', ') });
     const notes = res.trace.filter((s) => s.result !== 'skipped' && s.why).map((s) => {
@@ -1118,7 +1152,7 @@
             <g transform="translate({view.x},{view.y}) scale({view.k})">
             {#each edges as edge (edge.from + '>' + edge.to)}
               {@const key = edge.from + '>' + edge.to}
-              <path class="edge" class:sel={selEdge === key} d={edgePath(edge)} />
+              <path class="edge" class:sel={selEdge === key} class:ran={run?.edges.has(key)} d={edgePath(edge)} />
               <path class="edge-hit" d={edgePath(edge)} role="button" tabindex="-1" aria-label={t('Connection')}
                     onpointerdown={(e) => { e.stopPropagation(); if (e.button === 1) e.preventDefault(); selEdge = key; selNode = null; picked = []; }}
                     onauxclick={(e) => { if (e.button === 1) removeEdge(key); }}
@@ -1135,13 +1169,14 @@
             {#if link}<path class="edge ghost" d={linkPath()} />{/if}
             {#each nodes as n (n.id)}
               {@const [title, detail] = describe(n)}
-              <g class="node {n.type}" class:sel={isPicked(n.id)} class:failed={failed.includes(n.id)} transform="translate({n.x},{n.y})"
+              {@const tip = run?.stop.get(n.id) || (draft.problems?.[n.id] ? PROBLEM[draft.problems[n.id]] : '')}
+              <g class="node {n.type}" class:sel={isPicked(n.id)} class:ran={run?.ran.has(n.id)} class:failed={run?.stop.has(n.id)} transform="translate({n.x},{n.y})"
                  role="button" tabindex="0" aria-label={`${title} ${detail}`}
                  onpointerdown={(e) => startDrag(e, n)}
                  onauxclick={(e) => { if (e.button === 1) removeNode(n.id); }}
                  onkeydown={(e) => { if (e.key === 'Enter') { selNode = n.id; selEdge = null; } }}>
                 <rect width={W} height={hOf(n)} rx="10" />
-                {#if draft.problems?.[n.id]}<title>{PROBLEM[draft.problems[n.id]]}</title>{/if}
+                {#if tip}<title>{tip}</title>{/if}
                 <text class="title" x="14" y="24">{ICON[n.type]} {title}</text>
                 <text class="detail" x="14" y="46">{detail}</text>
                 {#if n.type !== 'trigger'}<circle class="port" cx={W / 2} cy="0" r="6" />{/if}
@@ -1149,13 +1184,13 @@
                   {#each switchRows(n) as row, i (row.id)}
                     <line class="row-line" x1="0" x2={W} y1={H + i * ROW} y2={H + i * ROW} />
                     <text class="row-label" x="14" y={H + i * ROW + 18}>{cut(row.label, W - 60)}</text>
-                    <circle class="port out" cx={W} cy={H + i * ROW + ROW / 2} r="8" role="button" tabindex="-1"
+                    <circle class="port out" class:hot={run?.ports.get(n.id) === row.id} cx={W} cy={H + i * ROW + ROW / 2} r="8" role="button" tabindex="-1"
                             aria-label={t('Drag to connect from {output}', { output: row.label })} onpointerdown={(e) => startLink(e, n, row.id)} />
                   {/each}
                 {:else if twoWay(n)}
-                  <circle class="port out yes" cx={W * 0.3} cy={H} r="8" role="button" tabindex="-1"
+                  <circle class="port out yes" class:hot={run?.ports.get(n.id) === 'yes'} cx={W * 0.3} cy={H} r="8" role="button" tabindex="-1"
                           aria-label={t('Drag to connect on yes')} onpointerdown={(e) => startLink(e, n, 'yes')} />
-                  <circle class="port out no" cx={W * 0.7} cy={H} r="8" role="button" tabindex="-1"
+                  <circle class="port out no" class:hot={run?.ports.get(n.id) === 'no'} cx={W * 0.7} cy={H} r="8" role="button" tabindex="-1"
                           aria-label={t('Drag to connect on no')} onpointerdown={(e) => startLink(e, n, 'no')} />
                   <text class="branch yes" x={W * 0.3 + 12} y={H + 16}>{t('yes')}</text>
                   <text class="branch no" x={W * 0.7 + 12} y={H + 16}>{t('no')}</text>
@@ -1550,6 +1585,7 @@
   .editor.focus .inspector { grid-column: 2; grid-row: 1; margin-top: 0; align-self: start; max-height: 100%; overflow: auto; flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
   .bg { fill: transparent; }
   .edge { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .edge.ran { stroke: var(--green); stroke-width: 3; }
   .edge.sel { stroke: var(--accent); stroke-width: 3; }
   .edge.ghost { stroke: var(--accent); stroke-dasharray: 5 4; }
   .edge-x circle { fill: var(--surface); stroke: var(--red); stroke-width: 2; cursor: pointer; }
@@ -1560,7 +1596,8 @@
   .node.trigger rect { stroke: var(--accent); }
   .node.condition rect { stroke: var(--yellow); }
   .node.action rect { stroke: var(--text); stroke-opacity: 0.55; }
-  .node.failed rect { stroke: var(--red); stroke-width: 3; }
+  .node.ran rect { stroke: var(--green); stroke-width: 3; }
+  .node.failed rect { stroke: var(--red); stroke-width: 3; filter: drop-shadow(0 0 6px var(--red)); }
   .node.sel rect, .node:focus-visible rect { stroke-width: 3.5; filter: drop-shadow(0 0 6px var(--accent)); }
   .node .title { fill: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
   .node .detail { fill: var(--text); font-size: 14px; font-weight: 600; }
@@ -1571,6 +1608,7 @@
   .row-label { fill: var(--text); font-size: 13px; }
   .port.out.yes { stroke: var(--green); }
   .port.out.no { stroke: var(--red); }
+  .port.out.hot { fill: var(--red); stroke: var(--red); }
   .branch { font-size: 11px; font-weight: 700; }
   .branch.yes { fill: var(--green); }
   .branch.no { fill: var(--red); }

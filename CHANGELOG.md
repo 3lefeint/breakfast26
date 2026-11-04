@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Scenes: the Test button draws the way the test went on the canvas: the nodes and connections that ran are green, the node where the flow stopped (a condition whose answer has no connection, or a step that could not run) is red, with the output it took marked; the reason of a step that could not run is its hover text (#125)
 - Scenes: a condition "Combine" answers yes or no for 2 to 6 checks (a fact compared with a number, a chance, players, an achievement): yes when all, any or none of them hold (#144)
 - Scenes: the trigger "Dart thrown" gives the points of the turn so far (with this dart) and the points of dart 1 and dart 2 as facts for conditions and switches (#143)
 

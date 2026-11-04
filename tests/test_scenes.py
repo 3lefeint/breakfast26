@@ -643,6 +643,38 @@ class TestVoiceCheck:
         assert c.post("/api/scenes/voice-check", json={"id": first, "graph": body["graph"]}).json()["overridden_by"][0]["scene"] == second
 
 
+class TestTraceForTheCanvas:
+    """The test of a scene tells the editor the way it went: the answer of a condition and the step a pick took."""
+
+    @staticmethod
+    def trace_of(flow, facts):
+        engine = engine_with(flow, FakeAudio(("a.mp3", "b.mp3")))
+        trace = []
+        engine.fire("x01.bust", facts, only=mine(engine)[0]["id"], trace=trace)
+        return trace
+
+    def test_a_condition_says_yes_or_no(self):
+        flow = graph(trigger("x01.bust"), condition("c", "compare", field="score", op=">=", value=100), edges=[("t", "c")])
+        assert self.trace_of(flow, {"score": 120}) == [{"node": "c", "result": "pass", "output": "yes"}]
+        assert self.trace_of(flow, {"score": 10}) == [{"node": "c", "result": "stop", "output": "no"}]
+
+    def test_the_answer_is_there_whether_or_not_something_hangs_at_it(self):
+        flow = graph(trigger("x01.bust"), condition("c", "chance", percent=0), sound("s", "a.mp3"), edges=[("t", "c"), ("c", "s")])
+        trace = self.trace_of(flow, {})
+        assert trace == [{"node": "c", "result": "stop", "output": "no"}]            # the yes output has the sound, no has nothing
+
+    def test_a_pick_names_the_step_it_took(self):
+        flow = graph(trigger("x01.bust"), {"id": "p", "type": "condition", "kind": "pick"}, sound("a", "a.mp3"), sound("b", "b.mp3"),
+                     edges=[("t", "p"), ("p", "a"), ("p", "b")])
+        for _ in range(20):
+            trace = self.trace_of(flow, {})
+            assert trace[0]["result"] == "pick" and trace[0]["chosen"] in ("a", "b") and trace[1]["node"] == trace[0]["chosen"]
+
+    def test_a_pick_with_nothing_behind_it_names_nothing(self):
+        flow = graph(trigger("x01.bust"), {"id": "p", "type": "condition", "kind": "pick"}, edges=[("t", "p")])
+        assert self.trace_of(flow, {}) == [{"node": "p", "result": "pick"}]
+
+
 class TestCombine:
     @staticmethod
     def combo(mode, *checks):
