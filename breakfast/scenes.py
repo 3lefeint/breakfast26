@@ -44,7 +44,9 @@ EVENTS = {
     "x01.leg_start": {"label": "Leg starts", "game": "X01", "fields": {"announce": "Player calls on"}},
     "x01.dart": {"label": "Dart thrown", "game": "X01",
                  "fields": {"number": "Number (25 is the bull)", "multiplier": "Multiplier (0 miss, 1 single, 2 double, 3 triple)",
-                            "points": "Points", "dart": "Dart of the turn", "miss": "Missed", "remaining": "Remaining"}},
+                            "points": "Points", "dart": "Dart of the turn", "miss": "Missed", "remaining": "Remaining",
+                            "turn_points": "Turn points so far", "dart1_points": "Points of dart 1",
+                            "dart2_points": "Points of dart 2"}},
     "x01.turn_start": {"label": "Turn starts", "game": "X01",
                        "fields": {"remaining": "Remaining", "checkout": "Checkout (1 call, 2 bogey number, 3 call limit reached)",
                                   "change": "Player change calls on"}},
@@ -288,6 +290,8 @@ def x01_moments(evt: dict, snapshot: dict, caller=None) -> list:
         moments = [("x01.dart", {**facts, "number": number if number is not None else 0,
                                   "multiplier": evt.get("multiplier") or 0, "points": evt.get("points") or 0,
                                   "dart": evt.get("dart") or 0,
+                                  "turn_points": cur.get("turn_score") or 0, "dart1_points": cur.get("throw1_points") or 0,
+                                  "dart2_points": cur.get("throw2_points") or 0,
                                   "miss": 1 if evt.get("miss") or not evt.get("multiplier") else 0,
                                   "field": str(evt.get("field") or "").lower()})]
         if evt.get("dart") != 3 or cur.get("remaining") == 0:

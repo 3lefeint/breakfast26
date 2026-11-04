@@ -663,6 +663,29 @@ class TestX01Moments:
         miss = sc.x01_moments({"type": "dart", "dart": 1, "number": 0, "multiplier": 0, "miss": True}, snapshot())[0][1]
         assert miss["miss"] == 1
 
+    def test_a_dart_tells_the_points_of_the_turn_so_far(self):
+        second = {"type": "dart", "dart": 2, "number": 20, "multiplier": 3, "points": 60, "field": "T20"}
+        (_, facts), = sc.x01_moments(second, snapshot(turn_score=120, throw1_points=60, throw2_points=60, throw3_points=0, remaining=381))
+        assert (facts["turn_points"], facts["dart1_points"], facts["dart2_points"]) == (120, 60, 60)
+        (_, first), = sc.x01_moments({"type": "dart", "dart": 1, "number": 20, "multiplier": 3, "points": 60},
+                                     snapshot(turn_score=60, throw1_points=60, throw2_points=0, throw3_points=0))
+        assert (first["turn_points"], first["dart1_points"], first["dart2_points"]) == (60, 60, 0)
+        (_, bare), = sc.x01_moments({"type": "dart", "dart": 1}, snapshot())
+        assert (bare["turn_points"], bare["dart1_points"], bare["dart2_points"]) == (0, 0, 0)
+
+    def test_the_dart_trigger_offers_the_facts_to_the_editor(self):
+        assert {"turn_points", "dart1_points", "dart2_points"} <= set(sc.EVENTS["x01.dart"]["fields"])
+
+    def test_the_second_step_of_a_build_up_runs_on_the_points_of_the_turn(self):
+        audio = FakeAudio(("hame.mp3",))
+        step = graph(trigger("x01.dart"), condition("d", "compare", field="dart", op="==", value=2),
+                     condition("p", "compare", field="turn_points", op="==", value=120), sound("s", "hame.mp3"),
+                     edges=[("t", "d"), ("d", "p"), ("p", "s")])
+        engine = engine_with(step, audio)
+        for facts in ({"dart": 2, "turn_points": 120}, {"dart": 2, "turn_points": 60}, {"dart": 1, "turn_points": 120}):
+            engine.fire("x01.dart", facts)
+        assert len(audio.played) == 1
+
     def test_leg_and_match_won(self):
         leg = sc.x01_moments({"type": "won", "scope": "game"}, snapshot(turn_score=100, remaining=0))
         assert leg[0][0] == "x01.leg_won" and leg[0][1]["leg"] == 2 and leg[0][1]["score"] == 100
