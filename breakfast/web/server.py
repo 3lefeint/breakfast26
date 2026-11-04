@@ -34,6 +34,7 @@ from breakfast import known_players as kp
 from breakfast import names as names_mod
 from breakfast import tournament as tournament_mod
 from breakfast import circle_sync as circle_sync_mod
+from breakfast import shared_sounds as shared_sounds_mod
 from breakfast import locations as locations_mod
 from breakfast import online as online_mod
 from breakfast import db_backup
@@ -74,6 +75,7 @@ _wu_ctrl = None
 _online = None
 _locations = None
 _circle = None
+_shared = None
 _cloud_client = None
 _stats_tracker = None
 _stats_db = None
@@ -118,7 +120,7 @@ def wire(game_state, elim_ctrl,
          wu_ctrl=None, resume_offers=None, scene_engine=None):
     global _scene_engine, _resume_offers, _game_state, _elim_ctrl, _tb_ctrl, _killer_ctrl, _x01_ctrl, _tournament_ctrl, _ft_ctrl, _bb_ctrl, _wu_ctrl, _co_ctrl, _cloud_client, _stats_tracker, \
            _stats_db, _mqtt_pub, _config_path, _audio_engine, _board_manager_url, \
-           _dev_demo, _online, _locations, _circle, _elim_beat_hint
+           _dev_demo, _online, _locations, _circle, _shared, _elim_beat_hint
     _scene_engine = scene_engine
     _game_state = game_state
     _elim_ctrl = elim_ctrl
@@ -143,10 +145,12 @@ def wire(game_state, elim_ctrl,
     if _scene_engine and config_path:
         _scene_engine.fun = bool(cfg_mod.load(config_path).get("caller", {}).get("fun", False))
     _circle = None
+    _shared = None
     if _locations and _stats_db:
+        _shared = shared_sounds_mod.SharedSounds(_stats_db, config_path, engine=lambda: _scene_engine, audio=lambda: _audio_engine)
         _circle = circle_sync_mod.CircleSync(_stats_db, _locations, config_path, __version__,
                                              voice_packs=lambda: list(_voicepack_plans()), on_voice=_voice_entry_changed,
-                                             busy=_a_game_is_running)
+                                             busy=_a_game_is_running, shared=_shared)
         _stats_db.on_match_closed = _circle.match_closed
         _stats_db.on_match_deleted = _circle.match_deleted
     _audio_engine = audio_engine
@@ -1783,6 +1787,19 @@ async def circle_enabled(body: CircleEnabledBody):
     return {"ok": True, **_circle.status()}
 
 
+class CircleShareSoundsBody(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/circle/share-achievement-sounds")
+async def circle_share_achievement_sounds(body: CircleShareSoundsBody):
+    """Publish the sounds assigned to achievements in the circle (or take them back)."""
+    if not _circle:
+        return {"error": "the sync is not available"}
+    await asyncio.to_thread(_circle.set_share_achievement_sounds, body.enabled)
+    return {"ok": True, **_circle.status()}
+
+
 @app.post("/api/circle/send-all")
 async def circle_send_all():
     """Queue every finished match played here that the circle does not have yet; the outbox sends them in rounds."""
@@ -2902,7 +2919,10 @@ def assigned_achievement_sounds(achievement_id: str) -> list:
     from the file each time, so a change on the page takes effect without a restart."""
     if not (_config_path and _audio_engine):
         return []
-    return ach_sounds.files_for(_audio_engine, cfg_mod.load(_config_path), achievement_id)
+    own = ach_sounds.files_for(_audio_engine, cfg_mod.load(_config_path), achievement_id)
+    if own or not _shared or _audio_engine.variants(f"achievement_{achievement_id}"):
+        return own
+    return _shared.achievement_files(achievement_id)         # a sound of the circle, only where there is none of your own
 
 
 def _admin_locked():
@@ -2919,7 +2939,34 @@ async def admin_achievement_sounds():
     locked = _admin_locked()
     if locked:
         return locked
-    return ach_sounds.overview(_audio_engine, cfg_mod.load(_config_path), ach_mod.ACHIEVEMENTS)
+    result = ach_sounds.overview(_audio_engine, cfg_mod.load(_config_path), ach_mod.ACHIEVEMENTS)
+    if _shared:
+        for a in result["achievements"]:
+            if a["plays_now"]["source"] != "assigned":
+                a["shared"] = _shared.achievement_shared(a["id"]) if a["plays_now"]["source"] != "id" else None
+                if a["shared"]:
+                    a["plays_now"] = {"source": "circle", "files": a["shared"]["files"]}
+    result["share"] = bool(_circle and _circle.status().get("share_achievement_sounds"))
+    return result
+
+
+@app.post("/api/admin/achievement-sounds/{achievement_id}/adopt")
+async def admin_adopt_achievement_sounds(achievement_id: str):
+    """Make the shared sound of an achievement (from another site of the circle) your own assignment: it stays when the
+    other site changes or takes its sound back."""
+    locked = _admin_locked()
+    if locked:
+        return locked
+    if achievement_id not in ach_mod.BY_ID:
+        return {"error": "unknown achievement"}
+    shared = _shared.achievement_shared(achievement_id) if _shared else None
+    if not shared:
+        return {"error": "no shared sound for this achievement"}
+    if ach_sounds.assignments(cfg_mod.load(_config_path)).get(achievement_id):
+        return {"error": "this achievement has a sound of its own already"}
+    stored = ach_sounds.set_assignment(_config_path, achievement_id, shared["files"])
+    log.info("Achievement sound taken over from the circle: %s -> %s", achievement_id, stored)
+    return {"ok": True, "assigned": stored}
 
 
 class AchievementSoundsBody(BaseModel):
@@ -2938,6 +2985,8 @@ async def admin_set_achievement_sounds(achievement_id: str, body: AchievementSou
         return {"error": f"not a sound of the achievements folder: {', '.join(unknown)}"}
     stored = ach_sounds.set_assignment(_config_path, achievement_id, list(dict.fromkeys(body.files)))
     log.info("Achievement sound set: %s -> %s", achievement_id, stored)
+    if _circle:
+        _circle.wake()
     return {"ok": True, "assigned": stored}
 
 
@@ -3038,6 +3087,7 @@ class SceneBody(BaseModel):
     name: str = ""
     enabled: bool = True
     graph: dict = {}
+    shared: bool | None = None      # published to the circle; None leaves it as it is
 
 
 class SceneOrderBody(BaseModel):
@@ -3058,7 +3108,7 @@ async def get_scenes():
     """The scenes, the events and building blocks the editor offers, and the sound library."""
     return {
         "available": _scene_engine is not None,
-        "scenes": _scene_list(),
+        "scenes": [{**s, "problems": _shared.problems(s["graph"])} if s.get("source") and _shared else s for s in _scene_list()],
         "events": {k: {"label": v["label"], "game": v["game"], "fields": v["fields"]}
                    for k, v in scenes_mod.EVENTS.items()},
         "operators": list(scenes_mod.OPERATORS),
@@ -3080,9 +3130,18 @@ def _scene_ref(ref: str):
 def _save_scene(ref, body: SceneBody):
     if not _scene_engine:
         return {"error": "scenes are not available"}
-    saved = _scene_engine.save(ref, scenes_mod.clean_scene(body.model_dump()))
+    data = scenes_mod.clean_scene(body.model_dump())
+    current = _scene_engine.find(ref) if ref is not None else None
+    if current and current.get("source"):
+        # the copy of a scene of another site is read-only: only switching it on or off is taken
+        data = {"name": current["name"], "enabled": data["enabled"], "graph": current["graph"]}
+    elif body.shared is not None and not isinstance(ref, str):
+        data["shared"] = body.shared
+    saved = _scene_engine.save(ref, data)
     if saved is None:
         return {"error": "unknown scene"}
+    if _circle and (data.get("shared") is not None or (current and current.get("shared"))):
+        _circle.wake()
     return {"ok": True, "id": saved}
 
 
@@ -3123,6 +3182,19 @@ async def delete_scene(ref: str):
     if not _scene_engine or ref is None or not _scene_engine.delete(ref):
         return {"error": "unknown scene"}
     return {"ok": True}
+
+
+@app.post("/api/scenes/{ref}/copy")
+async def copy_scene(ref: str):
+    """Make a scene of your own from a copy of another site's scene (or from any scene): same steps, not shared, switched off
+    until you check it. The sounds of a copy are in the library already."""
+    ref = _scene_ref(ref)
+    scene = _scene_engine.find(ref) if _scene_engine and ref is not None else None
+    if not scene:
+        return {"error": "unknown scene"}
+    name = scenes_mod.clean_scene({"name": f"{scene['name']} (copy)"})["name"]
+    saved = _scene_engine.save(None, {"name": name, "enabled": False, "graph": scene["graph"]})
+    return {"ok": True, "id": saved}
 
 
 @app.post("/api/scenes/{ref}/test")

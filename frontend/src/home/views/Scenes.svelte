@@ -52,6 +52,7 @@
   let message = $state('');
   let draft = $state(null);          // the scene being edited: { id, name, enabled, graph }, id null while unsaved
   let dirty = $state(false);
+  const isCopy = $derived(!!draft?.source);      // the copy of a scene another site shares: read-only, only the switch is saved
   let selNode = $state(null);
   let selEdge = $state(null);        // 'from>to'
   let link = $state(null);           // a connection being dragged: { from, x, y }
@@ -130,6 +131,7 @@
     resetHistory();
     failed = [];
     draft = JSON.parse(JSON.stringify(scene));
+    draft.shared = !!draft.shared;          // the switch is bound to it and needs a value
     if (!flowsDown(draft.graph)) arrange(draft.graph);
     dirty = false;
     selNode = null;
@@ -147,7 +149,7 @@
   async function create() {
     if (dirty && !await confirmDialog(t('Discard the unsaved changes of this scene?'))) return;
     resetHistory();
-    draft = { id: null, name: t('New scene'), enabled: true, graph: { nodes: [], edges: [] } };
+    draft = { id: null, name: t('New scene'), enabled: true, shared: false, graph: { nodes: [], edges: [] } };
     dirty = true;
     selNode = null;
     selEdge = null;
@@ -296,6 +298,7 @@
   }
 
   function removeNodes(ids) {
+    if (isCopy) return;
     draft.graph.nodes = draft.graph.nodes.filter((n) => !ids.includes(n.id));
     draft.graph.edges = draft.graph.edges.filter((e) => !ids.includes(e.from) && !ids.includes(e.to));
     selNode = null;
@@ -305,6 +308,7 @@
   const removeNode = (id) => removeNodes([id]);
 
   function removeEdge(key) {
+    if (isCopy) return;
     draft.graph.edges = draft.graph.edges.filter((e) => `${e.from}>${e.to}` !== key);
     selEdge = null;
     dirty = true;
@@ -396,6 +400,7 @@
   const isPicked = (id) => selNode === id || picked.includes(id);
 
   function startDrag(e, n) {
+    if (isCopy) { selNode = n.id; selEdge = null; picked = []; return; }
     if (e.button === 1) { e.preventDefault(); return; }    // the middle button removes the node, see onauxclick
     if (e.button !== 0) return;
     const p = point(e);
@@ -433,6 +438,7 @@
 
   function startLink(e, n, key) {
     e.stopPropagation();
+    if (isCopy) return;
     selNode = n.id;
     selEdge = null;
     link = { from: n.id, key, ...point(e) };
@@ -557,6 +563,28 @@
   }
   const cut = (text, width = W - 32) => fitText(text, width);
 
+  const PROBLEM = {
+    sound: t('a sound of this step is not in the library'), call: t('the voice pack has no sound for this call'),
+    player: t('a player named here does not exist on this site'),
+  };
+  // The inspector of a copy shows the settings of a step but changes none: its controls are switched off, except the preview
+  // buttons (class `play`), so a sound can still be listened to. Only what is switched off here is switched on again.
+  function readonlyControls(node, locked) {
+    const MARK = 'data-copy-locked';
+    const apply = (on) => {
+      for (const el of node.querySelectorAll('input, select, textarea, button')) {
+        if (on && !el.classList.contains('play') && !el.disabled) { el.disabled = true; el.setAttribute(MARK, ''); }
+        else if (!on && el.hasAttribute(MARK)) { el.disabled = false; el.removeAttribute(MARK); }
+      }
+    };
+    const watch = new MutationObserver(() => { watch.disconnect(); apply(locked); watch.observe(node, { childList: true, subtree: true }); });
+    apply(locked);
+    watch.observe(node, { childList: true, subtree: true });
+    return { update(next) { locked = next; apply(next); }, destroy() { watch.disconnect(); } };
+  }
+
+  const flag = (n) => (draft?.problems?.[n.id] ? ' ⚠' : '');
+
   function describe(n) {
     if (n.type === 'trigger') {
       const game = events[n.event]?.game;
@@ -568,16 +596,16 @@
     }
     if (n.kind === 'compare') return [t('If'), cut(`${FIELD_LABEL[n.field] || n.field} ${n.op} ${n.value}${missing}`)];
     if (n.kind === 'chance') return [t('If'), cut(t('{percent} % chance', { percent: n.percent }))];
-    if (n.kind === 'player') return [t('If'), cut(n.names.length ? t('player is {names}', { names: n.names.join(', ') }) : t('any player'))];
+    if (n.kind === 'player') return [t('If'), cut((n.names.length ? t('player is {names}', { names: n.names.join(', ') }) : t('any player')) + flag(n))];
     if (n.kind === 'once') return [t('If'), cut(SCOPE_LABEL[n.scope] + (n.per_player ? ` · ${t('per player')}` : ''))];
     if (n.kind === 'achievement') return [t('If'), cut(n.achievement ? t('has {name}', { name: achievementName(n.achievement) }) : t('has an achievement'))];
     if (n.kind === 'pick') return [t('Random'), cut(t('one of the next steps'))];
     if (n.kind === 'switch') return [t('Switch'), cut(FIELD_LABEL[n.field] || n.field)];
-    if (n.kind === 'call') return [t('Play call'), cut(n.key || t('(no call)'))];
+    if (n.kind === 'call') return [t('Play call'), cut((n.key || t('(no call)')) + flag(n))];
     if (n.kind === 'sound') {
       const named = n.files.filter((e) => e.file);
       const label = named.length > 1 ? t('{n} sounds', { n: named.length }) : (named[0]?.file || t('(no file)'));
-      return [t('Play sound'), cut(label + (n.replace ? ' ⇄' : ''))];
+      return [t('Play sound'), cut(label + (n.replace ? ' ⇄' : '') + flag(n))];
     }
     if (n.kind === 'overlay') return [t('Show'), cut(ANIMATION_LABEL[n.animation] + (n.text ? ` · ${n.text}` : ''))];
     return [t('Wait'), t('{seconds} s', { seconds: n.seconds })];
@@ -775,9 +803,20 @@
 
   // ── saving, testing ────────────────────────────────────────────────────────
 
+  async function editCopy() {
+    if (dirty && !await confirmDialog(t('Discard the unsaved changes of this scene?'))) return;
+    const res = await apiJson('POST', `/api/scenes/${draft.id}/copy`);
+    if (res.error) { message = t(res.error); return; }
+    dirty = false;
+    await load();
+    const made = data.scenes.find((s) => s.id === res.id);
+    if (made) pick(made);
+  }
+
   async function save() {
     message = '';
     const body = { name: draft.name, enabled: draft.enabled, graph: draft.graph };
+    if (!draft.default && !isCopy) body.shared = !!draft.shared;
     const res = draft.id == null ? await apiJson('POST', '/api/scenes', body) : await apiJson('PUT', `/api/scenes/${draft.id}`, body);
     if (res.error) { message = t(res.error); return false; }
     draft.id = res.id;
@@ -936,10 +975,12 @@
       {:else}
         <SceneOverlay />        <!-- the effects of a test -->
         <div class="scene-head">
-          <input class="scene-title" type="text" value={titleOf(draft)} maxlength="80" readonly={draft.default}
+          <input class="scene-title" type="text" value={titleOf(draft)} maxlength="80" readonly={draft.default || isCopy}
                  oninput={(e) => { draft.name = e.target.value; touch(); }} aria-label={t('Name of the scene')}>
           {#if draft.default}
             <InfoTip>{t('A standard scene makes the calls the game made on its own. What you change here replaces it, until you go back to the original.')}</InfoTip>
+          {:else if isCopy}
+            <span class="from" title={t('Shared by {site}. The copy is read-only; Edit a copy makes a scene of your own.', { site: draft.source.name })}>{t('From {site}', { site: draft.source.name })}</span>
           {:else}
             <span class="slot-info" class:warn={slotNotes.some((n) => n.level === 'warning')}>
               {#if slotNotes.length}
@@ -961,10 +1002,15 @@
             </span>
           {/if}
           <Toggle bind:checked={draft.enabled} label={t('On')} wide onchange={touch} />
+          {#if !draft.default && !isCopy}
+            <Toggle bind:checked={draft.shared} label={t('Share with the circle')} wide onchange={touch} />
+            <InfoTip>{t('The other installations of the circle get this scene as a read-only copy, with the sounds it plays (2 MB each at most). Only share sounds you are free to share. Changing or deleting the scene changes or removes the copies. Standard scenes are not shared.')}</InfoTip>
+          {/if}
           <span class="spacer"></span>
           {#if dirty}<span class="dirty">{t('Unsaved changes')}</span>{/if}
           <button type="button" class="act primary" onclick={save} disabled={!dirty}>{t('Save')}</button>
           <button type="button" class="act" onclick={test}>{t('Test')}</button>
+          {#if isCopy}<button type="button" class="act" onclick={editCopy}>{t('Edit a copy')}</button>{/if}
           {#if draft.default}
             <button type="button" class="act danger" onclick={remove} disabled={!draft.customized}>{t('Back to the original')}</button>
           {:else}
@@ -972,7 +1018,7 @@
           {/if}
         </div>
 
-        <div class="palette">
+        <div class="palette" inert={isCopy}>
           <select aria-label={t('Add a trigger')} onchange={(e) => { addTrigger(e.target.value); e.target.value = ''; }}>
             <option value="">{t('+ Trigger…')}</option>
             {#each eventGroups as [game, ids]}
@@ -1044,6 +1090,7 @@
                  onauxclick={(e) => { if (e.button === 1) removeNode(n.id); }}
                  onkeydown={(e) => { if (e.key === 'Enter') { selNode = n.id; selEdge = null; } }}>
                 <rect width={W} height={hOf(n)} rx="10" />
+                {#if draft.problems?.[n.id]}<title>{PROBLEM[draft.problems[n.id]]}</title>{/if}
                 <text class="title" x="14" y="24">{ICON[n.type]} {title}</text>
                 <text class="detail" x="14" y="46">{detail}</text>
                 {#if n.type !== 'trigger'}<circle class="port" cx={W / 2} cy="0" r="6" />{/if}
@@ -1079,7 +1126,7 @@
         {#if selEdge}
           {@const edge = edges.find((e) => `${e.from}>${e.to}` === selEdge)}
           {@const source = edge && nodes.find((n) => n.id === edge.from)}
-          <div class="inspector">
+          <div class="inspector" use:readonlyControls={isCopy}>
             <span>{t('Connection')}</span>
             {#if source && twoWay(source)}
               <label>{t('Leaves the node on')}
@@ -1105,7 +1152,7 @@
             <button type="button" class="act danger" onclick={() => removeEdge(selEdge)}>{t('Remove connection')}</button>
           </div>
         {:else if node}
-          <div class="inspector">
+          <div class="inspector" use:readonlyControls={isCopy}>
             <div class="insp-title">{ICON[node.type]} {describe(node)[0]}</div>
             {#if node.type === 'trigger'}
               <label>{t('Moment')}
@@ -1373,6 +1420,7 @@
   .scene-head > .scene-title { flex: 1 1 8rem; min-width: 4rem; max-width: 30rem; font-weight: 700; font-size: 1rem; }
   .spacer { flex: 1; }
   .dirty { font-size: 0.78rem; color: var(--yellow); }
+  .from { font-size: 0.78rem; color: var(--yellow); white-space: nowrap; }
   .palette { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
   .canvas {
     position: relative; overflow: hidden; height: 30rem; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--glass-border);

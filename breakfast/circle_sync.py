@@ -6,6 +6,8 @@ when it starts, every few minutes and after a match of its own ended or was dele
 what was sent, last times and error) lives in `circle.json` next to `config.toml`.
 """
 
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -14,6 +16,7 @@ import time
 from pathlib import Path
 
 from breakfast import match_record
+from breakfast import shared_sounds as shared_mod
 from breakfast import voicepack_editor as ve
 from breakfast import voicepack_overlay as vo
 from breakfast.locations import LocationError
@@ -33,15 +36,17 @@ PERMANENT = {400, 403, 404, 409, 413, 422}     # the relay will not take this re
 
 class CircleSync:
     def __init__(self, db, locations, config_path, version, now=time.time, on_change=None, voice_packs=None, on_voice=None,
-                 busy=None):
+                 busy=None, shared=None):
         """*voice_packs*: returns the names of the voice packs this installation has a plan for. *on_voice*: called with
         (pack, player) after the voice entry of a player was changed here, so that the voice files can follow. *busy*:
-        tells whether a game is in play, the names stay as they are then."""
+        tells whether a game is in play, the names stay as they are then. *shared*: the `SharedSounds` of the scenes and the
+        achievement sounds."""
         self._db, self._locations, self._version, self._now = db, locations, version, now
         self._on_change = on_change
         self._voice_packs = voice_packs or (lambda: [])
         self._on_voice = on_voice
         self._busy = busy or (lambda: False)
+        self._shared = shared
         self.path = Path(config_path).parent / "circle.json"
         self._state_lock = threading.RLock()
         self._run_lock = threading.Lock()
@@ -89,13 +94,24 @@ class CircleSync:
                 "running": self._running, "pending": len(state["outbox"]),
                 "paused_until": max([u for u in (state.get("push_until"), state.get("pull_until")) if u and u > self._now()], default=None),
                 "last_push": state.get("last_push"), "last_pull": state.get("last_pull"), "last_sync": state.get("last_sync"),
-                "pushed": state.get("pushed", 0), "pulled": state.get("pulled", 0), "error": state.get("error")}
+                "pushed": state.get("pushed", 0), "pulled": state.get("pulled", 0), "error": state.get("error"),
+                "share_achievement_sounds": bool(state.get("share_achievement_sounds"))}
 
     def set_enabled(self, enabled):
         self._update(enabled=bool(enabled))
         if enabled:
             self._wake.set()
         self._changed()
+
+    def set_share_achievement_sounds(self, enabled):
+        """Publish the sounds assigned to achievements (or take them back)."""
+        self._update(share_achievement_sounds=bool(enabled))
+        self._wake.set()
+        self._changed()
+
+    def wake(self):
+        """Run a round soon, for a change the circle should see (a scene was shared, a sound assigned)."""
+        self._wake.set()
 
     def match_closed(self, match_id):
         """A match was finished (or closed again): it goes to the outbox, whatever the mode; the send decides."""
@@ -214,14 +230,147 @@ class CircleSync:
         refetch = config.get("refetch", 0)
         if refetch != self._load().get("refetch_seen", 0):
             log.info("CircleSync: the admin asked to fetch everything again")
-            self._update(cursor=0, refetch_seen=refetch, pull_until=None)
+            self._update(cursor=0, refetch_seen=refetch, pull_until=None, scenes_cursor=0, achievements_cursor=0,
+                         scenes_sent={}, sounds_sent=[], achievements_sent={})
         self._more = False
         self._backfill_achievements()
         self._sync_profiles(config)
+        self._sync_shared()
         self._adopt_guests(config)
         self._push(origin, config)
         self._pull(origin, config)
         self._update(last_sync=self._now())
+
+    # ── scenes and achievement sounds ─────────────────────────────────────────
+
+    def _sync_shared(self):
+        """Publish the scenes and achievement sounds of this site and take over those of the others. A failure here never
+        stops the sync of the matches; an old relay without the routes is left alone."""
+        if not self._shared:
+            return
+        state = self._load()
+        if (state.get("shared_until") or 0) > self._now():
+            return
+        try:
+            self._push_scenes()
+            self._push_achievements(bool(state.get("share_achievement_sounds")))
+            self._pull_scenes()
+            self._pull_achievements()
+        except LocationError as e:
+            if e.status == 429:
+                self._update(shared_until=self._now() + PAUSE_S)
+            elif e.status in (404, 503):
+                log.info("CircleSync: the relay has no sharing of scenes and sounds: %s", e)
+            else:
+                log.warning("CircleSync: scenes and sounds are not synced: %s", e)
+                self._update(shared_error=str(e), shared_error_at=self._now())
+                return
+        else:
+            if self._load().get("shared_error"):
+                self._update(shared_error=None)
+
+    @staticmethod
+    def _digest(value):
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def _upload(self, sent, hash_, path):
+        """Put a sound file at the relay once. False when the file changed on disk meanwhile (it goes in the next round)."""
+        if hash_ in sent:
+            return True
+        try:
+            data = Path(path).read_bytes()
+        except OSError:
+            return False
+        if shared_mod.digest(data) != hash_:
+            return False
+        self._locations.call("PUT", f"/circle/sounds/{hash_}", {"data": base64.b64encode(data).decode()})
+        sent.add(hash_)
+        self._update(sounds_sent=sorted(sent))
+        return True
+
+    def _publish(self, kind, items, blobs, route, body_of, sounds_of):
+        """Send what changed since the last round (`kind` names its record in circle.json) and a deletion for what is gone."""
+        sent_key = f"{kind}_sent"
+        state = self._load()
+        sent, sounds = dict(state.get(sent_key, {})), set(state.get("sounds_sent", []))
+        for key, item in items.items():
+            digest_ = self._digest(item)
+            if sent.get(key) == digest_:
+                continue
+            if not all(self._upload(sounds, h, blobs[h]) for h in sounds_of(item)):
+                continue
+            try:
+                self._locations.call("PUT", f"{route}/{key}", body_of(item))
+            except LocationError as e:
+                if e.status == 422:                 # the relay lacks a sound it should have: send them again
+                    sounds.difference_update(sounds_of(item))
+                    self._update(sounds_sent=sorted(sounds))
+                    continue
+                if e.status not in PERMANENT:
+                    raise
+                log.warning("CircleSync: %s %s is not shared: %s", kind, key, e)
+            sent[key] = digest_
+            self._update(**{sent_key: sent})
+        for key in [k for k in sent if k not in items]:
+            try:
+                self._locations.call("PUT", f"{route}/{key}", {"deleted": True})
+            except LocationError as e:
+                if e.status not in PERMANENT:
+                    raise
+            sent.pop(key)
+            self._update(**{sent_key: sent})
+
+    def _push_scenes(self):
+        items, blobs = self._shared.scene_payloads()
+        self._publish("scenes", items, blobs, "/circle/scenes", lambda i: i, lambda i: [s["hash"] for s in i["sounds"]])
+
+    def _push_achievements(self, enabled):
+        items, blobs = self._shared.achievement_payloads() if enabled else ({}, {})
+        self._publish("achievements", items, blobs, "/circle/achievement-sounds", lambda i: {"files": i},
+                      lambda i: [s["hash"] for s in i])
+
+    def _fetch_sound(self, hash_):
+        try:
+            return base64.b64decode(self._locations.call("GET", f"/circle/sounds/{hash_}")["data"])
+        except LocationError as e:
+            if e.status in PERMANENT:
+                raise shared_mod.SoundUnavailable(str(e)) from None
+            raise
+        except (KeyError, ValueError) as e:
+            raise shared_mod.SoundUnavailable(str(e)) from None
+
+    def _pull_shared(self, route, cursor_key, list_key, take):
+        cursor = self._load().get(cursor_key, 0)
+        while True:
+            page = self._locations.call("GET", f"{route}?since={cursor}&limit={PAGE}")
+            for entry in page[list_key]:
+                try:
+                    take(entry, self._fetch_sound)
+                except (KeyError, TypeError, ValueError) as e:
+                    log.warning("CircleSync: %s %s cannot be taken: %s", list_key, entry.get("seq"), e)
+                cursor = entry["seq"]
+                self._update(**{cursor_key: cursor})
+            if len(page[list_key]) < PAGE:
+                break
+
+    def _note(self, key, text):
+        """Log a reason why something is left alone once, not at every round."""
+        if not self._load().get(key):
+            log.info("CircleSync: %s", text)
+            self._update(**{key: True})
+
+    def _pull_scenes(self):
+        if not self._shared.can_take_scenes():
+            self._note("note_no_library", "scenes of the circle are not taken over: no sound directory is set ([audio] dir), "
+                       "they come as soon as there is one")
+            return
+        self._pull_shared("/circle/scenes", "scenes_cursor", "scenes", self._shared.take_scene)
+
+    def _pull_achievements(self):
+        if not self._shared.can_take_achievements():
+            self._note("note_no_achievements", "achievement sounds of the circle are not taken over: no sound directory is set ([audio] dir)")
+            return
+        self._pull_shared("/circle/achievement-sounds", "achievements_cursor", "sounds", self._shared.take_achievement)
 
     def _adopt_guests(self, config):
         """A guest of another site (`ben@site`, stored by an online match) that the admin mapped to a local player is

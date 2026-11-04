@@ -685,7 +685,7 @@ class TestStore:
         db = StatsDB(str(tmp_path / "s.db"))
         data = sc.clean_scene({"name": "Ton", "graph": graph(trigger("x01.bust"))})
         scene_id = db.save_scene(None, data)
-        assert db.list_scenes() == [{"id": scene_id, "slug": None, **data}]
+        assert db.list_scenes() == [{"id": scene_id, "slug": None, "shared": False, "share_id": None, "source": None, **data}]
         data["name"], data["enabled"] = "Renamed", False
         assert db.save_scene(scene_id, data) == scene_id
         assert db.list_scenes()[0]["name"] == "Renamed" and db.list_scenes()[0]["enabled"] is False

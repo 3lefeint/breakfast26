@@ -7,11 +7,13 @@
   // of config.toml and applies without a restart.
   import { onMount } from 'svelte';
   import { shownName } from '../../lib/util.js';
+  import { apiJson } from '../../lib/api.js';
+  import Toggle from '../../lib/components/Toggle.svelte';
 
   const URL = '/api/admin/achievement-sounds';
   const MODES = { general: t('General'), x01: 'X01', elimination: t('Elimination'), killer: t('Killer'),
                   target_battle: t('Target Battle'), field_training: t('Field Training'), black_belt: t('Black Belt'), easter_egg: t('Easter eggs') };
-  const SOURCE_LABEL = { assigned: t('assigned'), id: t('file name'), generic: t('general sound'), none: t('no sound') };
+  const SOURCE_LABEL = { assigned: t('assigned'), id: t('file name'), generic: t('general sound'), circle: t('from the circle'), none: t('no sound') };
 
   let data = $state(null);
   let error = $state('');
@@ -49,13 +51,28 @@
     await load();
   }
 
+  async function adopt(a) {
+    message = '';
+    const res = await apiJson('POST', `${URL}/${a.id}/adopt`);
+    if (res.error) { message = t(res.error); return; }
+    await load();
+  }
+
   const add = (a, file) => file && assign(a, [...a.assigned, file]);
   const remove = (a, file) => assign(a, a.assigned.filter((f) => f !== file));
+
+  let share = $state(false);
+  $effect(() => { if (data) share = !!data.share; });
+  async function setShare() {
+    const res = await apiJson('POST', '/api/circle/share-achievement-sounds', { enabled: share });
+    if (res.error) { message = t(res.error); share = !share; }
+  }
 
   function describe(a) {
     const now = a.plays_now;
     if (now.source === 'none') return t('No sound');
-    return `${SOURCE_LABEL[now.source]}: ${now.files.join(', ')}`;
+    const from = now.source === 'circle' && a.shared?.origin ? ` (${a.shared.origin})` : '';
+    return `${SOURCE_LABEL[now.source]}${from}: ${now.files.join(', ')}`;
   }
 </script>
 
@@ -69,6 +86,10 @@
   </div>
 
   <div class="note">{t('The files are uploaded, cut and renamed in the Sounds tab.')}</div>
+  <div class="share">
+    <Toggle label={t('Share these sounds with the circle')} wide bind:checked={share} onchange={setShare} />
+    <span class="note">{t('The other installations use a shared sound for an achievement they have no sound of their own for. Only share sounds you are free to share; 2 MB each at most.')}</span>
+  </div>
 
   <div class="toolbar">
     <input type="search" placeholder={t('Search')} bind:value={search} aria-label={t('Search achievements')}>
@@ -98,6 +119,16 @@
               <button type="button" class="remove" title={t('Remove')} onclick={() => remove(a, file)}>×</button>
             </span>
           {/each}
+          {#if a.shared}
+            {#each a.shared.files as file (file)}
+              <span class="file circle" title={t('Shared by {site}', { site: a.shared.origin })}>
+                <button type="button" class="play" title={t('Preview')} onclick={() => preview(file)}>▶</button>
+                {file} · {a.shared.origin}
+              </span>
+            {/each}
+            <button type="button" class="adopt" title={t('Make this your own assignment; it stays when the other site changes its sound.')}
+                    onclick={() => adopt(a)}>{t('Take over')}</button>
+          {/if}
           <select aria-label={t('Add a sound to {name}', { name: a.names?.en })} onchange={(e) => { add(a, e.target.value); e.target.value = ''; }}>
             <option value="">{t('+ Add a sound…')}</option>
             {#each data.files.filter((f) => !a.assigned.includes(f)) as f}<option value={f}>{f}</option>{/each}
@@ -133,10 +164,15 @@
     display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;
     background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 999px; padding: 0.1rem 0.3rem 0.1rem 0.2rem;
   }
+  .file.circle { border-style: dashed; color: var(--muted); }
+  .adopt { background: none; border: 1px solid var(--glass-border); border-radius: 999px; color: var(--muted); cursor: pointer; font-family: inherit; font-size: 0.78rem; padding: 0.1rem 0.6rem; }
+  .adopt:hover { border-color: var(--accent); color: var(--accent); }
   .file.missing { border-color: var(--red); color: var(--red); }
   .play, .remove { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.8rem; padding: 0 0.25rem; }
   .play:hover { color: var(--accent); }
   .play:disabled { cursor: default; opacity: 0.4; }
   .remove:hover { color: var(--red); }
+  .share { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.8rem; }
+  .share .note { margin-bottom: 0; }
   .note { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.8rem; }
 </style>
