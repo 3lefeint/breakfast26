@@ -16,6 +16,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.openapi.utils import get_openapi
 from pydantic import AfterValidator, BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -346,7 +347,8 @@ def audio_client_count() -> int:
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Breakfast", docs_url=None, redoc_url=None)
+app = FastAPI(title="Breakfast", docs_url="/docs", redoc_url=None,
+              description="The REST API of Breakfast. The graph of a scene (nodes, edges, facts, limits) is described in SCENES.md.")
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 if os.path.isdir(os.path.join(_DIST_DIR, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(_DIST_DIR, "assets")), name="assets")
@@ -3075,6 +3077,63 @@ async def admin_upload_achievement_sound(request: Request, name: str = Query(...
     return {"ok": True, "file": name}
 
 
+# ── The groups of the API description (/docs) ─────────────────────────────────
+
+# The groups in the order of the page, with what they hold: a path belongs to the group with the prefix that fits it (whole path
+# segments), a path that fits none is in "Other", and a test fails for it, so a new area gets its group.
+_API_GROUPS = [
+    ("Scenes", "Scenes and their sound library. The graph of a scene is described in SCENES.md.", ("/api/scenes", "/api/sound")),
+    ("X01", "The X01 game.", ("/api/x01",)),
+    ("Elimination", "The Elimination game.", ("/api/elimination",)),
+    ("Killer", "The Killer game.", ("/api/killer",)),
+    ("Target Battle", "The Target Battle game.", ("/api/target-battle",)),
+    ("Field Training", "The Field Training drill.", ("/api/field-training",)),
+    ("Black Belt", "The Black Belt drill.", ("/api/black-belt",)),
+    ("Checkout", "The Checkout trainer and the checkout routes.", ("/api/checkout", "/api/checkout-training")),
+    ("Warm-up", "The Warm-up drill.", ("/api/warm-up",)),
+    ("Tournament", "X01 tournaments.", ("/api/tournament",)),
+    ("Resume", "Offers to resume an interrupted match.", ("/api/resume",)),
+    ("Players", "Players, their profiles and name sounds.", ("/api/players",)),
+    ("Stats", "Statistics, the leaderboard and achievements.", ("/api/stats", "/api/leaderboard", "/api/achievements")),
+    ("Voice pack", "The voice packs of the caller: plans, generating, recording.", ("/api/voicepack", "/api/voice-packs")),
+    ("Voice chat", "Voice chat channels of the circle.", ("/api/voice",)),
+    ("Circle", "The sync with the circle of friends.", ("/api/circle",)),
+    ("Locations", "This installation as a location at the relay: identity, invitations, links.", ("/api/locations",)),
+    ("Online", "Online matches through the relay.", ("/api/online",)),
+    ("Control and state", "The state of the game and the board, control actions and the settings in `config.toml`.",
+     ("/api/control", "/api/state", "/api/health", "/api/config", "/api/board-address", "/api/web-port", "/api/delete-guard")),
+    ("Admin", "The admin area, the dev tools, usage reports and updates.", ("/api/admin", "/api/dev", "/api/telemetry", "/api/updates")),
+    ("UI", "Appearance, language and the pages themselves.", ("/api/appearance", "/api/language", "/api/joke", "/api/changelog", "/audio", "/")),
+]
+
+
+def api_group(path: str) -> str:
+    for name, _, prefixes in _API_GROUPS:
+        if any(path == p or (p != "/" and path.startswith(p + "/")) for p in prefixes):
+            return name
+    return "Other"
+
+
+def _openapi():
+    """The description of the API with the routes in groups (a tag for each), so /docs is not one list of 190 routes."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title=app.title, version=__version__, description=app.description, routes=app.routes)
+    used = set()
+    for path, operations in schema["paths"].items():
+        for operation in operations.values():
+            operation["tags"] = [api_group(path)]
+            used.add(operation["tags"][0])
+    schema["tags"] = [{"name": n, "description": d} for n, d, _ in _API_GROUPS if n in used]
+    if "Other" in used:
+        schema["tags"].append({"name": "Other", "description": "Not sorted into a group yet."})
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _openapi
+
+
 # ── REST: scenes ──────────────────────────────────────────────────────────────
 
 _SCENE_SAMPLE = {"score": 180, "remaining": 100, "leg": 1, "target": 60, "lives": 2, "next": 61, "freipass": 0, "margin": 60,
@@ -3084,11 +3143,19 @@ _SCENE_SAMPLE = {"score": 180, "remaining": 100, "leg": 1, "target": 60, "lives"
                  "turn_points": 60, "dart1_points": 60, "dart2_points": 0}
 
 
+_SCENE_EXAMPLE = {"nodes": [{"id": "t", "type": "trigger", "event": "x01.turn_start", "x": 40, "y": 40},
+                            {"id": "c", "type": "condition", "kind": "chance", "percent": 5, "x": 40, "y": 160},
+                            {"id": "s", "type": "action", "kind": "sound", "files": [{"file": "o-curva.mp3", "weight": 1}],
+                             "channel": "ambient", "x": 40, "y": 280}],
+                  "edges": [{"from": "t", "to": "c"}, {"from": "c", "to": "s"}]}
+
+
 class SceneBody(BaseModel):
-    name: str = ""
-    enabled: bool = True
-    graph: dict = {}
-    shared: bool | None = None      # published to the circle; None leaves it as it is
+    name: str = Field("", description="The name of the scene, up to 80 characters.")
+    enabled: bool = Field(True, description="Whether the scene runs.")
+    graph: dict = Field({}, description="`{nodes: [...], edges: [...]}`: triggers, conditions and actions with the edges between them. "
+                        "Every node kind, field, fact and limit is described in SCENES.md.", examples=[_SCENE_EXAMPLE])
+    shared: bool | None = Field(None, description="Share the scene with the circle of friends; left out, the sharing stays as it is.")
 
 
 class SceneOrderBody(BaseModel):
