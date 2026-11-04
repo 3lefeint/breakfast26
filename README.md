@@ -341,6 +341,9 @@ admin approves each installation once.
   private voice entries (the pronunciation of his name, see *Voice caller and voice packs*) follow him to the installations
   that know him, the latest change wins; the voice files are made again at each installation. *Voice chat* on the Play page
   lists the voice chat channels the admin made for this installation; a click opens the channel in its own browser tab, without a match.
+  A scene of your own can be shared with the circle (the switch in the scene editor): the others get a read-only copy with its sounds,
+  and *Edit a copy* makes a scene of their own. The same switch on the Achievements sounds page shares the sounds you assigned to
+  achievements; others use them only where they have no sound of their own, see them on that page with the name of the site and can take one over as their own assignment. Share only sounds you are free to share.
 - **For the admin:** the admin area (`#admin` in the Home app, a sidebar entry appears once a relay address is stored in the
   browser) logs in to the relay with the admin password, which is stored only as a salted hash at the relay and never on an
   installation. It approves the installations, keeps the players of the circle, matches the players of each installation to them

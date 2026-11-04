@@ -159,6 +159,27 @@ A deletion record (`deleted: true`) is stored like any other. Limits: 500 record
 the routes answer 503 when the `RECORDS` bucket is missing or the variable `SHARING` is `off`. A location that signs off loses its
 place in the circle; the records it sent stay.
 
+### Scenes and achievement sounds
+
+A site can publish its scenes (#126) and the sounds it assigned to achievements (#127); every other approved site takes them over in
+its catch-up. No rule or mapping is involved: what a site publishes goes to all approved sites except itself. Sound files are stored once
+per hash (D1 `circle_sounds`, bytes in the `RECORDS` bucket under `sounds/<sha256>`; `migrations/0008_shared_sounds.sql`), a scene or an
+achievement entry names its files as `{file, hash}` (`file` is an mp3 name, `^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\.mp3$`). A change gets a new
+`seq` (the row is replaced), the same content again changes nothing; only the site that published an entry changes or deletes it, the latest
+change wins (the relay stamps `updated_at`). A deletion keeps the row with `deleted: true` so the copies go. Signed as above, answers 403
+until the site is approved.
+
+| Route | Purpose |
+|---|---|
+| `PUT /circle/sounds/<sha256>` `{data}` | store a sound once: `data` is the file as base64, at most 2 MB, an mp3 whose sha256 is the address (400 otherwise); 201 when new, 200 when the relay had it; at most 2,000 sounds and 1 GB in all |
+| `GET /circle/sounds/<sha256>` | `{hash, data}`, 404 when unknown |
+| `PUT /circle/scenes/<scene id>` `{name, graph, sounds}` or `{deleted: true}` | publish or change a scene (`scene id` `^[A-Za-z0-9_-]{8,40}$`, chosen by the site; the same id of two sites is two scenes); `name` 1 to 80 characters, `graph` a JSON object of at most 256 KB, `sounds` at most 100 `{file, hash}`; 422 `{missing: [hash]}` when a sound was not uploaded first; at most 200 scenes per site |
+| `GET /circle/scenes?since=<cursor>&limit=<n>` | `{scenes: [{seq, scene_id, origin: {id, name}, name, graph, sounds, deleted, updated_at}], next}`: the scenes of the other sites after the cursor (at most 100) |
+| `PUT /circle/achievement-sounds/<achievement id>` `{files}` or `{deleted: true}` | publish the sounds of an achievement (`^[a-z0-9_]{1,60}$`; 1 to 20 `{file, hash}`; 422 `{missing}` as above; at most 150 per site) |
+| `GET /circle/achievement-sounds?since=<cursor>&limit=<n>` | `{sounds: [{seq, achievement, origin: {id, name}, files, deleted, updated_at}], next}` |
+
+The bodies may be up to 3 million characters (a sound travels as base64 in JSON, so the signature covers it like any other body).
+
 ## Admin
 
 JSON routes under `/admin` for the admin page in Breakfast (there is no web page on the relay). The page runs in a browser on any

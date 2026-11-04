@@ -17,6 +17,9 @@
 - Players: Name sounds assigns one or more sounds of the sound library to a player as their name call, picked or recorded in the browser; they join the voice-pack file of the name and one of all is played at random, also for `{player}` in scenes (#141)
 - Voice Pack: Record lists every key of a group with the text to read, a counter and a filter for the missing ones, and records your own voice per key in the browser (cut and faded automatically, another recording is the next variant, record again, adjust in the sound editor, delete, Space starts and stops, Record next missing); recorded files are marked and never overwritten by generating or saving an entry, and a copy of a plan makes a pack for recordings (#140)
 
+- Scenes: a scene of your own can be shared with the circle; the other installations get it as a read-only copy marked with the name of the site, with the sounds it plays (2 MB each at most), and "Edit a copy" makes a scene of your own from it. Changing or deleting the scene changes or removes the copies; a step that cannot run on a site (a sound, a call or a player that is missing) is marked on the copy. (#126)
+- Achievement sounds: the sounds assigned to achievements can be shared with the circle; the other installations use a shared sound for an achievement they have no sound of their own for, an own assignment or file always wins. The Achievements page lists a shared sound with the name of the site and can take it over as an own assignment. (#127)
+
 ### Changed
 - Admin: the login stays across reloads of the page (kept in the browser tab until it runs out or Log out), and only failed logins count towards the limit of 5 per 15 minutes (#124)
 - Achievements that can be decided during a match are announced when the dart is thrown (a bullseye with the dart, a 180 or a Shanghai with the third dart) and not when the darts are pulled, in X01, Elimination, Target Battle and Killer (#135)

@@ -9,6 +9,7 @@ import { CLOSE, LIMITS, PROTOCOL_VERSION, validName } from "./protocol";
 import { authenticate, handleLocations, Rooms } from "./locations";
 import { handleAdmin } from "./admin";
 import { handleCircle } from "./circle";
+import { handleCircleShared } from "./circle_shared";
 import { channelRoom, handleVoiceChannels, siteSeesChannel } from "./voiceChannels";
 import { iceServers, validateVoiceFrame, VOICE_CLOSE, VOICE_LIMITS } from "./voice";
 import { VOICE_HTML, VOICE_JS } from "./voicePage";
@@ -168,6 +169,9 @@ export default {
 
     const circle = await handleCircle(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
     if (circle) return circle;
+
+    const shared = await handleCircleShared(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
+    if (shared) return shared;
 
     const channels = await handleVoiceChannels(request, env, (purpose, cfg, key) => limited(env, request, purpose, cfg, key));
     if (channels) return channels;

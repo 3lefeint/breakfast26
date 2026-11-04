@@ -9,6 +9,7 @@ import logging
 import re
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -436,24 +437,55 @@ class StatsDB:
     def list_scenes(self) -> list:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, name, enabled, graph, slug FROM scenes ORDER BY position, id").fetchall()
+                "SELECT id, name, enabled, graph, slug, shared, share_id, source_id, source_name FROM scenes "
+                "ORDER BY position, id").fetchall()
         return [{"id": r["id"], "name": r["name"], "enabled": bool(r["enabled"]), "graph": json.loads(r["graph"]),
-                 "slug": r["slug"]} for r in rows]
+                 "slug": r["slug"], "shared": bool(r["shared"]) and not r["source_id"], "share_id": r["share_id"],
+                 "source": {"id": r["source_id"], "name": r["source_name"]} if r["source_id"] else None} for r in rows]
 
     def save_scene(self, scene_id, data: dict, slug=None):
         """Insert a scene (`scene_id` None) or replace one. `slug` marks the edited copy of a default scene. Returns its
         id, None for an id that does not exist."""
         values = (data["name"], int(data["enabled"]), json.dumps(data["graph"]))
+        shared = data.get("shared")
         with self._lock:
             if scene_id is None:
                 scene_id = self._conn.execute(
-                    "INSERT INTO scenes (name, enabled, graph, slug, position) "
-                    "VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM scenes))", (*values, slug)).lastrowid
+                    "INSERT INTO scenes (name, enabled, graph, slug, shared, position) "
+                    "VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM scenes))",
+                    (*values, slug, int(bool(shared)))).lastrowid
             elif not self._conn.execute(
                     "UPDATE scenes SET name = ?, enabled = ?, graph = ? WHERE id = ?", (*values, scene_id)).rowcount:
                 return None
+            elif shared is not None:
+                self._conn.execute("UPDATE scenes SET shared = ? WHERE id = ? AND source_id IS NULL", (int(bool(shared)), scene_id))
+            # a scene that is shared gets the id it has in the circle, once; it stays when sharing is switched off
+            self._conn.execute("UPDATE scenes SET share_id = ? WHERE id = ? AND shared = 1 AND share_id IS NULL",
+                               (uuid.uuid4().hex, scene_id))
             self._conn.commit()
         return scene_id
+
+    def upsert_scene_copy(self, source_id: str, share_id: str, source_name: str, name: str, graph: dict) -> int:
+        """The read-only copy of a scene another site shares: updated when it is here, else added (switched on). Returns its id."""
+        with self._lock:
+            row = self._conn.execute("SELECT id FROM scenes WHERE source_id = ? AND share_id = ?", (source_id, share_id)).fetchone()
+            if row:
+                self._conn.execute("UPDATE scenes SET name = ?, graph = ?, source_name = ? WHERE id = ?",
+                                   (name, json.dumps(graph), source_name, row["id"]))
+                scene_id = row["id"]
+            else:
+                scene_id = self._conn.execute(
+                    "INSERT INTO scenes (name, enabled, graph, shared, share_id, source_id, source_name, position) "
+                    "VALUES (?, 1, ?, 0, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM scenes))",
+                    (name, json.dumps(graph), share_id, source_id, source_name)).lastrowid
+            self._conn.commit()
+        return scene_id
+
+    def delete_scene_copy(self, source_id: str, share_id: str) -> bool:
+        with self._lock:
+            deleted = self._conn.execute("DELETE FROM scenes WHERE source_id = ? AND share_id = ?", (source_id, share_id)).rowcount
+            self._conn.commit()
+        return bool(deleted)
 
     def order_scenes(self, ids: list):
         """Put the scenes with these ids in this order, ahead of the others (which keep their order)."""
@@ -478,6 +510,12 @@ class StatsDB:
         if "position" not in cols:      # the order of the scenes of the user; the scenes made so far keep the order of their ids
             self._conn.execute("ALTER TABLE scenes ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
             self._conn.execute("UPDATE scenes SET position = id")
+        # sharing in the circle: `shared` publishes a scene of the user under `share_id`; a copy of another site's scene has
+        # `source_id` (that site) and `source_name`, and the author's scene id as `share_id`
+        for column, ddl in (("shared", "INTEGER NOT NULL DEFAULT 0"), ("share_id", "TEXT"), ("source_id", "TEXT"), ("source_name", "TEXT")):
+            if column not in cols:
+                self._conn.execute(f"ALTER TABLE scenes ADD COLUMN {column} {ddl}")
+        self._conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_scenes_source ON scenes (source_id, share_id) WHERE source_id IS NOT NULL")
 
     def _migrate_matches_winner(self):
         """CREATE TABLE IF NOT EXISTS matches doesn't add columns to an
