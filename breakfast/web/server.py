@@ -3287,6 +3287,13 @@ async def scene_audio_clients():
     return {"count": audio_client_count()}
 
 
+@app.get("/api/scenes/sounds")
+async def list_scene_sounds():
+    """The sound library alone, without scenes: `{sounds: [{name, size, used_by}]}`, `used_by` the names of the scenes that play
+    the file. Empty without a sound directory."""
+    return {"sounds": scene_sounds.overview(_audio_engine, _scene_list())}
+
+
 @app.post("/api/scenes/sounds/upload")
 async def upload_scene_sound(request: Request, name: str = Query(...)):
     """Upload an mp3 into the sound library; the file is the request body."""

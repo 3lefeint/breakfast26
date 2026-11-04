@@ -1068,6 +1068,21 @@ class TestRoutes:
         scene = next(s for s in c.get("/api/scenes").json()["scenes"] if not s["default"])
         assert scene["graph"] == {"nodes": [], "edges": []}
 
+    def test_the_library_is_listed_without_the_scenes(self, client):
+        c, *_ = client
+        assert c.get("/api/scenes/sounds").json() == {"sounds": []}
+        c.post("/api/scenes/sounds/upload?name=boom.mp3", content=MP3)
+        c.post("/api/scenes/sounds/upload?name=aaa.mp3", content=MP3)
+        c.post("/api/scenes", json={"name": "Ton", "graph": graph(trigger("x01.bust"), sound("s", "boom.mp3"), edges=[("t", "s")])})
+        listed = c.get("/api/scenes/sounds").json()
+        assert [s["name"] for s in listed["sounds"]] == ["aaa.mp3", "boom.mp3"]
+        assert listed["sounds"][1] == {"name": "boom.mp3", "size": len(MP3), "used_by": ["Ton"]} and listed["sounds"][0]["used_by"] == []
+        assert listed["sounds"] == c.get("/api/scenes").json()["sounds"] and set(listed) == {"sounds"}
+
+    def test_without_a_sound_directory_the_library_is_empty(self):
+        server.wire(None, None)
+        assert TestClient(server.app).get("/api/scenes/sounds").json() == {"sounds": []}
+
     def test_upload_list_and_delete_a_sound(self, client):
         c, *_ = client
         assert c.post("/api/scenes/sounds/upload?name=boom.mp3", content=MP3).json() == {"ok": True, "file": "boom.mp3"}

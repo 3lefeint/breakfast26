@@ -252,7 +252,8 @@ An action is `{"type": "action", "kind": "<kind>", ...}`.
 ### The sound library and the voice pack
 
 - The **sound library** holds the files your own sounds are played from (mp3 files in the folder `scenes/` of the sound
-  directory). A `sound` step names a file of it. Upload files with `POST /api/scenes/sounds/upload`.
+  directory). A `sound` step names a file of it. List the files with `GET /api/scenes/sounds`, upload them with
+  `POST /api/scenes/sounds/upload`.
 - The **voice pack** holds the sounds of the caller, by key (`life_lost`, `bull`, a number, ...). A `call` step plays a key of
   it; whether there is a sound for it depends on the voice pack that is set up. The keys the standard scenes use are in
   `call_keys` of `GET /api/scenes`.
@@ -334,6 +335,7 @@ from it.
 
 | Method | Path | Does |
 |---|---|---|
+| `GET` | `/api/scenes/sounds` | The sound library alone, without scenes: `{"sounds": [{"name": "boom.mp3", "size": 31420, "used_by": ["Cheer"]}]}`, sorted by name; `used_by` are the names of the scenes that play the file. These are the names a `sound` step can use. The same list is `sounds` in `GET /api/scenes`. |
 | `POST` | `/api/scenes/sounds/upload?name=x.mp3` | Add an mp3 to the library. The request body is the file (up to 3 MB); the name is letters, digits and `. _ + -` and ends in `.mp3`. |
 | `POST` | `/api/scenes/sounds/{name}/rename` | Body `{"name": "new.mp3"}`: rename a file; the sound steps of the scenes that play it follow. |
 | `DELETE` | `/api/scenes/sounds/{name}` | Delete a file; a scene that plays it plays nothing for that step. |
