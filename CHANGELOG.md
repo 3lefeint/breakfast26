@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- SCENES.md is the technical reference for scenes: every node with its fields and limits, the triggers with their facts, the REST routes and examples, so that scenes can be made through the API. The Swagger UI of the API is served at `/docs`, with the routes in groups (Scenes, the games, Players, Stats, Voice pack, Circle, Admin, ...), and the body of a scene is described in `/openapi.json`.
+
 ## [1.15.0] - 2026-11-04
 
 ### Added

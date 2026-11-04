@@ -295,6 +295,8 @@ of a match and of a leg, the turn start with the checkout call, the turn total w
 Open one to see what the game does at that moment, change it, and **Back to the original** takes your change away. A sound
 of a scene of your own that is set to replace the call keeps the standard scenes of its moment from running.
 
+Scenes can also be made through the REST API of Breakfast. [SCENES.md](SCENES.md) is the technical reference for it: every node with its fields and limits, the triggers with their facts, the routes, and examples. The interactive API description is at `/docs` (Swagger UI) and `/openapi.json` of a running Breakfast.
+
 ### Online play
 
 Play one Elimination or X01 match together with players at other locations, each on their own Breakfast
