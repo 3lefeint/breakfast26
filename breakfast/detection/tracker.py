@@ -186,7 +186,7 @@ class BoardTracker:
         point from a right one (the three wrong darts of the first 501 at the board were all seen by two agreeing cameras). Stored
         with the throw; `uncertain` marks it on the TV view for a tap to confirm."""
         all_cams = len(self.model.cams)
-        uncertain = (result["field"] != "0" and result["margin"] < self.s.uncertain_margin_mm) or result["sigma"] > self.s.uncertain_sigma \
+        uncertain = result["margin"] < self.s.uncertain_margin_mm or result["sigma"] > self.s.uncertain_sigma \
             or result["cams"] < all_cams or result["agree"] < result["cams"]
         return {"margin": round(result["margin"], 1), "sigma": round(result["sigma"], 2), "cams": result["cams"], "agree": result["agree"],
                 "uncertain": bool(uncertain)}

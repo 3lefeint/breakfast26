@@ -204,6 +204,15 @@ def test_a_dart_next_to_a_wire_is_marked_uncertain_and_one_in_the_middle_is_not(
         assert dart.throw["detection"]["uncertain"] is uncertain, dart.throw["detection"]
 
 
+def test_a_dart_just_off_the_board_is_marked_uncertain_and_one_further_off_is_not():
+    for point, uncertain in (((0, 171.0), True), ((-170, 60), False)):       # 1 mm outside the double, 10 mm outside it and next to a wire (the wires do not count out there)
+        tr = BoardTracker(model(), Settings())
+        events, t = run(tr, [scene() for _ in range(20)])
+        events, t = run(tr, [scene([point]) for _ in range(14)], start=t)
+        dart = [e for e in events if e.kind == "dart"][0]
+        assert dart.throw["segment"]["multiplier"] == 0 and dart.throw["detection"]["uncertain"] is uncertain, dart.throw["detection"]
+
+
 def test_the_calibration_reports_its_progress():
     from breakfast.detection import calibration
     m = model()
