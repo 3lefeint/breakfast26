@@ -28,3 +28,21 @@ Use:
 
 `tools/detection_deploy.sh host-files` copies these files to the board host (it installs nothing). The fall-back is a command on the host: the
 container of Breakfast cannot reach systemd, so who switches is whoever has a shell there (with the polkit rule: the board host user, no password).
+
+## In the installed Breakfast (no separate stack)
+
+The stack above is a test stack with its own data. For the Breakfast that is installed on the board host (the checkout with
+`docker-compose.yml`) the detection is a setting of that Breakfast:
+
+| file | goes to | what it does |
+|------|---------|--------------|
+| `docker-compose.override.yml` | next to `docker-compose.yml` of the checkout | builds the image with the detection and maps the cameras (`/dev/autodarts-cam0` to `2`, the links of the udev rule Autodarts needs, so the numbers of `/dev/videoN` do not matter), the group `video` and the USB bus (a Stream Deck on the host) |
+| `breakfast-mode.sh` | `/usr/local/bin/` | `own`: stop Autodarts, `[cameras] enabled = true`, restart Breakfast; `autodarts`: the other way round; `status` |
+
+Switch (as the host user, with the polkit rule above; refuses while a match is running, `--force` overrides):
+
+    breakfast-mode.sh own
+    breakfast-mode.sh autodarts
+
+The stats.db and the rest of the config stay as they are, only `enabled` of `[cameras]` changes (the section is added the first time). Rollout steps:
+copy the two files, build the image with the code of this branch (`docker compose up -d --build`), then `breakfast-mode.sh own`.

@@ -1,0 +1,24 @@
+# Puts the own dart detection into the Breakfast that is installed on the board host (the checkout with docker-compose.yml).
+# Copy it next to docker-compose.yml under this name: `docker compose` reads it by itself, and the updater, which runs the same
+# command in that folder, keeps it. It is not tracked in the checkout, so a release does not touch it.
+#
+# The cameras are the stable names of the udev rule that Autodarts already needs (/dev/autodarts-cam0 to 2, one per USB port), so
+# a changed /dev/videoN after a boot or a new plug does not matter and the container needs no re-creating. Docker follows the links.
+# The container starts only while these three devices exist. The ACL that lets the host user open a Stream Deck exists while that user is
+# logged in at the host; without it a udev rule for vendor 0fd9 (group plugdev, mode 0660) and `group_add: "46"` are needed.
+#
+# `[cameras] enabled` in data/config.toml says whether Breakfast uses them; breakfast-mode.sh switches that (and Autodarts).
+services:
+  breakfast:
+    devices:
+      - /dev/autodarts-cam0:/dev/cam0
+      - /dev/autodarts-cam1:/dev/cam1
+      - /dev/autodarts-cam2:/dev/cam2
+    group_add:
+      - "44"              # the group `video` of the host: the container runs as the user of the checkout, the camera nodes belong to that group
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb       # a Stream Deck on the host: the real nodes keep their ACL (a `devices:` entry loses it, the container is not root)
+    device_cgroup_rules:
+      - 'c 189:* rmw'                   # USB devices, also one that is plugged in later
+    ports:
+      - "8770:8770"       # diagnostics page of the detection (calibration, live pictures)
