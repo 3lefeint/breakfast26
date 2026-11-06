@@ -86,6 +86,8 @@ class Worker:
             self._check_drift(ev.after)
         if ev.throw is not None:
             ev.throw["detection"]["bundle"] = f"{entry['n']:04d}-{ev.kind}"       # which stored pictures belong to this dart
+            if ev.kind == "dart":
+                self._log_dart(ev)
         if self.clips:
             self.clips.note_event(time.monotonic(), {k: entry[k] for k in ("kind", "count", "field")})
         name = names.get(ev.kind)
@@ -150,6 +152,18 @@ class Worker:
         self.note("The empty board is the reference picture of the drift check now.")
         return True
 
+    def _log_dart(self, ev):
+        """One row per counted dart in `darts.jsonl` (kept for good, unlike the pictures): what was detected and how sure. A dart that is
+        never corrected is in here and not in `labels.jsonl`; together they say how many darts nobody looked at."""
+        row = {"t": datetime.now().isoformat(timespec="seconds"), "session": self.session.name, "count": ev.count,
+               "field": ev.throw["segment"]["name"], "at": ev.throw.get("coords"), "detection": ev.throw["detection"]}
+        try:
+            self.base.mkdir(parents=True, exist_ok=True)
+            with open(self.base / "darts.jsonl", "a") as f:
+                f.write(json.dumps(row, default=str) + "\n")
+        except OSError as e:
+            log.warning("dart not logged: %s", e)
+
     def _save_bundle(self, ev, entry):
         try:
             d = self.session / f"{entry['n']:04d}-{ev.kind}"
@@ -177,12 +191,17 @@ class Worker:
         detected field and the pictures it came from, a free label for measuring the detection. A confirmation clears the
         uncertain mark and sends the state again."""
         throws = self.tracker.throws
-        if not 0 <= index < len(throws):
+        if index == len(throws) and field and not confirm:      # a dart the detection never counted, entered by hand: a label of its own
+            th = None
+        elif not 0 <= index < len(throws):
             return False
-        th = throws[index]
-        row = {"t": datetime.now().isoformat(timespec="seconds"), "index": index, "detected": th["segment"]["name"],
-               "corrected": field, "confirmed": bool(confirm), "detection": th.get("detection"),
-               "detected_at": th.get("coords")}
+        else:
+            th = throws[index]
+        row = {"t": datetime.now().isoformat(timespec="seconds"), "index": index, "detected": th["segment"]["name"] if th else "",
+               "corrected": field, "confirmed": bool(confirm), "detection": th.get("detection") if th else None,
+               "detected_at": th.get("coords") if th else None}
+        if th is None:
+            row["unseen"] = True
         if point:
             row["corrected_at"] = point          # where the player tapped on the board, board units: the detection error in mm
         try:
@@ -191,7 +210,8 @@ class Worker:
                 f.write(json.dumps(row) + "\n")
         except OSError as e:
             log.warning("label not written: %s", e)
-        self.note(f"Dart {index + 1}: detected {row['detected']}, " + ("confirmed" if confirm else f"corrected to {field}"))
+        self.note(f"Dart {index + 1}: " + (f"not counted, entered as {field}" if th is None else
+                  f"detected {row['detected']}, " + ("confirmed" if confirm else f"corrected to {field}")))
         if confirm:
             th["detection"]["uncertain"] = False
             self.out.put(state_message(self.tracker, "Dart confirmed"))
@@ -444,7 +464,7 @@ def serve(worker, port):
             elif path == "/api/settings":
                 self._send(200, json.dumps(tuning.describe(worker.settings)).encode(), "application/json")
             elif path == "/api/labels":
-                self._send(200, json.dumps(labels.summary_of(worker.base / "labels.jsonl")).encode(), "application/json")
+                self._send(200, json.dumps(labels.summary_of(worker.base / "labels.jsonl", worker.base / "darts.jsonl")).encode(), "application/json")
             elif path == "/api/model":
                 self._send(200, json.dumps(worker.adjustment()).encode(), "application/json")
             elif path.startswith("/frame/") and path.endswith(".jpg"):
