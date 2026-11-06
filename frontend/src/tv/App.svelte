@@ -152,8 +152,8 @@
   let boardStatusColor = $derived(BOARD_STATUS_COLOR[game.board_status] || 'grey');
   // 'grey' (no status yet, or an unrecognized one) keeps the header's
   // default subtle accent glow instead of claiming a color we're not
-  // actually sure of.
-  let headerGlow = $derived(boardStatusColor === 'grey' ? null : boardStatusColor);
+  // actually sure of. Own dart detection: a blocked board (something in the way) glows yellow.
+  let headerGlow = $derived(cameras === 'blocked' ? 'yellow' : boardStatusColor === 'grey' ? null : boardStatusColor);
 </script>
 
 <svelte:window onpointerdown={() => $locked && primeAutoplay()} />
