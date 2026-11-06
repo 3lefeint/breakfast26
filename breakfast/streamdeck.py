@@ -33,7 +33,11 @@ ACTIONS = {
     "undo": "Undo",
     "next_player": "Next Player",
     "next_game": "Next Game",
+    "cancel_game": "Cancel Game",
+    "fun_mode": "Fun Mode",
 }
+SOUND_PREFIX = "sound:"
+SOUND_NAME = re.compile(r"^\w[\w .\-()]{0,98}\.(mp3|wav|ogg|m4a|flac|aac)$", re.IGNORECASE)
 
 STATUS_COLORS = {
     "green": "#1faa59",
@@ -54,7 +58,7 @@ NAV_COLOR = "#20232a"
 MAX_ACTIONS = 32
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_TIMEOUT_SECONDS = 5
-SYMBOLS = ("reset", "start", "undo", "next_player", "next_game", "folder", "back", "page_prev", "page_next")   # drawn by Breakfast, no file needed
+SYMBOLS = ("reset", "start", "undo", "next_player", "next_game", "cancel", "sound", "fun", "folder", "back", "page_prev", "page_next")   # drawn by Breakfast, no file needed
 SYMBOL_PREFIX = "symbol:"
 SHOW_VALUES = ("player", "remaining", "lives", "darts", "round")   # what a display key shows of the game in play
 FLASH_SECONDS = 3
@@ -110,8 +114,8 @@ def _valid_hex(value):
 def clean_actions(actions):
     """The custom actions as stored: a list of `{id, name, kind, method, target, body}`.
 
-    `kind` is `route` (a route of Breakfast, `target` is a path under /api/) or `url` (any http(s) address, with an
-    optional `body`). An action without an id gets one. Raises ValueError with a message for the UI."""
+    `kind` is `route` (a route of Breakfast, `target` is a path under /api/) or `url` (any http(s) address), both with an
+    optional `body`. An action without an id gets one. Raises ValueError with a message for the UI."""
     if not isinstance(actions, list):
         raise ValueError("actions must be a list")
     if len(actions) > MAX_ACTIONS:
@@ -142,7 +146,7 @@ def clean_actions(actions):
             raise ValueError("bad or duplicate action id")
         seen.add(action_id)
         out.append({"id": action_id, "name": name, "kind": kind, "method": method, "target": target,
-                    "body": body if kind == "url" else ""})
+                    "body": body})
     return out
 
 
@@ -169,7 +173,8 @@ def clean_keys(keys, custom_ids=(), folder_ids=()):
             raise ValueError(f"unknown value to show: {show}")
         if action:
             is_folder = action.startswith(FOLDER_PREFIX) and action[len(FOLDER_PREFIX):] in folder_ids
-            if action not in ACTIONS and action not in custom_ids and not is_folder:
+            is_sound = action.startswith(SOUND_PREFIX) and SOUND_NAME.match(action[len(SOUND_PREFIX):]) is not None
+            if action not in ACTIONS and action not in custom_ids and not is_folder and not is_sound:
                 raise ValueError(f"unknown action: {action}")
         design = clean_design(entry.get("design"))
         if not action and not show and design is None and not entry.get("effect"):
@@ -534,6 +539,19 @@ def _draw_symbol(draw, name, area, ink):
         for shift in (-0.5, 0.5):
             x = cx + shift * r
             draw.polygon([(x - r * 0.55, cy - r * 0.85), (x - r * 0.55, cy + r * 0.85), (x + r * 0.55, cy)], fill=ink)
+    elif name == "cancel":
+        draw.line([(cx - r * 0.85, cy - r * 0.85), (cx + r * 0.85, cy + r * 0.85)], fill=ink, width=lw)
+        draw.line([(cx - r * 0.85, cy + r * 0.85), (cx + r * 0.85, cy - r * 0.85)], fill=ink, width=lw)
+    elif name == "sound":
+        draw.polygon([(cx - r * 1.0, cy - r * 0.35), (cx - r * 0.45, cy - r * 0.35), (cx + r * 0.15, cy - r * 0.9),
+                      (cx + r * 0.15, cy + r * 0.9), (cx - r * 0.45, cy + r * 0.35), (cx - r * 1.0, cy + r * 0.35)], fill=ink)
+        for k in (0.55, 1.0):
+            draw.arc((cx + r * 0.15 - r * k * 0.5, cy - r * k * 0.8, cx + r * 0.15 + r * k * 1.0, cy + r * k * 0.8), start=-50, end=50, fill=ink, width=max(2, lw // 2))
+    elif name == "fun":
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=ink, width=lw)
+        for dx in (-0.4, 0.4):
+            draw.ellipse((cx + r * dx - r * 0.13, cy - r * 0.4 - r * 0.13, cx + r * dx + r * 0.13, cy - r * 0.4 + r * 0.13), fill=ink)
+        draw.arc((cx - r * 0.55, cy - r * 0.35, cx + r * 0.55, cy + r * 0.6), start=20, end=160, fill=ink, width=max(2, lw // 2))
     elif name == "folder":
         draw.rectangle((cx - r * 1.1, cy - r * 0.6, cx + r * 1.1, cy + r * 0.8), fill=ink)
         draw.rectangle((cx - r * 1.1, cy - r * 0.95, cx - r * 0.1, cy - r * 0.5), fill=ink)
@@ -617,7 +635,7 @@ class StreamDeckService:
     the seams the tests replace."""
 
     def __init__(self, config_path, run_control, enumerate_decks=None, to_native=None, reconnect_seconds=RECONNECT_SECONDS,
-                 web_base=lambda: "http://127.0.0.1:8080", request=None, values=None):
+                 web_base=lambda: "http://127.0.0.1:8080", request=None, values=None, flags=None, sounds=None):
         self.config_path = config_path
         self.run_control = run_control
         self._enumerate = enumerate_decks or _enumerate_decks
@@ -625,6 +643,8 @@ class StreamDeckService:
         self._reconnect = reconnect_seconds
         self._web_base = web_base           # where the routes of Breakfast itself answer
         self._values = values or (lambda: None)   # what a display key can show of the game in play
+        self._flags = flags or (lambda: {})       # switches a key shows the state of, e.g. {"fun_mode": True}
+        self._sounds = sounds or (lambda: [])     # the sound files a key can play
         self._vals = None                   # the last result of it, read outside the lock
         self._shown = {}                    # key -> the value text the key shows now
         self._flash_until = 0
@@ -875,6 +895,12 @@ class StreamDeckService:
             self._folder, self._page = action[len(FOLDER_PREFIX):], 0
         self._draw()
 
+    def _sound_list(self):
+        try:
+            return [n for n in self._sounds() if SOUND_NAME.match(n)]
+        except Exception:
+            return []
+
     def go_home(self):
         """Show the first page of the main layout again."""
         with self._lock:
@@ -892,8 +918,21 @@ class StreamDeckService:
         image = self._render(entry, size, progress, now)
         self._guard(lambda: deck.set_key_image(index, self._to_native(deck, image)))
 
+    def on_flags_change(self):
+        """A switch a key shows has changed (the fun mode): draw the keys again."""
+        with self._lock:
+            if self._deck is not None:
+                self._draw()
+
     def _effective(self, entry):
-        """The key as it works now: while the board is stopped a Reset Board key becomes a Start Board key."""
+        """The key as it works now: while the board is stopped a Reset Board key becomes a Start Board key, and a Fun Mode
+        key says whether the mode is on."""
+        if entry["action"] == "fun_mode" and entry["label"] == ACTIONS["fun_mode"]:
+            try:
+                on = bool(self._flags().get("fun_mode"))
+            except Exception:
+                on = False
+            return {**entry, "label": ACTIONS["fun_mode"] + (" on" if on else " off")}
         if entry["action"] == "reset_board" and board_stopped(self.board_status):
             changes = {"action": "start_board"}
             if entry["label"] == ACTIONS["reset_board"]:
@@ -1134,7 +1173,7 @@ class StreamDeckService:
     def _run_action(self, key, entry):
         log.info("Stream Deck key %d: %s", key, entry["action"])
         try:
-            if entry["action"] in ACTIONS:
+            if entry["action"] in ACTIONS or entry["action"].startswith(SOUND_PREFIX):
                 result = self.run_control(entry["action"])
                 if isinstance(result, dict) and result.get("error"):
                     log.warning("Stream Deck key %d: %s", key, result["error"])
@@ -1197,6 +1236,7 @@ class StreamDeckService:
                 "colors": STATUS_COLORS,
                 "actions": [{"id": k, "label": v, "custom": False} for k, v in ACTIONS.items()]
                            + [{"id": a["id"], "label": a["name"], "custom": True} for a in self.actions()],
+                "sounds": self._sound_list(),
                 "folder_actions": [{"id": FOLDER_PREFIX + f["id"], "label": f["name"]} for f in self.folders()],
                 "custom_actions": self.actions(),
                 "images": self.images(),

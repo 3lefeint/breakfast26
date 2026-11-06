@@ -625,7 +625,7 @@ class TestRoutes:
 class TestRunControl:
     def test_every_stream_deck_action_is_a_control(self):
         from breakfast.web import server
-        assert set(sd.ACTIONS) == set(server._CONTROLS)
+        assert set(sd.ACTIONS) == set(server._CONTROLS) | set(server._LOCAL_CONTROLS) | {"fun_mode"}
 
     def test_the_cloud_client_runs_the_action(self, monkeypatch):
         from breakfast.web import server
@@ -854,3 +854,54 @@ class TestFolders:
         assert snap["folders"][0]["name"] == "Fix" and snap["folder_actions"] == [{"id": "folder:f1", "label": "Fix"}]
         assert service.preview(1, "f1", 0)[:4] == b"\x89PNG" and service.preview(2, "f1", 1)[:4] == b"\x89PNG"
         assert service.preview(2, "f1", 0) is None
+
+
+class TestNewActions:
+    @pytest.fixture
+    def server(self, tmp_path):
+        from types import SimpleNamespace
+        from breakfast.web import server
+        path = tmp_path / "config.toml"
+        path.write_text('mode = "direct"\n')
+        played = []
+        folder = tmp_path / "sounds"
+        folder.mkdir()
+        (folder / "horn.mp3").write_bytes(b"x")
+        engine = SimpleNamespace(play_file=played.append, dirs=[str(folder)])
+        scenes = SimpleNamespace(fun=False, scenes=lambda: [])
+        server.wire(GameState(), None, config_path=str(path), scene_engine=scenes, audio_engine=engine)
+        yield server, scenes, played, path
+        server.wire(None, None)
+
+    def test_the_fun_mode_key_switches_the_mode_and_keeps_the_setting(self, server):
+        srv, scenes, _, path = server
+        assert srv.run_control("fun_mode") == {"ok": True, "fun": True}
+        assert scenes.fun is True and cfg_mod.load(path)["caller"]["fun"] is True
+        assert srv.run_control("fun_mode")["fun"] is False and cfg_mod.load(path)["caller"]["fun"] is False
+
+    def test_a_sound_key_plays_a_file_of_the_library_only(self, server, monkeypatch):
+        srv, _, played, _ = server
+        monkeypatch.setattr(srv.scene_sounds, "files", lambda audio: ["horn.mp3"])
+        assert srv.run_control("sound:horn.mp3") == {"ok": True} and played == ["horn.mp3"]
+        assert "error" in srv.run_control("sound:other.mp3") and played == ["horn.mp3"]
+
+    def test_the_picker_lists_routes_that_change_something_without_the_deck_itself(self, server):
+        routes = server[0]._action_routes()
+        assert {"path": "/api/control/undo", "method": "POST"} in routes
+        assert not [r for r in routes if r["path"].startswith("/api/streamdeck") or "{" in r["path"] or r["method"] == "GET"]
+
+    def test_sound_and_fun_keys_are_valid_and_show_the_state(self, service):
+        keys = sd.clean_keys([{"key": 0, "action": "sound:horn.mp3"}, {"key": 1, "action": "fun_mode"}])
+        assert keys[0]["action"] == "sound:horn.mp3"
+        for bad in ("sound:../x.mp3", "sound:x.txt", "sound:"):
+            with pytest.raises(ValueError):
+                sd.clean_keys([{"key": 0, "action": bad}])
+        state = {"fun_mode": True}
+        service._flags = lambda: state
+        assert service._effective(keys[1])["label"] == "Fun Mode on"
+        state["fun_mode"] = False
+        assert service._effective(keys[1])["label"] == "Fun Mode off"
+
+    def test_a_route_action_may_carry_a_body(self):
+        out = sd.clean_actions([{"name": "A", "kind": "route", "target": "/api/x", "body": "{\"a\": 1}"}])
+        assert out[0]["body"] == "{\"a\": 1}"
