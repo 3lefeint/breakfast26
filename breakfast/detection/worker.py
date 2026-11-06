@@ -69,6 +69,7 @@ class Worker:
         self.stop = threading.Event()
         self.feed_ms = 0.0              # moving average of the time one set of pictures takes in the tracker
         self.rate = 0.0                 # sets of pictures looked at per second
+        self._sent_status = None        # the tracker status Breakfast was told last
 
     # ------------------------------------------------------------------ events
 
@@ -390,6 +391,8 @@ class Worker:
             last = now
             for ev in self.tracker.feed(now, frames):
                 self.handle(ev)
+            if self.tracker.status != self._sent_status:
+                self._send_status()
             if self.clips:
                 self.clips.offer(now, frames, self.tracker.moving or self.tracker.status == "blocked", {"count": self.tracker.count, "status": self.tracker.status})
             took = (time.monotonic() - now) * 1000.0
@@ -398,12 +401,19 @@ class Worker:
             if time.monotonic() - t0 >= 2.0:
                 self.rate, count, t0 = count / (time.monotonic() - t0), 0, time.monotonic()
 
+    def _send_status(self):
+        """The state of the cameras and the tracker for Breakfast; every 2 seconds, and at once when the tracker's status changes
+        (so a blocked board shows on the TV view without delay). Returns whether the cameras are fine."""
+        ok = all(c["error"] is None and c["age_s"] is not None and c["age_s"] < 2.0 for c in self.cams.status())
+        self._sent_status = self.tracker.status
+        self.out.put({"type": "worker", "ok": ok, "status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count,
+                      "drift": (self.drift or {}).get("level"),
+                      "cameras": [{"error": c["error"], "fps": c["fps"]} for c in self.cams.status()]})
+        return ok
+
     def _heartbeat(self):
         while not self.stop.is_set():
-            ok = all(c["error"] is None and c["age_s"] is not None and c["age_s"] < 2.0 for c in self.cams.status())
-            self.out.put({"type": "worker", "ok": ok, "status": board_status(self.tracker.status, self.cams.status()), "count": self.tracker.count,
-                          "drift": (self.drift or {}).get("level"),
-                          "cameras": [{"error": c["error"], "fps": c["fps"]} for c in self.cams.status()]})
+            ok = self._send_status()
             if ok:
                 self.out.put(state_message(self.tracker, "Heartbeat"))
             self.stop.wait(2.0)
