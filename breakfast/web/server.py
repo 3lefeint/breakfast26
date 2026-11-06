@@ -625,10 +625,14 @@ _CONTROLS = {
 
 def _local_game():
     """The handlers (undo, next turn, cancel) of the game in play that Breakfast runs itself, None when there is none."""
-    for ctrl, handlers in ((_x01_ctrl, (x01_undo, x01_next, x01_stop)), (_elim_ctrl, (elim_undo, elim_next, elim_stop)),
-                           (_killer_ctrl, (killer_undo, killer_next, killer_stop)), (_tb_ctrl, (tb_undo, tb_next, tb_stop)),
-                           (_ft_ctrl, (ft_undo, ft_next, ft_stop)), (_co_ctrl, (co_undo, co_next, co_stop)),
-                           (_bb_ctrl, (bb_undo, bb_next, bb_stop)), (_wu_ctrl, (wu_undo, wu_next, wu_stop))):
+    for ctrl, handlers in ((_x01_ctrl, (x01_undo, x01_next, x01_stop, x01_correct_dart)),
+                           (_elim_ctrl, (elim_undo, elim_next, elim_stop, elim_correct_dart)),
+                           (_killer_ctrl, (killer_undo, killer_next, killer_stop, killer_correct_dart)),
+                           (_tb_ctrl, (tb_undo, tb_next, tb_stop, tb_correct_dart)),
+                           (_ft_ctrl, (ft_undo, ft_next, ft_stop, ft_correct_dart)),
+                           (_co_ctrl, (co_undo, co_next, co_stop, co_correct_dart)),
+                           (_bb_ctrl, (bb_undo, bb_next, bb_stop, bb_correct_dart)),
+                           (_wu_ctrl, (wu_undo, wu_next, wu_stop, wu_correct_dart))):
         game = ctrl.game if ctrl else None
         if game and getattr(game, "state", None) == "playing":
             return handlers
@@ -660,6 +664,22 @@ def _toggle_fun_mode() -> dict:
     return {"ok": True, "fun": new}
 
 
+_DART_FIELD = re.compile(r"0|25|50|[SDT](?:[1-9]|1\d|20)")
+
+
+def _correct_dart(action: str) -> dict:
+    """`correct_dart:<1-3>:<field>`: set a dart of the turn in play to a field, at the center of the field, as the
+    correction of the TV view does for a dart set without a position."""
+    parts = action.split(":")
+    if len(parts) != 3 or parts[1] not in ("1", "2", "3") or not _DART_FIELD.fullmatch(parts[2]):
+        return {"error": "bad dart correction"}
+    handlers = _local_game()
+    if not handlers:
+        return {"error": "no game in play"}
+    _run_in_thread(_run_local_with(handlers[3], CorrectDartBody(dart=int(parts[1]), field=parts[2]), action))
+    return {"ok": True}
+
+
 def _play_library_sound(name: str) -> dict:
     """Play a sound of the library (the files of Scenes → Sounds) on the connected audio pages."""
     if not _audio_engine or name not in scene_sounds.files(_audio_engine):
@@ -681,11 +701,21 @@ def _action_routes() -> list:
     return [{"path": p, "method": m} for p, m in sorted(found)]
 
 
+def _run_local_with(handler, body, what):
+    def run():
+        result = asyncio.run(handler(body))
+        if isinstance(result, dict) and result.get("error"):
+            log.warning("%s: %s", what, result["error"])
+    return run
+
+
 def run_control(action: str) -> dict:
     """Run a board control by name: the routes below and the Stream Deck keys both come here. A game that Breakfast
     runs itself takes undo, next player and cancel; otherwise they go to the board's match."""
     if action == "fun_mode":
         return _toggle_fun_mode()
+    if action.startswith("correct_dart:"):
+        return _correct_dart(action)
     if action.startswith("sound:"):
         return _play_library_sound(action[len("sound:"):])
     if action in _LOCAL_CONTROLS:
@@ -3217,6 +3247,7 @@ _API_GROUPS = [
     ("Online", "Online matches through the relay.", ("/api/online",)),
     ("Control and state", "The state of the game and the board, control actions and the settings in `config.toml`.",
      ("/api/control", "/api/state", "/api/health", "/api/config", "/api/board-address", "/api/web-port", "/api/delete-guard")),
+    ("Stream Deck", "The keys of a Stream Deck at the board: layout, pictures, previews.", ("/api/streamdeck",)),
     ("Admin", "The admin area, the dev tools, usage reports and updates.", ("/api/admin", "/api/dev", "/api/telemetry", "/api/updates")),
     ("UI", "Appearance, language and the pages themselves.", ("/api/appearance", "/api/language", "/api/joke", "/api/changelog", "/audio", "/")),
 ]

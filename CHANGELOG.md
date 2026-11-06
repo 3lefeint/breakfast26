@@ -14,6 +14,7 @@
 - Stream Deck effects: a key can pulse, blink or chase a colored frame (color, speed, thickness), and status rules put an effect on every key while the board has a status, for example a red pulsing frame while it is stopped; a key can ignore the rules (`effect`, `ignore_override` of a key, `[[streamdeck.overrides]]`). (#106)
 - Stream Deck folders and pages: a key can open a folder with its own keys and pages; the keys for going back and paging are set automatically, and a layout with more than one page gets page keys (`folders`, `page` of a key, `[[streamdeck.folders]]`). (#106)
 - Stream Deck actions: Cancel Game, Fun Mode (on or off, the key shows which), and Play a sound for each sound of the library; custom actions pick their route from a list of the routes of Breakfast and can send a body to a route. (#106)
+- Stream Deck: three keys correct dart 1, 2 or 3 of the turn in play in two steps, miss, single, double or triple and then the number, with page keys on small devices; the dart is set to the center of its field. (#106)
 
 ### Changed
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)

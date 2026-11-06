@@ -55,6 +55,9 @@ MAX_FOLDERS = 16
 FOLDER_PREFIX = "folder:"
 NAV_BACK, NAV_PREV, NAV_NEXT = "nav:back", "nav:prev", "nav:next"
 NAV_COLOR = "#20232a"
+CORRECT_PREFIX = "correct_dart:"      # a key that opens the correction of a dart: correct_dart:1 to correct_dart:3
+VIRTUAL = "@"                        # folder ids that begin with it are made on the fly (the dart correction)
+RINGS = (("0", "Miss"), ("S", "Single"), ("D", "Double"), ("T", "Triple"))
 MAX_ACTIONS = 32
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_TIMEOUT_SECONDS = 5
@@ -173,8 +176,9 @@ def clean_keys(keys, custom_ids=(), folder_ids=()):
             raise ValueError(f"unknown value to show: {show}")
         if action:
             is_folder = action.startswith(FOLDER_PREFIX) and action[len(FOLDER_PREFIX):] in folder_ids
+            is_correct = action in ("correct_dart:1", "correct_dart:2", "correct_dart:3")
             is_sound = action.startswith(SOUND_PREFIX) and SOUND_NAME.match(action[len(SOUND_PREFIX):]) is not None
-            if action not in ACTIONS and action not in custom_ids and not is_folder and not is_sound:
+            if action not in ACTIONS and action not in custom_ids and not is_folder and not is_sound and not is_correct:
                 raise ValueError(f"unknown action: {action}")
         design = clean_design(entry.get("design"))
         if not action and not show and design is None and not entry.get("effect"):
@@ -657,6 +661,7 @@ class StreamDeckService:
         self._error = None
         self._pictures = {}                 # file name -> (mtime, PIL image), the pictures of the keys
         self._cfg_stamp, self._cfg_cached = None, {}
+        self._virtual_pages = 1
         self._folder, self._page, self._trail = None, 0, []   # the folder and page in view on the device, and the way back
         self._effect_drawn = {}             # key -> what its effect looked like when it was drawn last
         self._holds = {}                    # key -> Event that cancels the hold of a key being held
@@ -855,6 +860,8 @@ class StreamDeckService:
         """The keys the device shows now, by position: those of the folder and page in view, and the keys that go back and
         page, which take the place of whatever the layout has there."""
         count = self._deck.key_count() if self._deck is not None else DEFAULT_ROWS * DEFAULT_COLS
+        if self._folder and self._folder.startswith(VIRTUAL):
+            return self._correction_view(count)
         folder = next((f for f in self.folders() if f["id"] == self._folder), None) if self._folder else None
         if self._folder and folder is None:
             self._folder, self._page, self._trail = None, 0, []
@@ -882,14 +889,71 @@ class StreamDeckService:
         for index in range(deck.key_count()):
             self._draw_key(index, view.get(index))
 
+    def _correction_items(self):
+        """The keys of the dart correction in view: first the kind of hit, then the number of the field."""
+        parts = self._folder[len(VIRTUAL):].split(":")      # ["1"] or ["1", "T"]
+        dart = parts[0]
+        if len(parts) == 1:
+            return [{"action": f"{CORRECT_PREFIX}{dart}:{code}", "label": name, "color": "#000000", "image": "", "design": None}
+                    for code, name in RINGS]
+        ring = parts[1]
+        numbers = [str(n) for n in range(1, 21)] + ([] if ring == "T" else ["25"])
+        return [{"action": f"{CORRECT_PREFIX}{dart}:{ring}:{n}", "label": ("Bull" if n == "25" and ring == "D" else n),
+                 "color": "#000000", "image": "", "design": None} for n in numbers]
+
+    def _correction_view(self, count):
+        """The device while a dart is being corrected: Back at key 0, the choices after it and, when they do not fit, page keys."""
+        items = self._correction_items()
+        paged = len(items) > count - 1
+        capacity = max(1, count - 3 if paged else count - 1)
+        pages = -(-len(items) // capacity)
+        self._page = min(self._page, pages - 1)
+        view = {}
+        for slot, item in enumerate(items[self._page * capacity:(self._page + 1) * capacity], start=1):
+            view[slot] = {"key": slot, "hold": 0, "show": "", **item}
+        view[0] = {"key": 0, "action": NAV_BACK, "label": "Back", "color": NAV_COLOR, "hold": 0, "image": SYMBOL_PREFIX + "back", "show": ""}
+        if paged and count > 3:
+            view[count - 2] = {"key": count - 2, "action": NAV_PREV, "label": "", "color": NAV_COLOR, "hold": 0,
+                               "image": SYMBOL_PREFIX + "page_prev", "show": ""}
+            view[count - 1] = {"key": count - 1, "action": NAV_NEXT, "label": f"{self._page + 1}/{pages}", "color": NAV_COLOR, "hold": 0,
+                               "image": SYMBOL_PREFIX + "page_next", "show": ""}
+        self._virtual_pages = pages
+        return view
+
+    def _correct(self, action):
+        """A choice of the dart correction: a ring opens the numbers, a number (or a miss) corrects the dart and goes back to
+        the key that opened the correction."""
+        _, dart, *rest = action.split(":")
+        if len(rest) == 1 and rest[0] in ("S", "D", "T"):
+            self._trail.append((self._folder, self._page))
+            self._folder, self._page = f"{VIRTUAL}{dart}:{rest[0]}", 0
+            self._draw()
+            return
+        if len(rest) == 2:
+            ring, number = rest
+            field = number if number == "25" and ring == "S" else "50" if number == "25" else f"{ring}{number}"
+        else:
+            field = "0"
+        while self._folder and self._folder.startswith(VIRTUAL):
+            self._folder, self._page = self._trail.pop() if self._trail else (None, 0)
+        self._draw()
+        self._run_action(-1, {"action": f"correct_dart:{dart}:{field}"})
+
     def _navigate(self, action):
         """Go back, to the next or previous page, or into a folder; then draw the keys of the new view."""
         if action == NAV_BACK:
             self._folder, self._page = self._trail.pop() if self._trail else (None, 0)
         elif action in (NAV_NEXT, NAV_PREV):
-            folder = next((f for f in self.folders() if f["id"] == self._folder), None)
-            pages = page_count(folder["keys"] if folder else self.keys())
+            if self._folder and self._folder.startswith(VIRTUAL):
+                self._view_keys()
+                pages = self._virtual_pages
+            else:
+                folder = next((f for f in self.folders() if f["id"] == self._folder), None)
+                pages = page_count(folder["keys"] if folder else self.keys())
             self._page = (self._page + (1 if action == NAV_NEXT else -1)) % pages
+        elif action.startswith(CORRECT_PREFIX):
+            self._trail.append((self._folder, self._page))
+            self._folder, self._page = f"{VIRTUAL}{action[len(CORRECT_PREFIX):]}", 0
         else:
             self._trail.append((self._folder, self._page))
             self._folder, self._page = action[len(FOLDER_PREFIX):], 0
@@ -1143,6 +1207,12 @@ class StreamDeckService:
             if entry["action"] in (NAV_BACK, NAV_NEXT, NAV_PREV) or entry["action"].startswith(FOLDER_PREFIX):
                 self._navigate(entry["action"])
                 return
+            if entry["action"] in ("correct_dart:1", "correct_dart:2", "correct_dart:3"):
+                self._navigate(entry["action"])
+                return
+            if entry["action"].startswith(CORRECT_PREFIX):
+                self._correct(entry["action"])
+                return
             entry = self._effective(entry)
             if entry["hold"] > 0:
                 cancelled = self._holds[key] = threading.Event()
@@ -1173,7 +1243,7 @@ class StreamDeckService:
     def _run_action(self, key, entry):
         log.info("Stream Deck key %d: %s", key, entry["action"])
         try:
-            if entry["action"] in ACTIONS or entry["action"].startswith(SOUND_PREFIX):
+            if entry["action"] in ACTIONS or entry["action"].startswith((SOUND_PREFIX, CORRECT_PREFIX)):
                 result = self.run_control(entry["action"])
                 if isinstance(result, dict) and result.get("error"):
                     log.warning("Stream Deck key %d: %s", key, result["error"])
