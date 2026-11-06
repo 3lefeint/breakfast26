@@ -118,12 +118,22 @@ def test_tracker_ignores_a_hand_that_goes_away_again():
 def test_tracker_waits_while_a_hand_stays_in_the_picture():
     tr = BoardTracker(model(), Settings())
     events, t = run(tr, [scene() for _ in range(20)])
-    events, t = run(tr, [scene(hand=True) for _ in range(40)], start=t)          # a hand that holds still for two seconds
+    events, t = run(tr, [scene(hand=True) for _ in range(80)], start=t)          # a hand that holds still for four seconds
     assert events == [] and tr.count == 0 and tr.status == "blocked"
     events, t = run(tr, [scene() for _ in range(14)], start=t)
-    assert events == [] and tr.count == 0
+    assert [e.kind for e in events] == ["blocked"] and tr.count == 0 and tr.status == "ready"
+    assert events[0].info["seconds"] >= 3 and events[0].after
     events, t = run(tr, [scene([(0, 103)]) for _ in range(14)], start=t)
     assert [e.kind for e in events] == ["dart"]
+
+
+def test_a_short_block_is_not_logged_but_the_state_goes_back():
+    tr = BoardTracker(model(), Settings(block_log_s=60.0))
+    events, t = run(tr, [scene() for _ in range(20)])
+    events, t = run(tr, [scene(hand=True) for _ in range(80)], start=t)
+    assert tr.status == "blocked"
+    events, t = run(tr, [scene() for _ in range(14)], start=t)
+    assert events == [] and tr.status == "ready"
 
 
 def test_tracker_drops_a_counted_dart_that_is_not_there():

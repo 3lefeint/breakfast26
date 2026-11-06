@@ -886,6 +886,7 @@ export default {
   'Empty board = now': 'Board ist leer = jetzt',
   'Camera': 'Kamera',
   'Cameras': 'Kameras',
+  'Cameras blocked': 'Kameras blockiert',
   'Events': 'Ereignisse',
   'Notes': 'Hinweise',
   'Load': 'Last',

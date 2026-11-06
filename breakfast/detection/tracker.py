@@ -34,6 +34,7 @@ class Settings:
     new_body_ratio: float = 1.15    # ... unless the picture around it has this much more changed than when it was counted (real darts: 1.4 to 2.5)
     uncertain_margin_mm: float = 2.0    # a dart closer than this to a wire or ring is marked as uncertain ...
     uncertain_sigma: float = 1.6        # ... and so is one whose position the cameras only know to within this (mm)
+    block_log_s: float = 3.0        # a blocked board that lasts at least this long is logged as an event (when it ends)
     patience: int = 40              # looks (about 0.3 s apart) at a blocked board before the picture is taken as it is
     retry_s: float = 1.0            # when a change could not be explained, look again after this long
     recount: bool = True            # count a dart that the picture shows but the count missed (see `_recount`)
@@ -75,6 +76,8 @@ class BoardTracker:
         self._unclear = 0           # changes in a row that could not be explained
         self._missing = None        # [x_mm, y_mm, looks]: where the picture shows a dart that is not counted, and for how many looks
         self._blocked = 0           # looks in a row at a board that something is in the way of
+        self._block = None          # the block that is going on: {t0, looks, info, frames}
+        self._block_hit = False
         self.status = "starting"
         small = {c: cv2.resize(m, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST) > 0 for c, m in model.masks.items()}
         self._small_mask = small
@@ -99,6 +102,7 @@ class BoardTracker:
         """Take the next settled picture as the empty board again (and forget the darts)."""
         self.count, self.throws, self.sup0, self.ref, self.empty, self.empty_hp, self.ref_raw = 0, [], [], None, None, None, None
         self._missing = None
+        self._block = None
         self._handled = False
 
     # ------------------------------------------------------------------ main step
@@ -118,7 +122,21 @@ class BoardTracker:
             self._still_since = t
         if self._handled or t - self._still_since < self.s.settle_s or t < self._retry_at:
             return []
-        return self._settled(t, frames)
+        self._block_hit = False
+        events = self._settled(t, frames)
+        if self._block is not None and not self._block_hit:
+            events = self._end_block(t) + events
+        return events
+
+    def _end_block(self, t):
+        """The board is not blocked any more (or the picture was taken as it is): the state goes back, and a block that lasted
+        a while is logged with its first picture."""
+        b, self._block = self._block, None
+        self.status = "takeout" if self.count >= 3 else "ready"
+        seconds = t - b["t0"]
+        if seconds < self.s.block_log_s or b["accepted"]:
+            return []
+        return [Event("blocked", t, self.count, info={"seconds": round(seconds, 1), "looks": b["looks"], **b["info"]}, after=b["frames"])]
 
     def _settled(self, t, frames):
         self._work_from = time.monotonic()
@@ -233,6 +251,10 @@ class BoardTracker:
         """Something is in the way (a hand, an arm): wait and look again, `ref` stays. After `patience` looks the picture is taken as
         it is, so a lasting change (a lamp, a moved camera) does not block the board for good."""
         self._blocked += 1
+        self._block_hit = True
+        if self._block is None:
+            self._block = {"t0": t, "looks": 0, "info": info, "frames": frames, "accepted": False}
+        self._block["looks"] += 1
         self.status = "blocked"
         self._handled = False
         self._retry_at = t + 0.3
@@ -240,6 +262,8 @@ class BoardTracker:
             self._blocked = 0
             self.ref, self.ref_raw = prepared, frames
             self._handled = True
+            self._block["accepted"] = True
+            self._end_block(t)
             return [Event("unclear", t, self.count, info={**info, "accepted": True, "why": "blocked for a long time"}, before=None, after=frames)]
         return []
 

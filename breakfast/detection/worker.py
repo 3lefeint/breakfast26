@@ -73,7 +73,7 @@ class Worker:
     # ------------------------------------------------------------------ events
 
     def handle(self, ev):
-        names = {"dart": "Throw detected", "removed": "Takeout in progress", "takeout": "Takeout finished", "baseline": None, "unclear": None}
+        names = {"dart": "Throw detected", "removed": "Takeout in progress", "takeout": "Takeout finished", "baseline": None, "unclear": None, "blocked": None}
         entry = {"n": self.seq, "kind": ev.kind, "t": datetime.now().strftime("%H:%M:%S"), "count": ev.count,
                  "field": (ev.throw or {}).get("segment", {}).get("name"), "info": _short(ev.info)}
         self.seq += 1
@@ -422,7 +422,7 @@ PAGE = """<!doctype html><meta charset=utf-8><title>Detection</title>
 <style>body{font-family:system-ui;background:#17171f;color:#eee;margin:1rem}img{width:32%;border:1px solid #444}
 button{padding:.4rem .9rem;margin:.2rem;border-radius:8px;border:1px solid #666;background:#2a2a35;color:#eee;cursor:pointer}
 table{border-collapse:collapse;font-size:.85rem}td,th{border-bottom:1px solid #333;padding:.2rem .6rem;text-align:left}
-.k-dart{color:#7ddc7d}.k-unclear{color:#f5c542}.k-takeout,.k-removed{color:#6cb6ff}pre{white-space:pre-wrap;font-size:.8rem}</style>
+.k-dart{color:#7ddc7d}.k-unclear,.k-blocked{color:#f5c542}.k-takeout,.k-removed{color:#6cb6ff}pre{white-space:pre-wrap;font-size:.8rem}</style>
 <h2>Dart detection</h2>
 <div><button onclick="post('reset')">Empty board = now</button>
 <span id=st></span></div>
