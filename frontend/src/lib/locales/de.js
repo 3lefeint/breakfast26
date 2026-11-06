@@ -1615,4 +1615,8 @@ export default {
   'Play a sound': 'Sound abspielen',
   'Pick a route': 'Route wählen',
   'Choose from the routes of Breakfast': 'Aus den Routen von Breakfast wählen',
+  'Correct dart 1': 'Dart 1 korrigieren',
+  'Correct dart 2': 'Dart 2 korrigieren',
+  'Correct dart 3': 'Dart 3 korrigieren',
+  'Correct a dart': 'Dart korrigieren',
 };

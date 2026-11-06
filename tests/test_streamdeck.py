@@ -905,3 +905,74 @@ class TestNewActions:
     def test_a_route_action_may_carry_a_body(self):
         out = sd.clean_actions([{"name": "A", "kind": "route", "target": "/api/x", "body": "{\"a\": 1}"}])
         assert out[0]["body"] == "{\"a\": 1}"
+
+
+class TestDartCorrection:
+    @pytest.fixture
+    def deck15(self, tmp_path):
+        pytest.importorskip("PIL")
+        calls = []
+        deck = FakeDeck(keys=15, layout=(3, 5))
+        svc = sd.StreamDeckService(str(tmp_path / "config.toml"), calls.append, enumerate_decks=lambda: [deck],
+                                   to_native=lambda d, img: img, reconnect_seconds=0.01)
+        svc.update(enabled=True, keys=[{"key": 0, "action": "correct_dart:2", "label": "D2"}])
+        with svc._lock:
+            svc._connect()
+        svc.deck, svc.calls = deck, calls
+        return svc
+
+    def press(self, svc, key):
+        svc.deck.callback(svc.deck, key, True)
+
+    def test_a_double_is_chosen_in_two_steps_and_the_deck_goes_back(self, deck15):
+        self.press(deck15, 0)                                       # D2: kinds of hits
+        view = deck15._view_keys()
+        assert [view[i]["label"] for i in (1, 2, 3, 4)] == ["Miss", "Single", "Double", "Triple"] and view[0]["action"] == sd.NAV_BACK
+        self.press(deck15, 3)                                       # Double: the numbers
+        view = deck15._view_keys()
+        assert view[1]["label"] == "1" and view[1]["action"] == "correct_dart:2:D:1"
+        assert deck15._view_keys()[sd.DEFAULT_COLS * 3 - 1]["action"] == sd.NAV_NEXT      # 21 numbers do not fit on one page
+        self.press(deck15, 12)                                      # number 12 on the first page
+        assert deck15.calls == ["correct_dart:2:D12"]
+        assert deck15._folder is None and deck15._view_keys()[0]["action"] == "correct_dart:2"
+
+    def test_the_bull_and_a_miss(self, deck15):
+        self.press(deck15, 0)
+        self.press(deck15, 2)                                       # Single
+        self.press(deck15, 14)                                      # next page
+        view = deck15._view_keys()
+        assert [v["action"] for v in view.values() if v["action"].endswith(":25")] == ["correct_dart:2:S:25"]
+        self.press(deck15, 9)                                       # 13 to 20, then the bull
+        assert deck15.calls == ["correct_dart:2:25"]
+        self.press(deck15, 0)
+        self.press(deck15, 3)                                       # Double, page 2: the bull is 50
+        self.press(deck15, 14)
+        self.press(deck15, 9)
+        assert deck15.calls[-1] == "correct_dart:2:50"
+        self.press(deck15, 0)
+        self.press(deck15, 1)                                       # Miss
+        assert deck15.calls[-1] == "correct_dart:2:0" and deck15._folder is None
+
+    def test_a_triple_has_no_bull_and_back_returns_one_step(self, deck15):
+        self.press(deck15, 0)
+        self.press(deck15, 4)                                       # Triple
+        assert not [v for v in deck15._view_keys().values() if v["action"].endswith(":25")]
+        self.press(deck15, 0)                                       # Back: to the kinds of hits
+        assert deck15._view_keys()[1]["label"] == "Miss"
+        self.press(deck15, 0)                                       # Back: to the layout
+        assert deck15._view_keys()[0]["action"] == "correct_dart:2"
+
+    def test_the_server_sets_the_dart_of_the_game_in_play(self, tmp_path):
+        from types import SimpleNamespace
+        from breakfast.web import server
+        corrected = []
+        game = SimpleNamespace(state="playing", online=None, board_index=lambda i: i, correct_current_dart=lambda i, f, p: corrected.append((i, f, p)))
+        ctrl = SimpleNamespace(game=game)
+        server.wire(GameState(), None, config_path=str(tmp_path / "config.toml"), x01_ctrl=ctrl)
+        try:
+            assert server.run_control("correct_dart:3:T20") == {"ok": True}
+            _wait(lambda: corrected == [(2, "T20", None)])
+            for bad in ("correct_dart:4:T20", "correct_dart:1:T21", "correct_dart:1:X5", "correct_dart:1"):
+                assert "error" in server.run_control(bad)
+        finally:
+            server.wire(None, None)
