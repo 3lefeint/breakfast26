@@ -46,10 +46,15 @@ DEFAULT_COLOR = "#000000"
 # Shown while no device is connected, so the layout can be set up first (a 15-key Stream Deck).
 DEFAULT_ROWS, DEFAULT_COLS = 3, 5
 MAX_KEYS = 64
+MAX_PAGES = 10
+MAX_FOLDERS = 16
+FOLDER_PREFIX = "folder:"
+NAV_BACK, NAV_PREV, NAV_NEXT = "nav:back", "nav:prev", "nav:next"
+NAV_COLOR = "#20232a"
 MAX_ACTIONS = 32
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_TIMEOUT_SECONDS = 5
-SYMBOLS = ("reset", "start", "undo", "next_player", "next_game")   # drawn by Breakfast, no file needed
+SYMBOLS = ("reset", "start", "undo", "next_player", "next_game", "folder", "back", "page_prev", "page_next")   # drawn by Breakfast, no file needed
 SYMBOL_PREFIX = "symbol:"
 SHOW_VALUES = ("player", "remaining", "lives", "darts", "round")   # what a display key shows of the game in play
 FLASH_SECONDS = 3
@@ -141,9 +146,10 @@ def clean_actions(actions):
     return out
 
 
-def clean_keys(keys, custom_ids=()):
+def clean_keys(keys, custom_ids=(), folder_ids=()):
     """The layout as stored: unknown actions and bad colors refused, one entry per key, sorted by key.
-    `custom_ids` are the ids of the custom actions a key may use besides the built-in ones.
+    `custom_ids` are the ids of the custom actions a key may use besides the built-in ones, `folder_ids` the folders it may open.
+    A key sits on a `page` (0 to 9) of its layout; the entry for the same key on the same page is the last one given.
 
     Raises ValueError with a message for the UI when the layout is not a list of key entries."""
     if not isinstance(keys, list):
@@ -162,7 +168,8 @@ def clean_keys(keys, custom_ids=()):
         if show and show not in SHOW_VALUES:
             raise ValueError(f"unknown value to show: {show}")
         if action:
-            if action not in ACTIONS and action not in custom_ids:
+            is_folder = action.startswith(FOLDER_PREFIX) and action[len(FOLDER_PREFIX):] in folder_ids
+            if action not in ACTIONS and action not in custom_ids and not is_folder:
                 raise ValueError(f"unknown action: {action}")
         design = clean_design(entry.get("design"))
         if not action and not show and design is None and not entry.get("effect"):
@@ -178,15 +185,51 @@ def clean_keys(keys, custom_ids=()):
         image = entry.get("image", "")
         if not valid_image(image):
             raise ValueError("image must be empty, symbol:<name> or the name of an uploaded png, jpg or webp file")
-        out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image, "show": show}
+        page = entry.get("page", 0)
+        if isinstance(page, bool) or not isinstance(page, int) or not 0 <= page < MAX_PAGES:
+            raise ValueError("page must be a number from 0 to %d" % (MAX_PAGES - 1))
+        slot = (page, key)
+        out[slot] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image, "show": show}
+        if page:
+            out[slot]["page"] = page
         if design is not None:
-            out[key]["design"] = design
+            out[slot]["design"] = design
         effect = clean_effect(entry.get("effect"))
         if effect is not None:
-            out[key]["effect"] = effect
+            out[slot]["effect"] = effect
         if entry.get("ignore_override") is True:
-            out[key]["ignore_override"] = True
+            out[slot]["ignore_override"] = True
     return [out[k] for k in sorted(out)]
+
+
+def clean_folders(folders, custom_ids=()):
+    """The folders as stored: `[{id, name, keys}]`. A folder's keys are laid out like the root layout and may open
+    folders again. An entry without an id gets one. Raises ValueError with a message for the UI."""
+    if not isinstance(folders, list) or len(folders) > MAX_FOLDERS:
+        raise ValueError("folders must be a list of at most %d" % MAX_FOLDERS)
+    named, ids = [], []
+    for folder in folders:
+        if not isinstance(folder, dict):
+            raise ValueError("every folder must be an object")
+        name = str(folder.get("name", "")).strip()[:40]
+        if not name:
+            raise ValueError("a folder needs a name")
+        folder_id = folder.get("id") or "f" + uuid.uuid4().hex[:8]
+        if not isinstance(folder_id, str) or not re.fullmatch(r"\w{1,20}", folder_id) or folder_id in ids:
+            raise ValueError("bad or duplicate folder id")
+        ids.append(folder_id)
+        named.append((folder_id, name, folder.get("keys", [])))
+    return [{"id": i, "name": n, "keys": clean_keys(k, custom_ids, ids)} for i, n, k in named]
+
+
+def prune_keys(keys, custom_ids, folder_ids):
+    """The keys without the ones whose custom action or folder is gone."""
+    return [k for k in keys if not k["action"] or k["action"] in ACTIONS or k["action"] in custom_ids
+            or k["action"][len(FOLDER_PREFIX):] in folder_ids and k["action"].startswith(FOLDER_PREFIX)]
+
+
+def page_count(keys):
+    return max((k.get("page", 0) for k in keys), default=0) + 1
 
 
 def _unit(value, name, low, high):
@@ -491,6 +534,15 @@ def _draw_symbol(draw, name, area, ink):
         for shift in (-0.5, 0.5):
             x = cx + shift * r
             draw.polygon([(x - r * 0.55, cy - r * 0.85), (x - r * 0.55, cy + r * 0.85), (x + r * 0.55, cy)], fill=ink)
+    elif name == "folder":
+        draw.rectangle((cx - r * 1.1, cy - r * 0.6, cx + r * 1.1, cy + r * 0.8), fill=ink)
+        draw.rectangle((cx - r * 1.1, cy - r * 0.95, cx - r * 0.1, cy - r * 0.5), fill=ink)
+    elif name == "back":
+        draw.polygon([(cx - r * 0.2, cy - r), (cx - r * 1.0, cy), (cx - r * 0.2, cy + r)], fill=ink)
+        draw.rectangle((cx - r * 0.2, cy - r * 0.3, cx + r * 0.95, cy + r * 0.3), fill=ink)
+    elif name in ("page_prev", "page_next"):
+        sign = -1 if name == "page_prev" else 1
+        draw.line([(cx - sign * r * 0.45, cy - r), (cx + sign * r * 0.55, cy), (cx - sign * r * 0.45, cy + r)], fill=ink, width=lw, joint="curve")
     elif name == "reset":
         draw.arc((cx - r, cy - r, cx + r, cy + r), start=-50, end=235, fill=ink, width=lw)
         arrow_head(235, 1)
@@ -584,6 +636,8 @@ class StreamDeckService:
         self._deck = None
         self._error = None
         self._pictures = {}                 # file name -> (mtime, PIL image), the pictures of the keys
+        self._cfg_stamp, self._cfg_cached = None, {}
+        self._folder, self._page, self._trail = None, 0, []   # the folder and page in view on the device, and the way back
         self._effect_drawn = {}             # key -> what its effect looked like when it was drawn last
         self._holds = {}                    # key -> Event that cancels the hold of a key being held
         self._hold_step = HOLD_STEP_SECONDS
@@ -591,7 +645,18 @@ class StreamDeckService:
 
     # ---- config ----
     def _cfg(self):
-        return cfg_mod.load(self.config_path).get("streamdeck", {}) if self.config_path else {}
+        """The [streamdeck] table, read again only when the file has changed."""
+        if not self.config_path:
+            return {}
+        try:
+            stat = os.stat(self.config_path)
+            stamp = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            stamp = None
+        if stamp is None or stamp != self._cfg_stamp:
+            self._cfg_cached = cfg_mod.load(self.config_path).get("streamdeck", {})
+            self._cfg_stamp = stamp
+        return self._cfg_cached
 
     def enabled(self):
         return self._cfg().get("enabled") is True
@@ -603,10 +668,17 @@ class StreamDeckService:
             log.warning("The [streamdeck] actions in config.toml are not valid, ignored")
             return []
 
+    def folders(self):
+        try:
+            return clean_folders(self._cfg().get("folders", []), {a["id"] for a in self.actions()})
+        except ValueError:
+            log.warning("The [streamdeck] folders in config.toml are not valid, ignored")
+            return []
+
     def keys(self):
         cfg = self._cfg()
         try:
-            return clean_keys(cfg.get("keys", []), {a["id"] for a in self.actions()})
+            return clean_keys(cfg.get("keys", []), {a["id"] for a in self.actions()}, {f["id"] for f in self.folders()})
         except ValueError:
             log.warning("The [streamdeck] keys in config.toml are not valid, ignored")
             return []
@@ -622,7 +694,7 @@ class StreamDeckService:
         value = self._cfg().get("brightness", DEFAULT_BRIGHTNESS)
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100 else DEFAULT_BRIGHTNESS
 
-    def update(self, enabled=None, brightness=None, keys=None, actions=None, overrides=None):
+    def update(self, enabled=None, brightness=None, keys=None, actions=None, overrides=None, folders=None):
         """Save a change of the settings and apply it at once. Raises ValueError for a bad value."""
         changes = {}
         if enabled is not None:
@@ -639,11 +711,23 @@ class StreamDeckService:
         ids = {a["id"] for a in custom}
         if actions is not None:
             changes["actions"] = custom
+        if folders is not None:
+            new_folders = clean_folders(folders, ids)
+        else:
+            new_folders = self.folders()
+        folder_ids = {f["id"] for f in new_folders}
+        if folders is not None:
+            # a key that opened a deleted folder goes with it
+            changes["folders"] = [{**f, "keys": prune_keys(f["keys"], ids, folder_ids)} for f in new_folders]
         if keys is not None:
-            changes["keys"] = clean_keys(keys, ids)
-        elif actions is not None:
-            # a key whose custom action was deleted goes with it
-            changes["keys"] = [k for k in self.keys() if not k["action"] or k["action"] in ACTIONS or k["action"] in ids]
+            changes["keys"] = clean_keys(keys, ids, folder_ids)
+        elif actions is not None or folders is not None:
+            # a key whose custom action or folder was deleted goes with it
+            changes["keys"] = prune_keys(self.keys(), ids, folder_ids)
+        if actions is not None:
+            for f in (changes.get("folders") or new_folders):
+                f["keys"] = prune_keys(f["keys"], ids, folder_ids)
+            changes["folders"] = changes.get("folders") or new_folders
         if changes:
             cfg_mod.write(self.config_path, {"streamdeck": changes})
         with self._lock:
@@ -666,7 +750,7 @@ class StreamDeckService:
                 with self._lock:
                     if self._deck is None:
                         continue
-                    by_key = {k["key"]: k for k in self.keys()}
+                    by_key = self._view_keys()
                     now = time.monotonic()
                     for index in range(self._deck.key_count()):
                         entry = by_key.get(index)
@@ -747,13 +831,55 @@ class StreamDeckService:
             if self._deck is not None:
                 self._draw()
 
+    def _view_keys(self):
+        """The keys the device shows now, by position: those of the folder and page in view, and the keys that go back and
+        page, which take the place of whatever the layout has there."""
+        count = self._deck.key_count() if self._deck is not None else DEFAULT_ROWS * DEFAULT_COLS
+        folder = next((f for f in self.folders() if f["id"] == self._folder), None) if self._folder else None
+        if self._folder and folder is None:
+            self._folder, self._page, self._trail = None, 0, []
+        keys = folder["keys"] if folder else self.keys()
+        pages = page_count(keys)
+        self._page = min(self._page, pages - 1)
+        view = {k["key"]: k for k in keys if k.get("page", 0) == self._page and k["key"] < count}
+
+        def nav(index, action, label, symbol):
+            view[index] = {"key": index, "action": action, "label": label, "color": NAV_COLOR, "hold": 0, "image": SYMBOL_PREFIX + symbol,
+                           "show": ""}
+        if folder and count > 0:
+            nav(0, NAV_BACK, "Back", "back")
+        if pages > 1 and count > 2:
+            nav(count - 2, NAV_PREV, "", "page_prev")
+            nav(count - 1, NAV_NEXT, f"{self._page + 1}/{pages}", "page_next")
+        return view
+
     def _draw(self):
         deck = self._deck
         if deck is None:
             return
-        by_key = {k["key"]: k for k in self.keys()}
+        view = self._view_keys()
+        self._effect_drawn.clear()
         for index in range(deck.key_count()):
-            self._draw_key(index, by_key.get(index))
+            self._draw_key(index, view.get(index))
+
+    def _navigate(self, action):
+        """Go back, to the next or previous page, or into a folder; then draw the keys of the new view."""
+        if action == NAV_BACK:
+            self._folder, self._page = self._trail.pop() if self._trail else (None, 0)
+        elif action in (NAV_NEXT, NAV_PREV):
+            folder = next((f for f in self.folders() if f["id"] == self._folder), None)
+            pages = page_count(folder["keys"] if folder else self.keys())
+            self._page = (self._page + (1 if action == NAV_NEXT else -1)) % pages
+        else:
+            self._trail.append((self._folder, self._page))
+            self._folder, self._page = action[len(FOLDER_PREFIX):], 0
+        self._draw()
+
+    def go_home(self):
+        """Show the first page of the main layout again."""
+        with self._lock:
+            self._folder, self._page, self._trail = None, 0, []
+            self._draw()
 
     def _draw_key(self, index, entry, progress=None):
         deck = self._deck
@@ -843,7 +969,7 @@ class StreamDeckService:
             return
         self.refresh_values()
         with self._lock:
-            for entry in self.keys():
+            for entry in self._view_keys().values():
                 if self._live(entry) and self._value_of(entry) != self._shown.get(entry["key"]):
                     self._draw_key(entry["key"], entry)
 
@@ -861,7 +987,7 @@ class StreamDeckService:
         self._flash_phase = True
         while time.monotonic() < self._flash_until and not self._stop.is_set():
             with self._lock:
-                for entry in self.keys():
+                for entry in self._view_keys().values():
                     if self._live(entry):
                         self._draw_key(entry["key"], entry)
             self._flash_phase = not self._flash_phase
@@ -935,16 +1061,18 @@ class StreamDeckService:
             raise ValueError("unknown image")
         path.unlink()
         self._pictures.pop(name, None)
-        keys = self.keys()
-        if any(k["image"] == name for k in keys):
-            self.update(keys=[{**k, "image": "" if k["image"] == name else k["image"]} for k in keys])
+        keys, folders = self.keys(), self.folders()
+        clear = lambda ks: [{**k, "image": "" if k["image"] == name else k["image"]} for k in ks]
+        if any(k["image"] == name for k in keys + [k for f in folders for k in f["keys"]]):
+            self.update(keys=clear(keys), folders=[{**f, "keys": clear(f["keys"])} for f in folders])
         else:
             with self._lock:
                 self._draw()
 
-    def preview(self, key):
+    def preview(self, key, folder=None, page=0):
         """The PNG of a configured key as the device shows it now (None for a key without an action)."""
-        entry = next((k for k in self.keys() if k["key"] == key), None)
+        layout = next((f["keys"] for f in self.folders() if f["id"] == folder), []) if folder else self.keys()
+        entry = next((k for k in layout if k["key"] == key and k.get("page", 0) == page), None)
         if entry is None:
             return None
         self.refresh_values()
@@ -965,13 +1093,16 @@ class StreamDeckService:
             held = self._holds.pop(key, None)
             if held:
                 held.set()                 # the key was let go before the hold was over, or pressed again
-                self._draw_key(key, next((k for k in self.keys() if k["key"] == key), None))
+                self._draw_key(key, self._view_keys().get(key))
             if not pressed:
                 return
-            entry = next((k for k in self.keys() if k["key"] == key), None)
+            entry = self._view_keys().get(key)
             if entry is None:
                 return
             if not entry["action"]:
+                return
+            if entry["action"] in (NAV_BACK, NAV_NEXT, NAV_PREV) or entry["action"].startswith(FOLDER_PREFIX):
+                self._navigate(entry["action"])
                 return
             entry = self._effective(entry)
             if entry["hold"] > 0:
@@ -1051,6 +1182,7 @@ class StreamDeckService:
             deck = self._deck
             rows, cols = (deck.key_layout() if deck is not None else (DEFAULT_ROWS, DEFAULT_COLS))
             keys = self.keys()
+            describe = lambda k: {**k, "shown": key_hex(k, self.board_status), "value": self._value_of(k)}
             return {
                 "enabled": self.enabled(),
                 "library": library_available(),
@@ -1065,6 +1197,7 @@ class StreamDeckService:
                 "colors": STATUS_COLORS,
                 "actions": [{"id": k, "label": v, "custom": False} for k, v in ACTIONS.items()]
                            + [{"id": a["id"], "label": a["name"], "custom": True} for a in self.actions()],
+                "folder_actions": [{"id": FOLDER_PREFIX + f["id"], "label": f["name"]} for f in self.folders()],
                 "custom_actions": self.actions(),
                 "images": self.images(),
                 "symbols": list(SYMBOLS),
@@ -1073,5 +1206,7 @@ class StreamDeckService:
                 "effects": list(EFFECTS),
                 "override_statuses": list(OVERRIDE_STATUSES),
                 "overrides": self.overrides(),
-                "keys": [{**k, "shown": key_hex(k, self.board_status), "value": self._value_of(k)} for k in keys],
+                "keys": [describe(k) for k in keys],
+                "folders": [{**f, "keys": [describe(k) for k in f["keys"]]} for f in self.folders()],
+                "max_pages": MAX_PAGES,
             }

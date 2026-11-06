@@ -792,3 +792,65 @@ class TestEffects:
             _wait(lambda: service.deck.images[0].getpixel((0, 0)) == (0, 0, 0))
         finally:
             service.stop()
+
+
+class TestFolders:
+    def _setup(self, service):
+        service.update(enabled=True, folders=[{"id": "f1", "name": "Fix", "keys": [
+            {"key": 1, "action": "undo", "color": "#00ff00"},
+            {"key": 2, "action": "next_player", "page": 1}]}])
+        service.update(keys=[{"key": 0, "action": "folder:f1", "color": "#0000ff"}, {"key": 1, "action": "undo"}])
+        with service._lock:
+            service._connect()
+
+    def test_pages_and_folders_are_cleaned(self):
+        keys = sd.clean_keys([{"key": 0, "action": "undo", "page": 2}, {"key": 0, "action": "next_game"}])
+        assert [(k.get("page", 0), k["action"]) for k in keys] == [(0, "next_game"), (2, "undo")]
+        with pytest.raises(ValueError):
+            sd.clean_keys([{"key": 0, "action": "undo", "page": 10}])
+        with pytest.raises(ValueError):
+            sd.clean_keys([{"key": 0, "action": "folder:nope"}])
+        folders = sd.clean_folders([{"name": "A", "keys": [{"key": 0, "action": "undo"}]}])
+        assert folders[0]["id"] and folders[0]["keys"][0]["action"] == "undo"
+        for bad in ("x", [{"name": ""}], [{"id": "a", "name": "x"}, {"id": "a", "name": "y"}], [{"id": "a b", "name": "x"}]):
+            with pytest.raises(ValueError):
+                sd.clean_folders(bad)
+
+    def test_a_folder_key_opens_the_folder_and_back_returns(self, service):
+        self._setup(service)
+        assert service.deck.images[1].getpixel((0, 0)) == (0, 0, 0)          # the root key
+        service.deck.callback(service.deck, 0, True)                          # open the folder
+        assert service.calls == []
+        assert service.deck.images[1].getpixel((0, 0)) == (0, 255, 0)         # the key of the folder
+        assert service._view_keys()[0]["action"] == sd.NAV_BACK               # key 0 goes back
+        service.deck.callback(service.deck, 0, True)
+        assert service._folder is None and service._view_keys()[0]["action"] == "folder:f1"
+
+    def test_a_folder_with_more_pages_gets_page_keys(self, service):
+        self._setup(service)
+        service.deck.callback(service.deck, 0, True)
+        view = service._view_keys()
+        assert view[4]["action"] == sd.NAV_PREV and view[5]["action"] == sd.NAV_NEXT and view[5]["label"] == "1/2"
+        service.deck.callback(service.deck, 5, True)                          # next page
+        view = service._view_keys()
+        assert view[0]["action"] == sd.NAV_BACK and view[2]["action"] == "next_player"
+        service.deck.callback(service.deck, 2, True)
+        assert service.calls == ["next_player"]
+        service.deck.callback(service.deck, 5, True)                          # past the last page: round to the first
+        assert service._page == 0
+        service.deck.callback(service.deck, 4, True)                          # before the first: to the last
+        assert service._page == 1
+
+    def test_a_deleted_folder_takes_its_keys_and_the_view_with_it(self, service):
+        self._setup(service)
+        service.deck.callback(service.deck, 0, True)
+        service.update(folders=[])
+        assert [k["key"] for k in service.keys()] == [1]
+        assert service._view_keys()[1]["action"] == "undo" and service._folder is None
+
+    def test_the_snapshot_lists_folders_and_the_preview_finds_their_keys(self, service):
+        self._setup(service)
+        snap = service.snapshot()
+        assert snap["folders"][0]["name"] == "Fix" and snap["folder_actions"] == [{"id": "folder:f1", "label": "Fix"}]
+        assert service.preview(1, "f1", 0)[:4] == b"\x89PNG" and service.preview(2, "f1", 1)[:4] == b"\x89PNG"
+        assert service.preview(2, "f1", 0) is None

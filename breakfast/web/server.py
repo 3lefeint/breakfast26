@@ -3633,6 +3633,7 @@ class StreamDeckBody(BaseModel):
     keys: list[dict] | None = None
     actions: list[dict] | None = None
     overrides: list[dict] | None = None
+    folders: list[dict] | None = None
 
 
 @app.put("/api/streamdeck")
@@ -3682,9 +3683,9 @@ async def streamdeck_image_delete(name: str):
 
 
 @app.get("/api/streamdeck/key/{key}.png")
-async def streamdeck_key_png(key: int):
+async def streamdeck_key_png(key: int, folder: str = "", page: int = 0):
     """A configured key as the device shows it now, for the preview in the Stream Deck tab."""
-    png = _streamdeck.preview(key) if _streamdeck else None
+    png = _streamdeck.preview(key, folder or None, page) if _streamdeck else None
     if png is None:
         raise HTTPException(status_code=404)
     return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
