@@ -38,9 +38,10 @@ STATUS_COLORS = {
     "green": "#1faa59",
     "yellow": "#e6a800",
     "red": "#cc2a2a",
-    "off": "#2b2b2f",
+    "off": "#000000",
 }
 DEFAULT_BRIGHTNESS = 60
+DEFAULT_COLOR = "#000000"
 # Shown while no device is connected, so the layout can be set up first (a 15-key Stream Deck).
 DEFAULT_ROWS, DEFAULT_COLS = 3, 5
 MAX_KEYS = 64
@@ -63,19 +64,26 @@ HOLD_STEP_SECONDS = 0.08   # how often the progress bar of a held key is drawn
 RECONNECT_SECONDS = 3
 
 
+_GREEN = {"throw", "board started", "takeout finished", "calibration finished", "manual reset"}
+_YELLOW = {"takeout", "takeout in progress", "takeout started", "calibration started", "board starting"}
+_RED = {"stopped", "board stopped", "board stopping", "board disconnected"}
+
+
 def status_color(board_status):
-    """The color name for a board status: green when ready to throw, yellow around the take-out and while the board
-    starts, red when it is stopped or gone, off when unknown."""
-    if not board_status:
-        return "off"
-    s = board_status.strip().lower()
-    if s == "throw" or s == "takeout finished":
+    """The color name for a board status, the same reading as the TV view: green when ready to throw, yellow around
+    the take-out and while the board starts, red when it is stopped or gone, off when unknown."""
+    s = (board_status or "").strip().lower()
+    if s in _GREEN:
         return "green"
-    if s.startswith("takeout") or s in ("board starting", "board started"):
+    if s in _YELLOW:
         return "yellow"
-    if s in ("board stopped", "board stopping", "board disconnected"):
+    if s in _RED:
         return "red"
     return "off"
+
+
+def board_stopped(board_status):
+    return status_color(board_status) == "red"
 
 
 def _valid_hex(value):
@@ -149,7 +157,7 @@ def clean_keys(keys, custom_ids=()):
             raise ValueError("a key needs an action or a value to show")
         label = entry.get("label")
         label = ACTIONS.get(action, "") if label is None else str(label)[:40]
-        color = entry.get("color", "status")
+        color = entry.get("color", DEFAULT_COLOR)
         if color != "status" and not _valid_hex(color):
             raise ValueError("color must be 'status' or #rrggbb")
         hold = entry.get("hold", 0)
@@ -512,9 +520,21 @@ class StreamDeckService:
         image = self._render(entry, size, progress)
         self._guard(lambda: deck.set_key_image(index, self._to_native(deck, image)))
 
+    def _effective(self, entry):
+        """The key as it works now: while the board is stopped a Reset Board key becomes a Start Board key."""
+        if entry["action"] == "reset_board" and board_stopped(self.board_status):
+            changes = {"action": "start_board"}
+            if entry["label"] == ACTIONS["reset_board"]:
+                changes["label"] = ACTIONS["start_board"]
+            if entry["image"] == SYMBOL_PREFIX + "reset":
+                changes["image"] = SYMBOL_PREFIX + "start"
+            return {**entry, **changes}
+        return entry
+
     def _render(self, entry, size, progress=None):
         if not entry:
             return render_key("", STATUS_COLORS["off"], size)
+        entry = self._effective(entry)
         picture, symbol = self._picture(entry["image"])
         value = self._value_of(entry)
         self._shown[entry["key"]] = value
@@ -667,6 +687,7 @@ class StreamDeckService:
                 return
             if not entry["action"]:
                 return
+            entry = self._effective(entry)
             if entry["hold"] > 0:
                 cancelled = self._holds[key] = threading.Event()
                 threading.Thread(target=self._hold, args=(key, entry, cancelled), name="streamdeck-hold", daemon=True).start()

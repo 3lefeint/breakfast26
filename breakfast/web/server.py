@@ -621,8 +621,39 @@ _CONTROLS = {
 }
 
 
+def _local_game():
+    """The handlers (undo, next turn, cancel) of the game in play that Breakfast runs itself, None when there is none."""
+    for ctrl, handlers in ((_x01_ctrl, (x01_undo, x01_next, x01_stop)), (_elim_ctrl, (elim_undo, elim_next, elim_stop)),
+                           (_killer_ctrl, (killer_undo, killer_next, killer_stop)), (_tb_ctrl, (tb_undo, tb_next, tb_stop)),
+                           (_ft_ctrl, (ft_undo, ft_next, ft_stop)), (_co_ctrl, (co_undo, co_next, co_stop)),
+                           (_bb_ctrl, (bb_undo, bb_next, bb_stop)), (_wu_ctrl, (wu_undo, wu_next, wu_stop))):
+        game = ctrl.game if ctrl else None
+        if game and getattr(game, "state", None) == "playing":
+            return handlers
+    return None
+
+
+_LOCAL_CONTROLS = {"undo": 0, "next_player": 1, "cancel_game": 2}
+
+
+def _run_local(handler, what):
+    def run():
+        result = asyncio.run(handler())
+        if isinstance(result, dict) and result.get("error"):
+            log.warning("%s: %s", what, result["error"])
+    return run
+
+
 def run_control(action: str) -> dict:
-    """Run a board control by name: the routes below and the Stream Deck keys both come here."""
+    """Run a board control by name: the routes below and the Stream Deck keys both come here. A game that Breakfast
+    runs itself takes undo, next player and cancel; otherwise they go to the board's match."""
+    if action in _LOCAL_CONTROLS:
+        handlers = _local_game()
+        if handlers:
+            _run_in_thread(_run_local(handlers[_LOCAL_CONTROLS[action]], action))
+            return {"ok": True}
+    if action not in _CONTROLS:
+        return {"error": "no game in play"}
     what, method, direct = _CONTROLS[action]
     log.debug("%s requested", what)
     if direct and _board_manager_url:
