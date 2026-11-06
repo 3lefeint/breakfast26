@@ -126,7 +126,10 @@ def locate(model, befores, afters, min_cams=1, masks=None):
     fx = statistics.median(m[0] for m, _ in hits)
     fy = statistics.median(m[1] for m, _ in hits)
     _, sigma, used = _fuse_weighted(hits)
-    return {"x": fx, "y": fy, "field": model.field(fx, fy), "sigma": sigma, "margin": model.edge_distance(fx, fy),
+    field = model.field(fx, fy)
+    # A dart off the board is only close to the outer edge of the double ring; the wires do not run out there.
+    margin = abs(math.hypot(fx, fy) - model.radii[170.0]) if field == "0" else model.edge_distance(fx, fy)
+    return {"x": fx, "y": fy, "field": field, "sigma": sigma, "margin": margin,
             "cams": len(pts), "off": off, "agree": agree, "spread": spread, "used": used, "median": [fx, fy], "tips": tips}
 
 
