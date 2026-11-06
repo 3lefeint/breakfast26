@@ -22,7 +22,7 @@
   let data = $state(null);
   let error = $state('');
   let selected = $state(null);
-  let draft = $state({ action: '', label: '', color: 'status', hold: 0, image: '', show: '' });
+  let draft = $state({ action: '', label: '', color: '#000000', hold: 0, image: '', show: '' });
   let timer = null;
 
   async function load() {
@@ -50,7 +50,7 @@
   function select(i) {
     selected = selected === i ? null : i;
     const k = data?.keys.find((x) => x.key === i);
-    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show } : { action: '', label: '', color: 'status', hold: 0, image: '', show: '' };
+    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show } : { action: '', label: '', color: '#000000', hold: 0, image: '', show: '' };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
@@ -79,7 +79,7 @@
   }
 
   async function clearKey() {
-    draft = { action: '', label: '', color: 'status', hold: 0, image: '', show: '' };
+    draft = { action: '', label: '', color: '#000000', hold: 0, image: '', show: '' };
     await save();
   }
 

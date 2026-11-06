@@ -31,7 +31,8 @@ class TestStatusColor:
         ("Throw", "green"), ("Takeout Finished", "green"),
         ("Takeout", "yellow"), ("Takeout in progress", "yellow"), ("Takeout Started", "yellow"), ("Board Starting", "yellow"),
         ("Board Stopped", "red"), ("Board Disconnected", "red"), ("Board Stopping", "red"),
-        (None, "off"), ("", "off"), ("Calibration Started", "off"),
+        ("Stopped", "red"), ("Board Started", "green"), ("Calibration Started", "yellow"), ("Manual reset", "green"),
+        (None, "off"), ("", "off"), ("something else", "off"),
     ])
     def test_status(self, status, color):
         assert sd.status_color(status) == color
@@ -41,7 +42,7 @@ class TestCleanKeys:
     def test_valid_keys_are_sorted_and_filled_in(self):
         keys = sd.clean_keys([{"key": 2, "action": "undo"}, {"key": 0, "action": "reset_board", "label": "Reset", "color": "#FF0000"}])
         assert keys == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#ff0000", "hold": 0, "image": "", "show": ""},
-                        {"key": 2, "action": "undo", "label": "Undo", "color": "status", "hold": 0, "image": "", "show": ""}]
+                        {"key": 2, "action": "undo", "label": "Undo", "color": "#000000", "hold": 0, "image": "", "show": ""}]
 
     def test_the_last_entry_for_a_key_wins(self):
         keys = sd.clean_keys([{"key": 1, "action": "undo"}, {"key": 1, "action": "next_game"}])
@@ -91,15 +92,15 @@ class TestService:
         assert service.snapshot()["connected"] is False
 
     def test_connects_and_draws_every_key(self, service):
-        service.update(enabled=True, keys=[{"key": 0, "action": "reset_board"}])
+        service.update(enabled=True, keys=[{"key": 0, "action": "reset_board", "color": "status"}])
         with service._lock:
             service._connect()
         deck = service.deck
         assert deck.opened and deck.brightness == sd.DEFAULT_BRIGHTNESS and set(deck.images) == set(range(6))
-        assert deck.images[0].getpixel((0, 0)) == (0x2b, 0x2b, 0x2f)          # status unknown: off
+        assert deck.images[0].getpixel((0, 0)) == (0, 0, 0)          # status unknown: off
         service.on_board_status("Board Stopped")
         assert deck.images[0].getpixel((0, 0)) == (0xcc, 0x2a, 0x2a)
-        assert deck.images[1].getpixel((0, 0)) == (0x2b, 0x2b, 0x2f)          # an unassigned key stays dark
+        assert deck.images[1].getpixel((0, 0)) == (0, 0, 0)          # an unassigned key stays dark
 
     def test_a_fixed_color_ignores_the_status(self, service):
         service.update(enabled=True, keys=[{"key": 0, "action": "undo", "color": "#0000ff"}])
@@ -107,6 +108,26 @@ class TestService:
             service._connect()
         service.on_board_status("Throw")
         assert service.deck.images[0].getpixel((0, 0)) == (0, 0, 0xff)
+
+    def test_unused_keys_and_new_keys_are_black(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo"}])
+        with service._lock:
+            service._connect()
+        service.on_board_status("Throw")
+        assert service.deck.images[0].getpixel((0, 0)) == (0, 0, 0)
+        assert service.deck.images[1].getpixel((0, 0)) == (0, 0, 0)
+
+    def test_a_reset_key_becomes_a_start_key_while_the_board_is_stopped(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "reset_board", "image": "symbol:reset"}])
+        with service._lock:
+            service._connect()
+        service.on_board_status("Stopped")
+        service.deck.callback(service.deck, 0, True)
+        assert service.calls == ["start_board"]
+        assert service._effective(service.keys()[0])["label"] == "Start Board"
+        service.on_board_status("Throw")
+        service.deck.callback(service.deck, 0, True)
+        assert service.calls == ["start_board", "reset_board"]
 
     def test_pressing_a_key_runs_its_action_and_release_does_nothing(self, service):
         service.update(enabled=True, keys=[{"key": 3, "action": "next_player"}])
@@ -150,7 +171,7 @@ class TestService:
         service.on_board_status("Throw")
         snap = service.snapshot()
         assert (snap["rows"], snap["cols"]) == (sd.DEFAULT_ROWS, sd.DEFAULT_COLS)
-        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "status", "hold": 0, "image": "", "show": "", "shown": sd.STATUS_COLORS["green"], "value": None}]
+        assert snap["keys"] == [{"key": 1, "action": "start_board", "label": "Start Board", "color": "#000000", "hold": 0, "image": "", "show": "", "shown": "#000000", "value": None}]
 
     def test_update_refuses_bad_values_and_writes_nothing(self, service):
         with pytest.raises(ValueError):
@@ -314,7 +335,7 @@ class TestImages:
 
     def test_a_key_with_a_picture_is_drawn_with_it_and_in_the_frame_color(self, service):
         service.save_image("logo.png", _png(color=(0, 0, 255), size=(30, 30)))
-        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "label": "", "image": "logo.png"}])
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "label": "", "image": "logo.png", "color": "status"}])
         with service._lock:
             service._connect()
         service.on_board_status("Board Stopped")
@@ -327,13 +348,13 @@ class TestImages:
         with service._lock:
             service._connect()
         img = service.deck.images[0]
-        assert img.getpixel((0, 0)) == (0x2b, 0x2b, 0x2f) and img.getpixel((36, 36)) == (255, 255, 255)
+        assert img.getpixel((0, 0)) == (0, 0, 0) and img.getpixel((36, 36)) == (255, 255, 255)
 
     def test_a_missing_file_draws_the_key_without_a_picture(self, service):
         service.update(enabled=True, keys=[{"key": 0, "action": "undo", "label": "", "image": "gone.png"}])
         with service._lock:
             service._connect()
-        assert service.deck.images[0].getpixel((36, 36)) == (0x2b, 0x2b, 0x2f)
+        assert service.deck.images[0].getpixel((36, 36)) == (0, 0, 0)
 
     def test_deleting_a_picture_clears_the_keys_that_use_it(self, service):
         service.save_image("logo.png", _png())
@@ -564,7 +585,7 @@ class TestRoutes:
         body = srv.StreamDeckBody(enabled=True, brightness=40, keys=[{"key": 0, "action": "reset_board", "label": "Reset"}])
         snap = asyncio.run(srv.streamdeck_put(body))
         assert snap["enabled"] and snap["brightness"] == 40 and snap["keys"][0]["label"] == "Reset"
-        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "status", "hold": 0, "image": "", "show": ""}]
+        assert cfg_mod.load(path)["streamdeck"]["keys"] == [{"key": 0, "action": "reset_board", "label": "Reset", "color": "#000000", "hold": 0, "image": "", "show": ""}]
 
     def test_put_answers_a_bad_layout_with_an_error(self, server):
         import asyncio
@@ -625,3 +646,30 @@ class TestRunControl:
         from breakfast.web import server
         server.wire(None, None)
         assert server.run_control("next_game") == {"error": "cloud control not available"}
+
+
+class TestLocalGameControls:
+    @pytest.fixture
+    def local(self, tmp_path):
+        from types import SimpleNamespace
+        from breakfast.web import server
+        calls = []
+        game = SimpleNamespace(state="playing", undo=lambda: calls.append("undo") or True)
+        ctrl = SimpleNamespace(game=game, next_turn=lambda: calls.append("next") or True, stop=lambda: calls.append("stop"))
+        server.wire(GameState(), None, config_path=str(tmp_path / "config.toml"), x01_ctrl=ctrl)
+        yield server, calls
+        server.wire(None, None)
+
+    @pytest.mark.parametrize("action, expected", [("undo", "undo"), ("next_player", "next"), ("cancel_game", "stop")])
+    def test_a_game_run_by_breakfast_takes_the_controls(self, local, action, expected):
+        srv, calls = local
+        assert srv.run_control(action) == {"ok": True}
+        _wait(lambda: calls == [expected])
+
+    def test_without_a_game_a_local_only_control_is_refused(self, tmp_path):
+        from breakfast.web import server
+        server.wire(GameState(), None, config_path=str(tmp_path / "config.toml"))
+        try:
+            assert "error" in server.run_control("cancel_game")
+        finally:
+            server.wire(None, None)
