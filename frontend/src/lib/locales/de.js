@@ -1609,4 +1609,10 @@ export default {
   'Open a folder': 'Ordner öffnen',
   'Delete the folder {name} with its keys?': 'Ordner {name} mit seinen Tasten löschen?',
   'Uploading…': 'Lade hoch…',
+  'Cancel Game': 'Spiel abbrechen',
+  'Fun Mode': 'Fun-Mode',
+  'Fun': 'Fun',
+  'Play a sound': 'Sound abspielen',
+  'Pick a route': 'Route wählen',
+  'Choose from the routes of Breakfast': 'Aus den Routen von Breakfast wählen',
 };

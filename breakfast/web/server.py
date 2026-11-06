@@ -164,7 +164,9 @@ def wire(game_state, elim_ctrl,
     _streamdeck = None
     if config_path and game_state:
         _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control, web_base=lambda: f"http://127.0.0.1:{_web_port}",
-                                                       values=_game_values)
+                                                       values=_game_values,
+                                                       flags=lambda: {"fun_mode": bool(_scene_engine and _scene_engine.fun)},
+                                                       sounds=lambda: scene_sounds.files(_audio_engine))
         _streamdeck.board_status = game_state.board_status
         game_state.board_status_listeners.append(_streamdeck.on_board_status)
     _dev_demo = dev_demo
@@ -644,9 +646,48 @@ def _run_local(handler, what):
     return run
 
 
+def _toggle_fun_mode() -> dict:
+    """Switch the fun mode of the settings (`[caller] fun`) on or off, as the Settings page does."""
+    if not _config_path:
+        return {"error": "config path not available"}
+    new = cfg_mod.load(_config_path).get("caller", {}).get("fun") is not True
+    cfg_mod.write(_config_path, {"caller": {"fun": new}})
+    if _scene_engine:
+        _scene_engine.fun = new
+    if _streamdeck:
+        _streamdeck.on_flags_change()
+    log.info("Fun mode %s", "on" if new else "off")
+    return {"ok": True, "fun": new}
+
+
+def _play_library_sound(name: str) -> dict:
+    """Play a sound of the library (the files of Scenes → Sounds) on the connected audio pages."""
+    if not _audio_engine or name not in scene_sounds.files(_audio_engine):
+        return {"error": "not a sound of the library"}
+    _audio_engine.play_file(name)
+    return {"ok": True}
+
+
+def _action_routes() -> list:
+    """The routes of Breakfast that change something, for the picker of the custom actions of a Stream Deck key."""
+    found = set()
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        if not path.startswith("/api/") or "{" in path or path.startswith("/api/streamdeck"):
+            continue
+        for method in getattr(route, "methods", None) or ():
+            if method in ("POST", "PUT", "PATCH", "DELETE"):
+                found.add((path, method))
+    return [{"path": p, "method": m} for p, m in sorted(found)]
+
+
 def run_control(action: str) -> dict:
     """Run a board control by name: the routes below and the Stream Deck keys both come here. A game that Breakfast
     runs itself takes undo, next player and cancel; otherwise they go to the board's match."""
+    if action == "fun_mode":
+        return _toggle_fun_mode()
+    if action.startswith("sound:"):
+        return _play_library_sound(action[len("sound:"):])
     if action in _LOCAL_CONTROLS:
         handlers = _local_game()
         if handlers:
@@ -3608,11 +3649,15 @@ def start_streamdeck():
         _streamdeck.start()
 
 
+def _streamdeck_snapshot():
+    return {**_streamdeck.snapshot(), "routes": _action_routes()}
+
+
 @app.get("/api/streamdeck")
 async def streamdeck_get():
     if not _streamdeck:
         return {"error": "Stream Deck not available"}
-    return _streamdeck.snapshot()
+    return _streamdeck_snapshot()
 
 
 @app.post("/api/streamdeck/preview")
@@ -3644,7 +3689,7 @@ async def streamdeck_put(body: StreamDeckBody):
         _streamdeck.update(**body.model_dump(exclude_unset=True))
     except ValueError as e:
         return {"error": str(e)}
-    return _streamdeck.snapshot()
+    return _streamdeck_snapshot()
 
 
 @app.get("/api/streamdeck/images/{name}")
@@ -3679,7 +3724,7 @@ async def streamdeck_image_delete(name: str):
         _streamdeck.delete_image(name)
     except ValueError as e:
         return {"error": str(e)}
-    return _streamdeck.snapshot()
+    return _streamdeck_snapshot()
 
 
 @app.get("/api/streamdeck/key/{key}.png")

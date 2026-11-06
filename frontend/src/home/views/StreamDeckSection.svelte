@@ -13,12 +13,13 @@
 
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
-                         next_player: t('Next Player'), next_game: t('Next Game') };
-  const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game'),
+                         next_player: t('Next Player'), next_game: t('Next Game'), cancel_game: t('Cancel Game'), fun_mode: t('Fun Mode') };
+  const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game'), cancel: t('Cancel'), sound: t('Sound'), fun: t('Fun'),
                          folder: t('Folder'), back: t('Back'), page_prev: t('Previous page'), page_next: t('Next page') };
   const SHOW_LABEL = { player: t('Player on turn'), remaining: t('Remaining score'), lives: t('Lives'),
                        darts: t('Darts in the turn'), round: t('Round') };
-  const labelOf = (id) => ACTION_LABEL[id] || data?.actions.find((a) => a.id === id)?.label || data?.folder_actions.find((a) => a.id === id)?.label || '';
+  const SOUND = 'sound:';
+  const labelOf = (id) => ACTION_LABEL[id] || (id.startsWith(SOUND) ? id.slice(SOUND.length).replace(/\.[^.]+$/, '') : '') || data?.actions.find((a) => a.id === id)?.label || data?.folder_actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
 
@@ -116,7 +117,10 @@
     const previous = current.find((k) => k.key === selected && (k.page || 0) === view.page);
     if (!draft.label || (previous && draft.label === labelOf(previous.action))) draft.label = labelOf(draft.action);
     // A board reset has to be held by default, so it is not run by a press by accident.
-    if (!previous && draft.action === 'reset_board') draft.hold = DEFAULT_HOLD;
+    if (!previous && (draft.action === 'reset_board' || draft.action === 'cancel_game')) draft.hold = DEFAULT_HOLD;
+    if (draft.action === 'cancel_game' && !draft.image) draft.image = 'symbol:cancel';
+    if (draft.action === 'fun_mode' && !draft.image) draft.image = 'symbol:fun';
+    if (draft.action.startsWith(SOUND) && !draft.image) draft.image = 'symbol:sound';
     if (draft.action.startsWith('folder:') && !draft.image) draft.image = 'symbol:folder';
     await save();
   }
@@ -192,6 +196,11 @@
 
   const newAction = () => { editing = emptyAction(); };
   const editAction = (a) => { editing = { ...a }; };
+  function pickRoute(e) {
+    const [method, path] = e.currentTarget.value.split(' ');
+    if (path) { editing.method = method; editing.target = path; if (!editing.name) editing.name = path.replace('/api/', ''); }
+    e.currentTarget.value = '';
+  }
   const kindChanged = () => { if (!editing.target) editing.method = editing.kind === 'route' ? 'POST' : 'GET'; };
 
   async function saveAction() {
@@ -295,6 +304,11 @@
         <select bind:value={draft.action} onchange={chooseAction}>
           <option value="">{t('None')}</option>
           {#each data.actions.filter((a) => !a.custom) as a (a.id)}<option value={a.id}>{ACTION_LABEL[a.id]}</option>{/each}
+          {#if data.sounds.length}
+            <optgroup label={t('Play a sound')}>
+              {#each data.sounds as f (f)}<option value={SOUND + f}>{f.replace(/\.[^.]+$/, '')}</option>{/each}
+            </optgroup>
+          {/if}
           {#if data.folder_actions.length}
             <optgroup label={t('Open a folder')}>
               {#each data.folder_actions as a (a.id)}<option value={a.id}>{a.label}</option>{/each}
@@ -418,9 +432,15 @@
         <label class="field"><span>{editing.kind === 'route' ? t('Route') : t('Address')}</span>
           <input type="text" bind:value={editing.target} placeholder={editing.kind === 'route' ? '/api/control/undo' : 'https://…'}>
         </label>
-        {#if editing.kind === 'url'}
-          <label class="field"><span>{t('Body')}</span><textarea rows="3" bind:value={editing.body} placeholder={'{"key": "value"}'}></textarea></label>
+        {#if editing.kind === 'route'}
+          <label class="field"><span>{t('Pick a route')}</span>
+            <select onchange={pickRoute}>
+              <option value="">{t('Choose from the routes of Breakfast')}</option>
+              {#each data.routes as r (r.method + r.path)}<option value={r.method + ' ' + r.path}>{r.method} {r.path}</option>{/each}
+            </select>
+          </label>
         {/if}
+        <label class="field"><span>{t('Body')}</span><textarea rows="3" bind:value={editing.body} placeholder={'{"key": "value"}'}></textarea></label>
         <div class="form-buttons">
           <button type="button" class="act" onclick={saveAction}>{t('Save')}</button>
           <button type="button" class="act" onclick={() => (editing = null)}>{t('Cancel')}</button>
