@@ -83,6 +83,7 @@
 - Stream Deck keys: a Stream Deck plugged into the computer that runs Breakfast resets or starts the board, undoes a dart or skips a player or game, and its keys show the board status (green when ready to throw, yellow around the take-out, red when stopped). The keys are set up on the new Settings → Stream Deck page (`[streamdeck]`, `GET`/`PUT /api/streamdeck`); Linux and Docker, Windows not yet. (#106)
 
 - A Stream Deck key has a design editor under Settings → Stream Deck: image and text layers placed and sized on a grid with the mouse, a frame with color and thickness, and values of the game as `{player}`, `{remaining}`, `{lives}`, `{darts}`, `{round}` in texts (`design` of a key, `POST /api/streamdeck/preview`). (#106)
+- Stream Deck effects: a key can pulse, blink or chase a colored frame (color, speed, thickness), and status rules put an effect on every key while the board has a status, for example a red pulsing frame while it is stopped; a key can ignore the rules (`effect`, `ignore_override` of a key, `[[streamdeck.overrides]]`). (#106)
 
 ### Changed
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)

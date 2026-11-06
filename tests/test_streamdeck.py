@@ -720,3 +720,75 @@ class TestDesign:
         assert png[:4] == b"\x89PNG"
         with pytest.raises(ValueError):
             service.preview_entry({"color": "nope", "action": "undo"})
+
+
+class TestEffects:
+    BLINK = {"type": "blink", "color": "#ff0000", "speed": 1, "width": 6}
+
+    def test_effects_are_cleaned_and_bad_ones_refused(self):
+        assert sd.clean_effect({"type": "pulse", "color": "#FF0000"}) == {"type": "pulse", "color": "#ff0000", "speed": 1.0, "width": 6}
+        assert sd.clean_effect(None) is None
+        for bad in ("x", {"type": "spin"}, {"type": "pulse", "color": "red"}, {"type": "pulse", "speed": 9},
+                    {"type": "pulse", "speed": True}, {"type": "pulse", "width": 0}, {"type": "pulse", "width": 99}):
+            with pytest.raises(ValueError):
+                sd.clean_effect(bad)
+
+    def test_overrides_are_one_rule_per_status_with_an_effect(self):
+        rules = sd.clean_overrides([{"status": "red", "effect": self.BLINK}])
+        assert rules[0]["status"] == "red" and rules[0]["effect"]["type"] == "blink"
+        for bad in ("x", [{"status": "blue", "effect": self.BLINK}], [{"status": "red"}],
+                    [{"status": "red", "effect": self.BLINK}] * 2):
+            with pytest.raises(ValueError):
+                sd.clean_overrides(bad)
+
+    def test_the_steps_of_an_effect(self):
+        blink = sd.clean_effect(self.BLINK)
+        assert sd.effect_signature(blink, 0.1) is True and sd.effect_signature(blink, 0.6) is False
+        pulse = sd.clean_effect({"type": "pulse", "speed": 1})
+        assert sd.effect_signature(pulse, 0) == 0 and sd.effect_signature(pulse, 0.5) == sd.PULSE_STEPS
+        chase = sd.clean_effect({"type": "chase", "speed": 1})
+        assert sd.effect_signature(chase, 0.5) == sd.CHASE_STEPS // 2
+
+    def test_the_effects_draw_on_the_frame_only(self):
+        from PIL import Image
+        base = Image.new("RGB", (72, 72), (0, 0, 0))
+        blink = sd.apply_effect(base, sd.clean_effect(self.BLINK), 0.1)
+        assert blink.getpixel((0, 0)) == (255, 0, 0) and blink.getpixel((36, 36)) == (0, 0, 0)
+        assert sd.apply_effect(base, sd.clean_effect(self.BLINK), 0.6).getpixel((0, 0)) == (0, 0, 0)
+        assert sd.apply_effect(base, sd.clean_effect({"type": "pulse", "color": "#ff0000"}), 0.5).getpixel((0, 0)) == (255, 0, 0)
+        assert sd.apply_effect(base, sd.clean_effect({"type": "pulse", "color": "#ff0000"}), 0).getpixel((0, 0)) == (0, 0, 0)
+        lit = {sd.apply_effect(base, sd.clean_effect({"type": "chase", "color": "#ff0000"}), t / 8).getpixel((0, 0)) for t in range(8)}
+        assert lit == {(255, 0, 0), (0, 0, 0)}              # the lit stretch passes the corner
+
+    def test_a_rule_for_the_board_status_puts_its_effect_on_every_key(self, service, monkeypatch):
+        monkeypatch.setattr(sd.time, "monotonic", lambda: 0.1)
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo"}, {"key": 1, "action": "undo", "ignore_override": True}],
+                       overrides=[{"status": "red", "effect": {**self.BLINK, "speed": 0.1}}])
+        with service._lock:
+            service._connect()
+        service.on_board_status("Throw")
+        assert service.deck.images[0].getpixel((0, 0)) == (0, 0, 0)
+        service.on_board_status("Stopped")
+        assert service.deck.images[0].getpixel((0, 0)) == (255, 0, 0)
+        assert service.deck.images[2].getpixel((0, 0)) == (255, 0, 0)        # an unassigned key too
+        assert service.deck.images[1].getpixel((0, 0)) == (0, 0, 0)          # unless it ignores the rules
+
+    def test_a_key_effect_is_kept_when_no_rule_applies(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "effect": {**self.BLINK, "speed": 0.1}}])
+        assert service._effect_for(service.keys()[0])["type"] == "blink"
+        assert service._effect_for(None) is None
+
+    def test_the_animation_draws_a_key_again_when_the_effect_moves_on(self, service, monkeypatch):
+        service.update(enabled=True, keys=[{"key": 0, "action": "undo", "effect": {"type": "blink", "color": "#00ff00", "speed": 1, "width": 6}}])
+        clock = [0.1]
+        monkeypatch.setattr(sd.time, "monotonic", lambda: clock[0])
+        with service._lock:
+            service._connect()
+        assert service.deck.images[0].getpixel((0, 0)) == (0, 255, 0)
+        clock[0] = 0.6
+        monkeypatch.setattr(sd, "EFFECT_TICK_SECONDS", 0.01)
+        service.start()
+        try:
+            _wait(lambda: service.deck.images[0].getpixel((0, 0)) == (0, 0, 0))
+        finally:
+            service.stop()

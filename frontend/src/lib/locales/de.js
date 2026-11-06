@@ -1590,4 +1590,13 @@ export default {
   'Remove layer': 'Ebene entfernen',
   'Frame': 'Rahmen',
   'Frame color': 'Rahmenfarbe',
+  'Pulse': 'Pulsieren',
+  'Blink': 'Blinken',
+  'Chase': 'Lauflicht',
+  'Effect': 'Effekt',
+  'Speed': 'Geschwindigkeit',
+  'Frame thickness': 'Rahmendicke',
+  'Ignore the status rules': 'Status-Regeln ignorieren',
+  'Status rules': 'Status-Regeln',
+  'While the board has a status, every key shows the effect of its rule, also the keys without an action. A key can ignore the rules.': 'Solange das Board einen Status hat, zeigt jede Taste den Effekt der zugehörigen Regel, auch Tasten ohne Aktion. Eine Taste kann die Regeln ignorieren.',
 };

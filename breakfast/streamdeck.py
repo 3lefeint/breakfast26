@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import math
 import threading
 import time
 import uuid
@@ -61,6 +62,12 @@ PREVIEW_SIZE = (96, 96)
 EDITOR_PREVIEW_SIZE = (216, 216)
 MAX_LAYERS = 8
 MAX_BORDER = 24             # in 72nds of the key's side
+EFFECTS = ("pulse", "blink", "chase")
+OVERRIDE_STATUSES = ("green", "yellow", "red", "off")   # the color names of status_color
+MAX_OVERRIDES = 8
+EFFECT_TICK_SECONDS = 0.1
+CHASE_STEPS = 32
+PULSE_STEPS = 12
 VALUE_TOKENS = ("player", "remaining", "lives", "darts", "round")
 MAX_HOLD_SECONDS = 5
 DEFAULT_HOLD_SECONDS = 0.8
@@ -158,7 +165,7 @@ def clean_keys(keys, custom_ids=()):
             if action not in ACTIONS and action not in custom_ids:
                 raise ValueError(f"unknown action: {action}")
         design = clean_design(entry.get("design"))
-        if not action and not show and design is None:
+        if not action and not show and design is None and not entry.get("effect"):
             raise ValueError("a key needs an action, a value to show or a design")
         label = entry.get("label")
         label = ACTIONS.get(action, "") if label is None else str(label)[:40]
@@ -174,6 +181,11 @@ def clean_keys(keys, custom_ids=()):
         out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image, "show": show}
         if design is not None:
             out[key]["design"] = design
+        effect = clean_effect(entry.get("effect"))
+        if effect is not None:
+            out[key]["effect"] = effect
+        if entry.get("ignore_override") is True:
+            out[key]["ignore_override"] = True
     return [out[k] for k in sorted(out)]
 
 
@@ -227,6 +239,82 @@ def clean_design(design):
     if isinstance(width, bool) or not isinstance(width, (int, float)) or not 0 <= width <= MAX_BORDER:
         raise ValueError("border width must be a number from 0 to %d" % MAX_BORDER)
     return {"layers": out, "border": {"color": color.lower(), "width": int(width)}}
+
+
+def clean_effect(effect):
+    """An effect as stored, or None for no effect: `{type, color, speed, width}`. `speed` is the number of cycles a second
+    (a lap of the frame for a chase), `width` the thickness of the frame in 72nds of the key. Raises ValueError."""
+    if effect in (None, {}, ""):
+        return None
+    if not isinstance(effect, dict):
+        raise ValueError("effect must be an object")
+    kind = effect.get("type")
+    if kind not in EFFECTS:
+        raise ValueError("effect type must be one of " + ", ".join(EFFECTS))
+    color = effect.get("color", "#ff0000")
+    if not _valid_hex(color):
+        raise ValueError("effect color must be #rrggbb")
+    speed = _unit(effect.get("speed", 1), "effect speed", 0.1, 5)
+    width = effect.get("width", 6)
+    if isinstance(width, bool) or not isinstance(width, (int, float)) or not 1 <= width <= MAX_BORDER:
+        raise ValueError("effect width must be a number from 1 to %d" % MAX_BORDER)
+    return {"type": kind, "color": color.lower(), "speed": speed, "width": int(width)}
+
+
+def clean_overrides(overrides):
+    """The rules that put an effect on every key while the board has a status: `[{status, effect}]`, one per status."""
+    if not isinstance(overrides, list) or len(overrides) > MAX_OVERRIDES:
+        raise ValueError("overrides must be a list of at most %d rules" % MAX_OVERRIDES)
+    out, seen = [], set()
+    for rule in overrides:
+        if not isinstance(rule, dict) or rule.get("status") not in OVERRIDE_STATUSES:
+            raise ValueError("an override needs a status: " + ", ".join(OVERRIDE_STATUSES))
+        if rule["status"] in seen:
+            raise ValueError("one override per status")
+        seen.add(rule["status"])
+        effect = clean_effect(rule.get("effect"))
+        if effect is None:
+            raise ValueError("an override needs an effect")
+        out.append({"status": rule["status"], "effect": effect})
+    return out
+
+
+def effect_signature(effect, t):
+    """What the effect looks like at time `t`, reduced to the few steps it can show: a key is drawn again only when it changes."""
+    cycle = (t * effect["speed"]) % 1
+    if effect["type"] == "pulse":
+        return round((0.5 - 0.5 * math.cos(2 * math.pi * cycle)) * PULSE_STEPS)
+    if effect["type"] == "blink":
+        return cycle < 0.5
+    return int(cycle * CHASE_STEPS)
+
+
+def apply_effect(img, effect, t):
+    """The key with the effect at time `t`: a frame that pulses (fades in and out), blinks (on and off) or chases (a lit
+    stretch running round the edge)."""
+    from PIL import Image, ImageDraw
+
+    w, h = img.size
+    color = _rgb(effect["color"])
+    thick = max(1, round(effect["width"] * h / 72))
+    sig = effect_signature(effect, t)
+    if effect["type"] == "blink" and not sig:
+        return img
+    framed = img.copy()
+    draw = ImageDraw.Draw(framed)
+    if effect["type"] == "chase":
+        for i in range(min(thick, w // 2, h // 2)):
+            ring = ([(x, i) for x in range(i, w - i)] + [(w - 1 - i, y) for y in range(i + 1, h - i)]
+                    + [(x, h - 1 - i) for x in range(w - 2 - i, i - 1, -1)] + [(i, y) for y in range(h - 2 - i, i, -1)])
+            n = len(ring)
+            for k, point in enumerate(ring):
+                if ((k / n) - sig / CHASE_STEPS) % 1 < 0.25:
+                    draw.point(point, fill=color)
+        return framed
+    _draw_frame(framed, color, thick)
+    if effect["type"] == "pulse":
+        return Image.blend(img, framed, sig / PULSE_STEPS)
+    return framed
 
 
 def valid_image(value):
@@ -496,6 +584,7 @@ class StreamDeckService:
         self._deck = None
         self._error = None
         self._pictures = {}                 # file name -> (mtime, PIL image), the pictures of the keys
+        self._effect_drawn = {}             # key -> what its effect looked like when it was drawn last
         self._holds = {}                    # key -> Event that cancels the hold of a key being held
         self._hold_step = HOLD_STEP_SECONDS
         self.board_status = None
@@ -522,11 +611,18 @@ class StreamDeckService:
             log.warning("The [streamdeck] keys in config.toml are not valid, ignored")
             return []
 
+    def overrides(self):
+        try:
+            return clean_overrides(self._cfg().get("overrides", []))
+        except ValueError:
+            log.warning("The [streamdeck] overrides in config.toml are not valid, ignored")
+            return []
+
     def brightness(self):
         value = self._cfg().get("brightness", DEFAULT_BRIGHTNESS)
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100 else DEFAULT_BRIGHTNESS
 
-    def update(self, enabled=None, brightness=None, keys=None, actions=None):
+    def update(self, enabled=None, brightness=None, keys=None, actions=None, overrides=None):
         """Save a change of the settings and apply it at once. Raises ValueError for a bad value."""
         changes = {}
         if enabled is not None:
@@ -537,6 +633,8 @@ class StreamDeckService:
             if not isinstance(brightness, int) or isinstance(brightness, bool) or not 0 <= brightness <= 100:
                 raise ValueError("brightness must be a number from 0 to 100")
             changes["brightness"] = brightness
+        if overrides is not None:
+            changes["overrides"] = clean_overrides(overrides)
         custom = clean_actions(actions) if actions is not None else self.actions()
         ids = {a["id"] for a in custom}
         if actions is not None:
@@ -545,7 +643,7 @@ class StreamDeckService:
             changes["keys"] = clean_keys(keys, ids)
         elif actions is not None:
             # a key whose custom action was deleted goes with it
-            changes["keys"] = [k for k in self.keys() if k["action"] in ACTIONS or k["action"] in ids]
+            changes["keys"] = [k for k in self.keys() if not k["action"] or k["action"] in ACTIONS or k["action"] in ids]
         if changes:
             cfg_mod.write(self.config_path, {"streamdeck": changes})
         with self._lock:
@@ -559,6 +657,24 @@ class StreamDeckService:
         if self._thread is None:
             self._thread = threading.Thread(target=self._run, name="streamdeck", daemon=True)
             self._thread.start()
+            threading.Thread(target=self._animate, name="streamdeck-effects", daemon=True).start()
+
+    def _animate(self):
+        """Draw the keys with an effect again whenever the effect has moved on to another step."""
+        while not self._stop.wait(EFFECT_TICK_SECONDS):
+            try:
+                with self._lock:
+                    if self._deck is None:
+                        continue
+                    by_key = {k["key"]: k for k in self.keys()}
+                    now = time.monotonic()
+                    for index in range(self._deck.key_count()):
+                        entry = by_key.get(index)
+                        effect = self._effect_for(entry)
+                        if effect and index not in self._holds and self._effect_drawn.get(index) != effect_signature(effect, now):
+                            self._draw_key(index, entry)
+            except Exception as e:
+                log.error("Stream Deck effects: %s", e)
 
     def stop(self):
         self._stop.set()
@@ -644,7 +760,10 @@ class StreamDeckService:
         if deck is None:
             return
         size = deck.key_image_format()["size"]
-        image = self._render(entry, size, progress)
+        now = time.monotonic()
+        effect = self._effect_for(entry)
+        self._effect_drawn[index] = effect_signature(effect, now) if effect else None
+        image = self._render(entry, size, progress, now)
         self._guard(lambda: deck.set_key_image(index, self._to_native(deck, image)))
 
     def _effective(self, entry):
@@ -663,7 +782,22 @@ class StreamDeckService:
             return {**entry, **changes}
         return entry
 
-    def _render(self, entry, size, progress=None):
+    def _effect_for(self, entry):
+        """The effect a key shows now: the rule of the board status when there is one (unless the key ignores the rules),
+        else the effect of the key itself."""
+        if not (entry and entry.get("ignore_override")):
+            status = status_color(self.board_status)
+            for rule in self.overrides():
+                if rule["status"] == status:
+                    return rule["effect"]
+        return entry.get("effect") if entry else None
+
+    def _render(self, entry, size, progress=None, now=None):
+        image = self._base(entry, size, progress)
+        effect = self._effect_for(entry)
+        return apply_effect(image, effect, time.monotonic() if now is None else now) if effect else image
+
+    def _base(self, entry, size, progress=None):
         if not entry:
             return render_key("", STATUS_COLORS["off"], size)
         entry = self._effective(entry)
@@ -936,5 +1070,8 @@ class StreamDeckService:
                 "symbols": list(SYMBOLS),
                 "show_values": list(SHOW_VALUES),
                 "value_tokens": list(VALUE_TOKENS),
+                "effects": list(EFFECTS),
+                "override_statuses": list(OVERRIDE_STATUSES),
+                "overrides": self.overrides(),
                 "keys": [{**k, "shown": key_hex(k, self.board_status), "value": self._value_of(k)} for k in keys],
             }
