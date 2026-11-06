@@ -1608,4 +1608,5 @@ export default {
   'Page {n}': 'Seite {n}',
   'Open a folder': 'Ordner öffnen',
   'Delete the folder {name} with its keys?': 'Ordner {name} mit seinen Tasten löschen?',
+  'Uploading…': 'Lade hoch…',
 };

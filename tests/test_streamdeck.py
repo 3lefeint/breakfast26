@@ -654,7 +654,7 @@ class TestLocalGameControls:
         from types import SimpleNamespace
         from breakfast.web import server
         calls = []
-        game = SimpleNamespace(state="playing", undo=lambda: calls.append("undo") or True)
+        game = SimpleNamespace(state="playing", online=None, undo=lambda: calls.append("undo") or True)
         ctrl = SimpleNamespace(game=game, next_turn=lambda: calls.append("next") or True, stop=lambda: calls.append("stop"))
         server.wire(GameState(), None, config_path=str(tmp_path / "config.toml"), x01_ctrl=ctrl)
         yield server, calls
