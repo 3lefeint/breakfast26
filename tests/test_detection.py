@@ -33,7 +33,7 @@ def scene(darts=(), hand=False, noise=2.0):
         for x, y in darts:
             px, py = int(400 + 1.6 * x), int(330 - 1.6 * y)
             cv2.line(img, (px, py - 4), (px, py - 120), (15, 15, 15), 7)
-        if hand:
+        if hand is True or (hand and c in hand):
             cv2.rectangle(img, (200, 50), (500, 300), (60, 90, 200), -1)
         out[c] = np.clip(img.astype(np.float32) + RNG.normal(0, noise, img.shape), 0, 255).astype(np.uint8)
     return out
@@ -125,6 +125,25 @@ def test_tracker_waits_while_a_hand_stays_in_the_picture():
     assert events[0].info["seconds"] >= 3 and events[0].after
     events, t = run(tr, [scene([(0, 103)]) for _ in range(14)], start=t)
     assert [e.kind for e in events] == ["dart"]
+
+
+def test_a_dart_is_counted_while_an_arm_covers_one_camera():
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    events, t = run(tr, [scene([(0, 103)], hand=(1,)) for _ in range(14)], start=t)
+    assert [e.kind for e in events] == ["dart"] and tr.count == 1
+    assert events[0].throw["detection"]["cams"] == 2 and events[0].throw["detection"]["uncertain"]
+    assert tr.status != "blocked"
+
+
+def test_a_block_that_is_taken_as_it_is_is_logged_with_its_trace():
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    events, t = run(tr, [scene(hand=True) for _ in range(400)], start=t)
+    kinds = [e.kind for e in events]
+    assert "blocked" in kinds and "unclear" in kinds and tr.status == "ready"
+    b = next(e for e in events if e.kind == "blocked")
+    assert b.info["accepted"] and b.info["looks"] == tr.s.patience and b.info["peak"] and b.info["trace"] and b.before and b.after
 
 
 def test_a_short_block_is_not_logged_but_the_state_goes_back():
