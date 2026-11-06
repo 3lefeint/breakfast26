@@ -673,3 +673,50 @@ class TestLocalGameControls:
             assert "error" in server.run_control("cancel_game")
         finally:
             server.wire(None, None)
+
+
+class TestDesign:
+    def test_a_design_is_cleaned_and_a_key_may_have_only_a_design(self):
+        keys = sd.clean_keys([{"key": 0, "design": {"layers": [
+            {"kind": "text", "text": "Hi {player}", "x": 0.5, "y": 0.8, "size": 0.2, "color": "#FF0000"},
+            {"kind": "image", "image": "symbol:undo", "x": 0.3, "y": 0.4, "size": 0.5}], "border": {"color": "#00FF00", "width": 3}}}])
+        assert keys[0]["design"]["layers"][0]["color"] == "#ff0000"
+        assert keys[0]["design"]["border"] == {"color": "#00ff00", "width": 3}
+        assert "design" not in sd.clean_keys([{"key": 0, "action": "undo"}])[0]
+
+    @pytest.mark.parametrize("bad", [
+        "x", {"layers": "x"}, {"layers": [{"kind": "shape"}]}, {"layers": [{"kind": "text", "x": 2}]},
+        {"layers": [{"kind": "text", "size": 0}]}, {"layers": [{"kind": "image", "image": ""}]},
+        {"layers": [{"kind": "image", "image": "../x.png"}]}, {"layers": [{"kind": "text", "color": "red"}]},
+        {"layers": [{"kind": "text"}] * 9}, {"border": {"color": "red"}}, {"border": {"width": 99}},
+    ])
+    def test_a_bad_design_is_refused(self, bad):
+        with pytest.raises(ValueError):
+            sd.clean_keys([{"key": 0, "action": "undo", "design": bad}])
+
+    def test_the_layers_and_the_border_are_drawn(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "color": "#000000", "design": {
+            "layers": [{"kind": "image", "image": "symbol:start", "x": 0.5, "y": 0.5, "size": 0.8}],
+            "border": {"color": "#ff0000", "width": 4}}}])
+        with service._lock:
+            service._connect()
+        img = service.deck.images[0]
+        assert img.getpixel((0, 0)) == (255, 0, 0)              # the border
+        assert img.getpixel((36, 36)) == (255, 255, 255)        # the symbol in the middle
+        assert img.getpixel((10, 36)) == (0, 0, 0)
+
+    def test_a_text_layer_fills_in_the_value_of_the_game(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "color": "#000000", "design": {
+            "layers": [{"kind": "text", "text": "{remaining}", "x": 0.5, "y": 0.5, "size": 0.6}]}}])
+        service._values = lambda: {"remaining": 501}
+        with service._lock:
+            service._connect()
+        blank = service.deck.images[0].tobytes()
+        service.on_game_change()
+        assert service.deck.images[0].tobytes() != blank
+
+    def test_the_editor_preview_draws_an_unsaved_key(self, service):
+        png = service.preview_entry({"color": "#123456", "design": {"layers": [], "border": {"color": "#ffffff", "width": 2}}})
+        assert png[:4] == b"\x89PNG"
+        with pytest.raises(ValueError):
+            service.preview_entry({"color": "nope", "action": "undo"})

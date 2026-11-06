@@ -3615,6 +3615,18 @@ async def streamdeck_get():
     return _streamdeck.snapshot()
 
 
+@app.post("/api/streamdeck/preview")
+async def streamdeck_preview(body: dict):
+    """A key that is still being edited, drawn the way the device draws it, for the design editor."""
+    if not _streamdeck:
+        raise HTTPException(status_code=404)
+    try:
+        png = _streamdeck.preview_entry(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
 class StreamDeckBody(BaseModel):
     enabled: bool | None = None
     brightness: int | None = None

@@ -58,6 +58,10 @@ IMAGE_NAME = re.compile(r"^\w[\w .\-]{0,78}\.(png|jpe?g|webp)$", re.IGNORECASE)
 MAX_IMAGE_BYTES = 2_000_000
 IMAGE_DIR_NAME = "streamdeck"       # next to config.toml
 PREVIEW_SIZE = (96, 96)
+EDITOR_PREVIEW_SIZE = (216, 216)
+MAX_LAYERS = 8
+MAX_BORDER = 24             # in 72nds of the key's side
+VALUE_TOKENS = ("player", "remaining", "lives", "darts", "round")
 MAX_HOLD_SECONDS = 5
 DEFAULT_HOLD_SECONDS = 0.8
 HOLD_STEP_SECONDS = 0.08   # how often the progress bar of a held key is drawn
@@ -153,8 +157,9 @@ def clean_keys(keys, custom_ids=()):
         if action:
             if action not in ACTIONS and action not in custom_ids:
                 raise ValueError(f"unknown action: {action}")
-        elif not show:
-            raise ValueError("a key needs an action or a value to show")
+        design = clean_design(entry.get("design"))
+        if not action and not show and design is None:
+            raise ValueError("a key needs an action, a value to show or a design")
         label = entry.get("label")
         label = ACTIONS.get(action, "") if label is None else str(label)[:40]
         color = entry.get("color", DEFAULT_COLOR)
@@ -167,7 +172,61 @@ def clean_keys(keys, custom_ids=()):
         if not valid_image(image):
             raise ValueError("image must be empty, symbol:<name> or the name of an uploaded png, jpg or webp file")
         out[key] = {"key": key, "action": action, "label": label, "color": color.lower(), "hold": hold, "image": image, "show": show}
+        if design is not None:
+            out[key]["design"] = design
     return [out[k] for k in sorted(out)]
+
+
+def _unit(value, name, low, high):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+        raise ValueError(f"{name} must be a number from {low} to {high}")
+    return round(float(value), 4)
+
+
+def clean_design(design):
+    """The drawn layout of a key as stored, or None for a key drawn the plain way: `{layers, border}`. A layer is a
+    `text` (`text`, `x`, `y`, `size`, `color`) or an `image` (`image`, `x`, `y`, `size`); x and y are the center as a
+    fraction of the key, `size` the height of the text or the side of the image as a fraction of the key. The text may
+    hold {player}, {remaining}, {lives}, {darts} and {round}. Raises ValueError with a message for the UI."""
+    if design in (None, {}, ""):
+        return None
+    if not isinstance(design, dict):
+        raise ValueError("design must be an object")
+    layers = design.get("layers", [])
+    if not isinstance(layers, list) or len(layers) > MAX_LAYERS:
+        raise ValueError(f"design layers must be a list of at most {MAX_LAYERS}")
+    out = []
+    for layer in layers:
+        if not isinstance(layer, dict):
+            raise ValueError("every layer must be an object")
+        kind = layer.get("kind")
+        item = {"kind": kind, "x": _unit(layer.get("x", 0.5), "x", 0, 1), "y": _unit(layer.get("y", 0.5), "y", 0, 1)}
+        if kind == "text":
+            item["text"] = str(layer.get("text", ""))[:60]
+            item["size"] = _unit(layer.get("size", 0.25), "size", 0.05, 1)
+            color = layer.get("color", "auto")
+            if color != "auto" and not _valid_hex(color):
+                raise ValueError("text color must be 'auto' or #rrggbb")
+            item["color"] = color.lower()
+        elif kind == "image":
+            image = layer.get("image", "")
+            if not image or not valid_image(image):
+                raise ValueError("image must be symbol:<name> or the name of an uploaded png, jpg or webp file")
+            item["image"] = image
+            item["size"] = _unit(layer.get("size", 0.6), "size", 0.1, 2)
+        else:
+            raise ValueError("a layer is a text or an image")
+        out.append(item)
+    border = design.get("border") or {}
+    if not isinstance(border, dict):
+        raise ValueError("border must be an object")
+    color = border.get("color", "#ffffff")
+    if not _valid_hex(color):
+        raise ValueError("border color must be #rrggbb")
+    width = border.get("width", 0)
+    if isinstance(width, bool) or not isinstance(width, (int, float)) or not 0 <= width <= MAX_BORDER:
+        raise ValueError("border width must be a number from 0 to %d" % MAX_BORDER)
+    return {"layers": out, "border": {"color": color.lower(), "width": int(width)}}
 
 
 def valid_image(value):
@@ -228,6 +287,74 @@ def render_key(label, hex_color, size, progress=None, image=None, symbol=None, v
     if progress is not None:
         _draw_progress(img, progress)
     return img
+
+
+def render_design(design, hex_color, size, picture_of, values=None, progress=None):
+    """A key drawn from its layers on the color, with the border on top. `picture_of(name)` gives `(picture, symbol)` for
+    an image layer; `values` fills the {tokens} of the text layers."""
+    from PIL import Image, ImageDraw
+
+    w, h = size
+    rgb = _rgb(hex_color)
+    ink = (0, 0, 0) if (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 > 140 else (255, 255, 255)
+    img = Image.new("RGB", (w, h), rgb)
+    for layer in design["layers"]:
+        cx, cy = layer["x"] * w, layer["y"] * h
+        if layer["kind"] == "text":
+            text = layer["text"]
+            for token in VALUE_TOKENS:
+                value = (values or {}).get(token)
+                text = text.replace("{%s}" % token, "" if value is None else str(value))
+            if text.strip():
+                color = ink if layer["color"] == "auto" else _rgb(layer["color"])
+                _draw_text_at(img, text, cx, cy, max(6, round(layer["size"] * h)), color)
+        else:
+            side = max(4, round(layer["size"] * w))
+            picture, symbol = picture_of(layer["image"])
+            box = (round(cx - side / 2), round(cy - side / 2))
+            if picture is not None:
+                fitted = picture.copy()
+                fitted.thumbnail((side, side), Image.LANCZOS)
+                img.paste(fitted, (round(cx - fitted.width / 2), round(cy - fitted.height / 2)))
+            elif symbol is not None:
+                _draw_symbol(ImageDraw.Draw(img), symbol, (box[0], box[1], box[0] + side, box[1] + side), ink)
+    border = design["border"]
+    if border["width"]:
+        _draw_frame(img, _rgb(border["color"]), border["width"] * h / 72)
+    if progress is not None:
+        _draw_progress(img, progress)
+    return img
+
+
+def _draw_frame(img, color, width):
+    """A frame of `color` along the edge of the key, `width` pixels thick."""
+    from PIL import ImageDraw
+
+    w, h = img.size
+    t = max(1, round(width))
+    draw = ImageDraw.Draw(img)
+    for i in range(t):
+        draw.rectangle((i, i, w - 1 - i, h - 1 - i), outline=color)
+
+
+def _draw_text_at(img, text, cx, cy, px, ink):
+    """The text centered on (cx, cy) with letters `px` high, broken into lines at the width of the key, kept inside it."""
+    from PIL import ImageDraw, ImageFont
+
+    w, h = img.size
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=px)
+    lines = _wrap(draw, text.split(), font, w - 4) or [""]
+    gap = max(1, px // 8)
+    heights = [draw.textbbox((0, 0), ln, font=font)[3] for ln in lines]
+    total = sum(heights) + gap * (len(lines) - 1)
+    y = min(max(cy - total / 2, 0), max(h - total, 0))
+    for ln, lh in zip(lines, heights):
+        box = draw.textbbox((0, 0), ln, font=font)
+        width = draw.textlength(ln, font=font)
+        x = min(max(cx - width / 2, 0), max(w - width, 0))
+        draw.text((x, y - box[1] + (lh - box[3] + box[1]) * 0), ln, font=font, fill=ink)
+        y += lh + gap
 
 
 def _cover(image, size):
@@ -528,6 +655,11 @@ class StreamDeckService:
                 changes["label"] = ACTIONS["start_board"]
             if entry["image"] == SYMBOL_PREFIX + "reset":
                 changes["image"] = SYMBOL_PREFIX + "start"
+            if entry.get("design"):
+                layers = [{**la, "text": ACTIONS["start_board"]} if la["kind"] == "text" and la["text"] == ACTIONS["reset_board"]
+                          else {**la, "image": SYMBOL_PREFIX + "start"} if la["kind"] == "image" and la["image"] == SYMBOL_PREFIX + "reset"
+                          else la for la in entry["design"]["layers"]]
+                changes["design"] = {**entry["design"], "layers": layers}
             return {**entry, **changes}
         return entry
 
@@ -539,17 +671,29 @@ class StreamDeckService:
         value = self._value_of(entry)
         self._shown[entry["key"]] = value
         color = FLASH_COLOR if self._flash_on(entry) else key_hex(entry, self.board_status)
+        if entry.get("design"):
+            return render_design(entry["design"], color, size, self._picture, self._vals, progress)
         return render_key(entry["label"], color, size, progress, picture, symbol, value)
+
+    @staticmethod
+    def _live(entry):
+        """True for a key that shows something of the game: a display key or a design with a {token} in a text."""
+        if entry["show"]:
+            return True
+        return any(token in layer["text"] for layer in (entry.get("design") or {}).get("layers", []) if layer["kind"] == "text"
+                   for token in ("{%s}" % t for t in VALUE_TOKENS))
 
     def _value_of(self, entry):
         """The text a display key shows now, None for any other key or while the game has no such value."""
-        if not entry["show"] or not self._vals:
+        if not self._live(entry) or not self._vals:
             return None
-        value = self._vals.get(entry["show"])
-        return None if value is None else str(value)
+        if entry["show"]:
+            value = self._vals.get(entry["show"])
+            return None if value is None else str(value)
+        return "|".join(str(self._vals.get(t)) for t in VALUE_TOKENS)
 
     def _flash_on(self, entry):
-        return bool(entry["show"]) and self._flash_phase and time.monotonic() < self._flash_until
+        return self._live(entry) and self._flash_phase and time.monotonic() < self._flash_until
 
     # ---- the game ----
     def refresh_values(self):
@@ -566,7 +710,7 @@ class StreamDeckService:
         self.refresh_values()
         with self._lock:
             for entry in self.keys():
-                if entry["show"] and self._value_of(entry) != self._shown.get(entry["key"]):
+                if self._live(entry) and self._value_of(entry) != self._shown.get(entry["key"]):
                     self._draw_key(entry["key"], entry)
 
     def flash(self, seconds=FLASH_SECONDS):
@@ -584,7 +728,7 @@ class StreamDeckService:
         while time.monotonic() < self._flash_until and not self._stop.is_set():
             with self._lock:
                 for entry in self.keys():
-                    if entry["show"]:
+                    if self._live(entry):
                         self._draw_key(entry["key"], entry)
             self._flash_phase = not self._flash_phase
             time.sleep(FLASH_STEP_SECONDS)
@@ -672,6 +816,14 @@ class StreamDeckService:
         self.refresh_values()
         out = io.BytesIO()
         self._render(entry, PREVIEW_SIZE).save(out, "PNG")
+        return out.getvalue()
+
+    def preview_entry(self, entry, size=EDITOR_PREVIEW_SIZE):
+        """The PNG of a key that is still being edited (not saved), as the device would draw it now. Raises ValueError."""
+        clean = clean_keys([{**entry, "key": 0}], {a["id"] for a in self.actions()})[0]
+        self.refresh_values()
+        out = io.BytesIO()
+        self._render(clean, size).save(out, "PNG")
         return out.getvalue()
 
     def _on_key(self, deck, key, pressed):
@@ -783,5 +935,6 @@ class StreamDeckService:
                 "images": self.images(),
                 "symbols": list(SYMBOLS),
                 "show_values": list(SHOW_VALUES),
+                "value_tokens": list(VALUE_TOKENS),
                 "keys": [{**k, "shown": key_hex(k, self.board_status), "value": self._value_of(k)} for k in keys],
             }
