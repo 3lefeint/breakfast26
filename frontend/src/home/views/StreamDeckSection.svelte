@@ -14,10 +14,11 @@
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
                          next_player: t('Next Player'), next_game: t('Next Game') };
-  const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game') };
+  const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game'),
+                         folder: t('Folder'), back: t('Back'), page_prev: t('Previous page'), page_next: t('Next page') };
   const SHOW_LABEL = { player: t('Player on turn'), remaining: t('Remaining score'), lives: t('Lives'),
                        darts: t('Darts in the turn'), round: t('Round') };
-  const labelOf = (id) => ACTION_LABEL[id] || data?.actions.find((a) => a.id === id)?.label || '';
+  const labelOf = (id) => ACTION_LABEL[id] || data?.actions.find((a) => a.id === id)?.label || data?.folder_actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
 
@@ -48,28 +49,75 @@
   }
 
   let keyCount = $derived(data ? data.rows * data.cols : 0);
-  let cells = $derived(data ? Array.from({ length: keyCount }, (_, i) => data.keys.find((k) => k.key === i) || { key: i, empty: true }) : []);
+  // ---- folders and pages: the grid shows one page of the main layout or of a folder ----
+  let view = $state({ folder: '', page: 0 });
+  let extraPages = $state(1);
+  const layoutOf = (folder) => (folder ? data.folders.find((f) => f.id === folder)?.keys || [] : data.keys);
+  let current = $derived(data ? layoutOf(view.folder) : []);
+  let savedPages = $derived(Math.max(0, ...current.map((k) => k.page || 0)) + 1);
+  let pages = $derived(Math.max(extraPages, savedPages));
+  // The keys that go back and page take the place of those keys on the device.
+  const reservedLabel = (i) => {
+    if (view.folder && i === 0) return t('Back');
+    if (savedPages > 1 && i === keyCount - 2) return '‹';
+    if (savedPages > 1 && i === keyCount - 1) return '›';
+    return '';
+  };
+  let cells = $derived(data ? Array.from({ length: keyCount }, (_, i) => current.find((k) => k.key === i && (k.page || 0) === view.page)
+    || { key: i, empty: true, reserved: reservedLabel(i) }) : []);
+  const folderName = $derived(data?.folders.find((f) => f.id === view.folder)?.name || '');
+  let newFolder = $state('');
+
+  function open(folder) {
+    view = { folder, page: 0 };
+    extraPages = 1;
+    selected = null;
+    designing = false;
+  }
+  function openPage(page) { view.page = page; selected = null; designing = false; }
+  const addPage = () => { if (pages < data.max_pages) { extraPages = pages + 1; openPage(pages); } };
+
+  async function addFolder() {
+    const name = newFolder.trim();
+    if (!name) return;
+    if (await send({ folders: [...data.folders, { name, keys: [] }] })) {
+      newFolder = '';
+      open(data.folders[data.folders.length - 1].id);
+    }
+  }
+  async function renameFolder(e) {
+    const name = e.currentTarget.value.trim();
+    if (name) await send({ folders: data.folders.map((f) => (f.id === view.folder ? { ...f, name } : f)) });
+  }
+  async function deleteFolder() {
+    const f = data.folders.find((x) => x.id === view.folder);
+    if (!await confirmDialog(t('Delete the folder {name} with its keys?', { name: f.name }))) return;
+    open('');
+    await send({ folders: data.folders.filter((x) => x.id !== f.id) });
+  }
+
 
   function select(i) {
     selected = selected === i ? null : i;
-    const k = data?.keys.find((x) => x.key === i);
+    const k = current.find((x) => x.key === i && (x.page || 0) === view.page);
     designing = false;
     draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show, design: k.design || null, effect: k.effect || null, ignore_override: !!k.ignore_override } : { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null, effect: null, ignore_override: false };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
   function layoutWith(i, d) {
-    const plain = ({ key, action, label, color, hold, image, show, design, effect, ignore_override }) => ({ key, action, label, color, hold, image, show, ...(design ? { design } : {}), ...(effect ? { effect } : {}), ...(ignore_override ? { ignore_override: true } : {}) });
-    const others = data.keys.filter((k) => k.key !== i).map(plain);
-    return d.action || d.show || d.design || d.effect ? [...others, plain({ key: i, ...d })] : others;
+    const plain = ({ key, action, label, color, hold, image, show, design, effect, ignore_override, page }) => ({ key, action, label, color, hold, image, show, ...(page ? { page } : {}), ...(design ? { design } : {}), ...(effect ? { effect } : {}), ...(ignore_override ? { ignore_override: true } : {}) });
+    const others = current.filter((k) => !(k.key === i && (k.page || 0) === view.page)).map(plain);
+    return d.action || d.show || d.design || d.effect ? [...others, plain({ key: i, page: view.page, ...d })] : others;
   }
 
   async function chooseAction() {
     // A label that is still the name of the previous action follows the new action.
-    const previous = data.keys.find((k) => k.key === selected);
+    const previous = current.find((k) => k.key === selected && (k.page || 0) === view.page);
     if (!draft.label || (previous && draft.label === labelOf(previous.action))) draft.label = labelOf(draft.action);
     // A board reset has to be held by default, so it is not run by a press by accident.
     if (!previous && draft.action === 'reset_board') draft.hold = DEFAULT_HOLD;
+    if (draft.action.startsWith('folder:') && !draft.image) draft.image = 'symbol:folder';
     await save();
   }
 
@@ -80,7 +128,8 @@
 
   async function save() {
     if (selected === null) return;
-    await send({ keys: layoutWith(selected, draft) });
+    const list = layoutWith(selected, draft);
+    await send(view.folder ? { folders: data.folders.map((f) => (f.id === view.folder ? { id: f.id, name: f.name, keys: list } : f)) } : { keys: list });
   }
 
   async function clearKey() {
@@ -105,7 +154,7 @@
   let uploading = $state(false);
   const isFile = (v) => v && !v.startsWith('symbol:');
   // The preview of a key with an image is drawn by Breakfast itself, so it is what the device shows.
-  const previewUrl = (c) => `${URL}/key/${c.key}.png?v=${encodeURIComponent([c.shown, c.label, c.image, c.value, JSON.stringify(c.design || ''), data.images.join()].join('|'))}`;
+  const previewUrl = (c) => `${URL}/key/${c.key}.png?folder=${view.folder}&page=${view.page}&v=${encodeURIComponent([c.shown, c.label, c.image, c.value, JSON.stringify(c.design || ''), data.images.join()].join('|'))}`;
 
   async function upload(event) {
     const file = event.target.files?.[0];
@@ -205,12 +254,33 @@
     <span class="val">{data.brightness} %</span>
   </label>
 
+  <div class="folderbar">
+    <select value={view.folder} onchange={(e) => open(e.currentTarget.value)} aria-label={t('Folder')}>
+      <option value="">{t('Main layout')}</option>
+      {#each data.folders as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+    </select>
+    {#if view.folder}
+      <input type="text" maxlength="40" value={folderName} onchange={renameFolder} aria-label={t('Name')}>
+      <button type="button" class="act danger" onclick={deleteFolder}>{t('Delete folder')}</button>
+    {:else}
+      <input type="text" maxlength="40" bind:value={newFolder} placeholder={t('New folder')} onkeydown={(e) => e.key === 'Enter' && addFolder()}>
+      <button type="button" class="act" onclick={addFolder} disabled={!newFolder.trim()}>{t('Add folder')}</button>
+    {/if}
+  </div>
+  <div class="pages">
+    {#each Array.from({ length: pages }, (_, i) => i) as p (p)}
+      <button type="button" class="act" class:on={view.page === p} onclick={() => openPage(p)}>{t('Page {n}', { n: p + 1 })}</button>
+    {/each}
+    {#if pages < data.max_pages}<button type="button" class="act" onclick={addPage}>+</button>{/if}
+  </div>
+
   <div class="grid" style="grid-template-columns: repeat({data.cols}, minmax(0, 1fr));" class:dim={!data.connected}>
     {#each cells as c (c.key)}
-      <button type="button" class="key" class:selected={selected === c.key} class:empty={c.empty}
+      <button type="button" class="key" class:selected={selected === c.key} class:empty={c.empty} class:reserved={c.reserved} disabled={!!c.reserved}
               style={c.empty ? '' : `background: ${c.shown}; color: ${textColor(c.shown)};`}
               onclick={() => select(c.key)} aria-label={t('Key {n}', { n: c.key + 1 })}>
-        {#if c.empty}<span class="num">{c.key + 1}</span>
+        {#if c.reserved}{c.reserved}
+        {:else if c.empty}<span class="num">{c.key + 1}</span>
         {:else if c.image || c.show || c.design}<img class="keyimg" src={previewUrl(c)} alt={c.label}>
         {:else}{c.label}{/if}
       </button>
@@ -225,6 +295,11 @@
         <select bind:value={draft.action} onchange={chooseAction}>
           <option value="">{t('None')}</option>
           {#each data.actions.filter((a) => !a.custom) as a (a.id)}<option value={a.id}>{ACTION_LABEL[a.id]}</option>{/each}
+          {#if data.folder_actions.length}
+            <optgroup label={t('Open a folder')}>
+              {#each data.folder_actions as a (a.id)}<option value={a.id}>{a.label}</option>{/each}
+            </optgroup>
+          {/if}
           {#if data.custom_actions.length}
             <optgroup label={t('Custom actions')}>
               {#each data.actions.filter((a) => a.custom) as a (a.id)}<option value={a.id}>{a.label}</option>{/each}
@@ -376,6 +451,12 @@
     font-family: inherit; font-size: 0.8rem; font-weight: 600; line-height: 1.15; padding: 0.2rem; cursor: pointer;
     overflow: hidden; word-break: break-word;
   }
+  .folderbar { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; max-width: 34rem; flex-wrap: wrap; }
+  .folderbar select, .folderbar input { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text); padding: 0.3rem 0.5rem; font-family: inherit; font-size: 0.85rem; }
+  .folderbar input { flex: 1; min-width: 6rem; }
+  .pages { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+  .pages .on { border-color: var(--accent); color: var(--text); }
+  .key.reserved { opacity: 0.55; cursor: default; font-size: 0.75rem; }
   .key.empty { color: var(--muted); font-weight: 400; }
   .key:hover { border-color: var(--accent); }
   .key.selected { border-color: var(--accent); box-shadow: 0 0 14px -2px var(--accent); }
