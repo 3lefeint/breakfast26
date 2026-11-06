@@ -391,7 +391,7 @@ class Worker:
             for ev in self.tracker.feed(now, frames):
                 self.handle(ev)
             if self.clips:
-                self.clips.offer(now, frames, self.tracker.moving, {"count": self.tracker.count, "status": self.tracker.status})
+                self.clips.offer(now, frames, self.tracker.moving or self.tracker.status == "blocked", {"count": self.tracker.count, "status": self.tracker.status})
             took = (time.monotonic() - now) * 1000.0
             self.feed_ms = took if self.feed_ms == 0 else 0.95 * self.feed_ms + 0.05 * took
             count += 1

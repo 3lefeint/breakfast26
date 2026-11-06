@@ -34,8 +34,8 @@ class Settings:
     new_body_ratio: float = 1.15    # ... unless the picture around it has this much more changed than when it was counted (real darts: 1.4 to 2.5)
     uncertain_margin_mm: float = 2.0    # a dart closer than this to a wire or ring is marked as uncertain ...
     uncertain_sigma: float = 1.6        # ... and so is one whose position the cameras only know to within this (mm)
-    block_log_s: float = 3.0        # a blocked board that lasts at least this long is logged as an event (when it ends)
-    patience: int = 40              # looks (about 0.3 s apart) at a blocked board before the picture is taken as it is
+    block_log_s: float = 3.0        # a blocked board that lasts at least this long is logged as an event (when it ends); one that is taken as it is always
+    patience: int = 20              # looks (about 0.3 s apart) at a blocked board before the picture is taken as it is
     retry_s: float = 1.0            # when a change could not be explained, look again after this long
     recount: bool = True            # count a dart that the picture shows but the count missed (see `_recount`)
     recount_looks: int = 2          # settled looks in a row that must show it at the same place
@@ -130,13 +130,17 @@ class BoardTracker:
 
     def _end_block(self, t):
         """The board is not blocked any more (or the picture was taken as it is): the state goes back, and a block that lasted
-        a while is logged with its first picture."""
+        a while is logged: how long, why, what changed per look and in which camera, the reference picture it was measured
+        against (`before`) and the picture of its first look (`after`)."""
         b, self._block = self._block, None
         self.status = "takeout" if self.count >= 3 else "ready"
         seconds = t - b["t0"]
-        if seconds < self.s.block_log_s or b["accepted"]:
+        if seconds < self.s.block_log_s and not b["accepted"]:
             return []
-        return [Event("blocked", t, self.count, info={"seconds": round(seconds, 1), "looks": b["looks"], **b["info"]}, after=b["frames"])]
+        peak = {c: max(row[1][c] for row in b["trace"]) for c in b["trace"][0][1]}
+        info = {"seconds": round(seconds, 1), "looks": b["looks"], "accepted": b["accepted"], "peak": peak,
+                "trace": [[round(ts, 1), row] for ts, row in b["trace"][:80]], **b["info"]}
+        return [Event("blocked", t, self.count, info=info, before=b["ref"], after=b["frames"])]
 
     def _settled(self, t, frames):
         self._work_from = time.monotonic()
@@ -153,10 +157,12 @@ class BoardTracker:
             if self._is_empty(gone):
                 return self._takeout(t, frames, prepared)
         changed = {c: detector.changed_area(self.model.masks[c], self.ref[c], prepared[c]) for c in prepared}
-        if max(changed.values()) > 2 * self.s.max_area or sum(1 for a in changed.values() if a > self.s.max_area) >= 2:
+        if sum(1 for a in changed.values() if a > self.s.max_area) >= 2:
             return self._blocked_board(t, frames, prepared, {"changed": changed, "why": "big change: a hand or an arm"})
+        # one camera that sees far more than a dart (an arm right in front of it) is left out; the others still look at the board
+        covered = [c for c, a in changed.items() if a > 2 * self.s.max_area]
         self._blocked = 0
-        seen = [c for c, a in changed.items() if a >= self.s.min_area]
+        seen = [c for c, a in changed.items() if a >= self.s.min_area and c not in covered]
         if not seen:
             # nothing new: follow the light, and notice that the board is empty again
             self.ref, self.ref_raw = prepared, frames
@@ -166,7 +172,10 @@ class BoardTracker:
             self._handled = True
             events = self._drop_unsupported(t, frames, prepared)   # nothing new: check that every counted dart is still there
             return events or self._recount(t, frames, prepared, hp)
-        result = detector.locate(self.model, self.ref, prepared, min_cams=self.s.min_cams)
+        masks = {c: (np.zeros_like(m) if c in covered else m) for c, m in self.model.masks.items()}
+        result = detector.locate(self.model, self.ref, prepared, min_cams=self.s.min_cams, masks=masks)
+        if result is None and covered:
+            return self._blocked_board(t, frames, prepared, {"changed": changed, "why": "a camera is covered and the others see no dart"})
         if result is None:
             return self._unclear_change(t, frames, prepared, {"changed": changed})
         if result["cams"] >= 2 and result["agree"] < 2:
@@ -253,18 +262,20 @@ class BoardTracker:
         self._blocked += 1
         self._block_hit = True
         if self._block is None:
-            self._block = {"t0": t, "looks": 0, "info": info, "frames": frames, "accepted": False}
+            self._block = {"t0": t, "looks": 0, "info": info, "frames": frames, "ref": self.ref_raw, "accepted": False, "trace": []}
         self._block["looks"] += 1
+        self._block["trace"].append((t - self._block["t0"], {c: int(a) for c, a in info.get("changed", {}).items()}))
         self.status = "blocked"
         self._handled = False
         self._retry_at = t + 0.3
         if self._blocked >= self.s.patience:
             self._blocked = 0
             self.ref, self.ref_raw = prepared, frames
-            self._handled = True
+            self._handled = False                       # look again soon: a dart that landed during the block is counted late (`_recount`)
+            self._retry_at = t + 0.3
             self._block["accepted"] = True
-            self._end_block(t)
-            return [Event("unclear", t, self.count, info={**info, "accepted": True, "why": "blocked for a long time"}, before=None, after=frames)]
+            logged = self._end_block(t)
+            return logged + [Event("unclear", t, self.count, info={**info, "accepted": True, "why": "blocked for a long time"}, before=None, after=frames)]
         return []
 
     def _drop_unsupported(self, t, frames, prepared):
