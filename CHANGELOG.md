@@ -5,6 +5,20 @@
 ### Added
 - API: `GET /api/scenes/sounds` lists the sound library without the scenes.
 - SCENES.md is the technical reference for scenes: every node with its fields and limits, the triggers with their facts, the REST routes and examples, so that scenes can be made through the API. The Swagger UI of the API is served at `/docs`, with the routes in groups (Scenes, the games, Players, Stats, Voice pack, Circle, Admin, ...), and the body of a scene is described in `/openapi.json`.
+- Stream Deck display keys show a value of the game in play (the player on turn, remaining score, lives, darts of the turn, round) and flash when an achievement is earned; they are set per key under Settings → Stream Deck (`show`). (#109)
+- A Stream Deck key can show a picture: a built-in symbol (reset, start, undo, next player, next game) or an uploaded png, jpg or webp (`image` of a key, files in the `streamdeck` folder next to `config.toml`, `/api/streamdeck/images`); the board status shows as the frame or background color and the key grid shows the key as the device draws it. (#108)
+- Custom actions for Stream Deck keys: a key can call a route of Breakfast or any web address with a method and a body, created under Settings → Stream Deck → Custom actions (`[[streamdeck.actions]]`, `actions` of `PUT /api/streamdeck`). (#107)
+- A Stream Deck key can be set to run its action only when it is held (default for Reset Board: 0.8 seconds); a bar fills up on the key while it is held and a shorter press does nothing. (#110)
+- Stream Deck keys: a Stream Deck plugged into the computer that runs Breakfast resets or starts the board, undoes a dart or skips a player or game, and its keys show the board status (green when ready to throw, yellow around the take-out, red when stopped). The keys are set up on the new Settings → Stream Deck page (`[streamdeck]`, `GET`/`PUT /api/streamdeck`); Linux and Docker, Windows not yet. (#106)
+- A Stream Deck key has a design editor under Settings → Stream Deck: image and text layers placed and sized on a grid with the mouse, a frame with color and thickness, and values of the game as `{player}`, `{remaining}`, `{lives}`, `{darts}`, `{round}` in texts (`design` of a key, `POST /api/streamdeck/preview`). (#106)
+- Stream Deck effects: a key can pulse, blink or chase a colored frame (color, speed, thickness), and status rules put an effect on every key while the board has a status, for example a red pulsing frame while it is stopped; a key can ignore the rules (`effect`, `ignore_override` of a key, `[[streamdeck.overrides]]`). (#106)
+- Stream Deck folders and pages: a key can open a folder with its own keys and pages; the keys for going back and paging are set automatically, and a layout with more than one page gets page keys (`folders`, `page` of a key, `[[streamdeck.folders]]`). (#106)
+
+### Changed
+- Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
+
+### Fixed
+- Stream Deck keys: Undo and Next Player work in games started in Breakfast (X01, Elimination and the others), not only in matches started at the board; a Reset Board key becomes a Start Board key while the board is stopped; the board status "Stopped" shows red like in the TV view; new and unused keys are black. (#106)
 
 ## [1.15.0] - 2026-11-04
 
@@ -76,21 +90,6 @@
 - The connection to the local board follows the same rule, and the error line the WebSocket library writes on every failed connect is no longer logged. (#112)
 - A match both sites played online and the relay took from the other one counts as delivered: "Send all matches" and a second close do not queue it again. (#114)
 - A guest of another site stored by an online match becomes the local player the admin mapped him to, with his matches, wins and achievements; this waits while a match is running. (#115)
-- Stream Deck display keys show a value of the game in play (the player on turn, remaining score, lives, darts of the turn, round) and flash when an achievement is earned; they are set per key under Settings → Stream Deck (`show`). (#109)
-- A Stream Deck key can show a picture: a built-in symbol (reset, start, undo, next player, next game) or an uploaded png, jpg or webp (`image` of a key, files in the `streamdeck` folder next to `config.toml`, `/api/streamdeck/images`); the board status shows as the frame or background color and the key grid shows the key as the device draws it. (#108)
-- Custom actions for Stream Deck keys: a key can call a route of Breakfast or any web address with a method and a body, created under Settings → Stream Deck → Custom actions (`[[streamdeck.actions]]`, `actions` of `PUT /api/streamdeck`). (#107)
-- A Stream Deck key can be set to run its action only when it is held (default for Reset Board: 0.8 seconds); a bar fills up on the key while it is held and a shorter press does nothing. (#110)
-- Stream Deck keys: a Stream Deck plugged into the computer that runs Breakfast resets or starts the board, undoes a dart or skips a player or game, and its keys show the board status (green when ready to throw, yellow around the take-out, red when stopped). The keys are set up on the new Settings → Stream Deck page (`[streamdeck]`, `GET`/`PUT /api/streamdeck`); Linux and Docker, Windows not yet. (#106)
-
-- A Stream Deck key has a design editor under Settings → Stream Deck: image and text layers placed and sized on a grid with the mouse, a frame with color and thickness, and values of the game as `{player}`, `{remaining}`, `{lives}`, `{darts}`, `{round}` in texts (`design` of a key, `POST /api/streamdeck/preview`). (#106)
-- Stream Deck effects: a key can pulse, blink or chase a colored frame (color, speed, thickness), and status rules put an effect on every key while the board has a status, for example a red pulsing frame while it is stopped; a key can ignore the rules (`effect`, `ignore_override` of a key, `[[streamdeck.overrides]]`). (#106)
-- Stream Deck folders and pages: a key can open a folder with its own keys and pages; the keys for going back and paging are set automatically, and a layout with more than one page gets page keys (`folders`, `page` of a key, `[[streamdeck.folders]]`). (#106)
-
-### Changed
-- Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
-
-### Fixed
-- Stream Deck keys: Undo and Next Player work in games started in Breakfast (X01, Elimination and the others), not only in matches started at the board; a Reset Board key becomes a Start Board key while the board is stopped; the board status "Stopped" shows red like in the TV view; new and unused keys are black. (#106)
 
 ## [1.11.1] - 2026-10-23
 
