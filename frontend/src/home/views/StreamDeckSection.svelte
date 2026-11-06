@@ -8,6 +8,7 @@
   import Toggle from '../../lib/components/Toggle.svelte';
   import { apiJson } from '../../lib/api.js';
   import { confirmDialog } from '../../lib/confirm.js';
+  import KeyDesigner from './KeyDesigner.svelte';
 
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
@@ -22,7 +23,8 @@
   let data = $state(null);
   let error = $state('');
   let selected = $state(null);
-  let draft = $state({ action: '', label: '', color: '#000000', hold: 0, image: '', show: '' });
+  let draft = $state({ action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null });
+  let designing = $state(false);
   let timer = null;
 
   async function load() {
@@ -50,13 +52,15 @@
   function select(i) {
     selected = selected === i ? null : i;
     const k = data?.keys.find((x) => x.key === i);
-    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show } : { action: '', label: '', color: '#000000', hold: 0, image: '', show: '' };
+    designing = false;
+    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show, design: k.design || null } : { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
   function layoutWith(i, d) {
-    const others = data.keys.filter((k) => k.key !== i).map(({ key, action, label, color, hold, image, show }) => ({ key, action, label, color, hold, image, show }));
-    return d.action || d.show ? [...others, { key: i, action: d.action, label: d.label, color: d.color, hold: d.hold, image: d.image, show: d.show }] : others;
+    const plain = ({ key, action, label, color, hold, image, show, design }) => ({ key, action, label, color, hold, image, show, ...(design ? { design } : {}) });
+    const others = data.keys.filter((k) => k.key !== i).map(plain);
+    return d.action || d.show || d.design ? [...others, plain({ key: i, ...d })] : others;
   }
 
   async function chooseAction() {
@@ -79,17 +83,24 @@
   }
 
   async function clearKey() {
-    draft = { action: '', label: '', color: '#000000', hold: 0, image: '', show: '' };
+    draft = { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null };
+    designing = false;
     await save();
   }
 
+  const saveDesign = (design) => { draft.design = design; return save(); };
+  async function resetDesign() {
+    designing = false;
+    draft.design = null;
+    await save();
+  }
   const setHold = (on) => { draft.hold = on ? DEFAULT_HOLD : 0; save(); };
   const holdTime = (e) => { draft.hold = Math.min(5, Math.max(0.2, Number(e.currentTarget.value) || DEFAULT_HOLD)); save(); };
   // ---- images ----
   let uploading = $state(false);
   const isFile = (v) => v && !v.startsWith('symbol:');
   // The preview of a key with an image is drawn by Breakfast itself, so it is what the device shows.
-  const previewUrl = (c) => `${URL}/key/${c.key}.png?v=${encodeURIComponent([c.shown, c.label, c.image, c.value, data.images.join()].join('|'))}`;
+  const previewUrl = (c) => `${URL}/key/${c.key}.png?v=${encodeURIComponent([c.shown, c.label, c.image, c.value, JSON.stringify(c.design || ''), data.images.join()].join('|'))}`;
 
   async function upload(event) {
     const file = event.target.files?.[0];
@@ -195,7 +206,7 @@
               style={c.empty ? '' : `background: ${c.shown}; color: ${textColor(c.shown)};`}
               onclick={() => select(c.key)} aria-label={t('Key {n}', { n: c.key + 1 })}>
         {#if c.empty}<span class="num">{c.key + 1}</span>
-        {:else if c.image || c.show}<img class="keyimg" src={previewUrl(c)} alt={c.label}>
+        {:else if c.image || c.show || c.design}<img class="keyimg" src={previewUrl(c)} alt={c.label}>
         {:else}{c.label}{/if}
       </button>
     {/each}
@@ -223,7 +234,7 @@
           {#each data.show_values as v (v)}<option value={v}>{SHOW_LABEL[v]}</option>{/each}
         </select>
       </label>
-      {#if draft.action || draft.show}
+      {#if draft.action || draft.show || draft.design}
         <label class="field">
           <span>{t('Label')}</span>
           <input type="text" maxlength="40" bind:value={draft.label} onchange={save}>
@@ -260,6 +271,17 @@
           </label>
           {#if isFile(draft.image)}<button type="button" class="act danger" onclick={deleteImage}>{t('Delete file')}</button>{/if}
         </div>
+        <div class="field">
+          <span>{t('Design')}</span>
+          <button type="button" class="act" onclick={() => (designing = !designing)}>{designing ? t('Close the design') : t('Edit the design')}</button>
+          {#if draft.design}<button type="button" class="act danger" onclick={resetDesign}>{t('Back to the plain layout')}</button>{/if}
+        </div>
+        {#if designing}
+          {#key selected}
+            <KeyDesigner entry={{ ...draft, key: selected }} images={data.images} symbols={data.symbols} symbolLabel={SYMBOL_LABEL}
+                         valueTokens={data.value_tokens} onchange={saveDesign} onclose={() => (designing = false)} />
+          {/key}
+        {/if}
         {#if draft.action}<Toggle label={t('Hold to run')} checked={draft.hold > 0} onchange={setHold} />{/if}
         {#if draft.action && draft.hold > 0}
           <label class="field">
