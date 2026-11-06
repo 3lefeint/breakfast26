@@ -3632,6 +3632,7 @@ class StreamDeckBody(BaseModel):
     brightness: int | None = None
     keys: list[dict] | None = None
     actions: list[dict] | None = None
+    overrides: list[dict] | None = None
 
 
 @app.put("/api/streamdeck")

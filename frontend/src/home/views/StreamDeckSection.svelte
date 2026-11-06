@@ -9,6 +9,7 @@
   import { apiJson } from '../../lib/api.js';
   import { confirmDialog } from '../../lib/confirm.js';
   import KeyDesigner from './KeyDesigner.svelte';
+  import EffectFields from './EffectFields.svelte';
 
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
@@ -23,7 +24,7 @@
   let data = $state(null);
   let error = $state('');
   let selected = $state(null);
-  let draft = $state({ action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null });
+  let draft = $state({ action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null, effect: null, ignore_override: false });
   let designing = $state(false);
   let timer = null;
 
@@ -53,14 +54,14 @@
     selected = selected === i ? null : i;
     const k = data?.keys.find((x) => x.key === i);
     designing = false;
-    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show, design: k.design || null } : { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null };
+    draft = k ? { action: k.action, label: k.label, color: k.color, hold: k.hold, image: k.image, show: k.show, design: k.design || null, effect: k.effect || null, ignore_override: !!k.ignore_override } : { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null, effect: null, ignore_override: false };
   }
 
   // The whole layout with the draft applied to the selected key (or that key removed when it has no action).
   function layoutWith(i, d) {
-    const plain = ({ key, action, label, color, hold, image, show, design }) => ({ key, action, label, color, hold, image, show, ...(design ? { design } : {}) });
+    const plain = ({ key, action, label, color, hold, image, show, design, effect, ignore_override }) => ({ key, action, label, color, hold, image, show, ...(design ? { design } : {}), ...(effect ? { effect } : {}), ...(ignore_override ? { ignore_override: true } : {}) });
     const others = data.keys.filter((k) => k.key !== i).map(plain);
-    return d.action || d.show || d.design ? [...others, plain({ key: i, ...d })] : others;
+    return d.action || d.show || d.design || d.effect ? [...others, plain({ key: i, ...d })] : others;
   }
 
   async function chooseAction() {
@@ -83,11 +84,15 @@
   }
 
   async function clearKey() {
-    draft = { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null };
+    draft = { action: '', label: '', color: '#000000', hold: 0, image: '', show: '', design: null, effect: null, ignore_override: false };
     designing = false;
     await save();
   }
 
+  const setRule = (status, effect) => {
+    const others = data.overrides.filter((r) => r.status !== status);
+    return send({ overrides: effect ? [...others, { status, effect }] : others });
+  };
   const saveDesign = (design) => { draft.design = design; return save(); };
   async function resetDesign() {
     designing = false;
@@ -234,7 +239,7 @@
           {#each data.show_values as v (v)}<option value={v}>{SHOW_LABEL[v]}</option>{/each}
         </select>
       </label>
-      {#if draft.action || draft.show || draft.design}
+      {#if draft.action || draft.show || draft.design || draft.effect}
         <label class="field">
           <span>{t('Label')}</span>
           <input type="text" maxlength="40" bind:value={draft.label} onchange={save}>
@@ -282,6 +287,8 @@
                          valueTokens={data.value_tokens} onchange={saveDesign} onclose={() => (designing = false)} />
           {/key}
         {/if}
+        <EffectFields effect={draft.effect} effects={data.effects} onchange={(e) => { draft.effect = e; save(); }} />
+        <Toggle label={t('Ignore the status rules')} checked={draft.ignore_override} onchange={(v) => { draft.ignore_override = v; save(); }} />
         {#if draft.action}<Toggle label={t('Hold to run')} checked={draft.hold > 0} onchange={setHold} />{/if}
         {#if draft.action && draft.hold > 0}
           <label class="field">
@@ -293,6 +300,18 @@
       {/if}
     </div>
   {/if}
+
+  <div class="custom">
+    <div class="editor-title">{t('Status rules')}</div>
+    <p class="hint">{t('While the board has a status, every key shows the effect of its rule, also the keys without an action. A key can ignore the rules.')}</p>
+    {#each data.override_statuses as status (status)}
+      {@const rule = data.overrides.find((r) => r.status === status)}
+      <div class="rule">
+        <div class="rule-title"><span class="dot" style="background: {data.colors[status]}"></span>{BOARD_STATUS_LABEL[status]}</div>
+        <EffectFields effect={rule?.effect || null} effects={data.effects} onchange={(e) => setRule(status, e)} />
+      </div>
+    {/each}
+  </div>
 
   <div class="custom">
     <div class="editor-title">{t('Custom actions')}</div>
@@ -375,6 +394,8 @@
   .act:hover { border-color: var(--accent); color: var(--text); }
   .act.danger:hover { border-color: var(--red); color: var(--red); }
   .custom { margin-top: 1.25rem; max-width: 34rem; }
+  .rule { border-top: 1px solid var(--glass-border); padding-top: 0.5rem; margin-top: 0.4rem; }
+  .rule-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 0.4rem; }
   .hint { color: var(--muted); font-size: 0.8rem; margin: 0 0 0.6rem; }
   .custom-list { list-style: none; padding: 0; margin: 0 0 0.75rem; }
   .custom-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--glass-border); flex-wrap: wrap; }
