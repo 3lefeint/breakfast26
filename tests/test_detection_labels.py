@@ -61,3 +61,40 @@ class TestRead:
         p.write_text(json.dumps(row("S5", "S5", confirmed=True)) + "\n{broken\n" + json.dumps(row("S1", "S18")) + "\n")
         assert [r["detected"] for r in labels.read(p)] == ["S5", "S1"]
         assert labels.summary_of(p)["looked_at"] == 2
+
+
+class TestDartLog:
+    def test_darts_nobody_looked_at_and_darts_entered_by_hand_are_counted(self, tmp_path):
+        def dart(bundle):
+            return {"field": "S20", "detection": {"bundle": bundle, "uncertain": False}}
+        def label(bundle, **kw):
+            r = row("S20", "S20", confirmed=True); r["detection"]["bundle"] = bundle; r.update(kw); return r
+        (tmp_path / "darts.jsonl").write_text("".join(json.dumps(dart(b)) + "\n" for b in ("0001-dart", "0002-dart", "0003-dart")))
+        unseen = {"t": "2026-11-06T10:00:00", "index": 2, "detected": "", "corrected": "T5", "confirmed": False, "detection": None, "unseen": True}
+        (tmp_path / "labels.jsonl").write_text(json.dumps(label("0002-dart")) + "\n" + json.dumps(unseen) + "\n")
+        s = labels.summary_of(tmp_path / "labels.jsonl", tmp_path / "darts.jsonl")
+        assert (s["darts"], s["not_looked_at"], s["unseen"]) == (3, 2, 1)
+        assert (s["looked_at"], s["wrong"], s["right"]) == (1, 0, 1)         # the hand-entered dart is neither right nor wrong
+        assert labels.summary_of(tmp_path / "labels.jsonl")["unseen"] == 1 and "darts" not in labels.summary_of(tmp_path / "labels.jsonl")
+
+
+class TestWorkerLog:
+    def _worker(self, tmp_path):
+        import queue, threading
+        from breakfast.detection import worker as wk
+        w = object.__new__(wk.Worker)
+        w.base, w.session, w.out, w.notes, w.lock = tmp_path, tmp_path / "events" / "session-1", queue.Queue(), [], threading.Lock()
+        w.tracker = type("T", (), {"throws": [{"segment": {"name": "S20"}, "coords": {"x": 0.0, "y": 0.5},
+                                               "detection": {"uncertain": True, "margin": 1.0, "bundle": "0001-dart"}}], "count": 1})()
+        return w
+
+    def test_a_counted_dart_is_logged_and_a_dart_beyond_the_counted_ones_is_an_unseen_label(self, tmp_path):
+        w = self._worker(tmp_path)
+        ev = type("E", (), {"count": 1, "throw": w.tracker.throws[0]})()
+        w._log_dart(ev)
+        d = [json.loads(l) for l in (tmp_path / "darts.jsonl").read_text().splitlines()]
+        assert d[0]["field"] == "S20" and d[0]["session"] == "session-1" and d[0]["detection"]["bundle"] == "0001-dart"
+        assert w.label(1, "T5") is True                                      # the second dart was not counted: entered by hand
+        assert w.label(2, "T5") is False and w.label(1, "", confirm=True) is False
+        l = [json.loads(x) for x in (tmp_path / "labels.jsonl").read_text().splitlines()]
+        assert len(l) == 1 and l[0]["unseen"] is True and l[0]["corrected"] == "T5" and l[0]["detected"] == ""

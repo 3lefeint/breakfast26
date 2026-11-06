@@ -126,12 +126,18 @@
     <div class="section-title">{t('Corrections')}</div>
     {#if !labels || !labels.looked_at}
       <p class="note muted">{t('No corrections yet. Every tap on a dart to correct or confirm it is counted here.')}</p>
+      {#if labels && labels.darts != null}
+        <p class="note">{t('Darts counted')}: <b>{labels.darts}</b> · {t('not looked at')}: <b>{labels.not_looked_at}</b> · {t('entered by hand')}: <b>{labels.unseen}</b></p>
+      {/if}
     {:else}
       <p class="note">
         {t('Looked at')}: <b>{labels.looked_at}</b> · {t('right')}: <b>{labels.right}</b> · {t('wrong')}: <b>{labels.wrong}</b>
         {#if labels.wrong_share != null}({Math.round(labels.wrong_share * 100)} %){/if}
         · {t('Wrong ones that were marked uncertain')}: <b>{labels.wrong_and_flagged}</b> / {labels.wrong}
       </p>
+      {#if labels.darts != null}
+        <p class="note">{t('Darts counted')}: <b>{labels.darts}</b> · {t('not looked at')}: <b>{labels.not_looked_at}</b> · {t('entered by hand')}: <b>{labels.unseen}</b></p>
+      {/if}
       {#if labels.offset_mm}
         <p class="note">{t('Distance to the spot that was pressed (mm)')}: {t('mean')} <b>{labels.offset_mm.mean}</b> · {t('median')} <b>{labels.offset_mm.median}</b> · 90 % <b>{labels.offset_mm.p90}</b> · max <b>{labels.offset_mm.max}</b> ({labels.offset_mm.n})
           {#if labels.bias_mm}· {t('shift')} x {labels.bias_mm.x}, y {labels.bias_mm.y}{/if}</p>

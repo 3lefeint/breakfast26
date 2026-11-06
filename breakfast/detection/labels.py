@@ -3,7 +3,8 @@ into numbers: how often it was right among the darts that were looked at, which 
 was and whether the darts it flagged as uncertain were the wrong ones.
 
 Only darts the player looked at are in the file (a flagged dart that was confirmed or corrected, a dart that was corrected), so the
-shares below say how the looked-at darts went, not how the detection does over all darts."""
+shares below say how the looked-at darts went, not how the detection does over all darts. `darts.jsonl` has every counted dart, so
+the darts nobody looked at can be counted too; a dart entered by hand that the detection never counted is a row with `unseen`."""
 import json
 import math
 import sys
@@ -71,7 +72,10 @@ def _spread(values):
 
 
 def summarize(rows):
-    """The numbers of a list of rows (see the module text)."""
+    """The numbers of a list of rows (see the module text). A row of a dart the detection never counted (`unseen`, entered by hand)
+    is not a right or a wrong dart; it is only counted as `unseen`."""
+    unseen = [r for r in rows if r.get("unseen")]
+    rows = [r for r in rows if not r.get("unseen")]
     confirmed = [r for r in rows if r.get("confirmed")]
     changed = [r for r in rows if not r.get("confirmed") and r.get("corrected") != r.get("detected")]
     same = [r for r in rows if not r.get("confirmed") and r.get("corrected") == r.get("detected")]
@@ -97,7 +101,7 @@ def summarize(rows):
         entry["looked_at"] += 1
         entry["wrong"] += id(r) in wrong_ids
     return {
-        "looked_at": len(rows), "right": right, "confirmed": len(confirmed), "wrong": len(changed),
+        "unseen": len(unseen), "looked_at": len(rows), "right": right, "confirmed": len(confirmed), "wrong": len(changed),
         "wrong_share": round(len(changed) / len(rows), 3) if rows else None,
         "flagged_looked_at": sum(1 for r in rows if flagged(r)),
         "wrong_and_flagged": sum(1 for r in changed if flagged(r)),         # how many of the wrong darts the detection had flagged
@@ -113,8 +117,17 @@ def summarize(rows):
     }
 
 
-def summary_of(path):
-    return summarize(read(path))
+def summary_of(path, darts_path=None):
+    """The numbers of a labels file; with the log of the counted darts also how many darts were counted and how many of them
+    nobody looked at (no correction and no confirmation: they stand as right unless a spot check says otherwise)."""
+    rows = read(path)
+    s = summarize(rows)
+    if darts_path is not None:
+        logged = read(darts_path)
+        looked = {(r.get("detection") or {}).get("bundle") for r in rows if not r.get("unseen")}
+        s["darts"] = len(logged)
+        s["not_looked_at"] = sum(1 for r in logged if (r.get("detection") or {}).get("bundle") not in looked)
+    return s
 
 
 if __name__ == "__main__":
