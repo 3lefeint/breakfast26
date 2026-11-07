@@ -111,6 +111,24 @@ def test_links_keep_the_source_the_relay_reports(loc, relay):
     assert loc.links() == [link]
 
 
+def test_forget_deletes_the_identity_without_a_call_to_the_relay(loc, relay):
+    loc.register("wss://r.example", "Home", "1234")
+    calls = len(relay.calls)
+    loc.forget()
+    assert not loc.path.exists() and not loc.status()["registered"]
+    assert len(relay.calls) == calls
+    loc.forget()                                                     # nothing to forget is no error
+
+
+def test_an_error_of_the_relay_carries_its_code(loc, relay):
+    loc.register("wss://r.example", "Home", "1234")
+    relay.status = 401
+    relay.answers = {f"/locations/{'a' * 32}/links": {"error": "unknown location", "code": "unknown_location"}}
+    with pytest.raises(LocationError) as caught:
+        loc.links()
+    assert (caught.value.status, caught.value.code) == (401, "unknown_location")
+
+
 def test_join_checks_the_relay_of_the_code(loc, relay):
     loc.register("wss://r.example", "Home", "1234")
     with pytest.raises(LocationError, match="another relay"):

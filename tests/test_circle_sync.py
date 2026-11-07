@@ -20,12 +20,19 @@ class Relay:
         self.own = [{"local_name": "anna", "player_id": "p-1"}]      # the mappings of this site
         self.profiles = []                                           # [{player_id, field, value, at}] the relay holds
         self.profile_error = None
+        self.forgotten = False
+        self.state_error = None                                      # a LocationError for every call
 
     def status(self):
-        return {"registered": True, "id": "loc-1", "name": "Home"}
+        return {"registered": not self.forgotten, "id": "loc-1", "name": "Home"}
+
+    def forget(self):
+        self.forgotten = True
 
     def call(self, method, path, body=None):
         self.calls.append((method, path.split("?")[0], body))
+        if self.state_error:
+            raise self.state_error
         if path == "/circle/state":
             return {"approved": True}
         if path == "/circle/config":
@@ -293,6 +300,46 @@ def test_the_admin_can_make_a_site_fetch_everything_again(setup):
     assert sync._load()["refetch_seen"] == 1 and sync._load()["cursor"] == 1      # started at 0 again, read the list again
     paths = [c[1] for c in relay.calls]
     assert paths.count("/circle/records") >= 2
+
+
+def test_a_location_the_relay_removed_resets_its_connection_and_keeps_local_data(setup):
+    db, relay, sync = setup
+    _finish(db, "m-1")
+    sync._update(cursor=7, scenes_cursor=3, achievements_cursor=2, scenes_sent={"s": "h"}, sounds_sent=["a"], achievements_sent={"x": "h"},
+                 refetch_seen=2, pull_until=2e12, shared_until=2e12, shared_error="old", foreign={"f-1": 1})
+    assert sync._load()["outbox"]
+    relay.state_error = LocationError("unknown location", 401, "unknown_location")
+    status = sync.run_once()
+    state = sync._load()
+    assert relay.forgotten and status["registered"] is False and sync.removed()
+    assert state["outbox"] == {} and state["cursor"] == 0 and state["scenes_cursor"] == 0 and state["achievements_cursor"] == 0
+    assert state["scenes_sent"] == {} and state["sounds_sent"] == [] and state["achievements_sent"] == {}
+    assert state["refetch_seen"] == 0 and state["pull_until"] is None and state["shared_until"] is None and state["shared_error"] is None
+    assert "removed at the relay" in status["error"]
+    assert state["foreign"] == {"f-1": 1}
+    assert db._conn.execute("SELECT COUNT(*) FROM matches WHERE match_id = ?", ("m-1",)).fetchone()[0] == 1      # matches stay
+
+
+def test_registering_again_clears_the_reset_notice(setup):
+    db, relay, sync = setup
+    relay.state_error = LocationError("unknown location", 401, "unknown_location")
+    sync.run_once()
+    assert sync.removed()
+    relay.state_error, relay.forgotten = None, False
+    sync.run_once()
+    assert not sync.removed() and sync.status()["error"] is None
+
+
+@pytest.mark.parametrize("error", [LocationError("not signed correctly", 401), LocationError("unknown location", 401), LocationError("down", 503)])
+def test_a_bad_signature_and_other_errors_reset_nothing(setup, error):
+    db, relay, sync = setup
+    _finish(db, "m-1")
+    sync._update(cursor=7)
+    relay.state_error = error
+    sync.run_once()
+    assert not relay.forgotten and not sync.removed()
+    assert sync._load()["cursor"] == 7 and sync._load()["outbox"]
+    assert sync.status()["error"] == str(error)
 
 
 def test_a_record_already_here_is_not_fetched_again(setup):

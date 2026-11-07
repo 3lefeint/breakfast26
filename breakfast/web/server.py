@@ -1969,7 +1969,8 @@ async def locations_status():
     if not _locations:
         return {"available": False}
     relay_url, _ = _online_settings()
-    return {"available": True, "relay_configured": bool(relay_url), **_locations.status()}
+    return {"available": True, "relay_configured": bool(relay_url), "removed": bool(_circle and _circle.removed()),
+            **_locations.status()}
 
 
 @app.post("/api/locations/register")

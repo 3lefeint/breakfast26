@@ -1,6 +1,6 @@
 <script>
   import { t } from '../../../lib/i18n.js';
-  // The registered locations: what each reported (version, players, last time seen) and the approval that puts a site into the circle.
+  // The registered locations: what each reported (version, players, last time seen) the approval that puts a site into the circle, and Remove, which deletes a site with its data on the relay.
   import Panel from '../../../lib/components/Panel.svelte';
   import { confirmDialog } from '../../../lib/confirm.js';
   import { ago, compareVersions, newestVersion } from '../../../lib/admin.js';
@@ -16,7 +16,7 @@
   }
 
   async function remove(site) {
-    if (!await confirmDialog(t('Take {name} out of the circle? Its mappings stay, it can no longer send or fetch matches.', { name: site.name }))) return;
+    if (!await confirmDialog(t('Remove {name}? The site\'s data will be deleted.', { name: site.name }))) return;
     await act('POST', `/admin/sites/${site.id}/remove`, {});
   }
 </script>
@@ -42,10 +42,10 @@
             <td class="num">
               {#if site.approved}
                 <button type="button" class="btn small" onclick={() => refetch(site)}>{t('Fetch again')}</button>
-                <button type="button" class="btn small" onclick={() => remove(site)}>{t('Remove')}</button>
               {:else}
                 <button type="button" class="btn small primary" onclick={() => act('POST', `/admin/sites/${site.id}/approve`, {})}>{t('Approve')}</button>
               {/if}
+              <button type="button" class="btn small" onclick={() => remove(site)}>{t('Remove')}</button>
             </td>
           </tr>
         {/each}

@@ -172,6 +172,7 @@
   <div class="section">
     <div class="title">{t('Location Online Settings')}</div>
     {#if !info.registered}
+      {#if info.removed}<p class="note warn">{t('The connection of this location was removed at the relay. Register again to connect.')}</p>{/if}
       <p class="note">{t('Register this installation online. Choose a local PIN of 4 to 8 digits.')}</p>
       {#if !info.relay_configured}
         <p class="note warn">{t('Set the relay address under Online Elimination first.')}</p>

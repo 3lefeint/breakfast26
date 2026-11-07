@@ -102,7 +102,7 @@ export async function authenticate(request: Request, env: LocationEnv, raw: stri
   const signature = request.headers.get("x-signature") ?? "";
   if (!validLocationId(id) || !freshTimestamp(timestamp, now)) return json({ error: "not signed correctly" }, 401);
   const row = await env.DB!.prepare("SELECT public_key FROM locations WHERE id = ?").bind(id).first<{ public_key: string }>();
-  if (!row) return json({ error: "unknown location" }, 401);
+  if (!row) return json({ error: "unknown location", code: "unknown_location" }, 401);
   const path = new URL(request.url).pathname;
   const message = signingString(request.method, path, timestamp as string, await sha256Hex(raw));
   if (!(await verifySignature(row.public_key, message, signature))) return json({ error: "not signed correctly" }, 401);

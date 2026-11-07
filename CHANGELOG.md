@@ -20,6 +20,7 @@
 - Admin area: the new tab *Linked locations* shows the approved sites as a table where the circle admin ticks which pairs are linked; a link set there works like one from an invitation and shows as *Set by the circle admin* in the list of linked locations, links from an invitation are marked in the table, and the tab order is Sites, Linked locations, Voice chats, Players, Sync, Reports, Usage (`GET /admin/links`, `PUT /admin/links/<a>/<b>`, `source` of a link). (#166)
 
 ### Changed
+- Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
 
 ### Fixed
