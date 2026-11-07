@@ -117,7 +117,9 @@ site cannot be dropped from an X01 match: after `decision_needed` only `abort` i
 Separate from the match protocol: plain HTTP routes, stored in D1 (`migrations/0002_locations.sql`). A location is an
 installation registered with an Ed25519 public key (32 raw bytes, base64url). Requests other than the registration carry
 `x-location` (its id), `x-timestamp` (unix seconds, at most 5 minutes off) and `x-signature` (base64url Ed25519 signature
-of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and `DELETE`).
+of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and `DELETE`). A location the relay does not know (the
+admin removed it) gets 401 `{error: "unknown location", code: "unknown_location"}`; any other 401 (`not signed correctly`) has no `code`.
+An installation that gets that code forgets its identity and registers again as a new location.
 
 | Route | Signed by | Purpose |
 |---|---|---|
@@ -192,7 +194,8 @@ login tries per 15 minutes per address (a successful login does not count). With
 | Route | Purpose |
 |---|---|
 | `GET /admin/sites` | every registered location with what it reported: `{id, name, registered_at, approved, approved_at, last_seen, version, refetch, players, state}` |
-| `POST /admin/sites/<id>/approve` and `/remove` | put a site into the circle or take it out (its mappings and rules stay) |
+| `POST /admin/sites/<id>/approve` | put a site into the circle |
+| `POST /admin/sites/<id>/remove` | delete a site, approved or not, with what it left: its records, shared scenes and sound files (R2 first; on a failure the answer is 500 and nothing is deleted in D1, so a retry works; a sound file that a scene or an achievement of another site still names stays), its mappings and rules, voice channel ticks, links, invitations and open matches; answers `{ok, deleted}`, afterwards every route on its id answers 404. A match that is running keeps its connection (it uses its match token) |
 | `POST /admin/sites/<id>/refetch` | raise the `refetch` counter of an approved site (409 when it is not approved): it fetches all the records meant for it again, after a rule or a mapping changed |
 | `GET /admin/players`, `POST /admin/players` `{name}`, `DELETE /admin/players/<id>` | the circle players with their mappings and the sites of their rule; delete takes mappings and rules with it |
 | `PUT /admin/mappings` `{location_id, local_name, player_id}` | map a player of a site to a circle player (`player_id: null` removes the mapping) |

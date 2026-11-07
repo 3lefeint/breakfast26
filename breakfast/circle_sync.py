@@ -30,6 +30,7 @@ MAX_TRIES = 20
 PUSH_ROUND = 200          # records sent in one round, a larger outbox goes on in the next one
 PULL_ROUND = 300          # records fetched in one round
 FAST_S = 10               # the wait before the next round while there is more to do
+RESET_TEXT = "this site was removed at the relay, register it again to connect"
 PAUSE_S = 3600            # the wait after the relay said "too many" (rate limit, records of the day)
 PERMANENT = {400, 403, 404, 409, 413, 422}     # the relay will not take this record, a retry does not help
 
@@ -200,7 +201,10 @@ class CircleSync:
             if state["enabled"] and self._locations.status()["registered"]:
                 self._round()
         except LocationError as e:
-            self._fail(e)
+            if e.status == 401 and e.code == "unknown_location":
+                self._reset()
+            else:
+                self._fail(e)
         except Exception as e:                  # a failing sync never reaches the games
             log.exception("CircleSync: the round failed")
             self._fail(e)
@@ -210,6 +214,20 @@ class CircleSync:
             self._changed()
         return self.status()
 
+    def _reset(self):
+        """The relay does not know this location any more (the admin removed it): forget the identity and everything
+        that belongs to it at the relay. Local players, matches, scenes and sounds stay; registering again makes a new site."""
+        log.warning("CircleSync: the relay removed this site, the connection is reset")
+        self._locations.forget()
+        self._approved = None
+        self._update(outbox={}, cursor=0, scenes_cursor=0, achievements_cursor=0, scenes_sent={}, sounds_sent=[],
+                     achievements_sent={}, refetch_seen=0, pull_until=None, shared_until=None, shared_error=None,
+                     removed=True, error=RESET_TEXT, error_at=self._now())
+
+    def removed(self):
+        """True after a reset, until the location is registered again."""
+        return bool(self._load().get("removed"))
+
     def _fail(self, error):
         log.warning("CircleSync: %s", error)
         self._update(error=str(error), error_at=self._now())
@@ -218,6 +236,8 @@ class CircleSync:
 
     def _round(self):
         origin = self._locations.status()
+        if self._load().get("removed"):
+            self._update(removed=None)
         reply = self._locations.call("PUT", "/circle/state", {
             "version": self._version, "players": self._db.list_players(),
             "state": {"outbox": len(self._load()["outbox"])}})
@@ -257,6 +277,8 @@ class CircleSync:
             self._pull_scenes()
             self._pull_achievements()
         except LocationError as e:
+            if e.status == 401 and e.code == "unknown_location":
+                raise
             if e.status == 429:
                 self._update(shared_until=self._now() + PAUSE_S)
             elif e.status in (404, 503):

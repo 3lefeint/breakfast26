@@ -109,9 +109,16 @@ describe("sites", () => {
     expect((await call(token, "POST", `/admin/sites/${home.id}/approve`, {})).body).toEqual({ ok: true, approved: true });
     expect((await call(token, "GET", "/admin/sites")).body!.sites[0]).toMatchObject({ approved: true, approved_at: NOW, version: "1.9.0" });
     expect((await call(token, "POST", `/admin/sites/${id(2)}/approve`, {})).body!.approved).toBe(true);     // a site that never reported
-    expect((await call(token, "POST", `/admin/sites/${home.id}/remove`, {})).body).toEqual({ ok: true, approved: false });
-    expect((await call(token, "GET", "/admin/sites")).body!.sites[0].approved).toBe(false);
+    expect((await call(token, "POST", `/admin/sites/${home.id}/remove`, {})).body).toEqual({ ok: true, deleted: true });
+    expect((await call(token, "GET", "/admin/sites")).body!.sites.map((s: any) => s.name)).toEqual(["Crealine"]);
     expect((await call(token, "POST", `/admin/sites/${id(9)}/approve`, {})).status).toBe(404);
+    for (const action of ["approve", "remove", "refetch"]) expect((await call(token, "POST", `/admin/sites/${home.id}/${action}`, {})).status).toBe(404);   // nothing is reactivated
+  });
+
+  it("removes a site that is not approved too", async () => {
+    const other = await newLocation(env.DB, 5, "Never approved");
+    expect((await call(token, "POST", `/admin/sites/${other.id}/remove`, {})).body).toEqual({ ok: true, deleted: true });
+    expect(env.DB.count("SELECT COUNT(*) AS n FROM locations")).toBe(0);
   });
 });
 

@@ -3,6 +3,7 @@
 // login is a token of about one hour signed with the secret ADMIN_TOKEN_KEY and sent as `Authorization: Bearer <token>`. The
 // page runs in a browser on any installation, so the routes allow any origin; there are no cookies, the token is the only door.
 
+import { dropSite } from "./circle";
 import { b64urlEncode, Limiter, LocationEnv, sha256Hex } from "./locations";
 import { Fetcher, readUsage, UsageEnv } from "./usage";
 import { CHANNEL_LIMITS, recheckChannels } from "./voiceChannels";
@@ -18,6 +19,7 @@ export const ADMIN_LIMITS = {
 
 export interface AdminEnv extends LocationEnv, UsageEnv {
   VOICE?: DurableObjectNamespace;      // the voice rooms, told when somebody has to leave a channel
+  RECORDS?: R2Bucket;                  // the files of the circle, deleted with a site that is removed
   ADMIN_PASSWORD_HASH?: string;
   ADMIN_TOKEN_KEY?: string;
 }
@@ -86,6 +88,40 @@ async function readBody(request: Request): Promise<Record<string, unknown> | Res
 const parse = <T>(text: string, fallback: T): T => { try { return JSON.parse(text) as T; } catch { return fallback; } };
 
 /** The routes of the admin; null when the request is none of them. */
+/** Remove a site from the relay with everything it left: its records, shared scenes and sound files (R2 first, so that a retry works
+ * when it fails), its place in the circle, voice channels, links, invitations and open matches, then the location itself. A sound file
+ * that a scene or an achievement of another site still names stays. */
+async function removeSite(env: AdminEnv, id: string): Promise<Response> {
+  const db = env.DB!;
+  const matches = await db.prepare("SELECT match_id FROM circle_records WHERE origin = ?").bind(id).all<{ match_id: string }>();
+  const sounds = await db.prepare(
+    "SELECT hash FROM circle_sounds WHERE origin = ?1 AND NOT EXISTS (SELECT 1 FROM circle_scenes WHERE origin != ?1 AND deleted = 0 AND instr(sounds, circle_sounds.hash) > 0) " +
+    "AND NOT EXISTS (SELECT 1 FROM circle_achievement_sounds WHERE origin != ?1 AND deleted = 0 AND instr(files, circle_sounds.hash) > 0)").bind(id).all<{ hash: string }>();
+  const keys = [...matches.results.map((m) => `circle/${m.match_id}`), ...sounds.results.map((x) => `sounds/${x.hash}`)];
+  if (env.RECORDS) {
+    try {
+      for (let i = 0; i < keys.length; i += 1000) await env.RECORDS.delete(keys.slice(i, i + 1000));
+    } catch {
+      return json({ error: "could not delete the files of this site, nothing was removed" }, 500);
+    }
+  }
+  const channels = await db.prepare("SELECT channel_id FROM voice_channel_sites WHERE location_id = ?").bind(id).all<{ channel_id: string }>();
+  await dropSite(db, id);
+  await db.batch([
+    db.prepare("DELETE FROM circle_records WHERE origin = ?").bind(id),
+    db.prepare("DELETE FROM circle_scenes WHERE origin = ?").bind(id),
+    db.prepare("DELETE FROM circle_achievement_sounds WHERE origin = ?").bind(id),
+    ...sounds.results.map((x) => db.prepare("DELETE FROM circle_sounds WHERE hash = ?").bind(x.hash)),
+    db.prepare("DELETE FROM voice_channel_sites WHERE location_id = ?").bind(id),
+    db.prepare("DELETE FROM links WHERE location_a = ?1 OR location_b = ?1").bind(id),
+    db.prepare("DELETE FROM invitations WHERE location_id = ?").bind(id),
+    db.prepare("DELETE FROM open_matches WHERE location_id = ?").bind(id),
+    db.prepare("DELETE FROM locations WHERE id = ?").bind(id),
+  ]);
+  await recheckChannels(env.VOICE, channels.results.map((c) => c.channel_id));      // the site leaves its voice channels
+  return json({ ok: true, deleted: true });
+}
+
 export async function handleAdmin(request: Request, env: AdminEnv, limited: Limiter, now = Date.now(), fetcher: Fetcher = fetch,
                                   refund: (purpose: string, key?: string) => Promise<void> = async () => {}): Promise<Response | null> {
   const url = new URL(request.url);
@@ -131,14 +167,11 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
       if (!changed.meta.changes) return json({ error: "this site is not approved" }, 409);
       return json({ ok: true });
     }
+    if (action === "remove") return removeSite(env, id);
     await db.prepare(
-      "INSERT INTO circle_sites (location_id, approved, approved_at) VALUES (?1, ?2, ?3) ON CONFLICT(location_id) DO UPDATE SET approved = ?2, approved_at = ?3")
-      .bind(id, action === "approve" ? 1 : 0, action === "approve" ? now : null).run();
-    if (action === "remove") {                  // a site that is out of the circle leaves its voice channels
-      const channels = await db.prepare("SELECT channel_id FROM voice_channel_sites WHERE location_id = ?").bind(id).all<{ channel_id: string }>();
-      await recheckChannels(env.VOICE, channels.results.map((c) => c.channel_id));
-    }
-    return json({ ok: true, approved: action === "approve" });
+      "INSERT INTO circle_sites (location_id, approved, approved_at) VALUES (?1, 1, ?2) ON CONFLICT(location_id) DO UPDATE SET approved = 1, approved_at = ?2")
+      .bind(id, now).run();
+    return json({ ok: true, approved: true });
   }
 
   if (method === "GET" && path === "/admin/players") {

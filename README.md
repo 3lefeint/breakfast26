@@ -350,7 +350,7 @@ admin approves each installation once.
   achievements; others use them only where they have no sound of their own, see them on that page with the name of the site and can take one over as their own assignment. Share only sounds you are free to share.
 - **For the admin:** the admin area (`#admin` in the Home app, a sidebar entry appears once a relay address is stored in the
   browser) logs in to the relay with the admin password, which is stored only as a salted hash at the relay and never on an
-  installation. It approves the installations, keeps the players of the circle, matches the players of each installation to them
+  installation. It approves the installations (*Remove* deletes an installation with its data on the relay; one that reports back with its old identity resets its connection by itself and registers again as a new site), keeps the players of the circle, matches the players of each installation to them
   and ticks the installations that get the matches of each player. The *Voice chats* tab makes voice chat channels and ticks which
   installations see which. It also shows the sync state, the newest records, the usage
   reports and how close the relay is to the free plan of Cloudflare. *Fetch again* makes an installation fetch everything meant for

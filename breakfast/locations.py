@@ -38,11 +38,13 @@ CODE_PREFIX = "BF1-"
 
 class LocationError(Exception):
     """Something the user has to be told: wrong PIN, no relay, an invalid invitation, ...
-    `status` is the HTTP status the relay answered, None when it was not reached."""
+    `status` is the HTTP status the relay answered, None when it was not reached; `code` is the machine-readable
+    reason the relay adds to some answers (`unknown_location`)."""
 
-    def __init__(self, message, status=None):
+    def __init__(self, message, status=None, code=None):
         super().__init__(message)
         self.status = status
+        self.code = code
 
 
 def _b64(data):
@@ -209,7 +211,7 @@ class Locations:
         if res.status_code >= 400:
             message = str(data.get("error") or f"the relay answered {res.status_code}")
             log.warning("Locations: %s answered %s: %s", url, res.status_code, message)
-            raise LocationError(message, res.status_code)
+            raise LocationError(message, res.status_code, data.get("code"))
         return data
 
     def _registered(self):
@@ -302,6 +304,14 @@ class Locations:
             self._signed(state, "DELETE", state["relay"], f"/locations/{state['id']}")
             self.path.unlink(missing_ok=True)
             log.info("Locations: signed off %s", state["id"])
+
+    def forget(self):
+        """Forget the identity here without a call to the relay, for a location the relay no longer knows. Local
+        players, matches, scenes and settings stay; registering again makes a new location."""
+        with self._lock:
+            state = self._load()
+            self.path.unlink(missing_ok=True)
+            log.warning("Locations: forgot %s, the relay does not know it", state.get("id"))
 
     def invite(self, pin):
         """A one-time invitation code for another location."""
