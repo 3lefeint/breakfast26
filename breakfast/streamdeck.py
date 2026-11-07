@@ -85,6 +85,7 @@ MAX_HOLD_SECONDS = 5
 DEFAULT_HOLD_SECONDS = 0.8
 HOLD_STEP_SECONDS = 0.08   # how often the progress bar of a held key is drawn
 RECONNECT_SECONDS = 3
+LOST_AFTER_FAILURES = 3        # failed writes in a row after which the device counts as gone
 
 
 _GREEN = {"throw", "board started", "takeout finished", "calibration finished", "manual reset"}
@@ -658,6 +659,8 @@ class StreamDeckService:
         self._stop = threading.Event()
         self._thread = None
         self._deck = None
+        self._lost = False                  # set when writes keep failing: `_run` closes the deck
+        self._failures = 0                  # failed writes in a row
         self._error = None
         self._pictures = {}                 # file name -> (mtime, PIL image), the pictures of the keys
         self._cfg_stamp, self._cfg_cached = None, {}
@@ -799,7 +802,7 @@ class StreamDeckService:
                     if not self.enabled():
                         self._close()
                         self._error = None
-                    elif self._deck is not None and not self._deck.connected():
+                    elif self._deck is not None and (self._lost or not self._deck.connected() or not self._deck.is_open()):
                         log.info("The Stream Deck was unplugged")
                         self._close()
                     if self.enabled() and self._deck is None:
@@ -833,6 +836,7 @@ class StreamDeckService:
             held.set()
         self._holds.clear()
         deck, self._deck = self._deck, None
+        self._lost, self._failures = False, 0
         if deck is None:
             return
         try:
@@ -842,10 +846,20 @@ class StreamDeckService:
             pass
 
     def _guard(self, fn):
+        """Run a write to the device. A few failed writes in a row mean the device is gone: it is logged once and the
+        loop of `_run` closes the deck, so that it connects again."""
+        if self._lost:
+            return
         try:
             fn()
+            self._failures = 0
         except Exception as e:
-            log.warning("Stream Deck: %s", e)
+            self._failures += 1
+            if self._failures >= LOST_AFTER_FAILURES:
+                self._lost = True
+                log.warning("Stream Deck: lost the device (%s)", e)
+            else:
+                log.warning("Stream Deck: %s", e)
 
     # ---- keys ----
     def on_board_status(self, status):
@@ -973,7 +987,7 @@ class StreamDeckService:
 
     def _draw_key(self, index, entry, progress=None):
         deck = self._deck
-        if deck is None:
+        if deck is None or self._lost:
             return
         size = deck.key_image_format()["size"]
         now = time.monotonic()
