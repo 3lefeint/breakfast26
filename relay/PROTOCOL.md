@@ -124,8 +124,8 @@ of `METHOD\nPATH\nTIMESTAMP\nSHA256-HEX(BODY)`; the body is empty for `GET` and 
 | `POST /locations` `{name, public_key}` | the new key itself (`x-timestamp`, `x-signature` only) | register; returns `{id}`; registering the same key again returns the same id |
 | `POST /locations/<id>/invitations` | that location | a one-time invitation; returns `{token, expires_at}` (valid 7 days, at most 5 open) |
 | `POST /invitations/redeem` `{token}` | the redeeming location | link the two locations; returns `{link_id, peer: {id, name}}` |
-| `GET /locations/<id>/links` | that location | `{links: [{link_id, kind, created_at, peer}]}` |
-| `DELETE /links/<id>` | either side of the link | remove the link |
+| `GET /locations/<id>/links` | that location | `{links: [{link_id, kind, source, created_at, peer}]}` (`source` is `invitation` for a link made by redeeming an invitation and `admin` for one the circle admin set) |
+| `DELETE /links/<id>` | either side of the link | remove the link (an admin link too; only the admin can set it again) |
 | `PATCH /locations/<id>` `{name}` | that location | rename it; the id and the links stay |
 | `DELETE /locations/<id>` | that location | delete it with its links, open invitations and open matches |
 | `GET /locations/<id>/open-matches` | that location | `{matches: [{code, location: {id, name}, site, game, sites, players}]}` (`game` is `elimination` or `x01`): the matches in the lobby that locations linked to it opened (at most 20) |
@@ -199,6 +199,8 @@ login tries per 15 minutes per address (a successful login does not count). With
 | `PUT /admin/rules` `{player_id, location_ids}` | replace the sites that get the matches of a player |
 | `GET /admin/voice`, `POST /admin/voice/channels` `{name}`, `PUT /admin/voice/channels/<id>` `{name}`, `DELETE /admin/voice/channels/<id>` | the voice chat channels (`{id, name, created_at, sites}`, `sites` are the ids of the sites that see the channel) and the approved sites; make a channel (at most 20, a name once, 409 otherwise); rename one; delete one with its ticks (everybody in it is sent out) |
 | `PUT /admin/voice/channels/<id>/sites/<site id>` `{visible}` | tick or untick a site for a channel (the site must be approved); a site that is unticked is sent out of the channel at once |
+| `GET /admin/links` | the approved sites and the links between them: `{sites: [{id, name}], links: [{a, b, source}]}` |
+| `PUT /admin/links/<site id>/<site id>` `{linked}` | link or unlink a pair of approved sites (404 for a site that is not approved, 400 for the same site twice); a tick creates a link with source `admin` unless the pair is linked already, an untick deletes the link whatever its source; a link of the admin works like one from an invitation (online matches, open matches) |
 | `GET /admin/sync` | per approved site: last seen, version, its state and how many records it sent; the totals |
 | `GET /admin/records` | the newest records without their content: match, origin, mode, the circle players in it, size |
 | `GET /admin/usage` | the usage of the free plan from the GraphQL Analytics API (`readUsage` in `src/usage.ts`): `{configured, generated_at, day, month, limits, workers, d1, d1_size, r2_operations, r2_storage}`; `workers` is today's requests, errors, subrequests and the CPU time quantiles `cpu_p50` and `cpu_p99` (as the API gives them, its unit is not documented), `d1` today's queries and rows read and written, `d1_size` the database size, `r2_operations` this month's operations by `class_a`, `class_b`, `free` and `other` with `by_action`, `r2_storage` bytes and objects of the bucket. Every part is `{data}` or `{error}`, so a figure the API refuses does not hide the others; `{configured: false, limits}` without the secrets `CF_ACCOUNT_ID` and `ANALYTICS_API_TOKEN` |

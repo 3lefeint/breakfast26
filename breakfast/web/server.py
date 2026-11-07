@@ -2000,7 +2000,10 @@ async def locations_set_pin(body: LocationPinBody):
 
 @app.post("/api/locations/invite")
 async def locations_invite(body: LocationPinBody):
-    return await _location_call(lambda: {"code": _locations.invite(body.pin)})
+    def invite():
+        code = _locations.invite(body.pin)
+        return {"code": code, "qr": locations_mod.qr_svg(code)}
+    return await _location_call(invite)
 
 
 @app.post("/api/locations/join")

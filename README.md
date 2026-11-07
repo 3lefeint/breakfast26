@@ -324,8 +324,9 @@ counts as that player, also for matches stored before. Online play needs a relay
   a headset avoids echo.
 
 **Linked locations.** Under Settings → Connections, *Location Online Settings* registers the installation at
-the relay with a name and a local PIN. *Create invitation* gives a code for another location, which pastes it under
-*Accept an invitation*; the two are linked from then on. A match that a registered location opens then shows up
+the relay with a name and a local PIN. *Create invitation* gives a code and a QR code for another location, which pastes the code (or scans the QR
+code with its phone and copies the text) under *Accept an invitation*; the two are linked from then on. The circle admin
+can also link locations in the admin area under *Linked locations*. A match that a registered location opens then shows up
 under *Matches of linked locations* on the Online page of the linked ones, who join it without a password. A host
 who leaves the password empty is joinable only by linked locations. Every page lists only the matches of its own game.
 

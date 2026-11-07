@@ -13,6 +13,7 @@
   let name = $state('');
   let pin = $state('');              // the PIN chosen when registering
   let invitation = $state('');
+  let invitationQr = $state('');     // the invitation as an SVG QR code
   let joinCode = $state('');
   let error = $state('');
   let message = $state('');
@@ -102,15 +103,16 @@
 
   async function unregister(current) {
     const ok = await call('POST', '/api/locations/unregister', { pin: current }, t('Signed off.'));
-    if (ok) { links = null; invitation = ''; name = ''; await loadStatus(); }
+    if (ok) { links = null; invitation = ''; invitationQr = ''; name = ''; await loadStatus(); }
     return !!ok;
   }
 
   async function invite(current) {
-    invitation = '';
+    invitation = ''; invitationQr = '';
     const res = await call('POST', '/api/locations/invite', { pin: current });
     if (res) {
       invitation = res.code;
+      invitationQr = res.qr || '';
       message = t('Send this code to the other location. It works once and for 7 days.');
     }
     await loadStatus();
@@ -187,6 +189,7 @@
           <div class="title sub">{t('Invite a location')}</div>
           <button type="button" class="btn" disabled={busy} onclick={() => askPin(invite)}>{t('Create invitation')}</button>
           {#if invitation}
+            {#if invitationQr}<div class="qr" role="img" aria-label={t('QR code of the invitation')}>{@html invitationQr}</div>{/if}
             <div class="row wide code-row"><input type="text" class="code" readonly value={invitation} aria-label={t('Invitation code')} onfocus={(e) => e.currentTarget.select()}><button type="button" class="btn" onclick={copy}>{t('Copy')}</button></div>
           {/if}
         </div>
@@ -201,7 +204,7 @@
         <div class="title sub">{t('Linked locations')} <button type="button" class="btn small" onclick={loadLinks}>{t('Refresh')}</button></div>
         {#if links && links.length}
           {#each links as link (link.link_id)}
-            <div class="link"><span>{link.peer.name}</span><button type="button" class="btn small" disabled={busy || !info.pin_set} onclick={() => confirmUnlink(link)}>{t('Remove')}</button></div>
+            <div class="link"><span>{link.peer.name}{#if link.source === 'admin'} <small class="tag">{t('Set by the circle admin')}</small>{/if}</span><button type="button" class="btn small" disabled={busy || !info.pin_set} onclick={() => confirmUnlink(link)}>{t('Remove')}</button></div>
           {/each}
         {:else}
           <p class="note">{t('No linked locations yet.')}</p>
@@ -262,6 +265,9 @@
   .name { margin: 0 0 1rem; font-size: 0.95rem; color: var(--text); }
   .part { border-top: 1px solid var(--glass-border); padding-top: 1rem; margin-top: 1rem; }
   .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .qr { width: 240px; max-width: 100%; margin-top: 0.75rem; background: #fff; border-radius: 4px; }
+  .qr :global(svg) { display: block; width: 100%; height: auto; }
+  .tag { opacity: 0.7; margin-left: 0.25rem; }
   .code-row { margin-top: 0.75rem; margin-bottom: 0; }
   .row { display: grid; grid-template-columns: 8rem 1fr; align-items: center; gap: 0.5rem; margin-bottom: 0.65rem; }
   .row label { font-size: 0.9rem; color: color-mix(in srgb, var(--text) 72%, transparent); }

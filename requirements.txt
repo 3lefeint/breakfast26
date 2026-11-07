@@ -8,3 +8,4 @@ tzdata
 tomlkit
 edge-tts
 cryptography
+segno
