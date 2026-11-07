@@ -167,7 +167,7 @@ class BoardTracker:
             return self._blocked_board(t, frames, prepared, {"changed": changed, "why": "big change: a hand or an arm"})
         # one camera that sees far more than a dart (an arm right in front of it) is left out; the others still look at the board
         covered = [c for c, a in changed.items() if a > 2 * self.s.max_area]
-        self._blocked = 0
+        waited, self._blocked = self._blocked, 0           # a look that ends blocked again goes on counting from where it was (see below)
         seen = [c for c, a in changed.items() if a >= self.s.min_area and c not in covered]
         if not seen:
             # nothing new: follow the light, and notice that the board is empty again
@@ -181,12 +181,24 @@ class BoardTracker:
         masks = {c: (np.zeros_like(m) if c in covered else m) for c, m in self.model.masks.items()}
         result = detector.locate(self.model, self.ref, prepared, min_cams=self.s.min_cams, masks=masks)
         if result is None and covered:
+            self._blocked = waited
             return self._blocked_board(t, frames, prepared, {"changed": changed, "why": "a camera is covered and the others see no dart"})
         if result is None:
             return self._unclear_change(t, frames, prepared, {"changed": changed})
         if result["cams"] >= 2 and result["agree"] < 2:
-            return self._blocked_board(t, frames, prepared, {"changed": changed, "spread": round(result["spread"], 1),
-                                                             "why": "the cameras disagree: a hand or an arm"})
+            if max(changed.values()) > self.s.max_area // 2:        # a big change, nearly an arm: the old rule, so it does not end up as a dart
+                self._blocked = waited
+                return self._blocked_board(t, frames, prepared, {"changed": changed, "spread": round(result["spread"], 1),
+                                                                 "why": "the cameras disagree: a hand or an arm"})
+            # A small change on a still board and the cameras put it at different places (a flight that turned after a bounce, a dart
+            # that only one camera sees). Looking again shows the same picture, so nobody waits: the picture is taken as it is, nothing is
+            # counted, and a dart that is really there is counted by `_recount` once two cameras show it.
+            before = self.ref_raw
+            self.ref, self.ref_raw = prepared, frames
+            self._handled = True
+            self._unclear = 0
+            return [Event("unclear", t, self.count, info={"changed": changed, "spread": round(result["spread"], 1), "accepted": True,
+                                                          "why": "the cameras disagree"}, before=before, after=frames)]
         shares = [detector.appeared(self.model.masks[c], self.ref[c], self.empty_hp[c], hp[c], ref_hp=detector.highpass(self.ref[c])) for c in seen]
         if self.count and float(np.median(shares)) < 0.5:
             return self._removed(t, frames, prepared, result, shares)

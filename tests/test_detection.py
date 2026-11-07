@@ -377,3 +377,27 @@ def test_a_bounce_alone_on_an_empty_board_stays_counted():
     tr.add_bouncer()
     events, t = run(tr, [scene() for _ in range(30)], start=t)
     assert tr.count == 1 and events == []
+
+
+def test_cameras_that_disagree_on_a_still_board_do_not_block_it(monkeypatch):
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    real = detector.locate
+    monkeypatch.setattr(detector, "locate", lambda *a, **k: (lambda r: r and {**r, "agree": 1, "spread": 300.0})(real(*a, **k)))
+    events, t = run(tr, [scene([(0, 103)]) for _ in range(14)], start=t)
+    assert [e.kind for e in events] == ["unclear"] and events[0].info["why"] == "the cameras disagree" and events[0].before and events[0].after
+    assert tr.count == 0 and tr.status == "ready"                                # nothing is counted and nothing waits
+    events, t = run(tr, [scene([(0, 103)]) for _ in range(14)], start=t)
+    assert tr.status == "ready" and not [e for e in events if e.kind == "blocked"]
+
+
+def test_cameras_that_disagree_while_a_big_change_is_in_the_picture_still_block(monkeypatch):
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    real = detector.locate
+    monkeypatch.setattr(detector, "locate", lambda *a, **k: (lambda r: r and {**r, "agree": 1, "spread": 300.0})(real(*a, **k)))
+    monkeypatch.setattr(detector, "changed_area", lambda *a, **k: 8000)          # not yet an arm (13000), but far more than a dart
+    events, t = run(tr, [scene([(0, 103)]) for _ in range(14)], start=t)
+    assert tr.status == "blocked" and tr.count == 0 and not [e for e in events if e.kind == "unclear"]
+    events, t = run(tr, [scene([(0, 103)]) for _ in range(400)], start=t)          # the patience runs out, as it does for an arm
+    assert tr.status != "blocked" and [e for e in events if e.kind == "blocked" or (e.kind == "unclear" and e.info.get("accepted"))]
