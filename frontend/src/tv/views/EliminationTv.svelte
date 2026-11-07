@@ -78,6 +78,11 @@
     await api('POST', '/api/control/start-board');
   }
 
+  // Own dart detection: say that a dart bounced off (it takes its place in the turn as a miss) or that something was off just now.
+  let detectionOn = $derived(!!$gameState.detection?.enabled);
+  async function detectNote(what) {
+    await api('POST', `/api/detection/${what}`, {});
+  }
   async function undo() {
     if (!await confirmDialog(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/elimination/undo');
@@ -114,6 +119,10 @@
   <div class="elim-endgame-row">
     <button class="btn-end-game" onclick={undo}>{t('↩ Undo')}</button>
     <button class="btn-end-game" onclick={nextTurn}>{t('⏭ Next')}</button>
+    {#if detectionOn}
+      <button class="btn-end-game" onclick={() => detectNote('bouncer')}>{t('Bouncer')}</button>
+      <button class="btn-end-game" onclick={() => detectNote('mark')}>{t('Mark')}</button>
+    {/if}
     {#if boardStopped}
       <button class="btn-end-game start" disabled={!$gameState.has_cloud_control} onclick={startBoard}><Icon name="board" size={20} />{t('Start')}</button>
     {:else}

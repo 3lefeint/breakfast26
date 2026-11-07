@@ -31,6 +31,7 @@ class ClipRecorder:
         self.clip = None                # the clip being written: {"dir", "sets": [...], "events": [...], "last_move": t}
         self.last_taken = 0.0
         self.count = 0
+        self.last_name = None           # the folder name of the clip that was opened last
         self.session = self.root / datetime.now().strftime("session-%Y%m%d-%H%M%S")
         self._queue = queue.Queue(maxsize=200)
         self._stop = threading.Event()
@@ -73,6 +74,7 @@ class ClipRecorder:
     def _open(self, t, first):
         self.count += 1
         d = self.session / f"clip-{self.count:04d}-{datetime.now().strftime('%H%M%S')}"
+        self.last_name = d.name
         self.clip = {"dir": d, "sets": [], "events": [], "last_move": t}
         for item in list(self.pre):
             self._add(item)

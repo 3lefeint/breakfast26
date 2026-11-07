@@ -207,3 +207,28 @@ def test_the_reference_of_the_drift_check_is_taken_only_on_an_empty_board(worker
     monkeypatch.setattr(sys.modules[__name__], "EMPTY_BOARD_REFUSED", True)
     assert c.post("/api/detection/drift/accept").json() == {"error": "The board is not empty."}
     server.wire(None, None)
+
+
+def test_a_bounce_and_a_mark_go_to_the_worker(worker_port):
+    wire(worker_port)
+    c = TestClient(server.app)
+    assert c.post("/api/detection/bouncer").json() == {"ok": True}
+    assert c.post("/api/detection/mark").json() == {"ok": True}
+    assert ("POST", "/api/bouncer") in CALLS and ("POST", "/api/mark") in CALLS
+    assert server.run_control("detect_bouncer") == {"ok": True}
+    server.wire(None, None)
+    assert server.run_control("detect_mark")["error"] == "dart detection is off"
+
+
+def test_a_confirm_key_asks_the_worker_only_for_a_dart_in_doubt(worker_port):
+    state = wire(worker_port)
+    state.board_darts.set_connected(True)
+    seg = {"name": "T20", "number": 20, "multiplier": 3}
+    state.board_darts.update([{"segment": seg, "coords": {"x": 0.0, "y": 0.6}},
+                              {"segment": seg, "coords": {"x": 0.1, "y": 0.6}, "detection": {"uncertain": True}}])
+    assert server._uncertain_flags() == [False, True]
+    assert server.run_control("confirm_dart:1") == {"ok": True} and ("POST", "/api/confirm?index=0") not in CALLS
+    assert server.run_control("confirm_dart:3") == {"ok": True} and ("POST", "/api/confirm?index=2") not in CALLS      # no third dart yet
+    assert server.run_control("confirm_dart:2") == {"ok": True} and ("POST", "/api/confirm?index=1") in CALLS
+    assert server.run_control("confirm_dart:4")["error"] == "bad dart confirmation"
+    server.wire(None, None)

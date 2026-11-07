@@ -169,6 +169,7 @@ def wire(game_state, elim_ctrl,
         _streamdeck = streamdeck_mod.StreamDeckService(config_path, run_control, web_base=lambda: f"http://127.0.0.1:{_web_port}",
                                                        values=_game_values,
                                                        flags=lambda: {"fun_mode": bool(_scene_engine and _scene_engine.fun)},
+                                                       uncertain=_uncertain_flags,
                                                        sounds=lambda: scene_sounds.files(_audio_engine))
         _streamdeck.board_status = game_state.board_status
         game_state.board_status_listeners.append(_streamdeck.on_board_status)
@@ -336,6 +337,12 @@ async def _send_to(clients: set, data: dict):
         except Exception:
             dead.add(ws)
     clients.difference_update(dead)
+
+
+def _uncertain_flags():
+    """Per dart of the turn, in the order of the dart detection: does it doubt the dart (the confirm keys of a Stream Deck pulse)."""
+    darts = (_game_state.board_darts.snapshot() if _game_state else None) or []
+    return [bool(d.get("uncertain")) for d in darts]
 
 
 def _game_values():
@@ -688,6 +695,32 @@ def _correct_dart(action: str) -> dict:
     return {"ok": True}
 
 
+def _detection_note(what: str) -> dict:
+    """`bouncer` or `mark` for the own dart detection: a dart that bounced off takes its place in the turn as a miss, a mark says that
+    something was off at this moment."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = _detection_call("POST", f"/api/{what}")
+    if code == 409:
+        return {"error": "the turn is full"}
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+def _confirm_dart(action: str) -> dict:
+    """`confirm_dart:<1-3>`: the player says a dart the detection doubts is right. A dart that is not in doubt needs nothing."""
+    parts = action.split(":")
+    if len(parts) != 2 or parts[1] not in ("1", "2", "3"):
+        return {"error": "bad dart confirmation"}
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    index = int(parts[1]) - 1
+    flags = _uncertain_flags()
+    if index >= len(flags) or not flags[index]:
+        return {"ok": True}
+    code, _, _ = _detection_call("POST", f"/api/confirm?index={index}")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
 def _play_library_sound(name: str) -> dict:
     """Play a sound of the library (the files of Scenes → Sounds) on the connected audio pages."""
     if not _audio_engine or name not in scene_sounds.files(_audio_engine):
@@ -727,6 +760,10 @@ def run_control(action: str) -> dict:
         return _toggle_fun_mode()
     if action.startswith("correct_dart:"):
         return _correct_dart(action)
+    if action in ("detect_bouncer", "detect_mark"):
+        return _detection_note(action[len("detect_"):])
+    if action.startswith("confirm_dart:"):
+        return _confirm_dart(action)
     if action.startswith("sound:"):
         return _play_library_sound(action[len("sound:"):])
     if action in _LOCAL_CONTROLS:
@@ -928,6 +965,18 @@ async def detection_confirm(index: int):
         return {"error": "dart detection is off"}
     code, _, _ = await asyncio.to_thread(_detection_call, "POST", f"/api/confirm?index={int(index)}")
     return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/bouncer")
+async def detection_bouncer():
+    """A dart bounced off the board: it takes its place in the turn as a miss, and a label says when it happened."""
+    return await asyncio.to_thread(_detection_note, "bouncer")
+
+
+@app.post("/api/detection/mark")
+async def detection_mark():
+    """Something was off at this moment (a block, an arm in the picture, a strange count): a label with the time."""
+    return await asyncio.to_thread(_detection_note, "mark")
 
 
 @app.post("/api/control/reset-board")
