@@ -353,3 +353,27 @@ def test_a_dart_that_only_two_cameras_saw_is_marked_uncertain_even_in_the_middle
         dart = [e for e in events if e.kind == "dart"][0]
         assert dart.throw["detection"]["cams"] == cameras
         assert dart.throw["detection"]["uncertain"] is uncertain, dart.throw["detection"]
+
+
+def test_a_bounce_takes_a_place_in_the_turn_and_an_empty_board_is_no_takeout_of_it():
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    events, t = run(tr, [scene([(0, 103)]) for _ in range(14)], start=t)
+    assert [e.count for e in events if e.kind == "dart"] == [1]
+    throw = tr.add_bouncer()                                         # the second dart bounced off
+    assert tr.count == 2 and throw["segment"]["multiplier"] == 0 and throw["detection"]["bounce"] is True
+    events, t = run(tr, [scene([(0, 103)]) for _ in range(20)], start=t)
+    assert tr.count == 2 and not [e for e in events if e.kind in ("removed", "takeout")]      # the miss is not checked against the pictures
+    events, t = run(tr, [scene([(0, 103), (50, 100)]) for _ in range(14)], start=t)
+    assert [e.count for e in events if e.kind == "dart"] == [3] and tr.status == "takeout"      # the next dart that sticks is the third
+    assert tr.add_bouncer() is None                                  # the turn is full
+    events, t = run(tr, [scene([(0, 103), (50, 100)], hand=True)] + [scene() for _ in range(12)], start=t)
+    assert [e.kind for e in events] == ["takeout"] and tr.count == 0 and tr.throws == []
+
+
+def test_a_bounce_alone_on_an_empty_board_stays_counted():
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    tr.add_bouncer()
+    events, t = run(tr, [scene() for _ in range(30)], start=t)
+    assert tr.count == 1 and events == []

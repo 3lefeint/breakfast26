@@ -20,6 +20,12 @@ from breakfast.detection import detector
 
 log = logging.getLogger(__name__)
 
+BOUNCE_COORDS = {"x": 0.0, "y": 1.2}    # where the miss of a bounce is drawn: outside the board, never near a real dart
+
+
+def _is_bounce(throw):
+    return bool((throw.get("detection") or {}).get("bounce"))
+
 
 @dataclass
 class Settings:
@@ -152,7 +158,7 @@ class BoardTracker:
             self.status = "ready"
             return [Event("baseline", t, 0, info={"note": "empty board taken"}, after=frames)]
         hp = {c: detector.highpass(p) for c, p in prepared.items()}
-        if self.count:                                      # the darts were taken out (checked first: three darts that go are a big change)
+        if any(not _is_bounce(th) for th in self.throws):   # the darts were taken out (checked first: three darts that go are a big change)
             gone = {c: detector.changed_area(self.model.masks[c], self.empty_hp[c], hp[c]) for c in prepared}
             if self._is_empty(gone):
                 return self._takeout(t, frames, prepared)
@@ -226,6 +232,8 @@ class BoardTracker:
         """Index of the counted dart that the new change is only a push of (a bounce-out nudged it), or None. A new dart close to a counted
         one adds a body to the picture around it (more changed pixels than when that dart was counted); a pushed dart does not."""
         for i, th in enumerate(self.throws):
+            if _is_bounce(th):
+                continue
             x, y = th["coords"]["x"] * 170.0, th["coords"]["y"] * 170.0
             if ((x - result["x"]) ** 2 + (y - result["y"]) ** 2) ** 0.5 > self.s.same_spot_mm:
                 continue
@@ -287,6 +295,10 @@ class BoardTracker:
         h, w = self.model.size[1], self.model.size[0]
         keep, keep_sup, events = [], [], []
         for th, sup in zip(self.throws, self.sup0):
+            if _is_bounce(th):                              # a dart that never stuck is not on the board to be checked
+                keep.append(th)
+                keep_sup.append(sup)
+                continue
             x, y = th["coords"]["x"] * 170.0, th["coords"]["y"] * 170.0
             votes = sum(1 for c in self.model.cams
                         if detector.support((h, w), self.model, c, x, y, self.empty_hp[c], hp[c]) >= self.s.support)
@@ -366,6 +378,19 @@ class BoardTracker:
             self._handled = False
             self._retry_at = t + self.s.retry_s
         return [Event("unclear", t, self.count, info=info, before=before, after=frames)]
+
+    def add_bouncer(self):
+        """A dart bounced off the board (reported by the player): a miss takes its place in the turn, so the next dart that sticks is the next
+        one. It is no dart on the board: nothing checks it against the pictures, and an empty board is no takeout of it."""
+        if self.count >= self.s.max_darts:
+            return None
+        throw = {"segment": {"name": "M20", "number": 20, "bed": "Outside", "multiplier": 0}, "coords": dict(BOUNCE_COORDS),
+                 "detection": {"uncertain": False, "bounce": True, "bundle": None}}
+        self.count += 1
+        self.throws.append(throw)
+        self.sup0.append(None)
+        self.status = "takeout" if self.count >= 3 else "ready"
+        return throw
 
     def _is_empty(self, gone):
         """The board looks like the empty one: all but at most one camera see no difference (one camera may see a reflection or a

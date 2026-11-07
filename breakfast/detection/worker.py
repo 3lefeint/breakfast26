@@ -187,6 +187,40 @@ class Worker:
         self.tracker.reset()
         self.note("The next still picture is taken as the empty board.")
 
+    def _context(self):
+        """Where a label belongs: the session of the event pictures, the clip that was recorded last, the number of the last event."""
+        return {"session": self.session.name, "clip": self.clips.last_name if self.clips else None, "event": self.seq - 1}
+
+    def _write_label(self, row):
+        try:
+            self.base.mkdir(parents=True, exist_ok=True)
+            with open(self.base / "labels.jsonl", "a") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError as e:
+            log.warning("label not written: %s", e)
+
+    def bouncer(self):
+        """A dart bounced off (reported by the player): it takes its place in the turn as a miss (so the next dart is the next one), and a label
+        says when, in which session and clip. False when the turn is full."""
+        throw = self.tracker.add_bouncer()
+        if throw is None:
+            return False
+        self._write_label({"t": datetime.now().isoformat(timespec="seconds"), "kind": "bouncer", "index": self.tracker.count - 1,
+                           **self._context()})
+        if self.clips:
+            self.clips.note_event(time.monotonic(), {"kind": "bouncer", "count": self.tracker.count, "field": None})
+        self.note(f"Dart {self.tracker.count}: bounced off, counted as a miss")
+        self.out.put(state_message(self.tracker, "Dart confirmed"))
+        return True
+
+    def mark(self):
+        """Something was off at this moment (reported by the player, no more than that): a label with the time, the session and the clip."""
+        self._write_label({"t": datetime.now().isoformat(timespec="seconds"), "kind": "mark", "count": self.tracker.count, **self._context()})
+        if self.clips:
+            self.clips.note_event(time.monotonic(), {"kind": "mark", "count": self.tracker.count, "field": None})
+        self.note("Marked: something was off here")
+        return True
+
     def label(self, index, field, confirm=False, point=None):
         """What the player said about a dart of the turn (a correction in Breakfast, or a tap on "this one is right"): stored with the
         detected field and the pictures it came from, a free label for measuring the detection. A confirmation clears the
@@ -200,17 +234,12 @@ class Worker:
             th = throws[index]
         row = {"t": datetime.now().isoformat(timespec="seconds"), "index": index, "detected": th["segment"]["name"] if th else "",
                "corrected": field, "confirmed": bool(confirm), "detection": th.get("detection") if th else None,
-               "detected_at": th.get("coords") if th else None}
+               "detected_at": th.get("coords") if th else None, **self._context()}
         if th is None:
             row["unseen"] = True
         if point:
             row["corrected_at"] = point          # where the player tapped on the board, board units: the detection error in mm
-        try:
-            self.base.mkdir(parents=True, exist_ok=True)
-            with open(self.base / "labels.jsonl", "a") as f:
-                f.write(json.dumps(row) + "\n")
-        except OSError as e:
-            log.warning("label not written: %s", e)
+        self._write_label(row)
         self.note(f"Dart {index + 1}: " + (f"not counted, entered as {field}" if th is None else
                   f"detected {row['detected']}, " + ("confirmed" if confirm else f"corrected to {field}")))
         if confirm:
@@ -507,6 +536,11 @@ def serve(worker, port):
                 return self._send(200 if ok else 409, b'{"ok":true}' if ok else b'{"ok":false}', "application/json")
             if self.path == "/api/reset":
                 worker.reset()
+            elif self.path == "/api/bouncer":
+                ok = worker.bouncer()
+                return self._send(200 if ok else 409, b'{"ok":true}' if ok else b'{"ok":false}', "application/json")
+            elif self.path == "/api/mark":
+                worker.mark()
             elif self.path == "/api/calibrate":
                 worker.calibrate()
             elif self.path == "/api/model/auto":

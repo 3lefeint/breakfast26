@@ -13,7 +13,8 @@
 
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
-                         next_player: t('Next Player'), next_game: t('Next Game'), cancel_game: t('Cancel Game'), fun_mode: t('Fun Mode'),
+                         next_player: t('Next Player'), next_game: t('Next Game'), cancel_game: t('Cancel Game'), fun_mode: t('Fun Mode'), detect_bouncer: t('Bouncer'), detect_mark: t('Mark'),
+                         'confirm_dart:1': t('Confirm dart 1'), 'confirm_dart:2': t('Confirm dart 2'), 'confirm_dart:3': t('Confirm dart 3'),
                          'correct_dart:1': t('Correct dart 1'), 'correct_dart:2': t('Correct dart 2'), 'correct_dart:3': t('Correct dart 3') };
   const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game'), cancel: t('Cancel'), sound: t('Sound'), fun: t('Fun'),
                          folder: t('Folder'), back: t('Back'), page_prev: t('Previous page'), page_next: t('Next page') };
@@ -119,7 +120,7 @@
     if (!draft.label || (previous && draft.label === labelOf(previous.action))) draft.label = labelOf(draft.action);
     // A board reset has to be held by default, so it is not run by a press by accident.
     if (!previous && (draft.action === 'reset_board' || draft.action === 'cancel_game')) draft.hold = DEFAULT_HOLD;
-    if (draft.action.startsWith('correct_dart:') && draft.label === labelOf(draft.action)) draft.label = 'D' + draft.action.slice(-1);
+    if ((draft.action.startsWith('correct_dart:') || draft.action.startsWith('confirm_dart:')) && draft.label === labelOf(draft.action)) draft.label = 'D' + draft.action.slice(-1);
     if (draft.action === 'cancel_game' && !draft.image) draft.image = 'symbol:cancel';
     if (draft.action === 'fun_mode' && !draft.image) draft.image = 'symbol:fun';
     if (draft.action.startsWith(SOUND) && !draft.image) draft.image = 'symbol:sound';
@@ -306,6 +307,9 @@
         <select bind:value={draft.action} onchange={chooseAction}>
           <option value="">{t('None')}</option>
           {#each data.actions.filter((a) => !a.custom) as a (a.id)}<option value={a.id}>{ACTION_LABEL[a.id]}</option>{/each}
+          <optgroup label={t('Confirm a dart')}>
+            {#each ['confirm_dart:1', 'confirm_dart:2', 'confirm_dart:3'] as id (id)}<option value={id}>{ACTION_LABEL[id]}</option>{/each}
+          </optgroup>
           <optgroup label={t('Correct a dart')}>
             {#each ['correct_dart:1', 'correct_dart:2', 'correct_dart:3'] as id (id)}<option value={id}>{ACTION_LABEL[id]}</option>{/each}
           </optgroup>

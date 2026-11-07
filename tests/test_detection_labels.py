@@ -84,6 +84,7 @@ class TestWorkerLog:
         from breakfast.detection import worker as wk
         w = object.__new__(wk.Worker)
         w.base, w.session, w.out, w.notes, w.lock = tmp_path, tmp_path / "events" / "session-1", queue.Queue(), [], threading.Lock()
+        w.clips, w.seq = None, 5
         w.tracker = type("T", (), {"throws": [{"segment": {"name": "S20"}, "coords": {"x": 0.0, "y": 0.5},
                                                "detection": {"uncertain": True, "margin": 1.0, "bundle": "0001-dart"}}], "count": 1})()
         return w
@@ -98,3 +99,18 @@ class TestWorkerLog:
         assert w.label(2, "T5") is False and w.label(1, "", confirm=True) is False
         l = [json.loads(x) for x in (tmp_path / "labels.jsonl").read_text().splitlines()]
         assert len(l) == 1 and l[0]["unseen"] is True and l[0]["corrected"] == "T5" and l[0]["detected"] == ""
+
+    def test_a_bounce_and_a_mark_are_labels_with_their_place(self, tmp_path):
+        from types import SimpleNamespace
+        w = self._worker(tmp_path)
+        w.clips = SimpleNamespace(last_name="clip-0007-190000", note_event=lambda *a, **k: None)
+        added = []
+        w.tracker.add_bouncer = lambda: added.append(1) or {"segment": {"name": "M20"}}
+        assert w.bouncer() is True and added == [1]
+        w.tracker.add_bouncer = lambda: None                                 # the turn is full
+        assert w.bouncer() is False
+        assert w.mark() is True
+        l = [json.loads(x) for x in (tmp_path / "labels.jsonl").read_text().splitlines()]
+        assert [r["kind"] for r in l] == ["bouncer", "mark"]
+        assert l[0]["session"] == "session-1" and l[0]["clip"] == "clip-0007-190000" and l[0]["event"] == 4
+        assert w.out.get_nowait()["data"]["event"] == "Dart confirmed"

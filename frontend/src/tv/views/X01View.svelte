@@ -74,6 +74,11 @@
     await api('POST', '/api/x01/stop');
     navigate('home');
   }
+  // Own dart detection: say that a dart bounced off (it takes its place in the turn as a miss) or that something was off just now.
+  let detectionOn = $derived(!!$gameState.detection?.enabled);
+  async function detectNote(what) {
+    await api('POST', `/api/detection/${what}`, {});
+  }
   async function confirmDart(index) {
     await api('POST', `/api/detection/confirm?index=${index}`, {});
   }
@@ -142,6 +147,10 @@
         <button class="btn-ctrl" disabled={!canControl || !game.match_started || theirs} onclick={() => ctrl('next-player')}>{t('⏭ Next')}</button>
         {#if !ownMatch}
           <button class="btn-ctrl" disabled={!hasCloudControl || !game.match_started} onclick={() => ctrl('next-game')}>{t('▶▶ Next Leg')}</button>
+        {/if}
+        {#if ownMatch && detectionOn}
+          <button class="btn-ctrl" onclick={() => detectNote('bouncer')}>{t('Bouncer')}</button>
+          <button class="btn-ctrl" onclick={() => detectNote('mark')}>{t('Mark')}</button>
         {/if}
         {#if boardStopped}
           <button class="btn-ctrl start" disabled={!hasCloudControl} onclick={() => ctrl('start-board')}><Icon name="board" size={20} />{t('Start')}</button>

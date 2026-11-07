@@ -665,7 +665,7 @@ class TestRoutes:
 class TestRunControl:
     def test_every_stream_deck_action_is_a_control(self):
         from breakfast.web import server
-        assert set(sd.ACTIONS) == set(server._CONTROLS) | set(server._LOCAL_CONTROLS) | {"fun_mode"}
+        assert set(sd.ACTIONS) == set(server._CONTROLS) | set(server._LOCAL_CONTROLS) | {"fun_mode", "detect_bouncer", "detect_mark"}
 
     def test_the_cloud_client_runs_the_action(self, monkeypatch):
         from breakfast.web import server
@@ -1016,3 +1016,32 @@ class TestDartCorrection:
                 assert "error" in server.run_control(bad)
         finally:
             server.wire(None, None)
+
+
+class TestConfirmKeys:
+    def test_a_confirm_key_pulses_while_its_dart_is_in_doubt(self, tmp_path):
+        pytest.importorskip("PIL")
+        doubt = [False, False, False]
+        deck = FakeDeck(keys=15, layout=(3, 5))
+        svc = sd.StreamDeckService(str(tmp_path / "config.toml"), [].append, enumerate_decks=lambda: [deck],
+                                   to_native=lambda d, img: img, reconnect_seconds=0.01, uncertain=lambda: doubt)
+        svc.update(enabled=True, keys=[{"key": 0, "action": "confirm_dart:2", "label": "D2"}, {"key": 1, "action": "detect_bouncer"},
+                                       {"key": 2, "action": "detect_mark"}])
+        with svc._lock:
+            svc._connect()
+        key = svc._view_keys()[0]
+        assert svc._effect_for(key) is None
+        doubt[1] = True
+        assert svc._effect_for(key) == sd.CONFIRM_EFFECT
+        assert svc._effect_for(svc._view_keys()[1]) is None
+        svc.on_game_change()                                           # the dart came in doubt: the key is drawn again, with the frame
+        assert svc._confirm_shown[0] is True
+        doubt[1] = False
+        svc.on_game_change()
+        assert svc._confirm_shown[0] is False
+
+    def test_the_new_actions_are_accepted_and_a_wrong_number_is_not(self):
+        sd.clean_keys([{"key": 0, "action": "confirm_dart:1"}, {"key": 1, "action": "confirm_dart:3"}, {"key": 2, "action": "detect_bouncer"},
+                       {"key": 3, "action": "detect_mark"}])
+        with pytest.raises(ValueError):
+            sd.clean_keys([{"key": 0, "action": "confirm_dart:4"}])

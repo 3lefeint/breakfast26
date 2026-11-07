@@ -1711,4 +1711,10 @@ export default {
   'Correct dart 2': 'Dart 2 korrigieren',
   'Correct dart 3': 'Dart 3 korrigieren',
   'Correct a dart': 'Dart korrigieren',
+  'Confirm dart 1': 'Dart 1 bestätigen',
+  'Confirm dart 2': 'Dart 2 bestätigen',
+  'Confirm dart 3': 'Dart 3 bestätigen',
+  'Confirm a dart': 'Dart bestätigen',
+  'Bouncer': 'Bouncer',
+  'Mark': 'Hier war was',
 };

@@ -35,6 +35,8 @@ ACTIONS = {
     "next_game": "Next Game",
     "cancel_game": "Cancel Game",
     "fun_mode": "Fun Mode",
+    "detect_bouncer": "Bouncer",
+    "detect_mark": "Mark",
 }
 SOUND_PREFIX = "sound:"
 SOUND_NAME = re.compile(r"^\w[\w .\-()]{0,98}\.(mp3|wav|ogg|m4a|flac|aac)$", re.IGNORECASE)
@@ -56,6 +58,8 @@ FOLDER_PREFIX = "folder:"
 NAV_BACK, NAV_PREV, NAV_NEXT = "nav:back", "nav:prev", "nav:next"
 NAV_COLOR = "#20232a"
 CORRECT_PREFIX = "correct_dart:"      # a key that opens the correction of a dart: correct_dart:1 to correct_dart:3
+CONFIRM_PREFIX = "confirm_dart:"      # a key that confirms an uncertain dart: confirm_dart:1 to confirm_dart:3; it pulses while the dart is in doubt
+CONFIRM_EFFECT = {"type": "pulse", "color": "#e6a800", "speed": 1.5, "width": 10}
 VIRTUAL = "@"                        # folder ids that begin with it are made on the fly (the dart correction)
 RINGS = (("0", "Miss"), ("S", "Single"), ("D", "Double"), ("T", "Triple"))
 MAX_ACTIONS = 32
@@ -177,7 +181,7 @@ def clean_keys(keys, custom_ids=(), folder_ids=()):
             raise ValueError(f"unknown value to show: {show}")
         if action:
             is_folder = action.startswith(FOLDER_PREFIX) and action[len(FOLDER_PREFIX):] in folder_ids
-            is_correct = action in ("correct_dart:1", "correct_dart:2", "correct_dart:3")
+            is_correct = action in ("correct_dart:1", "correct_dart:2", "correct_dart:3", "confirm_dart:1", "confirm_dart:2", "confirm_dart:3")
             is_sound = action.startswith(SOUND_PREFIX) and SOUND_NAME.match(action[len(SOUND_PREFIX):]) is not None
             if action not in ACTIONS and action not in custom_ids and not is_folder and not is_sound and not is_correct:
                 raise ValueError(f"unknown action: {action}")
@@ -640,7 +644,7 @@ class StreamDeckService:
     the seams the tests replace."""
 
     def __init__(self, config_path, run_control, enumerate_decks=None, to_native=None, reconnect_seconds=RECONNECT_SECONDS,
-                 web_base=lambda: "http://127.0.0.1:8080", request=None, values=None, flags=None, sounds=None):
+                 web_base=lambda: "http://127.0.0.1:8080", request=None, values=None, flags=None, sounds=None, uncertain=None):
         self.config_path = config_path
         self.run_control = run_control
         self._enumerate = enumerate_decks or _enumerate_decks
@@ -650,6 +654,8 @@ class StreamDeckService:
         self._values = values or (lambda: None)   # what a display key can show of the game in play
         self._flags = flags or (lambda: {})       # switches a key shows the state of, e.g. {"fun_mode": True}
         self._sounds = sounds or (lambda: [])     # the sound files a key can play
+        self._uncertain = uncertain or (lambda: [])   # per dart of the turn: does the dart detection doubt it (the confirm keys pulse)
+        self._confirm_shown = {}            # key -> whether a confirm key showed its dart as in doubt
         self._vals = None                   # the last result of it, read outside the lock
         self._shown = {}                    # key -> the value text the key shows now
         self._flash_until = 0
@@ -1025,9 +1031,25 @@ class StreamDeckService:
             return {**entry, **changes}
         return entry
 
+    def _in_doubt(self, entry):
+        """True for a confirm key whose dart the detection is not sure about: the key then asks for a tap."""
+        action = (entry or {}).get("action") or ""
+        if not action.startswith(CONFIRM_PREFIX):
+            return False
+        try:
+            flags = self._uncertain()
+            return bool(flags[int(action[len(CONFIRM_PREFIX):]) - 1])
+        except (IndexError, ValueError, TypeError):
+            return False
+        except Exception:
+            log.warning("could not read which darts are in doubt", exc_info=True)
+            return False
+
     def _effect_for(self, entry):
         """The effect a key shows now: the rule of the board status when there is one (unless the key ignores the rules),
         else the effect of the key itself."""
+        if entry and self._in_doubt(entry):
+            return CONFIRM_EFFECT
         if not (entry and entry.get("ignore_override")):
             status = status_color(self.board_status)
             for rule in self.overrides():
@@ -1089,6 +1111,11 @@ class StreamDeckService:
             for entry in self._view_keys().values():
                 if self._live(entry) and self._value_of(entry) != self._shown.get(entry["key"]):
                     self._draw_key(entry["key"], entry)
+                elif (entry.get("action") or "").startswith(CONFIRM_PREFIX):
+                    doubt = self._in_doubt(entry)
+                    if doubt != self._confirm_shown.get(entry["key"], False):
+                        self._confirm_shown[entry["key"]] = doubt
+                        self._draw_key(entry["key"], entry)
 
     def flash(self, seconds=FLASH_SECONDS):
         """Make the display keys flash, for an earned achievement."""
@@ -1257,7 +1284,7 @@ class StreamDeckService:
     def _run_action(self, key, entry):
         log.info("Stream Deck key %d: %s", key, entry["action"])
         try:
-            if entry["action"] in ACTIONS or entry["action"].startswith((SOUND_PREFIX, CORRECT_PREFIX)):
+            if entry["action"] in ACTIONS or entry["action"].startswith((SOUND_PREFIX, CORRECT_PREFIX, CONFIRM_PREFIX)):
                 result = self.run_control(entry["action"])
                 if isinstance(result, dict) and result.get("error"):
                     log.warning("Stream Deck key %d: %s", key, result["error"])
