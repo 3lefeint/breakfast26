@@ -196,11 +196,11 @@ export async function handleLocations(request: Request, env: LocationEnv, limite
     if (who.id !== links![1]) return json({ error: "not your location" }, 403);
     if (await limited("loc-read", READ_LIMIT, who.id)) return tooMany();
     const rows = await db.prepare(
-      "SELECT links.id AS link_id, links.kind, links.created_at, locations.id AS peer_id, locations.name AS peer_name FROM links " +
+      "SELECT links.id AS link_id, links.kind, links.source, links.created_at, locations.id AS peer_id, locations.name AS peer_name FROM links " +
       "JOIN locations ON locations.id = CASE WHEN links.location_a = ?1 THEN links.location_b ELSE links.location_a END " +
       "WHERE links.location_a = ?1 OR links.location_b = ?1 ORDER BY links.created_at",
-    ).bind(who.id).all<{ link_id: string; kind: string; created_at: string; peer_id: string; peer_name: string }>();
-    return json({ links: rows.results.map((r) => ({ link_id: r.link_id, kind: r.kind, created_at: r.created_at, peer: { id: r.peer_id, name: r.peer_name } })) });
+    ).bind(who.id).all<{ link_id: string; kind: string; source: string; created_at: string; peer_id: string; peer_name: string }>();
+    return json({ links: rows.results.map((r) => ({ link_id: r.link_id, kind: r.kind, source: r.source, created_at: r.created_at, peer: { id: r.peer_id, name: r.peer_name } })) });
   }
 
   if (route === "open") {

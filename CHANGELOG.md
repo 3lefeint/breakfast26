@@ -16,6 +16,9 @@
 - Stream Deck actions: Cancel Game, Fun Mode (on or off, the key shows which), and Play a sound for each sound of the library; custom actions pick their route from a list of the routes of Breakfast and can send a body to a route. (#106)
 - Stream Deck: three keys correct dart 1, 2 or 3 of the turn in play in two steps, miss, single, double or triple and then the number, with page keys on small devices; the dart is set to the center of its field. (#106)
 
+- Invitation as a QR code: *Create invitation* shows the code as a QR code above the text (rendered by Breakfast, no network call), so a phone can scan it and copy the text. (#166)
+- Admin area: the new tab *Linked locations* shows the approved sites as a table where the circle admin ticks which pairs are linked; a link set there works like one from an invitation and shows as *Set by the circle admin* in the list of linked locations, links from an invitation are marked in the table, and the tab order is Sites, Linked locations, Voice chats, Players, Sync, Reports, Usage (`GET /admin/links`, `PUT /admin/links/<a>/<b>`, `source` of a link). (#166)
+
 ### Changed
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
 

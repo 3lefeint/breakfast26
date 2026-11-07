@@ -67,6 +67,13 @@ def make_code(relay_url, token):
     return CODE_PREFIX + _b64(json.dumps({"r": relay_url, "t": token}, separators=(",", ":")).encode())
 
 
+def qr_svg(code):
+    """The invitation text as a QR code, an SVG that scales with its box. It holds the text only, so a phone camera
+    offers to copy it."""
+    import segno
+    return segno.make(code, error="m").svg_inline(border=2, omitsize=True, dark="#000", light="#fff")
+
+
 def read_code(code):
     """(relay http address, token) of an invitation text, or a LocationError."""
     code = (code or "").strip()

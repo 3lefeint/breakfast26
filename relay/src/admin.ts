@@ -245,6 +245,31 @@ export async function handleAdmin(request: Request, env: AdminEnv, limited: Limi
     return json({ ok: true });
   }
 
+  const pair = path.match(/^\/admin\/links\/([0-9a-f]{32})\/([0-9a-f]{32})$/);
+
+  if (method === "GET" && path === "/admin/links") {
+    const sites = await db.prepare(
+      "SELECT l.id, l.name FROM circle_sites s JOIN locations l ON l.id = s.location_id WHERE s.approved = 1 ORDER BY lower(l.name)").all<{ id: string; name: string }>();
+    const links = await db.prepare("SELECT location_a AS a, location_b AS b, source FROM links").all<{ a: string; b: string; source: string }>();
+    return json({ sites: sites.results, links: links.results });
+  }
+
+  if (method === "PUT" && pair) {
+    const [, a, b] = pair;
+    if (a === b) return json({ error: "a site cannot be linked to itself" }, 400);
+    if (typeof body.linked !== "boolean") return json({ error: "linked must be true or false" }, 400);
+    for (const id of [a, b]) {
+      if (!(await db.prepare("SELECT location_id FROM circle_sites WHERE location_id = ? AND approved = 1").bind(id).first())) return json({ error: "unknown site" }, 404);
+    }
+    const existing = await db.prepare("SELECT id FROM links WHERE (location_a = ?1 AND location_b = ?2) OR (location_a = ?2 AND location_b = ?1)").bind(a, b).first<{ id: string }>();
+    if (!body.linked) {
+      if (existing) await db.prepare("DELETE FROM links WHERE id = ?").bind(existing.id).run();
+    } else if (!existing) {
+      await db.prepare("INSERT INTO links (id, location_a, location_b, source) VALUES (?, ?, ?, 'admin')").bind(randomId(), a, b).run();
+    }
+    return json({ ok: true });
+  }
+
   if (method === "GET" && path === "/admin/sync") {
     const counts = await db.prepare("SELECT origin, COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, MAX(created_at) AS last FROM circle_records GROUP BY origin").all<{ origin: string; n: number; bytes: number; last: number }>();
     const sites = await db.prepare(

@@ -94,6 +94,23 @@ def test_signed_requests_carry_a_valid_signature(loc, relay):
     assert read_code(code) == ("https://r.example", "t" * 32)
 
 
+def test_the_qr_code_holds_the_invitation_text_and_scales_with_its_box(loc, relay):
+    import segno
+    loc.register("wss://r.example", "Home", "1234")
+    code = loc.invite("1234")
+    svg = locations.qr_svg(code)
+    assert svg.startswith("<svg") and "viewBox" in svg and " width=" not in svg
+    assert svg == segno.make(code, error="m").svg_inline(border=2, omitsize=True, dark="#000", light="#fff")
+    assert svg != locations.qr_svg(make_code("https://r.example", "u" * 32))
+
+
+def test_links_keep_the_source_the_relay_reports(loc, relay):
+    loc.register("wss://r.example", "Home", "1234")
+    link = {"link_id": "b" * 32, "kind": "play", "source": "admin", "peer": {"id": "c" * 32, "name": "Club"}}
+    relay.answers = {f"/locations/{'a' * 32}/links": {"links": [link]}}
+    assert loc.links() == [link]
+
+
 def test_join_checks_the_relay_of_the_code(loc, relay):
     loc.register("wss://r.example", "Home", "1234")
     with pytest.raises(LocationError, match="another relay"):
