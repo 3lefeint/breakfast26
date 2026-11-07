@@ -8,7 +8,6 @@
   // Scoreboard tab itself goes away entirely per the decided
   // navigation redesign; the TV view is now the only place X01 controls live.
   import { shownName, isBoardStopped } from '../../lib/util.js';
-  import { getCheckout } from '../../lib/checkout.js';
   import { api } from '../../lib/api.js';
   import { health } from '../../lib/stores/health.js';
   import { abortTournament } from '../../lib/tournament.js';
@@ -35,16 +34,11 @@
   // The board stopped (camera standby): Start brings it back, until then there is nothing to reset.
   let boardStopped = $derived(isBoardStopped(game.board_status));
   let isX01 = $derived(game.game_mode && (game.game_mode.includes('01') || game.game_mode === 'Random Checkout'));
-  let rem = $derived(parseInt(cur.remaining));
-  let checkoutHint = $derived.by(() => {
-    if (!isX01 || !(rem >= 2 && rem <= 170)) return '';
-    const co = getCheckout(rem);
-    return co ? '→ ' + co.join('  ') : '';
-  });
-  // In checkout range but no 3-dart combination exists at all (the classic
-  // "bogey numbers": 169, 168, 166, ...) — distinct from simply not being
-  // in checkout range yet, which just renders nothing.
-  let isBogey = $derived(isX01 && rem >= 2 && rem <= 170 && !checkoutHint);
+  // The backend decides what to show: the standard route when the darts left in the turn can finish it, or the
+  // bogey badge for a score no three darts can finish. A match played in Breakfast knows its rules (Double In).
+  let hint = $derived((ownMatch ? own.checkout : game.checkout) || null);
+  let checkoutHint = $derived(isX01 && hint?.route ? '→ ' + hint.route.map((f) => (f === '50' ? 'Bull' : f)).join('  ') : '');
+  let isBogey = $derived(isX01 && !!hint?.bogey);
 
   let rows = $derived.by(() => {
     const players = game.players || {};

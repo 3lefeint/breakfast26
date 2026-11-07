@@ -37,6 +37,26 @@ class TestGameState:
         cur = gs.snapshot()["current"]
         assert cur["throw1_raw"] is None and cur["turn_score"] == 0 and cur["remaining"] == 441
 
+    def test_checkout_hint_follows_the_darts_left_of_the_turn(self):
+        gs = GameState()
+        gs.update(ev_match_started(pts=170))
+        gs.update(ev_dart1(value=60, points_left=110))
+        assert gs.snapshot()["checkout"]["route"] == ["T20", "50"]
+        dart2 = ev_dart1(value=20, points_left=90)
+        dart2["event"] = "dart2-thrown"
+        dart2["game"].update(dartNumber=2, fieldName="S20", dartValue=20)
+        gs.update(dart2)
+        assert gs.snapshot()["checkout"] is None     # 90 needs two darts, one is left
+
+    def test_checkout_hint_is_empty_outside_x01_and_after_a_bust(self):
+        gs = GameState()
+        gs.update(ev_match_started(mode="Cricket"))
+        assert gs.snapshot()["checkout"] is None
+        gs = GameState()
+        gs.update(ev_match_started(pts=40))
+        gs.update(ev_busted(points_left=40))
+        assert gs.snapshot()["checkout"] is None
+
     def test_match_started(self):
         gs = GameState()
         result = gs.update(ev_match_started())

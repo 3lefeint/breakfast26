@@ -26,6 +26,7 @@ import logging
 import random
 import threading
 
+from . import checkout_routes
 from .bot import X01_SCATTER_MM, aim_x01, darts_x01, x01_turn_over
 from .turn_game import TurnGame, TurnGameController, parse_field
 
@@ -906,6 +907,18 @@ class X01Game(TurnGame):
     def _publish_event(self, event_type, **fields):
         """Nothing, see _publish_turn()."""
 
+    def _checkout_hint(self, scores):
+        """The checkout route for the player on turn, only while the darts left in the turn can finish it."""
+        cp = self.current_player
+        if self.phase != "playing" or cp not in scores:
+            return None
+        res = self._result
+        if res and res["status"] != "open":
+            return None
+        used = len(res["darts"]) if res else 0
+        opened = res["opened"] if res else self.opened.get(cp, True)
+        return checkout_routes.hint(scores[cp], 3 - used, opened)
+
     def snapshot(self) -> dict:
         cp = self.current_player
         scores = self.scores
@@ -931,6 +944,7 @@ class X01Game(TurnGame):
             "online": bool(self.online),
             "local_players": sorted(self.local_players) if self.local_players is not None else None,
             "current_darts": list(self._current_darts),
+            "checkout": self._checkout_hint(scores),
             "darts": [self.board_dart(t) for t in self._last_throws],
             "players": [
                 {

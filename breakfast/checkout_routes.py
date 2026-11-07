@@ -107,6 +107,19 @@ def standard_route(score):
     return list(STANDARD[score]) if score in STANDARD else None
 
 
+def hint(remaining, darts_left=3, opened=True):
+    """What the live view shows for the player on turn: the standard route when it fits the darts left in the turn,
+    `{"bogey": True}` for a score no three darts can finish, otherwise None."""
+    if not opened or not 2 <= remaining <= 170:
+        return None
+    if remaining in BOGEY:
+        return {"route": None, "bogey": True}
+    route = STANDARD.get(remaining)
+    if route and len(route) <= darts_left:
+        return {"route": list(route), "bogey": False}
+    return None
+
+
 def darts_to_finish(score, darts=3):
     """The fewest darts that finish *score*, or None if *darts* darts cannot."""
     for n in range(1, darts + 1):
