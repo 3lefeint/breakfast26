@@ -11,19 +11,24 @@ from breakfast.state import GameState
 class FakeDeck:
     def __init__(self, keys=6, layout=(2, 3), connected=True):
         self.keys, self.layout, self._connected = keys, layout, connected
+        self._open, self.fail_writes = True, False
         self.images, self.callback, self.brightness, self.opened, self.closed = {}, None, None, False, False
 
     def open(self): self.opened = True
     def close(self): self.closed = True
     def reset(self): pass
     def connected(self): return self._connected
+    def is_open(self): return self._open
     def deck_type(self): return "Fake Deck"
     def key_count(self): return self.keys
     def key_layout(self): return self.layout
     def key_image_format(self): return {"size": (72, 72)}
     def set_brightness(self, value): self.brightness = value
     def set_key_callback(self, cb): self.callback = cb
-    def set_key_image(self, index, image): self.images[index] = image
+    def set_key_image(self, index, image):
+        if self.fail_writes:
+            raise OSError("Failed to write out report (-1)")
+        self.images[index] = image
 
 
 class TestStatusColor:
@@ -148,6 +153,41 @@ class TestService:
             fresh = FakeDeck()
             service._enumerate = lambda: [fresh]
             _wait(lambda: service.snapshot()["connected"] and service._deck is fresh)
+            assert first.closed
+        finally:
+            service.stop()
+
+    def test_failed_writes_close_the_deck_and_log_once(self, service, caplog):
+        service.update(enabled=True)
+        with service._lock:
+            service._connect()
+        first = service.deck
+        first.fail_writes = True
+        with caplog.at_level("WARNING", logger="breakfast.streamdeck"):
+            with service._lock:
+                for _ in range(10):
+                    service._draw()
+        lost = [r for r in caplog.records if "lost the device" in r.getMessage()]
+        assert len(lost) == 1 and len(caplog.records) <= sd.LOST_AFTER_FAILURES
+        fresh = FakeDeck()
+        service._enumerate = lambda: [fresh]
+        service.start()
+        try:
+            _wait(lambda: service._deck is fresh)
+            assert first.closed and set(fresh.images) == set(range(6))
+        finally:
+            service.stop()
+
+    def test_a_closed_deck_that_still_reports_connected_is_replaced(self, service):
+        service.update(enabled=True)
+        service.start()
+        try:
+            _wait(lambda: service.snapshot()["connected"])
+            first = service.deck
+            first._open = False
+            fresh = FakeDeck()
+            service._enumerate = lambda: [fresh]
+            _wait(lambda: service._deck is fresh)
             assert first.closed
         finally:
             service.stop()

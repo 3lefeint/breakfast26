@@ -20,6 +20,7 @@
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
 
 ### Fixed
+- Stream Deck: a device that was unplugged or stopped answering is dropped after three failed writes, logged once instead of once per key and tick, and Breakfast connects to it again when it is back. (#154)
 - Stream Deck keys: Undo and Next Player work in games started in Breakfast (X01, Elimination and the others), not only in matches started at the board; a Reset Board key becomes a Start Board key while the board is stopped; the board status "Stopped" shows red like in the TV view; new and unused keys are black. (#106)
 
 ## [1.15.0] - 2026-11-04
