@@ -1,6 +1,7 @@
 import logging
 from copy import deepcopy
 
+from breakfast import checkout_routes
 from breakfast.board_darts import BoardDarts
 
 log = logging.getLogger(__name__)
@@ -373,11 +374,24 @@ class GameState:
 
         return None
 
+    def _checkout_hint(self, current):
+        """The checkout route for the player on turn of an X01 match at the board (double out, no In mode known), only
+        while the darts left in the turn can finish it."""
+        mode = self.game_mode or ""
+        if not current or not ("01" in mode or mode == "Random Checkout") or current.get("is_bust"):
+            return None
+        remaining = _to_int(current.get("remaining"), None)
+        if remaining is None:
+            return None
+        used = sum(1 for n in (1, 2, 3) if current.get(f"throw{n}_raw") is not None)
+        return checkout_routes.hint(remaining, 3 - used)
+
     def snapshot(self):
         current = None
         if self.active_player_index is not None and self.active_player_index in self.players:
             current = deepcopy(self.players[self.active_player_index])
         return {
+            "checkout": self._checkout_hint(current),
             "board_status": self.board_status,
             "last_event": self.last_event,
             "match_started": self.match_started,

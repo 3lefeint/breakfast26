@@ -158,6 +158,44 @@ class TestBust:
         assert m.scores() == {"ana": 40, "bo": 40}
 
 
+class TestCheckoutHint:
+    def hint(self, m):
+        return m.game.snapshot()["checkout"]
+
+    def test_the_route_follows_the_darts_left_in_the_turn(self):
+        m = Match(start=100)
+        assert self.hint(m) == {"route": ["T20", "D20"], "bogey": False}
+        m.game.on_board_state(1, [hit(20, 1)])               # 80 left, two darts
+        assert self.hint(m)["route"] == ["T20", "D10"]
+        m.game.on_board_state(2, [hit(20, 1), hit(1, 1)])    # 79 left, one dart: no route fits
+        assert self.hint(m) is None
+
+    def test_a_score_that_only_this_turn_cannot_finish_gets_no_bogey(self):
+        m = Match(start=167)
+        assert self.hint(m)["route"] == ["T20", "T19", "50"]
+        m.game.on_board_state(1, [hit(20, 1)])               # 147 left, two darts: nothing, no badge
+        assert self.hint(m) is None
+
+    def test_a_bogey_score_gets_the_badge(self):
+        assert self.hint(Match(start=169)) == {"route": None, "bogey": True}
+
+    def test_a_double_in_shows_nothing_before_the_first_double(self):
+        m = Match(start=100, in_mode="double")
+        assert self.hint(m) is None
+        m.game.on_board_state(1, [hit(10, 2)])               # opened, 80 left, two darts
+        assert self.hint(m)["route"] == ["T20", "D10"]
+
+    def test_a_bust_shows_nothing(self):
+        m = Match(start=40)
+        m.game.on_board_state(1, [hit(20, 3)])
+        assert self.hint(m) is None
+
+    def test_the_next_player_gets_the_route_for_their_own_score(self):
+        m = Match(start=100)
+        play(m.game, hit(20, 1), hit(20, 1), hit(20, 1))
+        assert m.game.snapshot()["current_player"] == "bo" and self.hint(m)["route"] == ["T20", "D20"]
+
+
 class TestModes:
     def test_a_double_in_scores_from_the_first_double(self):
         m = Match(in_mode="double")

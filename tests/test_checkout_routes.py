@@ -16,6 +16,30 @@ def test_the_bogey_scores_are_exactly_those_no_three_darts_finish():
     assert cr.routes(1) == [] and cr.routes(171) == []
 
 
+class TestHint:
+    def test_the_standard_route_is_shown_when_it_fits_the_darts_left(self):
+        assert cr.hint(170) == {"route": ["T20", "T20", "50"], "bogey": False}
+        assert cr.hint(40, 1) == {"route": ["D20"], "bogey": False}
+        assert cr.hint(60, 2)["route"] == ["S20", "D20"]
+
+    def test_nothing_is_shown_when_the_turn_cannot_finish(self):
+        assert cr.hint(60, 1) is None            # the route needs two darts
+        assert cr.hint(170, 2) is None
+        assert cr.hint(40, 0) is None
+
+    def test_nothing_is_shown_out_of_range_or_before_the_first_valid_dart(self):
+        assert cr.hint(171) is None and cr.hint(1) is None and cr.hint(0) is None
+        assert cr.hint(40, 3, opened=False) is None
+
+    @pytest.mark.parametrize("score", sorted(cr.BOGEY))
+    def test_a_bogey_score_gets_the_badge_whatever_darts_are_left(self, score):
+        assert cr.hint(score, 3) == {"route": None, "bogey": True}
+        assert cr.hint(score, 1) == {"route": None, "bogey": True}
+
+    def test_a_score_only_unreachable_this_turn_is_no_bogey(self):
+        assert cr.hint(167, 2) is None
+
+
 @pytest.mark.parametrize("score", sorted(cr.STANDARD))
 def test_a_standard_route_finishes_its_score_on_a_double_with_as_few_darts_as_possible(score):
     route = cr.STANDARD[score]
