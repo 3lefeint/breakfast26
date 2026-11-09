@@ -401,3 +401,21 @@ def test_cameras_that_disagree_while_a_big_change_is_in_the_picture_still_block(
     assert tr.status == "blocked" and tr.count == 0 and not [e for e in events if e.kind == "unclear"]
     events, t = run(tr, [scene([(0, 103)]) for _ in range(400)], start=t)          # the patience runs out, as it does for an arm
     assert tr.status != "blocked" and [e for e in events if e.kind == "blocked" or (e.kind == "unclear" and e.info.get("accepted"))]
+
+
+def test_the_tip_is_the_end_of_the_shaft_not_a_speck_next_to_it():
+    before = scene()[0]
+    after = before.copy()
+    cv2.line(after, (400, 300), (400, 180), (15, 15, 15), 7)                    # the dart, its lower end at y = 303
+    cv2.rectangle(after, (391, 309), (394, 313), (15, 15, 15), -1)              # a speck below and beside the tip, joined to the blob
+    tip, info = detector.find_tip(model().masks[0], detector.prepare(before), detector.prepare(after))
+    assert abs(tip[0] - 400) <= 2 and tip[1] <= 307
+
+
+def test_the_tip_of_a_blob_without_a_shaft_is_its_lowest_point():
+    before = scene()[0]
+    after = before.copy()
+    cv2.rectangle(after, (380, 290), (440, 300), (15, 15, 15), -1)              # wide and flat: no line that points down
+    tip, info = detector.find_tip(model().masks[0], detector.prepare(before), detector.prepare(after))
+    assert 380 <= tip[0] <= 440 and 298 <= tip[1] <= 304
+

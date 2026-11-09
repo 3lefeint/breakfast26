@@ -39,6 +39,7 @@
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
 - The dart detection takes the median of the cameras for the field and the position of a dart instead of the weighted fusion, which was wrong more often on the reviewed throws.
 - The dart detection marks a dart that fewer than all three cameras saw as uncertain, so it is shown for a tap to confirm.
+- The dart detection takes the lower end of the shaft as the tip of a dart (a line fitted to the dart) instead of the lowest changed pixel, so a shadow or a speck beside the tip no longer moves it (#46).
 
 ### Fixed
 - X01 checkout hint: the TV view shows the standard route from the checkout chart only when the darts left in the turn can finish it, under every Out mode and not before the first valid dart of a Double In; the bogey badge appears only for scores no three darts can finish. (#155)
