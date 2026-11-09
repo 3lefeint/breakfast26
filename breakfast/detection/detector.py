@@ -1,7 +1,7 @@
 """Locate one new dart from the pictures before and after it landed.
 
-Per camera: the difference image of before and after, the biggest changed blob is the dart, its lowest point is the tip, and
-the board model maps that pixel to a point on the board. The points of the cameras are fused by their median (the field and the
+Per camera: the difference image of before and after, the biggest changed blob is the dart, the lower end of its shaft is the
+tip (see `find_tip`), and the board model maps that pixel to a point on the board. The points of the cameras are fused by their median (the field and the
 position are the median's); the fusion weighted by the uncertainty of every pixel only gives the `sigma`, because on the reviewed
 throws it was wrong more often than the median. Ported from the evaluation tools in `data/detection/detect.py`, which measured it against the
 hand reviews of the throws.
@@ -22,6 +22,11 @@ OFF_MM = 190.0              # a camera point farther from the center than this i
 REJECT_D2 = 12.0            # squared Mahalanobis distance from the median above which a camera is ignored in the fusion
 AGREE_MM = 25.0             # cameras whose points lie within this of the median agree on where the dart is
 SIGMA_PX = 2.0              # assumed uncertainty of a tip pixel
+AXIS_SPAN = 70              # rows above the lowest changed pixel that the line of the shaft is fitted to (barrel and tip)
+AXIS_KEEP = 5.0             # pixels farther than this from the first fit are left out of the second
+AXIS_NEAR = 3.0             # changed pixels within this of the line belong to the shaft
+AXIS_GAP = 30.0             # the shaft ends where no changed pixel follows within this many pixels along the line
+AXIS_MIN = 25               # fewer changed pixels than this give no line: the lowest point of the blob is the tip
 
 
 def prepare(frame):
@@ -36,13 +41,47 @@ def highpass(prepared):
     return np.clip(g - cv2.GaussianBlur(g, (0, 0), 12) + 128, 0, 255).astype(np.uint8)
 
 
+def _shaft_end(px, py):
+    """The lower end of the shaft among the changed pixels of a blob, or None if they give no line. A line is fitted to the lower
+    part of the dart (twice, the second time without the pixels far from the first); the tip is the last changed pixel on that line
+    going down from the body, and it lies on the line. A shadow or a speck next to the tip, which the closing joins to the blob, is
+    off the line and does not move the tip."""
+    if len(py) < AXIS_MIN:
+        return None
+    low = py >= py.max() - AXIS_SPAN
+    pts = np.stack([px[low], py[low]], axis=1).astype(np.float32)
+    if len(pts) < AXIS_MIN:
+        return None
+    for _ in range(2):
+        vx, vy, x0, y0 = (float(v) for v in cv2.fitLine(pts, cv2.DIST_HUBER, 0, 0.01, 0.01).ravel())
+        if vy < 0:
+            vx, vy = -vx, -vy
+        kept = pts[np.abs((pts[:, 0] - x0) * vy - (pts[:, 1] - y0) * vx) <= AXIS_KEEP]
+        if len(kept) < AXIS_MIN:
+            break
+        pts = kept
+    if vy < 0.5:                                            # nearly flat in the picture: no shaft that points down
+        return None
+    across = np.abs((px - x0) * vy - (py - y0) * vx)
+    along = np.sort(((px - x0) * vx + (py - y0) * vy)[across <= AXIS_NEAR])
+    if len(along) < 5:
+        return None
+    end = float(np.median(along))
+    for a in along[along >= end]:
+        if a - end > AXIS_GAP:
+            break
+        end = float(a)
+    return (x0 + end * vx, y0 + end * vy)
+
+
 def find_tip(mask, before, after, threshold=THRESHOLD, min_area=MIN_AREA):
-    """(tip pixel, info) of the biggest changed blob, or (None, reason). `before` and `after` come from `prepare`."""
+    """(tip pixel, info) of the biggest changed blob, or (None, reason). `before` and `after` come from `prepare`. The tip is the
+    lower end of the shaft (`_shaft_end`); a blob that gives no line has it at its lowest point."""
     diff = cv2.absdiff(before, after)
     diff = cv2.bitwise_and(diff, diff, mask=mask)
     _, bw = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
-    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, np.ones((CLOSE[1], CLOSE[0]), np.uint8))
+    opened = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    bw = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, np.ones((CLOSE[1], CLOSE[0]), np.uint8))
     n, lab, stats, _ = cv2.connectedComponentsWithStats(bw, 8)
     if n <= 1:
         return None, "no change"
@@ -50,10 +89,12 @@ def find_tip(mask, before, after, threshold=THRESHOLD, min_area=MIN_AREA):
     area = int(stats[k, cv2.CC_STAT_AREA])
     if area < min_area:
         return None, "blob too small"
-    ys, xs = np.nonzero(lab == k)
-    ymax = ys.max()
-    low = ys >= ymax - 3
-    tip = (float(xs[low].mean()), float(ymax))
+    py, px = np.nonzero((lab == k) & (opened > 0))
+    tip = _shaft_end(px, py)
+    if tip is None:
+        ys, xs = np.nonzero(lab == k)
+        ymax = ys.max()
+        tip = (float(xs[ys >= ymax - 3].mean()), float(ymax))
     return tip, {"area": area, "bbox": [int(stats[k, 0]), int(stats[k, 1]), int(stats[k, 2]), int(stats[k, 3])]}
 
 
