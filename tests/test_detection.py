@@ -419,3 +419,26 @@ def test_the_tip_of_a_blob_without_a_shaft_is_its_lowest_point():
     tip, info = detector.find_tip(model().masks[0], detector.prepare(before), detector.prepare(after))
     assert 380 <= tip[0] <= 440 and 298 <= tip[1] <= 304
 
+
+def _areas_of_a_big_dart(monkeypatch, tr):
+    real = detector.changed_area
+    monkeypatch.setattr(detector, "changed_area", lambda *a, **k: 15000 if tr.count == 0 else real(*a, **k))
+
+
+def test_a_dart_as_big_as_a_hand_in_the_picture_is_counted_and_marked_uncertain(monkeypatch):
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    _areas_of_a_big_dart(monkeypatch, tr)                                        # a dart in the number ring, close to the cameras
+    events, t = run(tr, [scene([(0, 130)]) for _ in range(30)], start=t)
+    assert [e.kind for e in events] == ["dart"] and tr.count == 1 and tr.status == "ready"
+    assert events[0].throw["segment"]["name"] == "S20" and events[0].throw["detection"]["uncertain"]
+
+
+def test_a_big_change_the_cameras_put_at_different_places_blocks_the_board(monkeypatch):
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    _areas_of_a_big_dart(monkeypatch, tr)
+    real = detector.locate
+    monkeypatch.setattr(detector, "locate", lambda *a, **k: (lambda r: r and {**r, "agree": 1, "spread": 300.0})(real(*a, **k)))
+    events, t = run(tr, [scene([(0, 130)]) for _ in range(30)], start=t)
+    assert events == [] and tr.count == 0 and tr.status == "blocked"
