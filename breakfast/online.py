@@ -306,7 +306,7 @@ def _http_base(relay_url):
     return url
 
 
-def _ws_base(relay_url):
+def ws_base(relay_url):
     url = relay_url.rstrip("/")
     for http, ws in (("https://", "wss://"), ("http://", "ws://")):
         if url.startswith(http):
@@ -556,7 +556,7 @@ class OnlineSession:
             return f"The relay answered {res.status_code}"
 
     def _open(self, mode):
-        url = f"{_ws_base(self.relay_url)}/ws/{self.code}"
+        url = f"{ws_base(self.relay_url)}/ws/{self.code}"
         try:
             conn = self._connect(url)
         except Exception as e:

@@ -17,7 +17,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 from cryptography.hazmat.primitives import serialization
@@ -62,6 +62,30 @@ def http_base(relay_url):
         if url.startswith(ws):
             return http + url[len(ws):]
     return url
+
+
+def path_prefix(base):
+    """The path part of a relay address ("/api/v1" for a server that serves its routes below it, "" for one at the root).
+    A request is signed over this prefix plus the path of the route, the path the server sees."""
+    return urlsplit(base or "").path.rstrip("/")
+
+
+CLOUD_PREFIX = "/api/v1"
+
+
+def cloud_base(address):
+    """The address of the routes of a Breakfast Cloud server from what the user typed: its host (`cloud.example.org`),
+    its page (`https://cloud.example.org`) or the full address with the prefix. https unless http is typed."""
+    text = (address or "").strip()
+    if not text:
+        raise LocationError("enter the address of the server")
+    if "://" not in text:
+        text = "https://" + text
+    base = http_base(text)
+    parts = urlsplit(base)
+    if parts.scheme not in ("http", "https") or not parts.netloc or parts.query or parts.fragment or any(c.isspace() for c in base):
+        raise LocationError("this is not an address of a server")
+    return base if parts.path.rstrip("/") else base + CLOUD_PREFIX
 
 
 def make_code(relay_url, token):
@@ -177,7 +201,7 @@ class Locations:
     def _headers(self, state, method, path, raw):
         """The headers that sign a request to the relay (the signature covers method, path, time and body)."""
         timestamp = str(int(self._now()))
-        message = f"{method}\n{path}\n{timestamp}\n{hashlib.sha256(raw.encode()).hexdigest()}"
+        message = f"{method}\n{path_prefix(state['relay'])}{path}\n{timestamp}\n{hashlib.sha256(raw.encode()).hexdigest()}"
         key = Ed25519PrivateKey.from_private_bytes(_unb64(state["key"]))
         return {"x-location": state["id"], "x-timestamp": timestamp, "x-signature": _b64(key.sign(message.encode()))}
 
@@ -251,7 +275,7 @@ class Locations:
             body = {"name": name, "public_key": public}
             raw = json.dumps(body, separators=(",", ":"))
             timestamp = str(int(self._now()))
-            message = f"POST\n/locations\n{timestamp}\n{hashlib.sha256(raw.encode()).hexdigest()}"
+            message = f"POST\n{path_prefix(base)}/locations\n{timestamp}\n{hashlib.sha256(raw.encode()).hexdigest()}"
             headers = {"x-timestamp": timestamp, "x-signature": _b64(key.sign(message.encode())), "content-type": "application/json"}
             data = self._answer(self._post, base + "/locations", data=raw.encode(), headers=headers)
             state["id"] = data["id"]
@@ -369,6 +393,68 @@ class Locations:
         query = urlencode({"channel": channel_id, "name": data["channel"]["name"], "site": data["site"],
                            "ticket": data["ticket"], "lang": lang})
         return f"{self._registered()['relay']}/voice#{query}"
+
+    # ── the account at Breakfast Cloud ────────────────────────────────────────
+
+    def account(self):
+        """The account this installation is paired with: `{"available": True, "paired": ..., "email": ...}`. A relay
+        without accounts answers 404: `{"available": False}`."""
+        try:
+            return {"available": True, **self.call("GET", "/account")}
+        except LocationError as e:
+            if e.status == 404:
+                return {"available": False}
+            raise
+
+    def pair(self, pin):
+        """Ask the server for a pairing code. The user confirms it in the portal; `account()` tells when that happened.
+        Returns the code, the address of the portal page that confirms it (also as a QR code) and how long it is valid."""
+        with self._lock:
+            state = self._registered()
+            self._check_pin(state, pin)
+            self._save(state)
+        data = self.call("POST", "/pairings")
+        log.info("Locations: pairing code created")
+        return {"code": data["code"], "url": data["url"], "qr": qr_svg(data["url"]),
+                "expires_in_s": data.get("expires_in_s", 600), "interval_s": data.get("interval_s", 5)}
+
+    def unpair(self, pin):
+        """Leave the account this installation is paired with."""
+        with self._lock:
+            state = self._registered()
+            self._check_pin(state, pin)
+            self._save(state)
+        self.call("DELETE", "/account")
+        log.info("Locations: left the account")
+
+    def move_to(self, address, pin):
+        """Move this location to another server that holds its data already (the switch from the relay to Breakfast
+        Cloud): the id and the key stay, only the address changes. The new server has to answer as a Breakfast server
+        and has to know this location; otherwise nothing changes. Returns the new address (https form)."""
+        with self._lock:
+            state = self._registered()
+            self._check_pin(state, pin)
+            self._save(state)
+            base = cloud_base(address)
+            if base == state["relay"]:
+                raise LocationError("this location uses that server already")
+            try:
+                hello = self._get(base + "/")
+            except requests.RequestException as e:
+                log.warning("Locations: %s is not reachable: %s", base, e)
+                raise LocationError(f"the server is not reachable: {e}") from None
+            if hello.status_code != 200 or not hello.text.startswith("breakfast relay, protocol "):
+                raise LocationError("there is no Breakfast server at this address")
+            moved = {**state, "relay": base}
+            try:
+                self._signed(moved, "GET", base, f"/locations/{state['id']}/links")
+            except LocationError as e:
+                if e.code == "unknown_location":
+                    raise LocationError("the new server does not know this location; its data has not been moved there yet") from None
+                raise
+            self._save(moved)
+            log.info("Locations: %s moved from %s to %s", state["id"], state["relay"], base)
+            return base
 
     def unlink(self, link_id, pin):
         with self._lock:

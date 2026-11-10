@@ -15,12 +15,13 @@ function remembered() {
   }
 }
 
-// The address of the relay as the admin routes need it: https://host (a wss:// address from the settings is turned around).
+// The address of the relay as the admin routes need it: https://host, with the path of a server that serves its routes below
+// one (a wss:// address from the settings is turned around).
 export function relayBase(text) {
   let url = (text || '').trim().replace(/\/+$/, '');
   if (url.startsWith('wss://')) url = 'https://' + url.slice(6);
   else if (url.startsWith('ws://')) url = 'http://' + url.slice(5);
-  return /^https?:\/\/[^\s/]+$/.test(url) ? url : '';
+  return /^https?:\/\/[^\s/]+(\/[^\s?#]*)?$/.test(url) ? url : '';
 }
 
 // The login of this tab, if it is still valid and belongs to the remembered relay.

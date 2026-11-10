@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Settings, Connections: a Breakfast Cloud section pairs the installation with an account (code and QR code, confirmed in the portal), shows the account and unpairs it; a location at a relay without accounts can move to a Breakfast Cloud server by its address, keeping its identity. (#179)
+- A relay address may carry a path (a server that serves its routes below `/api/v1`); requests are signed over the whole path. (#179)
 - API: `GET /api/scenes/sounds` lists the sound library without the scenes.
 - SCENES.md is the technical reference for scenes: every node with its fields and limits, the triggers with their facts, the REST routes and examples, so that scenes can be made through the API. The Swagger UI of the API is served at `/docs`, with the routes in groups (Scenes, the games, Players, Stats, Voice pack, Circle, Admin, ...), and the body of a scene is described in `/openapi.json`.
 - Stream Deck display keys show a value of the game in play (the player on turn, remaining score, lives, darts of the turn, round) and flash when an achievement is earned; they are set per key under Settings → Stream Deck (`show`). (#109)

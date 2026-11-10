@@ -330,6 +330,13 @@ can also link locations in the admin area under *Linked locations*. A match that
 under *Matches of linked locations* on the Online page of the linked ones, who join it without a password. A host
 who leaves the password empty is joinable only by linked locations. Every page lists only the matches of its own game.
 
+**Breakfast Cloud.** A relay address may be a server that serves its routes below a path (`wss://host/api/v1`). When that
+server has accounts, *Breakfast Cloud* under Settings → Connections pairs the installation with yours: *Pair* shows a code
+and a QR code, which you confirm in the portal of the server after logging in; the section then shows the account, and
+*Unpair* leaves it. A location that is still at a relay without accounts can move there once its data has been moved:
+enter the address of the server and *Move*; the location keeps its name, its links and its circle, and the relay address
+in the settings changes with it. Everything local works without an account.
+
 ### Circle of friends
 
 A group of friends with several Breakfast installations (clubs, homes) can form a **circle**: a finished X01 or Elimination match

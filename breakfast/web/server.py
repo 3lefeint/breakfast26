@@ -1999,6 +1999,47 @@ async def locations_set_pin(body: LocationPinBody):
     return await _location_call(lambda: _locations.set_pin(body.pin) or {})
 
 
+class CloudSwitchBody(LocationPinBody):
+    address: str
+
+
+@app.get("/api/cloud")
+async def cloud_status():
+    """The account this installation is paired with at the server. `available` is false while it is not registered or
+    the server has no accounts (the relay)."""
+    if not _locations or not _locations.status()["registered"]:
+        return {"available": False}
+    try:
+        return await asyncio.to_thread(_locations.account)
+    except locations_mod.LocationError as e:
+        return {"available": False, "error": str(e)}
+
+
+@app.post("/api/cloud/pair")
+async def cloud_pair(body: LocationPinBody):
+    return await _location_call(lambda: _locations.pair(body.pin))
+
+
+@app.post("/api/cloud/unpair")
+async def cloud_unpair(body: LocationPinBody):
+    return await _location_call(lambda: _locations.unpair(body.pin) or {})
+
+
+@app.post("/api/cloud/switch")
+async def cloud_switch(body: CloudSwitchBody):
+    """Move this location to a Breakfast Cloud server: the identity file and the addresses in the config change together."""
+    def switch():
+        base = _locations.move_to(body.address, body.pin)
+        updates = {"online": {"relay_url": online_mod.ws_base(base)}}
+        reports = bool((cfg_mod.load(_config_path) if _config_path else {}).get("telemetry", {}).get("url"))
+        if reports:                                     # an address of its own for the reports moves along
+            updates["telemetry"] = {"url": base}
+        if _config_path:
+            cfg_mod.write(_config_path, updates)
+        return {"relay": base, "relay_url": updates["online"]["relay_url"], "telemetry_url": base if reports else None}
+    return await _location_call(switch)
+
+
 @app.post("/api/locations/invite")
 async def locations_invite(body: LocationPinBody):
     def invite():
@@ -3247,7 +3288,7 @@ _API_GROUPS = [
     ("Voice pack", "The voice packs of the caller: plans, generating, recording.", ("/api/voicepack", "/api/voice-packs")),
     ("Voice chat", "Voice chat channels of the circle.", ("/api/voice",)),
     ("Circle", "The sync with the circle of friends.", ("/api/circle",)),
-    ("Locations", "This installation as a location at the relay: identity, invitations, links.", ("/api/locations",)),
+    ("Locations", "This installation as a location at the relay: identity, invitations, links, and its account at Breakfast Cloud.", ("/api/locations", "/api/cloud")),
     ("Online", "Online matches through the relay.", ("/api/online",)),
     ("Control and state", "The state of the game and the board, control actions and the settings in `config.toml`.",
      ("/api/control", "/api/state", "/api/health", "/api/config", "/api/board-address", "/api/web-port", "/api/delete-guard")),

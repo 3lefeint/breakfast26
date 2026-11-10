@@ -258,3 +258,76 @@ def test_the_game_of_the_page_goes_with_a_join(tmp_path):
         assert ("game", "x01") in server._online.calls and ("game", "elimination") in server._online.calls
     finally:
         server.wire(None, None)
+
+
+# ── the account at Breakfast Cloud and the switch to it ───────────────────────────────────────────────────────
+
+class CloudLocations(FakeLocations):
+    def __init__(self):
+        super().__init__()
+        self.moved = []
+
+    def status(self):
+        return {"registered": True, "id": "a" * 32, "name": "Garage", "relay": "https://relay", "pin_set": True}
+
+    def account(self):
+        return {"available": True, "paired": False}
+
+    def pair(self, pin):
+        if pin != "1234":
+            raise locations.LocationError("wrong PIN")
+        return {"code": "K7M2-QX4R", "url": "https://cloud.example/#/pair/K7M2-QX4R", "qr": "<svg/>", "expires_in_s": 600, "interval_s": 5}
+
+    def unpair(self, pin):
+        return None
+
+    def move_to(self, address, pin):
+        self.moved.append((address, pin))
+        return "https://cloud.example/api/v1"
+
+
+def test_the_cloud_routes_report_the_account_and_hand_out_a_pairing_code(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg_mod.write(str(config_path), {"online": {"relay_url": "wss://relay"}})
+    server.wire(None, EliminationController(NullMqttPublisher(), "autodarts"), config_path=str(config_path))
+    server._locations = CloudLocations()
+    try:
+        assert run(server.cloud_status()) == {"available": True, "paired": False}
+        assert run(server.cloud_pair(server.LocationPinBody(pin="0000"))) == {"error": "wrong PIN"}
+        res = run(server.cloud_pair(server.LocationPinBody(pin="1234")))
+        assert res["ok"] is True and res["code"] == "K7M2-QX4R" and res["qr"] == "<svg/>"
+        assert run(server.cloud_unpair(server.LocationPinBody(pin="1234"))) == {"ok": True}
+    finally:
+        server.wire(None, None)
+
+
+def test_the_switch_writes_the_new_address_into_the_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg_mod.write(str(config_path), {"online": {"relay_url": "wss://relay", "site_name": "Home"}, "telemetry": {"enabled": True, "url": "https://relay"}})
+    server.wire(None, EliminationController(NullMqttPublisher(), "autodarts"), config_path=str(config_path))
+    server._locations = CloudLocations()
+    try:
+        res = run(server.cloud_switch(server.CloudSwitchBody(address="cloud.example", pin="1234")))
+        assert res == {"ok": True, "relay": "https://cloud.example/api/v1", "relay_url": "wss://cloud.example/api/v1", "telemetry_url": "https://cloud.example/api/v1"}
+        assert server._locations.moved == [("cloud.example", "1234")]
+        raw = cfg_mod.load(str(config_path))
+        assert raw["online"] == {"relay_url": "wss://cloud.example/api/v1", "site_name": "Home"}
+        assert raw["telemetry"] == {"enabled": True, "url": "https://cloud.example/api/v1"}
+    finally:
+        server.wire(None, None)
+
+
+def test_the_switch_leaves_the_telemetry_address_alone_when_it_follows_the_relay(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg_mod.write(str(config_path), {"online": {"relay_url": "wss://relay"}})
+    server.wire(None, EliminationController(NullMqttPublisher(), "autodarts"), config_path=str(config_path))
+    server._locations = CloudLocations()
+    try:
+        run(server.cloud_switch(server.CloudSwitchBody(address="cloud.example", pin="1234")))
+        assert "telemetry" not in cfg_mod.load(str(config_path))
+    finally:
+        server.wire(None, None)
+
+
+def test_without_a_registered_location_there_is_no_account(wired):
+    assert run(server.cloud_status()) == {"available": False}

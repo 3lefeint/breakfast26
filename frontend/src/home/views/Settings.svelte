@@ -23,6 +23,7 @@
   import VoicePackRecording from './VoicePackRecording.svelte';
   import StreamDeckSection from './StreamDeckSection.svelte';
   import LocationsSection from './LocationsSection.svelte';
+  import CloudSection from './CloudSection.svelte';
   import CircleSection from './CircleSection.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
 
@@ -284,6 +285,14 @@
   $effect(() => {
     if (reportFollowsRelay) cfg.telemetry.url = cfg.online.relay_url || '';
   });
+
+  // The location moved to another server (the Breakfast Cloud section): the addresses in the form follow, the other
+  // fields keep what was typed.
+  function serverMoved(res) {
+    cfg.online.relay_url = loadedCfg.online.relay_url = res.relay_url;
+    if (res.telemetry_url) cfg.telemetry.url = loadedCfg.telemetry.url = res.telemetry_url;
+    else reportFollowsRelay = true;
+  }
 
   async function loadConfig() {
     try {
@@ -971,6 +980,7 @@
     </div>
 
     <LocationsSection />
+    <CloudSection onmoved={serverMoved} />
     <CircleSection />
   {:else if activeTab === 'system'}
     <div class="settings-section" id="updates-panel">

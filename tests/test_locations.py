@@ -337,3 +337,123 @@ def test_a_voice_channel_needs_a_plain_id_and_a_registered_location(loc, relay):
     relay.answers = {f"/circle/voice/{'d' * 32}/ticket": {"error": "unknown channel"}}
     with pytest.raises(LocationError, match="unknown channel"):
         loc.voice_channel_url("d" * 32)
+
+
+# ── a server that serves its routes below a prefix, pairing and the switch to it ──────────────────────────────
+
+def _verify(public, call, method, path):
+    h = call["headers"]
+    body = call.get("data") or b""
+    message = f"{method}\n{path}\n{h['x-timestamp']}\n{hashlib.sha256(body).hexdigest()}".encode()
+    Ed25519PublicKey.from_public_bytes(_unb64(public)).verify(_unb64(h["x-signature"]), message)
+
+
+def test_requests_to_an_address_with_a_prefix_are_signed_over_the_whole_path(loc, relay):
+    loc.register("wss://cloud.example/api/v1", "Home", "1234")
+    assert loc.status()["relay"] == "https://cloud.example/api/v1"
+    public = json.loads(relay.calls[0]["data"])["public_key"]
+    assert relay.calls[0]["url"] == "https://cloud.example/api/v1/locations"
+    _verify(public, relay.calls[0], "POST", "/api/v1/locations")
+    loc.invite("1234")
+    assert relay.calls[1]["url"] == f"https://cloud.example/api/v1/locations/{'a' * 32}/invitations"
+    _verify(public, relay.calls[1], "POST", f"/api/v1/locations/{'a' * 32}/invitations")
+    loc.call("GET", "/circle/records?since=3&limit=10")
+    _verify(public, relay.calls[2], "GET", "/api/v1/circle/records")
+    sign = loc.signer_for("wss://cloud.example/api/v1")
+    headers = sign("POST", "/api/matches", "{}")
+    _verify(public, {"headers": headers, "data": b"{}"}, "POST", "/api/v1/api/matches")
+
+
+@pytest.mark.parametrize("typed, base", [
+    ("cloud.example", "https://cloud.example/api/v1"),
+    (" https://cloud.example/ ", "https://cloud.example/api/v1"),
+    ("wss://cloud.example", "https://cloud.example/api/v1"),
+    ("http://127.0.0.1:8080", "http://127.0.0.1:8080/api/v1"),
+    ("https://cloud.example/api/v1/", "https://cloud.example/api/v1"),
+    ("https://cloud.example/other", "https://cloud.example/other"),
+])
+def test_the_address_of_a_cloud_server_gets_the_prefix_unless_it_has_a_path(typed, base):
+    assert locations.cloud_base(typed) == base
+
+
+@pytest.mark.parametrize("typed", ["", "  ", "ftp://cloud.example", "https://", "https://cloud.example?x=1", "cloud example"])
+def test_a_bad_cloud_address_is_refused(typed):
+    with pytest.raises(LocationError):
+        locations.cloud_base(typed)
+
+
+def test_pairing_asks_for_a_code_and_shows_it_as_a_qr_code(loc, relay):
+    loc.register("wss://cloud.example/api/v1", "Home", "1234")
+    relay.answers = {"/api/v1/pairings": {"code": "K7M2-QX4R", "url": "https://cloud.example/#/pair/K7M2-QX4R", "expires_in_s": 600, "interval_s": 5}}
+    with pytest.raises(LocationError, match="wrong PIN"):
+        loc.pair("0000")
+    res = loc.pair("1234")
+    assert res["code"] == "K7M2-QX4R" and res["url"].endswith("/#/pair/K7M2-QX4R") and res["expires_in_s"] == 600 and res["interval_s"] == 5
+    assert res["qr"].lstrip().startswith("<svg")
+    assert relay.calls[-1]["url"] == "https://cloud.example/api/v1/pairings"
+
+
+def test_the_account_is_reported_and_a_relay_without_accounts_has_none(loc, relay):
+    loc.register("wss://cloud.example/api/v1", "Home", "1234")
+    relay.answers = {"/api/v1/account": {"paired": True, "email": "anna@example.org", "paired_at": 5}}
+    assert loc.account() == {"available": True, "paired": True, "email": "anna@example.org", "paired_at": 5}
+    loc.unpair("1234")
+    assert relay.calls[-1]["url"] == "https://cloud.example/api/v1/account"
+    relay.status = 404
+    relay.answers = {}
+    assert loc.account() == {"available": False}
+    relay.status = 503
+    with pytest.raises(LocationError):
+        loc.account()
+
+
+class MovingRelay(FakeRelay):
+    """Two servers: answers per full address, and the greeting of a Breakfast server as text."""
+
+    def __init__(self):
+        super().__init__()
+        self.pages = {}
+
+    def __call__(self, url, **kw):
+        self.calls.append({"url": url, **kw})
+        if url in self.pages:
+            status, text, body = self.pages[url]
+            return SimpleNamespace(status_code=status, text=text, json=lambda: body)
+        return SimpleNamespace(status_code=200, text="", json=lambda: {"id": "a" * 32, "links": []})
+
+
+def test_moving_to_another_server_keeps_the_identity_and_changes_the_address(tmp_path, clock):
+    relay = MovingRelay()
+    loc = Locations(tmp_path / "config.toml", post=relay, get=relay, delete=relay, patch=relay, now=lambda: clock["t"])
+    loc.register("wss://relay.example", "Home", "1234")
+    public = json.loads(relay.calls[0]["data"])["public_key"]
+    before = json.loads(loc.path.read_text())
+    relay.pages["https://cloud.example/api/v1/"] = (200, "breakfast relay, protocol 4\n", {})
+    with pytest.raises(LocationError, match="wrong PIN"):
+        loc.move_to("cloud.example", "0000")
+    assert loc.move_to("cloud.example", "1234") == "https://cloud.example/api/v1"
+    after = json.loads(loc.path.read_text())
+    assert after["relay"] == "https://cloud.example/api/v1"
+    assert (after["id"], after["key"], after["name"], after["pin"]) == (before["id"], before["key"], before["name"], before["pin"])
+    check = relay.calls[-1]
+    assert check["url"] == f"https://cloud.example/api/v1/locations/{'a' * 32}/links"
+    _verify(public, check, "GET", f"/api/v1/locations/{'a' * 32}/links")
+    with pytest.raises(LocationError, match="already"):
+        loc.move_to("https://cloud.example", "1234")
+
+
+def test_a_move_changes_nothing_when_the_new_server_is_not_one_or_does_not_know_the_location(tmp_path, clock):
+    relay = MovingRelay()
+    loc = Locations(tmp_path / "config.toml", post=relay, get=relay, delete=relay, patch=relay, now=lambda: clock["t"])
+    loc.register("wss://relay.example", "Home", "1234")
+    relay.pages["https://other.example/api/v1/"] = (200, "<html>a web page</html>", {})
+    with pytest.raises(LocationError, match="no Breakfast server"):
+        loc.move_to("other.example", "1234")
+    relay.pages["https://down.example/api/v1/"] = (502, "", {})
+    with pytest.raises(LocationError, match="no Breakfast server"):
+        loc.move_to("down.example", "1234")
+    relay.pages["https://cloud.example/api/v1/"] = (200, "breakfast relay, protocol 4\n", {})
+    relay.pages[f"https://cloud.example/api/v1/locations/{'a' * 32}/links"] = (401, "", {"error": "unknown location", "code": "unknown_location"})
+    with pytest.raises(LocationError, match="has not been moved"):
+        loc.move_to("cloud.example", "1234")
+    assert loc.status()["relay"] == "https://relay.example"
