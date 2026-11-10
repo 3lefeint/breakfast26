@@ -442,3 +442,18 @@ def test_a_big_change_the_cameras_put_at_different_places_blocks_the_board(monke
     monkeypatch.setattr(detector, "locate", lambda *a, **k: (lambda r: r and {**r, "agree": 1, "spread": 300.0})(real(*a, **k)))
     events, t = run(tr, [scene([(0, 130)]) for _ in range(30)], start=t)
     assert events == [] and tr.count == 0 and tr.status == "blocked"
+
+
+def test_a_still_change_all_cameras_put_beside_the_board_is_a_miss_until_the_takeout(monkeypatch):
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    _areas_of_a_big_dart(monkeypatch, tr)                                        # a dart in the surround, outside the plane of the board
+    real = detector.locate
+    monkeypatch.setattr(detector, "locate", lambda *a, **k: (lambda r: r and {**r, "agree": 1, "spread": 300.0, "off": r["cams"]})(real(*a, **k)))
+    events, t = run(tr, [scene([(0, 130)]) for _ in range(40)], start=t)
+    assert [e.kind for e in events] == ["dart"] and tr.count == 1 and tr.status == "ready"
+    throw = events[0].throw
+    assert throw["segment"]["name"] == "M20" and throw["detection"]["uncertain"] and throw["detection"]["outside"]
+    monkeypatch.setattr(detector, "locate", real)
+    events, t = run(tr, [scene() for _ in range(20)], start=t)
+    assert [e.kind for e in events] == ["takeout"] and tr.count == 0

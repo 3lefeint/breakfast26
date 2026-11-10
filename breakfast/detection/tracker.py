@@ -10,6 +10,7 @@ Rules (all thresholds are in `Settings` and tuned at the board):
 The first settled picture after the start is taken as the empty board.
 """
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 
@@ -27,6 +28,12 @@ def _is_bounce(throw):
     return bool((throw.get("detection") or {}).get("bounce"))
 
 
+def _not_on_board(throw):
+    """A miss that has no place on the board to check the pictures at: a bounce, or a dart that sticks beside the board."""
+    d = throw.get("detection") or {}
+    return bool(d.get("bounce") or d.get("outside"))
+
+
 @dataclass
 class Settings:
     settle_s: float = 0.35          # how long the board must be still before it is looked at
@@ -36,6 +43,8 @@ class Settings:
     min_area: int = detector.MIN_AREA
     max_area: int = 13000           # a changed blob bigger than this in two cameras (or twice as big in one) is a hand or an arm ...
     big_dart_looks: int = 2         # ... unless the cameras put a dart at the same place in this many looks in a row (see `_big_dart`)
+    outside_looks: int = 4          # looks in a row (about 0.3 s apart) that must show the same change beside the board before it is a miss ...
+    outside_px: float = 8.0         # ... with its lower end within this many pixels of the first look in every camera (see `_outside_dart`)
     support: float = 0.10           # share of changed pixels around a counted dart (against the empty board) below which it is gone
     same_spot_mm: float = 10.0      # a new dart this close to a counted one may be that dart, pushed by a bounce-out ...
     new_body_ratio: float = 1.15    # ... unless the picture around it has this much more changed than when it was counted (real darts: 1.4 to 2.5)
@@ -82,7 +91,9 @@ class BoardTracker:
         self.moving = False
         self._unclear = 0           # changes in a row that could not be explained
         self._missing = None        # [x_mm, y_mm, looks]: where the picture shows a dart that is not counted, and for how many looks
+        self._big_seen = None       # what `locate` found in the latest big change
         self._big = None            # [x_mm, y_mm, looks]: where a big change looks like a dart close to a camera, and for how many looks
+        self._outside = None        # [camera -> lower end of the change (pixels), looks]: a change all cameras put beside the board
         self._blocked = 0           # looks in a row at a board that something is in the way of
         self._block = None          # the block that is going on: {t0, looks, info, frames}
         self._block_hit = False
@@ -111,6 +122,7 @@ class BoardTracker:
         self.count, self.throws, self.sup0, self.ref, self.empty, self.empty_hp, self.ref_raw = 0, [], [], None, None, None, None
         self._missing = None
         self._big = None
+        self._outside = None
         self._block = None
         self._handled = False
 
@@ -125,6 +137,7 @@ class BoardTracker:
             if not self.moving:
                 self._moved_from = t
             self._still_since, self._handled, self.moving, self._moved_to = None, False, True, t
+            self._outside = None
             return []
         self.moving = False
         if self._still_since is None:
@@ -170,7 +183,7 @@ class BoardTracker:
         if big:
             dart = self._big_dart(changed, prepared)
             if dart is None:
-                return self._blocked_board(t, frames, prepared, {"changed": changed, "why": "big change: a hand or an arm"})
+                return self._outside_or_blocked(t, frames, prepared, self._big_seen, {"changed": changed, "why": "big change: a hand or an arm"})
             if not dart:                                    # it looks like a dart: look once more before it is counted
                 self._handled = False
                 self._retry_at = t + 0.3
@@ -200,8 +213,8 @@ class BoardTracker:
         if result["cams"] >= 2 and result["agree"] < 2:
             if max(changed.values()) > self.s.max_area // 2:        # a big change, nearly an arm: the old rule, so it does not end up as a dart
                 self._blocked = waited
-                return self._blocked_board(t, frames, prepared, {"changed": changed, "spread": round(result["spread"], 1),
-                                                                 "why": "the cameras disagree: a hand or an arm"})
+                return self._outside_or_blocked(t, frames, prepared, result, {"changed": changed, "spread": round(result["spread"], 1),
+                                                                              "why": "the cameras disagree: a hand or an arm"})
             # A small change on a still board and the cameras put it at different places (a flight that turned after a bounce, a dart
             # that only one camera sees). Looking again shows the same picture, so nobody waits: the picture is taken as it is, nothing is
             # counted, and a dart that is really there is counted by `_recount` once two cameras show it.
@@ -258,7 +271,7 @@ class BoardTracker:
         """Index of the counted dart that the new change is only a push of (a bounce-out nudged it), or None. A new dart close to a counted
         one adds a body to the picture around it (more changed pixels than when that dart was counted); a pushed dart does not."""
         for i, th in enumerate(self.throws):
-            if _is_bounce(th):
+            if _not_on_board(th):
                 continue
             x, y = th["coords"]["x"] * 170.0, th["coords"]["y"] * 170.0
             if ((x - result["x"]) ** 2 + (y - result["y"]) ** 2) ** 0.5 > self.s.same_spot_mm:
@@ -296,11 +309,12 @@ class BoardTracker:
         look again. True: all cameras that see it put it at the same place in `big_dart_looks` looks in a row, it is counted like any dart
         (marked as uncertain). A camera that sees far more than that is left out, as for a dart on the board; two of them are an arm."""
         covered = [c for c, a in changed.items() if a > 2 * self.s.max_area]
+        self._big_seen = None
         if len(changed) - len(covered) < 2:
             self._big = None
             return None
         masks = {c: (np.zeros_like(m) if c in covered else m) for c, m in self.model.masks.items()}
-        result = detector.locate(self.model, self.ref, prepared, min_cams=2, masks=masks)
+        result = self._big_seen = detector.locate(self.model, self.ref, prepared, min_cams=2, masks=masks)
         if result is None or result["agree"] < result["cams"]:      # three darts that went leave such a change too, at three places
             self._big = None
             return None
@@ -312,6 +326,39 @@ class BoardTracker:
             return False
         self._big = None
         return True
+
+    def _outside_dart(self, result):
+        """Whether a change that would block the board is a dart beside it (in the surround, outside the plane of the board): every
+        camera that sees it puts its lower end off the board, each at another place, and that end stays where it is in every camera for
+        `outside_looks` looks without any movement between them. An arm that is held still at the edge for that long looks the same."""
+        if result is None or self.count >= self.s.max_darts or result["cams"] < 2 or result["off"] < result["cams"]:
+            self._outside = None
+            return False
+        tips = {c: v["px"] for c, v in result["tips"].items()}
+        first = self._outside[0] if self._outside else None
+        if first is not None and first.keys() == tips.keys() and all(math.dist(tips[c], first[c]) <= self.s.outside_px for c in tips):
+            self._outside[1] += 1
+        else:
+            self._outside = [tips, 1]
+        return self._outside[1] >= self.s.outside_looks
+
+    def _outside_or_blocked(self, t, frames, prepared, result, info):
+        """A change that looks like a hand or an arm: the board is blocked, unless it is a dart beside the board (`_outside_dart`). That one
+        is counted as a miss and marked as uncertain. It has no place on the board, so nothing checks it against the pictures; it goes
+        with the takeout, when the board looks empty again."""
+        if not self._outside_dart(result):
+            return self._blocked_board(t, frames, prepared, info)
+        self._outside, self._blocked, self._unclear = None, 0, 0
+        throw = {"segment": {"name": "M20", "number": 20, "bed": "Outside", "multiplier": 0}, "coords": dict(BOUNCE_COORDS),
+                 "detection": {"uncertain": True, "outside": True, "cams": result["cams"], "agree": result["agree"]}}
+        self.count += 1
+        self.throws.append(throw)
+        self.sup0.append(None)
+        before, self.ref, self.ref_raw = self.ref_raw, prepared, frames
+        self._handled = True
+        self.status = "takeout" if self.count >= 3 else "ready"
+        return [Event("dart", t, self.count, throw=throw, info={**result, "outside": True, **info, "why": "beside the board"},
+                      before=before, after=frames)]
 
     def _blocked_board(self, t, frames, prepared, info):
         """Something is in the way (a hand, an arm): wait and look again, `ref` stays. After `patience` looks the picture is taken as
@@ -344,7 +391,7 @@ class BoardTracker:
         h, w = self.model.size[1], self.model.size[0]
         keep, keep_sup, events = [], [], []
         for th, sup in zip(self.throws, self.sup0):
-            if _is_bounce(th):                              # a dart that never stuck is not on the board to be checked
+            if _not_on_board(th):                           # a dart that never stuck or sticks beside the board is not on it to be checked
                 keep.append(th)
                 keep_sup.append(sup)
                 continue
@@ -449,7 +496,7 @@ class BoardTracker:
 
     def _takeout(self, t, frames, prepared):
         n = self.count
-        self.count, self.throws, self.sup0, self._missing = 0, [], [], None
+        self.count, self.throws, self.sup0, self._missing, self._outside = 0, [], [], None, None
         self.ref, self.ref_raw, self.empty = prepared, frames, prepared
         self.empty_hp = {c: detector.highpass(p) for c, p in prepared.items()}
         self._handled = True
