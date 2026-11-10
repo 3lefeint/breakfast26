@@ -42,7 +42,8 @@ def highpass(prepared):
 
 
 def _shaft_end(px, py):
-    """The lower end of the shaft among the changed pixels of a blob, or None if they give no line. A line is fitted to the lower
+    """The lower end of the shaft among the changed pixels of a blob and the line it lies on (x0, y0, vx, vy), or None if they give
+    no line. A line is fitted to the lower
     part of the dart (twice, the second time without the pixels far from the first); the tip is the last changed pixel on that line
     going down from the body, and it lies on the line. A shadow or a speck next to the tip, which the closing joins to the blob, is
     off the line and does not move the tip."""
@@ -71,31 +72,47 @@ def _shaft_end(px, py):
         if a - end > AXIS_GAP:
             break
         end = float(a)
-    return (x0 + end * vx, y0 + end * vy)
+    return (x0 + end * vx, y0 + end * vy), (x0, y0, vx, vy)
 
 
-def find_tip(mask, before, after, threshold=THRESHOLD, min_area=MIN_AREA):
-    """(tip pixel, info) of the biggest changed blob, or (None, reason). `before` and `after` come from `prepare`. The tip is the
-    lower end of the shaft (`_shaft_end`); a blob that gives no line has it at its lowest point."""
+def explain_tip(mask, before, after, threshold=THRESHOLD, min_area=MIN_AREA):
+    """How the tip of the biggest changed blob is found, step by step: `changed` (the changed pixels), `blob` (the biggest blob after
+    the closing), `area`, `bbox`, `line` (of the shaft, None if the blob gives none) and `tip` (None with a `reason` if there is no
+    blob that can be a dart). `before` and `after` come from `prepare`."""
     diff = cv2.absdiff(before, after)
     diff = cv2.bitwise_and(diff, diff, mask=mask)
     _, bw = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
     opened = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     bw = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, np.ones((CLOSE[1], CLOSE[0]), np.uint8))
     n, lab, stats, _ = cv2.connectedComponentsWithStats(bw, 8)
+    out = {"changed": opened > 0, "blob": None, "area": 0, "line": None, "tip": None, "reason": None}
     if n <= 1:
-        return None, "no change"
+        out["reason"] = "no change"
+        return out
     k = max(range(1, n), key=lambda q: int(stats[q, cv2.CC_STAT_AREA]))
-    area = int(stats[k, cv2.CC_STAT_AREA])
-    if area < min_area:
-        return None, "blob too small"
-    py, px = np.nonzero((lab == k) & (opened > 0))
-    tip = _shaft_end(px, py)
-    if tip is None:
-        ys, xs = np.nonzero(lab == k)
+    out["blob"], out["area"] = lab == k, int(stats[k, cv2.CC_STAT_AREA])
+    out["bbox"] = [int(stats[k, 0]), int(stats[k, 1]), int(stats[k, 2]), int(stats[k, 3])]
+    if out["area"] < min_area:
+        out["reason"] = "blob too small"
+        return out
+    py, px = np.nonzero(out["blob"] & out["changed"])
+    end = _shaft_end(px, py)
+    if end is None:
+        ys, xs = np.nonzero(out["blob"])
         ymax = ys.max()
-        tip = (float(xs[ys >= ymax - 3].mean()), float(ymax))
-    return tip, {"area": area, "bbox": [int(stats[k, 0]), int(stats[k, 1]), int(stats[k, 2]), int(stats[k, 3])]}
+        out["tip"] = (float(xs[ys >= ymax - 3].mean()), float(ymax))
+    else:
+        out["tip"], out["line"] = end
+    return out
+
+
+def find_tip(mask, before, after, threshold=THRESHOLD, min_area=MIN_AREA):
+    """(tip pixel, info) of the biggest changed blob, or (None, reason). `before` and `after` come from `prepare`. The tip is the
+    lower end of the shaft (`_shaft_end`); a blob that gives no line has it at its lowest point."""
+    found = explain_tip(mask, before, after, threshold, min_area)
+    if found["tip"] is None:
+        return None, found["reason"]
+    return found["tip"], {"area": found["area"], "bbox": found["bbox"]}
 
 
 def changed_area(mask, before, after, threshold=THRESHOLD):

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from breakfast.detection import calibration, detector, drift, labels, tuning
+from breakfast.detection import calibration, debug, detector, drift, labels, tuning
 from breakfast.detection.cameras import CameraGroup
 from breakfast.detection.clips import ClipRecorder
 from breakfast.detection.geometry import BoardModel
@@ -70,6 +70,10 @@ class Worker:
         self.feed_ms = 0.0              # moving average of the time one set of pictures takes in the tracker
         self.rate = 0.0                 # sets of pictures looked at per second
         self._sent_status = None        # the tracker status Breakfast was told last
+        self.frozen = None              # the last dart, block or unclear change with its pictures, for the debug view: {entry, before, after}
+        self._motion = []               # (time, share of moving pixels) of the last two seconds
+        self._debug = {}                # view -> (key, time, info, pictures): what the debug view was given last
+        self._debug_lock = threading.Lock()
 
     # ------------------------------------------------------------------ events
 
@@ -83,6 +87,8 @@ class Worker:
             del self.events[:-40]
         log.info("%s: %s", ev.kind, json.dumps(entry["info"] if ev.kind != "dart" else {k: entry["info"].get(k) for k in ("field", "sigma", "margin", "cams")}))
         self._save_bundle(ev, entry)
+        if ev.kind in ("dart", "blocked", "unclear") and ev.before and ev.after:
+            self.frozen = {"entry": entry, "before": ev.before, "after": ev.after}
         if ev.kind in ("baseline", "takeout") and ev.after:
             self._check_drift(ev.after)
         if ev.throw is not None:
@@ -393,6 +399,36 @@ class Worker:
                 "notes": notes[::-1], "settings": self.settings.__dict__, "load": {"feed_ms": round(self.feed_ms, 1), "looks_per_s": round(self.rate, 1)},
                 "clips": self.clips.count if self.clips else None, "drift": self.drift, "model": {"radii": {str(k): round(v, 2) for k, v in self.model.radii.items()}}}
 
+    def debug_view(self, view):
+        """(info, camera -> JPEG) of the debug view: what the detection sees between two picture sets. `live`: the picture after the
+        last settled state against the picture of now, with the movement and the latest look. `frozen`: the pictures before and after
+        the last dart, block or unclear change. Worked out when the page asks and kept for a moment, so three pictures and
+        their numbers come from the same look."""
+        with self._debug_lock:
+            frozen, now = self.frozen, time.monotonic()
+            key = frozen["entry"]["n"] if view == "frozen" and frozen else None
+            kept = self._debug.get(view)
+            if kept and kept[0] == key and (view == "frozen" or now - kept[1] < 0.3):
+                return kept[2], kept[3]
+            info, pictures = {"cams": {}, "fused": None}, {}
+            if view == "frozen":
+                if frozen:
+                    before = {c: detector.prepare(f) for c, f in frozen["before"].items()}
+                    after = {c: detector.prepare(f) for c, f in frozen["after"].items()}
+                    info, pictures = debug.explain(self.model, before, after, frozen["after"])
+                    info["event"] = frozen["entry"]
+            else:
+                frames, ref = self.cams.latest_frames(), self.tracker.ref
+                if ref is not None and all(c in frames and c in ref for c in self.model.cams):
+                    info, pictures = debug.explain(self.model, ref, {c: detector.prepare(frames[c]) for c in self.model.cams}, frames)
+                look = self.tracker.look
+                info.update(motion=self.tracker.motion, motion_peak=max((m for _, m in self._motion), default=0.0),
+                            motion_threshold=self.settings.motion_fraction, moving=self.tracker.moving, status=self.tracker.status,
+                            count=self.tracker.count, min_area=self.settings.min_area, max_area=self.settings.max_area,
+                            look=look and {"ago_s": round(now - look["t"], 1), "events": look["events"], "status": look["status"], "why": look["why"]})
+            self._debug[view] = (key, now, info, pictures)
+            return info, pictures
+
     def jpeg(self, cam, overlay=True):
         frames = self.cams.latest_frames()
         f = frames.get(cam)
@@ -420,6 +456,7 @@ class Worker:
             last = now
             for ev in self.tracker.feed(now, frames):
                 self.handle(ev)
+            self._motion = [(ts, m) for ts, m in self._motion if now - ts < 2.0] + [(now, self.tracker.motion)]
             if self.tracker.status != self._sent_status:
                 self._send_status()
             if self.clips:
@@ -461,11 +498,23 @@ PAGE = """<!doctype html><meta charset=utf-8><title>Detection</title>
 <style>body{font-family:system-ui;background:#17171f;color:#eee;margin:1rem}img{width:32%;border:1px solid #444}
 button{padding:.4rem .9rem;margin:.2rem;border-radius:8px;border:1px solid #666;background:#2a2a35;color:#eee;cursor:pointer}
 table{border-collapse:collapse;font-size:.85rem}td,th{border-bottom:1px solid #333;padding:.2rem .6rem;text-align:left}
+.dbg img{width:100%}.dbg figure{display:inline-block;width:32%;margin:0 .5% 0 0;vertical-align:top}.dbg figcaption{font-size:.8rem;color:#bbb}
+.dbg canvas{background:#111;border:1px solid #444;vertical-align:top}.bar{position:relative;display:inline-block;width:22rem;height:.9rem;background:#111;border:1px solid #444;vertical-align:middle}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:#6cb6ff}.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:#f5c542}.bar u{position:absolute;top:0;bottom:0;width:2px;background:#fff}
 .k-dart{color:#7ddc7d}.k-unclear,.k-blocked{color:#f5c542}.k-takeout,.k-removed{color:#6cb6ff}pre{white-space:pre-wrap;font-size:.8rem}</style>
 <h2>Dart detection</h2>
 <div><button onclick="post('reset')">Empty board = now</button>
 <span id=st></span></div>
-<div id=cams></div><h3>Events</h3><table id=ev></table><h3>Notes</h3><pre id=nt></pre><h3>Cameras and settings</h3><pre id=cm></pre>
+<div id=cams></div>
+<h3><label><input type=checkbox id=dbgon onchange="dbgToggle()"> What the detection sees</label></h3>
+<div id=dbg class=dbg style="display:none">
+<p style="font-size:.8rem;color:#bbb">red: changed pixels | cyan: the biggest blob | magenta: line of the shaft | white cross: tip. Board: one dot per camera, white cross where they are put together.</p>
+<p>Movement <span class=bar><i id=mv></i><u id=mvp></u><b id=mvt></b></span> <span id=mvx></span></p>
+<p id=look></p>
+<h4>Now, against the picture after the last settled state</h4><div id=dl></div>
+<h4 id=fzt>Last dart, block or unclear change</h4><div id=df></div>
+</div>
+<h3>Events</h3><table id=ev></table><h3>Notes</h3><pre id=nt></pre><h3>Cameras and settings</h3><pre id=cm></pre>
 <script>
 const cams=document.getElementById('cams');for(let i=0;i<3;i++){const im=document.createElement('img');im.id='c'+i;cams.appendChild(im)}
 async function post(p){await fetch('/api/'+p,{method:'POST'});tick()}
@@ -474,9 +523,45 @@ async function tick(){
  document.getElementById('st').textContent=' board: '+s.board.status+' | darts: '+s.board.count+' ['+s.board.throws.join(', ')+'] '+(s.board.moving?'| moving':'')+(s.busy?' | '+s.busy+' '+Math.round(((s.progress||{}).fraction||0)*100)+' % '+((s.progress||{}).text||''):'');
  document.getElementById('ev').innerHTML='<tr><th>#<th>time<th>kind<th>darts<th>field<th>info</tr>'+s.events.map(e=>`<tr class=k-${e.kind}><td>${e.n}<td>${e.t}<td>${e.kind}<td>${e.count}<td>${e.field??''}<td>${JSON.stringify(e.info).slice(0,160)}</tr>`).join('');
  document.getElementById('nt').textContent=s.notes.map(n=>n.t+' '+n.text).join('\\n');
+ radii=s.model.radii;
  document.getElementById('cm').textContent=JSON.stringify({cameras:s.cameras,settings:s.settings,model:s.model},null,1);
  for(let i=0;i<3;i++)document.getElementById('c'+i).src='/frame/'+i+'.jpg?'+Date.now();
 }
+const COL=['#ff6b6b','#6bff8f','#6bb5ff'];let radii=null,dbgTimer=null,frozenN=null;
+function build(id,view){const d=document.getElementById(id);for(let i=0;i<3;i++){const f=document.createElement('figure');f.innerHTML=`<img id=${view}i${i}><figcaption id=${view}c${i}></figcaption>`;d.appendChild(f)}
+ const p=document.createElement('p');p.innerHTML=`<canvas id=${view}b width=260 height=260></canvas> <span id=${view}f style="display:inline-block;vertical-align:top;font-size:.85rem;margin-left:.6rem"></span>`;d.appendChild(p)}
+build('dl','live');build('df','frozen');
+function board(view,info){const cv=document.getElementById(view+'b'),g=cv.getContext('2d'),R=260,S=130/215,X=(x)=>130+x*S,Y=(y)=>130-y*S;
+ g.clearRect(0,0,R,R);g.strokeStyle='#666';g.lineWidth=1;
+ const rr=radii?Object.values(radii).concat([15.9,6.35]):[170,162,107,99,15.9,6.35];
+ for(const r of rr){g.beginPath();g.arc(130,130,r*S,0,7);g.stroke()}
+ const ro=radii?radii['170.0']||170:170;
+ for(let k=0;k<20;k++){const a=(9+18*k)*Math.PI/180;g.beginPath();g.moveTo(X(15.9*Math.sin(a)),Y(15.9*Math.cos(a)));g.lineTo(X(ro*Math.sin(a)),Y(ro*Math.cos(a)));g.stroke()}
+ const cl=(v)=>Math.max(-212,Math.min(212,v));
+ for(const [c,row] of Object.entries(info.cams||{})){if(!row.mm)continue;g.fillStyle=COL[c%3];g.beginPath();g.arc(X(cl(row.mm[0])),Y(cl(row.mm[1])),4,0,7);g.fill()}
+ const f=info.fused;if(f){const x=X(cl(f.x)),y=Y(cl(f.y));g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.moveTo(x-7,y);g.lineTo(x+7,y);g.moveTo(x,y-7);g.lineTo(x,y+7);g.stroke()}}
+function show(view,info){
+ for(let i=0;i<3;i++){const row=(info.cams||{})[i];const im=document.getElementById(view+'i'+i);
+  im.src=row?'/debug/'+view+'/'+i+'.jpg?'+(view=='frozen'?'n='+frozenN:Date.now()):'';
+  document.getElementById(view+'c'+i).innerHTML=row?`<span style="color:${COL[i]}">&#9679;</span> camera ${i}: blob ${row.area} px`+(row.tip?` | tip ${row.tip[0]}, ${row.tip[1]} px (${row.how}) | board ${row.mm[0]}, ${row.mm[1]} mm`+(row.off?' | off the board':''):` | ${row.how||''}`):''}
+ const f=info.fused;
+ document.getElementById(view+'f').innerHTML=f?`together: <b>${f.field=='0'?'miss':f.field}</b> at ${f.x}, ${f.y} mm<br>cameras ${f.cams}, agreeing ${f.agree}, off the board ${f.off}<br>farthest apart ${f.spread} mm<br>uncertainty ${f.sigma} mm, to the next wire ${f.margin} mm`:'no camera sees a change';
+ board(view,info)}
+async function dbgTick(){
+ try{
+  const l=await (await fetch('/debug/live.json')).json();
+  const top=Math.max(4*l.motion_threshold,l.motion_peak,1e-6),pc=(v)=>Math.min(100,100*v/top)+'%';
+  document.getElementById('mv').style.width=pc(l.motion);document.getElementById('mvp').style.left=pc(l.motion_peak);document.getElementById('mvt').style.left=pc(l.motion_threshold);
+  document.getElementById('mvx').textContent=`${(100*l.motion).toFixed(2)} % of the pixels (most in 2 s: ${(100*l.motion_peak).toFixed(2)} %, moving from ${(100*l.motion_threshold).toFixed(2)} %) | ${l.moving?'moving':'still'} | blob: dart from ${l.min_area} px, hand from ${l.max_area} px`;
+  const k=l.look;document.getElementById('look').textContent='Board: '+l.status+', darts: '+l.count+' | last look '+(k?`${k.ago_s} s ago: ${k.events.length?k.events.join(', '):(k.status=='blocked'?'blocked':'nothing new')}${k.why?' ('+k.why+')':''}`:'none yet');
+  show('live',l);
+  const f=await (await fetch('/debug/frozen.json')).json();
+  const n=f.event?f.event.n:null;
+  if(n!==frozenN){frozenN=n;document.getElementById('fzt').textContent=f.event?`Last dart, block or unclear change: #${f.event.n} ${f.event.t} ${f.event.kind} ${f.event.field??''} ${(f.event.info||{}).why??''}`:'Last dart, block or unclear change: none yet';show('frozen',f)}
+ }catch(e){}
+}
+function dbgToggle(){const on=document.getElementById('dbgon').checked;document.getElementById('dbg').style.display=on?'':'none';
+ clearInterval(dbgTimer);dbgTimer=null;if(on){frozenN=undefined;dbgTick();dbgTimer=setInterval(dbgTick,500)}}
 tick();setInterval(tick,1500);
 </script>"""
 
@@ -506,6 +591,12 @@ def serve(worker, port):
                 self._send(200, json.dumps(labels.summary_of(worker.base / "labels.jsonl", worker.base / "darts.jsonl")).encode(), "application/json")
             elif path == "/api/model":
                 self._send(200, json.dumps(worker.adjustment()).encode(), "application/json")
+            elif path in ("/debug/live.json", "/debug/frozen.json"):
+                self._send(200, json.dumps(worker.debug_view(path[7:-5])[0], default=str).encode(), "application/json")
+            elif path.startswith(("/debug/live/", "/debug/frozen/")) and path.endswith(".jpg"):
+                view, cam = path[7:-4].split("/")
+                data = worker.debug_view(view)[1].get(int(cam)) if cam.isdigit() else None
+                self._send(200 if data else 404, data or b"", "image/jpeg")
             elif path.startswith("/frame/") and path.endswith(".jpg"):
                 data = worker.jpeg(int(path[7:-4]), overlay="raw" not in self.path)
                 self._send(200 if data else 404, data or b"", "image/jpeg")
