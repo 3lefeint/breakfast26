@@ -89,6 +89,8 @@ class BoardTracker:
         self._handled = True        # the current still period has been looked at
         self._retry_at = 0.0
         self.moving = False
+        self.motion = 0.0           # share of the pixels that moved between the last two looks (the most of any camera)
+        self.look = None            # what the latest look at the still board came to: {t, events, status, why}
         self._unclear = 0           # changes in a row that could not be explained
         self._missing = None        # [x_mm, y_mm, looks]: where the picture shows a dart that is not counted, and for how many looks
         self._big_seen = None       # what `locate` found in the latest big change
@@ -131,7 +133,7 @@ class BoardTracker:
     def feed(self, t, frames):
         """One set of pictures (camera -> BGR). Returns the events it caused."""
         small = {c: self._small(f, c) for c, f in frames.items()}
-        frac = self._motion(small)
+        frac = self.motion = self._motion(small)
         self._prev = small
         if frac > self.s.motion_fraction:
             if not self.moving:
@@ -148,6 +150,8 @@ class BoardTracker:
         events = self._settled(t, frames)
         if self._block is not None and not self._block_hit:
             events = self._end_block(t) + events
+        why = next((e.info["why"] for e in events if e.info.get("why")), self._block["info"].get("why") if self._block else None)
+        self.look = {"t": t, "events": [e.kind for e in events], "status": self.status, "why": why}
         return events
 
     def _end_block(self, t):

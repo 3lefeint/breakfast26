@@ -457,3 +457,16 @@ def test_a_still_change_all_cameras_put_beside_the_board_is_a_miss_until_the_tak
     monkeypatch.setattr(detector, "locate", real)
     events, t = run(tr, [scene() for _ in range(20)], start=t)
     assert [e.kind for e in events] == ["takeout"] and tr.count == 0
+
+
+def test_the_debug_view_explains_a_dart_with_its_tip_per_camera_and_a_picture():
+    from breakfast.detection import debug
+    m, before, after = model(), scene(), scene([(0, 130)])
+    info, pictures = debug.explain(m, prepared(before), prepared(after), after)
+    found = detector.locate(m, prepared(before), prepared(after))
+    assert info["fused"]["field"] == found["field"] == "S20" and info["fused"]["cams"] == 3
+    for cam in m.cams:
+        assert info["cams"][cam]["tip"] == found["tips"][cam]["px"] and info["cams"][cam]["off"] is False
+        assert cv2.imdecode(np.frombuffer(pictures[cam], np.uint8), cv2.IMREAD_COLOR).shape == after[cam].shape
+    info, pictures = debug.explain(m, prepared(before), prepared(before), before)
+    assert info["fused"] is None and info["cams"][0]["tip"] is None and pictures[0]
