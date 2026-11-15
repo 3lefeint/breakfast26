@@ -470,3 +470,65 @@ def test_the_debug_view_explains_a_dart_with_its_tip_per_camera_and_a_picture():
         assert cv2.imdecode(np.frombuffer(pictures[cam], np.uint8), cv2.IMREAD_COLOR).shape == after[cam].shape
     info, pictures = debug.explain(m, prepared(before), prepared(before), before)
     assert info["fused"] is None and info["cams"][0]["tip"] is None and pictures[0]
+
+
+def _brighter(frames, cam, step):
+    return {c: (np.clip(f.astype(np.int16) + step, 0, 255).astype(np.uint8) if c == cam else f) for c, f in frames.items()}
+
+
+def test_a_camera_that_turns_brighter_with_the_dart_does_not_block_the_board():
+    tr = BoardTracker(model(), Settings())
+    events, t = run(tr, [scene() for _ in range(20)])
+    events, t = run(tr, [_brighter(scene([(0, 103)]), 0, 14) for _ in range(14)], start=t)
+    assert [e.kind for e in events] == ["dart"] and events[0].throw["segment"]["name"] == "T20"
+    assert events[0].info["cams"] == 3 and events[0].info["agree"] == 3 and tr.status == "ready"
+
+
+def test_level_takes_the_step_of_the_whole_picture_out_and_leaves_the_dart():
+    m = model()
+    before, after = prepared(scene()), prepared(_brighter(scene([(0, 103)]), 0, 14))
+    assert detector.changed_area(m.masks[0], before[0], after[0]) > 50000
+    assert detector.changed_area(m.masks[0], before[0], detector.level(m.masks[0], before[0], after[0])) < 3000
+
+
+def test_a_takeout_read_as_one_dart_pulled_out_does_not_leave_the_others_counted(monkeypatch):
+    tr, t = _board_with([(0, 103), (50, 100), (-60, 150)])
+    monkeypatch.setattr(tr, "_is_empty", lambda gone: False)        # the look comes too early: the board does not pass as empty yet
+    events, t = run(tr, [scene([(0, 103), (50, 100), (-60, 150)], hand=True)] + [scene() for _ in range(14)], start=t)
+    assert events[0].kind == "removed" and events[-1].kind == "takeout"
+    assert tr.count == 0 and tr.status == "ready"
+
+
+def _cameras_disagree_next_to(monkeypatch, point):
+    """`locate` as for a dart whose tip another dart hides: one camera puts it at `point`, the others far away."""
+    real = detector.locate
+
+    def locate(*a, **k):
+        r = real(*a, **k)
+        if r is None:
+            return None
+        tips = {c: {**v, "mm": list(point) if c == 1 else [300.0, -40.0 * (c + 1)]} for c, v in r["tips"].items()}
+        return {**r, "agree": 1, "spread": 300.0, "tips": tips}
+    monkeypatch.setattr(detector, "locate", locate)
+
+
+def test_a_dart_behind_a_counted_one_is_counted_as_uncertain_at_the_point_next_to_it(monkeypatch):
+    tr, t = _board_with([(0, 103)])
+    _cameras_disagree_next_to(monkeypatch, (20.0, 120.0))
+    events, t = run(tr, [scene([(0, 103), (20, 120)]) for _ in range(20)], start=t)
+    darts = [e for e in events if e.kind == "dart"]
+    assert len(darts) == 1 and tr.count == 2 and not [e for e in events if e.kind == "unclear"]
+    assert darts[0].throw["detection"] == {"uncertain": True, "hidden": True, "cams": 3, "agree": 1}
+    assert darts[0].throw["segment"]["name"] == "S1" and darts[0].info["why"] == "behind another dart"
+    events, t = run(tr, [scene([(0, 103), (20, 120)]) for _ in range(20)], start=t)
+    assert tr.count == 2 and not events                                      # its place is a guess: nothing checks it against the pictures
+    events, t = run(tr, [scene([(0, 103), (20, 120)], hand=True)] + [scene() for _ in range(14)], start=t)
+    assert [e.kind for e in events] == ["takeout"] and tr.count == 0
+
+
+def test_cameras_that_disagree_far_from_every_counted_dart_count_nothing(monkeypatch):
+    tr, t = _board_with([(0, 103)])
+    _cameras_disagree_next_to(monkeypatch, (-90.0, -100.0))
+    events, t = run(tr, [scene([(0, 103), (-90, -100)]) for _ in range(20)], start=t)
+    assert tr.count == 1 and [e.kind for e in events][0] == "unclear"
+
