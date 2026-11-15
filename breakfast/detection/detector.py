@@ -41,6 +41,19 @@ def highpass(prepared):
     return np.clip(g - cv2.GaussianBlur(g, (0, 0), 12) + 128, 0, 255).astype(np.uint8)
 
 
+def level(mask, ref, current):
+    """`current` with its brightness moved to that of `ref`: a camera whose exposure steps (a bright flight comes into the picture) turns
+    the whole picture a few gray levels brighter or darker, and that is no change on the board. The step is the median difference inside
+    `mask`, so a dart or an arm, which cover less than half of it, do not move it."""
+    inside = mask > 0
+    if not inside.any():
+        return current
+    step = int(round(float(np.median(current[inside].astype(np.int16) - ref[inside].astype(np.int16)))))
+    if step == 0:
+        return current
+    return cv2.subtract(current, step) if step > 0 else cv2.add(current, -step)
+
+
 def _shaft_end(px, py):
     """The lower end of the shaft among the changed pixels of a blob and the line it lies on (x0, y0, vx, vy), or None if they give
     no line. A line is fitted to the lower
