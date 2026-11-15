@@ -33,11 +33,13 @@ def _draw(model, cam, frame, found):
     return img
 
 
-def explain(model, befores, afters, frames):
+def explain(model, befores, afters, frames=None):
     """(info, pictures) for two sets of prepared pictures (camera -> picture) and the BGR pictures to draw on. `info` holds per
     camera the area of the biggest blob, the tip in pixels and in mm, how the tip was found and whether it is off the board, and
-    under `fused` what `detector.locate` makes of all cameras (None if no camera sees a blob). `pictures` is camera -> JPEG."""
+    under `fused` what `detector.locate` makes of all cameras (None if no camera sees a blob). `pictures` is camera -> JPEG; without
+    `frames` only the numbers are worked out. The pictures are compared at the brightness of `befores`, as the tracker does."""
     cams, pictures = {}, {}
+    afters = {cam: detector.level(model.masks[cam], befores[cam], afters[cam]) for cam in model.cams}
     for cam in model.cams:
         found = detector.explain_tip(model.masks[cam], befores[cam], afters[cam])
         row = {"area": found["area"], "tip": None, "mm": None, "off": None, "how": found["reason"]}
@@ -46,6 +48,8 @@ def explain(model, befores, afters, frames):
             row.update(tip=[round(found["tip"][0], 1), round(found["tip"][1], 1)], mm=[round(float(mm[0]), 1), round(float(mm[1]), 1)],
                        off=bool(math.hypot(*mm) > detector.OFF_MM), how="shaft line" if found["line"] is not None else "lowest point")
         cams[cam] = row
+        if frames is None:
+            continue
         ok, buf = cv2.imencode(".jpg", _draw(model, cam, frames[cam], found), [cv2.IMWRITE_JPEG_QUALITY, 80])
         pictures[cam] = buf.tobytes() if ok else None
     result = detector.locate(model, befores, afters, min_cams=1)
