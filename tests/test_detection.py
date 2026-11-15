@@ -532,3 +532,19 @@ def test_cameras_that_disagree_far_from_every_counted_dart_count_nothing(monkeyp
     events, t = run(tr, [scene([(0, 103), (-90, -100)]) for _ in range(20)], start=t)
     assert tr.count == 1 and [e.kind for e in events][0] == "unclear"
 
+
+def test_the_debug_view_lists_every_dart_of_the_turn_with_the_points_of_the_cameras():
+    import threading
+    from breakfast.detection.worker import Worker
+    w = object.__new__(Worker)
+    w.model, w._debug, w._debug_lock = model(), {}, threading.Lock()
+    darts = [(0, 130), (50, 100)]
+    w.turn = [{"entry": {"n": 7 + i, "count": i + 1, "field": "x"}, "before": scene(darts[:i]), "after": scene(darts[:i + 1])} for i in range(2)]
+    w.turn.append({"entry": {"n": 9, "count": 3, "field": "S5"}, "before": None, "after": scene(darts)})    # counted late: no picture from before
+    out = w.debug_turn()
+    assert [d["event"]["n"] for d in out["darts"]] == [7, 8, 9]
+    assert out["darts"][0]["fused"]["field"] == "S20" and len(out["darts"][0]["cams"]) == 3 and out["darts"][0]["cams"][0]["mm"]
+    assert out["darts"][1]["fused"]["cams"] == 3 and out["darts"][2]["fused"] is None and out["darts"][2]["cams"] == {}
+    assert w.debug_turn() is out                                              # kept until another dart is counted
+    w.turn = w.turn[:1]
+    assert len(w.debug_turn()["darts"]) == 1
