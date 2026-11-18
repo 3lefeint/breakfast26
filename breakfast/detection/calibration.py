@@ -16,8 +16,10 @@ from breakfast.detection.geometry import ANGLES, RING_R, R_OUT, BoardModel, boar
 
 FITTED = (162.0, 107.0, 99.0)                  # radii that are fitted; 170 stays the reference
 SCALES = ((4.0, 3.0, 0.4), (2.5, 1.5, 0.15), (1.5, 0.8, 0.05))       # blur of the edge map, start step px, end step px
-STARTS = [(0, 0), (9, 0), (-9, 0), (0, 9), (0, -9), (18, 0), (-18, 0), (0, 18), (0, -18)]       # shifts of the whole model tried first
-MAX_MOVE_PX = 30.0                             # a fit that moves a reference point farther than this is refused
+START_SIZES = (0.9, 0.94, 0.97, 1.0, 1.03, 1.06, 1.1)      # sizes of the whole model tried first (a model a tenth too small fits a ring next to the right one)
+START_SHIFTS = (-16, -8, 0, 8, 16)                       # and shifts in x and y (pixels)
+STARTS_KEPT = 6                                          # the best of these are moved by the search
+MAX_MOVE_PX = 50.0                             # a fit that moves a reference point farther than this is refused
 
 
 def edge_map(gray, sigma):
@@ -62,7 +64,11 @@ def score(emap, Hm, radii):
     return float(v.mean())
 
 
-def _search_h(gray, ref, radii, scales):
+def _within(t, anchor, limit):
+    return limit is None or float(np.abs(t - anchor).max()) <= limit
+
+
+def _search_h(gray, ref, radii, scales, anchor=None, limit=None):
     ref = ref.copy()
     for sigma, step0, step1 in scales:
         emap = edge_map(gray, sigma)
@@ -74,6 +80,8 @@ def _search_h(gray, ref, radii, scales):
                     best = score(emap, homography_from(ref), radii)
                     for d in (step, -step):
                         t = ref.copy(); t[i, j] += d
+                        if not _within(t, anchor, limit):
+                            continue
                         sc = score(emap, homography_from(t), radii)
                         if sc > best + 1e-6:
                             best, ref, improved = sc, t, True
@@ -82,23 +90,36 @@ def _search_h(gray, ref, radii, scales):
     return ref, score(emap, homography_from(ref), radii)
 
 
-def fit(frames, ref0, radii0, progress=None):
+def fit(frames, ref0, radii0, progress=None, limit=None):
     """frames: camera -> BGR picture of the empty board; ref0: camera -> 4 reference points (pixels). Returns the reference points
     and the radii after the fit. `progress(fraction, text)` is called as it goes (the first part, the search of several starts per
-    camera, counts for 60 %, the three fine scales for the rest)."""
+    camera, counts for 60 %, the three fine scales for the rest). `limit`: how far (pixels) a reference point may go from its start."""
     report = progress or (lambda fraction, text: None)
     ref = {c: np.array(ref0[c], float).reshape(4, 2) for c in ref0}
     radii = dict(radii0)
-    total = len(ref) * len(STARTS)
+    anchor = {c: ref[c].copy() for c in ref}
+    total = len(ref) * STARTS_KEPT
     done = 0
-    for c in ref:                                                   # per camera: best of several starts, so a start a few
-        gray = cv2.cvtColor(frames[c], cv2.COLOR_BGR2GRAY)          # wires away does not end on the wrong wire
+    for c in ref:                                                   # per camera: best of several starts, so a start a few wires away
+        gray = cv2.cvtColor(frames[c], cv2.COLOR_BGR2GRAY)          # or a ring next to the right one does not win
+        center = project(homography_from(ref[c]), np.array([[0.0, 0.0]]))[0]
+        coarse = edge_map(gray, SCALES[0][0])
+        starts = []
+        for size in START_SIZES:
+            for dx in START_SHIFTS:
+                for dy in START_SHIFTS:
+                    start = center + (ref[c] - center) * size + [dx, dy]
+                    if _within(start, anchor[c], limit):
+                        starts.append((score(coarse, homography_from(start), radii), start))
+        starts.sort(key=lambda s: -s[0])
         results = []
-        for dx, dy in STARTS:
-            report(0.6 * done / total, f"camera {c + 1}: first search {done % len(STARTS) + 1} of {len(STARTS)}")
-            results.append(_search_h(gray, ref[c] + [dx, dy], radii, SCALES[:2]))
+        for _, start in starts[:STARTS_KEPT]:
+            report(0.6 * done / total, f"camera {c + 1}: first search {done % STARTS_KEPT + 1} of {STARTS_KEPT}")
+            results.append(_search_h(gray, start, radii, SCALES[:2], ref[c], limit))
             done += 1
-        ref[c] = max(results, key=lambda r: r[1])[0]
+        done += STARTS_KEPT - len(results)
+        if results:
+            ref[c] = max(results, key=lambda r: r[1])[0]
     for k, (sigma, step0, step1) in enumerate(SCALES):
         report(0.6 + 0.4 * k / len(SCALES), f"fine adjustment {k + 1} of {len(SCALES)}")
         emaps = {c: edge_map(cv2.cvtColor(frames[c], cv2.COLOR_BGR2GRAY), sigma) for c in frames}
@@ -111,6 +132,8 @@ def fit(frames, ref0, radii0, progress=None):
                         best = score(emaps[c], homography_from(ref[c]), radii)
                         for d in (step, -step):
                             t = ref[c].copy(); t[i, j] += d
+                            if not _within(t, anchor[c], limit):
+                                continue
                             s = score(emaps[c], homography_from(t), radii)
                             if s > best + 1e-6:
                                 best, ref[c], improved = s, t, True
@@ -211,10 +234,11 @@ def fit_points(points, model):
     return BoardModel(H, radii, model.size), report
 
 
-def calibrate(model, frames, progress=None):
-    """Fit the model on the empty-board pictures. Returns (new model, report) or (None, report) if the fit moved too far."""
+def calibrate(model, frames, progress=None, limit=None):
+    """Fit the model on the empty-board pictures. Returns (new model, report) or (None, report) if the fit moved too far.
+    `limit`: how far (pixels) a reference point may go from where the model has it."""
     ref0 = reference_points(model)
-    ref, radii = fit(frames, ref0, model.radii, progress)
+    ref, radii = fit(frames, ref0, model.radii, progress, limit)
     moves = {c: float(np.max(np.linalg.norm(np.array(ref[c]) - np.array(ref0[c]), axis=1))) for c in ref}
     scores = {}
     for c in ref:

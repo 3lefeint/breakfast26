@@ -156,7 +156,7 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 
 # ── Own dart detection (replaces the board manager of Autodarts) ─────────────
 # With enabled = true the darts are read from the USB cameras by Breakfast itself. Stop Autodarts first: it holds the cameras.
-# The board model (calib_model.json) is made with the "Calibrate" button of the diagnostics page on an empty board.
+# The board model (calib_model.json) is made on the Board page of Breakfast when there is none: empty the board, search it, click on the 20 in each picture.
 # [cameras]
 # enabled = false
 # dir = "detection"            # folder (under the data folder) with calib_model.json and the pictures of the events

@@ -904,6 +904,33 @@ async def detection_drift_accept():
     return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
 
 
+@app.post("/api/detection/setup/search")
+async def detection_setup_search():
+    """First setup, step 1: look for the board in the picture of every camera (the board must be empty)."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/setup/search")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/setup/click")
+async def detection_setup_click(request: Request):
+    """First setup, step 2: the player clicked on the 20 in a camera's picture: {"cam": 0, "x": 410, "y": 120} in picture pixels."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/setup/click", 10, await request.body())
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
+@app.post("/api/detection/setup/fit")
+async def detection_setup_fit():
+    """First setup, step 3: fit the board model on the pictures and use it."""
+    if not _detection_port:
+        return {"error": "dart detection is off"}
+    code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/setup/fit")
+    return {"ok": True} if code == 200 else {"error": "dart detection not reachable"}
+
+
 @app.get("/api/detection/model")
 async def detection_model():
     """The board model as reference points for the page of the manual adjustment (pixels per camera, the radii)."""

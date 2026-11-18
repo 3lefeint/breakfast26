@@ -45,6 +45,8 @@
 - The dart detection takes the median of the cameras for the field and the position of a dart instead of the weighted fusion, which was wrong more often on the reviewed throws.
 - The dart detection marks a dart that fewer than all three cameras saw as uncertain, so it is shown for a tap to confirm.
 - The dart detection takes the lower end of the shaft as the tip of a dart (a line fitted to the dart) instead of the lowest changed pixel, so a shadow or a speck beside the tip no longer moves it (#46).
+- First setup of the dart detection at a new board: without a board model the Board page lets the detection look for the board in every camera's picture, you click on the 20 in each picture and it makes the model; the detection then starts without a restart. (#184)
+- The automatic calibration of the dart detection also finds the board from a model that is up to a tenth too small or too large, where it used to stay on the ring next to the right one; it refuses a fit only when a reference point would have to move more than 50 px. (#184)
 - A dart close to a camera (in the number ring) that fills as much of the picture as a hand no longer blocks the board: it is counted once all cameras that see it put it at the same place in two looks in a row, marked as uncertain (#46).
 - A dart that sticks beside the board (in the surround) no longer blocks it: when every camera puts the change off the board and it stays the same for about a second, it is counted as a miss, marked as uncertain, and goes with the takeout (#46).
 
