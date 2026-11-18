@@ -8,6 +8,7 @@
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import ModelAdjust from './ModelAdjust.svelte';
   import DetectionSettings from './DetectionSettings.svelte';
+  import ModelSetup from './ModelSetup.svelte';
 
   let status = $state(null);
   let tick = $state(Date.now());
@@ -64,6 +65,8 @@
   <div class="section muted">{t('The dart detection is off. Switch it on with [cameras] enabled = true in config.toml.')}</div>
 {:else if !status.reachable}
   <div class="section warn">{(NOT_RUNNING[status.status] ?? (() => t('The dart detection is not reachable.')))()}</div>
+{:else if status.setup}
+  <ModelSetup {status} {tick} onchange={load} />
 {:else}
   <div class="section">
     <div class="state-row">

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from breakfast.detection import calibration, debug, detector, drift, labels, tuning
+from breakfast.detection import calibration, debug, detector, drift, labels, setup, tuning
 from breakfast.detection.cameras import CameraGroup
 from breakfast.detection.clips import ClipRecorder
 from breakfast.detection.geometry import BoardModel
@@ -719,5 +719,7 @@ def run(cfg, out):
     """Entry point of the worker process."""
     cv2.setNumThreads(int(cfg.get("cv_threads", 2)))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    if not model_path(cfg).exists():                     # a new board: the player sets it up from the Board page
+        setup.run_setup(cfg, model_path(cfg), out)
     wait_for_model(cfg, out)
     Worker(cfg, out).run()

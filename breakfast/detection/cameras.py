@@ -150,9 +150,15 @@ class CameraGroup:
             c.start()
         return self
 
-    def stop(self):
+    def stop(self, wait=False):
+        """Stop the cameras; with `wait` return only once they are released, so that another group can open them."""
         for c in self.cams:
             c.stop()
+        if wait:
+            for c in self.cams:
+                thread = getattr(c, "_thread", None)
+                if thread is not None and thread.is_alive():
+                    thread.join(timeout=5.0)
 
     def frames(self):
         """{camera index: picture} when every camera delivered a new picture since the last call and none is older than
