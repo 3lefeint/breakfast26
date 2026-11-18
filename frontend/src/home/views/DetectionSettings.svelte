@@ -12,13 +12,13 @@
   let saved = $state(false);
 
   const TEXTS = {
-    settle_s: [() => t('Still time before a look (s)'), () => t('How long the board must be still before it is looked at. Shorter calls the dart sooner, longer waits for a wobbling dart.')],
-    motion_fraction: [() => t('Movement threshold'), () => t('Share of the picture that must change to count as movement. Higher ignores small changes (light, vibration).')],
+    settle_s: [() => t('Settle time (s)'), () => t('How long the board must be still before it is checked. Shorter calls the dart sooner, longer waits for a wobbling dart.')],
+    motion_fraction: [() => t('Movement threshold'), () => t('Share of the camera image that must change to count as movement. Higher ignores small changes (light, vibration).')],
     uncertain_margin_mm: [() => t('Uncertain near a wire (mm)'), () => t('A dart closer than this to a wire or ring is marked as uncertain.')],
     uncertain_sigma: [() => t('Uncertain when the position is vague (mm)'), () => t('A dart whose position the cameras only know to within this is marked as uncertain.')],
-    recount: [() => t('Count missed darts from the picture'), () => t('Counts a dart that the picture shows but the count missed.')],
-    recount_looks: [() => t('Looks before a missed dart is counted'), () => t('How many settled looks in a row must show the dart at the same place.')],
-    exposure: [() => t('Camera exposure'), () => t('Fixes the exposure time of all cameras (units of 0.1 ms, larger is brighter). 0 leaves it to the camera, which follows an arm in the picture and then looks like a change of the board. Aim for a brightness of about 120.')],
+    recount: [() => t('Recover missed darts'), () => t('Counts a dart that the camera image shows but the count missed.')],
+    recount_looks: [() => t('Checks before a missed dart is counted'), () => t('How many settled checks in a row must show the dart at the same place.')],
+    exposure: [() => t('Camera exposure'), () => t('Fixes the exposure time of all cameras (units of 0.1 ms, larger is brighter). 0 leaves it to the camera, which follows an arm in the camera image and then looks like a change of the board. Aim for a brightness of about 120.')],
     white_balance: [() => t('Camera white balance (K)'), () => t('Fixes the color temperature of all cameras. 0 leaves it to the camera.')],
   };
   const AUTOMATIC = ['exposure', 'white_balance'];   // 0 means the camera's automatic besides the range
@@ -55,7 +55,7 @@
     setTimeout(() => (saved = false), 2500);
   }
   async function reset() {
-    if (!confirm(t('Go back to the values of config.toml?'))) return;
+    if (!confirm(t('Restore the default values?'))) return;
     const res = await apiJson('POST', '/api/detection/settings/reset', {});
     if (res.settings) take(res.settings);
   }
@@ -74,13 +74,13 @@
         </label>
       {/if}
       <div class="hint">{TEXTS[i.key][1]()}</div>
-      {#if i.key === 'exposure' && brightness.length}<div class="hint">{t('Brightness of the pictures')}: {brightness.map((b) => b ?? '–').join(' / ')}</div>{/if}
+      {#if i.key === 'exposure' && brightness.length}<div class="hint">{t('Brightness of the camera images')}: {brightness.map((b) => b ?? '–').join(' / ')}</div>{/if}
       {#if refused[i.key]}<div class="err">{refused[i.key]}</div>{/if}
     </div>
   {/each}
   <div class="buttons">
     <button class="btn" disabled={!changed.length} onclick={save}>{t('Save')}</button>
-    <button class="btn" onclick={reset}>{t('Back to config.toml')}</button>
+    <button class="btn" onclick={reset}>{t('Restore defaults')}</button>
     {#if saved}<span class="ok">{t('Saved')}</span>{/if}
   </div>
 </div>

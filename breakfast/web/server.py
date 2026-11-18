@@ -982,7 +982,7 @@ async def detection_model_revert():
     if not _detection_port:
         return {"error": "dart detection is off"}
     code, _, _ = await asyncio.to_thread(_detection_call, "POST", "/api/model/revert")
-    return {"ok": True} if code == 200 else {"error": "There is no previous model."}
+    return {"ok": True} if code == 200 else {"error": "There is no previous calibration."}
 
 
 @app.post("/api/detection/confirm")

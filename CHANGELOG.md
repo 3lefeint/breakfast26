@@ -40,6 +40,8 @@
 - Settings → Connections has a switch "Dart detection (experimental)" for `[cameras] enabled`; it needs a restart and is refused while a match is running; a camera that the board manager holds shows "in use by another program" and a missing one "not found" (#183).
 
 ### Changed
+- The diagnostics page of the dart detection has the tabs Live, Darts and Problem: Live marks a change in the camera pictures, Darts marks every dart of the turn in its own color on one picture per camera, Problem shows the last blocked or unclear change.
+- The texts of the Board page, the dart detection setup and its settings use one term per function: Auto calibrate, Manual calibration, Reset board, Darts detected, Reload camera, Restore defaults.
 - Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)
 - Resetting and starting the board go straight to the board manager when `[direct] board_manager_url` is set, also without an Autodarts account, so a Stream Deck button can call `POST /api/control/reset-board` and `/api/control/start-board`. (#106)
 - The dart detection takes the median of the cameras for the field and the position of a dart instead of the weighted fusion, which was wrong more often on the reviewed throws.

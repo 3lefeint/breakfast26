@@ -11,9 +11,9 @@
   let searched = $derived(setup.cameras.some((c) => c.found));
 
   const PROBLEMS = {
-    not_found: (cams) => `${t('Board not found in camera')} ${cams.map((c) => c + 1).join(', ')}. ${t('Is the board empty and well lit, and does it show completely?')}`,
-    no_pictures: (cams) => `${t('No picture yet from camera')} ${cams.map((c) => c + 1).join(', ')}.`,
-    not_ready: () => t('Click on the 20 in every picture first.'),
+    not_found: (cams) => `${t('Board not found')} (${t('Camera')} ${cams.map((c) => c + 1).join(', ')}). ${t('Make sure the board is empty, well lit and fully visible.')}`,
+    no_pictures: (cams) => `${t('No image yet')} (${t('Camera')} ${cams.map((c) => c + 1).join(', ')}).`,
+    not_ready: () => t('Click on the 20 in every image first.'),
     failed: () => t('Something went wrong. Try again.'),
   };
 
@@ -38,12 +38,12 @@
 </script>
 
 <div class="section">
-  <div class="section-title">{t('Set up the dart detection')}</div>
-  <p class="intro">{t('This board has no model yet. Take the darts out of the board. The detection looks for the board in every picture; then click on the 20 in each one.')}</p>
+  <div class="section-title">{t('Calibrate the dart detection')}</div>
+  <p class="intro">{t('This board is not calibrated yet. Remove the darts from the board and click Auto calibrate. The detection finds the board in every camera image; then click on the 20 in each one.')}</p>
 
   <div class="actions">
-    <button class="btn" disabled={busy || setup.busy} onclick={() => post('/api/detection/setup/search')}>{searched ? t('Search again') : t('Search the board')}</button>
-    <button class="btn primary" disabled={busy || setup.busy || !setup.ready} onclick={() => post('/api/detection/setup/fit')}>{t('Make the model')}</button>
+    <button class="btn" disabled={busy || setup.busy} onclick={() => post('/api/detection/setup/search')}>{searched ? t('Calibrate again') : t('Auto calibrate')}</button>
+    <button class="btn primary" disabled={busy || setup.busy || !setup.ready} onclick={() => post('/api/detection/setup/fit')}>{t('Finish calibration')}</button>
   </div>
 
   {#if setup.busy}
@@ -51,7 +51,7 @@
       <span class="spinner" aria-hidden="true"></span>
       <div class="track"><div class="fill" style="width: {Math.round((setup.progress?.fraction ?? 0) * 100)}%"></div></div>
       <span class="pct">{Math.round((setup.progress?.fraction ?? 0) * 100)} %</span>
-      <span class="muted">{setup.busy === 'search' ? t('Looking for the board…') : t('Making the model…')}</span>
+      <span class="muted">{setup.busy === 'search' ? t('Calibrating…') : t('Finishing calibration…')}</span>
     </div>
   {/if}
   {#if setup.problem}
@@ -67,7 +67,7 @@
           {#if status.cameras[i]?.error}{status.cameras[i].error === 'in use' ? t('in use by another program') : t('not found')}
           {:else if c.clicked}{t('20 set')}
           {:else if c.found}{t('click on the 20')}
-          {:else}{t('board not searched yet')}{/if}
+          {:else}{t('not calibrated yet')}{/if}
         </figcaption>
       </figure>
     {/each}

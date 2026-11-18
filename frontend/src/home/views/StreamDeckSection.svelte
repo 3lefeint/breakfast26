@@ -23,7 +23,7 @@
   const SOUND = 'sound:';
   const labelOf = (id) => ACTION_LABEL[id] || (id.startsWith(SOUND) ? id.slice(SOUND.length).replace(/\.[^.]+$/, '') : '') || data?.actions.find((a) => a.id === id)?.label || data?.folder_actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
-  const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('take-out or starting'), red: t('stopped'), off: t('unknown') };
+  const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('takeout or starting'), red: t('stopped'), off: t('unknown') };
 
   let data = $state(null);
   let error = $state('');

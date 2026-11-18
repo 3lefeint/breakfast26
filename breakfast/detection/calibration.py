@@ -230,7 +230,7 @@ def fit_points(points, model):
         e = [float(np.linalg.norm(_project(H[c], radii.get(r, r), a) - np.array(xy))) for r, a, xy in data[c]]
         report["rms_px"][str(c)] = round(float(np.sqrt(np.mean(np.square(e)))), 2) if e else None
         report["max_px"][str(c)] = round(max(e), 2) if e else None
-    report["unusual"] = [f"ring {r:g} mm is {radii[r] - r:+.1f} mm from the standard size" for r in RING_IDS if abs(radii[r] - r) > 6.0]
+    report["unusual"] = [{"ring": r, "delta_mm": round(float(radii[r] - r), 1)} for r in RING_IDS if abs(radii[r] - r) > 6.0]
     return BoardModel(H, radii, model.size), report
 
 
