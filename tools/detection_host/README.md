@@ -36,7 +36,7 @@ The stack above is a test stack with its own data. For the Breakfast that is ins
 
 | file | goes to | what it does |
 |------|---------|--------------|
-| `docker-compose.override.yml` | next to `docker-compose.yml` of the checkout | builds the image with the detection and maps the cameras (`/dev/autodarts-cam0` to `2`, the links of the udev rule Autodarts needs, so the numbers of `/dev/videoN` do not matter), the group `video` and the USB bus (a Stream Deck on the host) |
+| `docker-compose.override.yml` | next to `docker-compose.yml` of the checkout | builds the image with the detection and maps the cameras (`/dev/breakfast-cam0` to `2`, the links of the udev rule that `install.sh` writes, so the numbers of `/dev/videoN` do not matter), the group `video` and the USB bus (a Stream Deck on the host) |
 | `breakfast-mode.sh` | `/usr/local/bin/` | `own`: stop Autodarts, `[cameras] enabled = true`, restart Breakfast; `autodarts`: the other way round; `status` |
 
 Switch (as the host user, with the polkit rule above; refuses while a match is running, `--force` overrides):
@@ -46,3 +46,13 @@ Switch (as the host user, with the polkit rule above; refuses while a match is r
 
 The stats.db and the rest of the config stay as they are, only `enabled` of `[cameras]` changes (the section is added the first time). Rollout steps:
 copy the two files, build the image with the code of this branch (`docker compose up -d --build`), then `breakfast-mode.sh own`.
+
+### Installer and desktop shortcuts
+
+`install.sh [APP_DIR]` does the setup of the table above in one go, as the user of the machine (sudo is asked for where it writes below `/etc`):
+it asks you to unplug each camera and plug it in again to learn its USB port, writes the udev rule with the fixed names
+(`/dev/breakfast-cam0` to `2`; run it again when a camera moves to another port), copies the compose override next to `docker-compose.yml`, puts
+`breakfast-mode.sh` and `breakfast-mode-shortcut.sh` in `~/.local/bin`, writes the polkit rule for Autodarts version 1 and creates two
+desktop shortcuts, "Breakfast (own dart detection)" and "Breakfast (board manager)". The shortcuts show a window (kdialog, zenity or
+xmessage) when something fails. Autodarts version 1 is switched through its system unit, version 2 headless through its user unit; with the
+Desktop app of version 2 there is no unit and the shortcut says to quit or start the app yourself.

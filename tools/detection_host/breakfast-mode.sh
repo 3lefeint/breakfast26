@@ -8,15 +8,18 @@
 #
 # `own` needs the board model in data/detection/calib_model.json (copy it, together with tracker_settings.json, from the stack that was
 # calibrated). Only the one line `enabled` of `[cameras]` in data/config.toml is changed (the section is added when it is missing); the config is
-# copied to config.toml.before-mode first. The stats.db is not touched. Autodarts is started and stopped through systemd, which
-# the polkit rule of tools/detection_host/README.md allows for the user of the host.
-# Settings (environment): APP_DIR (default ~/apps/breakfast26), CONTAINER (breakfast), API (http://127.0.0.1:8080), AUTODARTS (autodarts.service).
+# copied to config.toml.before-mode first. The stats.db is not touched. Autodarts is started and stopped through systemd: as the
+# system unit of version 1 (the polkit rule of tools/detection_host/README.md allows it for the user of the host) or as the user unit of
+# version 2 headless. With the Desktop app of version 2 there is no unit: the script says so and the user quits and starts the app himself.
+# Settings (environment): APP_DIR (default ~/apps/breakfast26), CONTAINER (breakfast), API (http://127.0.0.1:8080), AUTODARTS (autodarts.service),
+# AUTODARTS_SCOPE (system, user or none; default: the one that has the unit).
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-$HOME/apps/breakfast26}"
 CONTAINER="${CONTAINER:-breakfast}"
 API="${API:-http://127.0.0.1:8080}"
 AUTODARTS="${AUTODARTS:-autodarts.service}"
+AUTODARTS_SCOPE="${AUTODARTS_SCOPE:-auto}"
 CONFIG="$APP_DIR/data/config.toml"
 
 mode="${1:-}"; force=0
@@ -63,6 +66,21 @@ os.replace(tmp, path)
 PY
 }
 
+autodarts_scope() {   # system, user or none (no unit: the Desktop app)
+  case "$AUTODARTS_SCOPE" in system|user|none) echo "$AUTODARTS_SCOPE"; return ;; esac
+  if systemctl cat "$AUTODARTS" >/dev/null 2>&1; then echo system
+  elif systemctl --user cat "$AUTODARTS" >/dev/null 2>&1; then echo user
+  else echo none; fi
+}
+
+autodarts() {         # $1 = stop | start | is-active
+  case "$(autodarts_scope)" in
+    system) systemctl "$1" "$AUTODARTS" ;;
+    user)   systemctl --user "$1" "$AUTODARTS" ;;
+    none)   [ "$1" = is-active ] && echo "no service" || echo "note: Autodarts has no service here: quit or start the Autodarts app yourself" ;;
+  esac
+}
+
 match_running() {     # a running match lives in the memory of the container; a restart would end it
   local body
   body="$(curl -fsS --max-time 5 "$API/api/state" 2>/dev/null)" || return 1
@@ -85,7 +103,7 @@ case "$mode" in
     [ -f "$CONFIG" ] || { echo "no config at $CONFIG" >&2; exit 1; }
     [ -f "$APP_DIR/data/detection/calib_model.json" ] || { echo "no board model at $APP_DIR/data/detection/calib_model.json: copy it there first (the detection cannot start without it)" >&2; exit 1; }
     guard
-    systemctl stop "$AUTODARTS"          # the cameras are free only after this
+    autodarts stop                       # the cameras are free only after this
     set_cameras true
     docker restart "$CONTAINER" >/dev/null
     echo "own dart detection: Autodarts stopped, $CONTAINER restarted with [cameras] enabled = true"
@@ -95,12 +113,12 @@ case "$mode" in
     guard
     set_cameras false
     docker restart "$CONTAINER" >/dev/null   # lets go of the cameras
-    systemctl start "$AUTODARTS"
+    autodarts start
     echo "Autodarts: [cameras] enabled = false, $CONTAINER restarted, Autodarts started"
     ;;
   status)
     echo "config:     [cameras] enabled = $(cameras_flag)"
-    echo "autodarts:  $(systemctl is-active "$AUTODARTS" || true)"
+    echo "autodarts:  $(autodarts is-active || true)"
     echo "container:  $(docker inspect -f '{{.State.Status}} since {{.State.StartedAt}}' "$CONTAINER" 2>/dev/null || echo missing)"
     ;;
   *)
