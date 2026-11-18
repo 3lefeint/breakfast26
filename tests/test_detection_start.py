@@ -94,8 +94,28 @@ def test_a_camera_that_cannot_be_opened_is_logged_once(tmp_path, monkeypatch, ca
         while len(tries) < 4 and time.monotonic() < deadline:
             time.sleep(0.01)
         cam.stop()
-    assert len(tries) >= 4 and cam.error == "cannot open"
+    assert len(tries) >= 4 and cam.error == "not found"
     assert len([r for r in caplog.records if "cannot open" in r.getMessage()]) == 1
+
+
+def test_a_camera_that_is_there_but_cannot_be_opened_is_in_use(tmp_path, monkeypatch):
+    class Closed:
+        def isOpened(self):
+            return False
+
+        def release(self):
+            pass
+
+    device = tmp_path / "video0"
+    device.write_text("")
+    cam = cameras.V4L2Camera(str(device))
+    monkeypatch.setattr(cam, "_open", lambda: Closed())
+    cam.start()
+    deadline = time.monotonic() + 2.0
+    while cam.error == "starting" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    cam.stop()
+    assert cam.error == "in use"
 
 
 def test_a_camera_that_cannot_be_read_shows_as_no_cameras():

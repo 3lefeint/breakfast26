@@ -118,3 +118,26 @@ class TestBoardCommandsViaUrl:
 
     def test_start_puts_to_the_board_manager(self, monkeypatch):
         assert self._call(monkeypatch, server.control_start_board) == [("PUT", "http://board.local:3180/api/start")]
+
+
+class TestDartDetectionSwitch:
+    def test_the_switch_is_shown_off_by_default(self, configure):
+        configure()
+        assert asyncio.run(server.get_config())["cameras"] == {"enabled": False}
+
+    def test_it_is_saved_and_needs_a_restart(self, configure):
+        configure()
+        assert patch({"cameras": {"enabled": True}}) == {"saved": True, "restart_required": ["cameras.enabled"]}
+        assert asyncio.run(server.get_config())["cameras"] == {"enabled": True}
+
+    def test_it_is_refused_while_a_match_runs(self, configure, monkeypatch):
+        configure()
+        monkeypatch.setattr(server, "_running_game", lambda: {"mode": "Killer", "resumable": True})
+        res = patch({"cameras": {"enabled": True}})
+        assert res["saved"] is False and "match is running" in res["error"]
+        assert asyncio.run(server.get_config())["cameras"] == {"enabled": False}
+
+    def test_an_unchanged_value_is_not_refused(self, configure, monkeypatch):
+        configure({"cameras": {"enabled": True}})
+        monkeypatch.setattr(server, "_running_game", lambda: {"mode": "X01", "resumable": True})
+        assert patch({"cameras": {"enabled": True}})["saved"] is True

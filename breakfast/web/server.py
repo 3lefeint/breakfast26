@@ -2556,6 +2556,7 @@ async def get_config():
             "enabled": raw.get("telemetry", {}).get("enabled") is True,
             "url": raw.get("telemetry", {}).get("url"),
         },
+        "cameras": {"enabled": raw.get("cameras", {}).get("enabled") is True},
         "updates": {"check": raw.get("updates", {}).get("check") is not False,
                     "auto_install": raw.get("updates", {}).get("auto_install") is True},
         "runtime_fields": list(cfg_mod.RUNTIME_FIELDS),
@@ -2608,6 +2609,9 @@ async def patch_config(body: dict):
         problem = _bad_look_value(key, value)
         if problem:
             return {"saved": False, "error": problem}
+
+    if "cameras.enabled" in changed_non_runtime and _running_game():
+        return {"saved": False, "error": "The dart detection cannot be switched while a match is running"}
 
     if "aurora_palette" in updates.get("web", {}) and "theme" in current.get("web", {}):
         updates["web"]["theme"] = None   # the palette replaces the theme of an older config

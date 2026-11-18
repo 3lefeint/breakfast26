@@ -63,9 +63,10 @@ class V4L2Camera:
         while not self._stop.is_set():
             cap = self._open()
             if not cap.isOpened():
-                if self.error != "cannot open":             # one line when it starts, not one per try
-                    log.warning("camera %s: cannot open, trying again every %.0f s", self.path, RETRY_S)
-                self.error = "cannot open"
+                reason = "in use" if os.path.exists(self.path) else "not found"     # a camera held by the board manager is there
+                if self.error != reason:                    # one line when it starts, not one per try
+                    log.warning("camera %s: cannot open (%s), trying again every %.0f s", self.path, reason, RETRY_S)
+                self.error = reason
                 cap.release()
                 self._stop.wait(RETRY_S)
                 continue

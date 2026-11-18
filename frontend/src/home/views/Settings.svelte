@@ -24,6 +24,7 @@
   import StreamDeckSection from './StreamDeckSection.svelte';
   import LocationsSection from './LocationsSection.svelte';
   import CircleSection from './CircleSection.svelte';
+  import Toggle from '../../lib/components/Toggle.svelte';
   import { createPlayer } from '../../lib/audioPlayer.js';
 
   const MASK = '●●●●●';
@@ -44,6 +45,7 @@
     record: { file: '' },
     online: { relay_url: '', site_name: '' },
     telemetry: { enabled: false, url: '' },
+    cameras: { enabled: false },
     updates: { check: true, auto_install: false },
     // Read-only — not part of the editable form/save flow, set directly in
     // config.toml. Only gates whether the Dev tab below is shown at all.
@@ -413,6 +415,7 @@
     addIfDiffers('logging', 'events', cfg.logging.events);
     addIfDiffers('mqtt', 'enabled', cfg.mqtt.enabled);
     addIfDiffers('telemetry', 'enabled', cfg.telemetry.enabled);
+    addIfDiffers('cameras', 'enabled', cfg.cameras.enabled);
     addIfDiffers('updates', 'check', cfg.updates.check);
     addIfDiffers('updates', 'auto_install', cfg.updates.auto_install);
     addIfDiffers('web', 'joke_of_the_day', cfg.web.joke_of_the_day);
@@ -457,6 +460,7 @@
     'caller.turn_total': t('Call turn total'), 'caller.checkout_limit': t('Repeat same Checkout limit'),
     'caller.announce_change': t('Call player change'), 'caller.call_player': t('Call player names'),
     'caller.ambient_volume': t('Ambient volume (0 = off)'), 'caller.call_misses': t('Call a Miss'), 'caller.fun': t('Fun mode'),
+    'cameras.enabled': t('Dart detection (experimental)'),
     'record.file': t('Recording file'), 'web.port': t('Web UI port'),
   };
   const labelOf = (key) => KEY_LABELS[key] ?? key;
@@ -951,6 +955,8 @@
       <div class="settings-row"><label for="sDirBoard">{t('Board ID')}</label><input type="text" id="sDirBoard" bind:value={cfg.direct.board_id}></div>
       <div class="settings-row"><label for="sDirBoardWs">{t('Board WebSocket URL')}</label><input type="text" id="sDirBoardWs" placeholder={t('ws://localhost:3180/api/events')} bind:value={cfg.direct.board_ws_url}></div>
       <div class="settings-row"><label for="sDirBoardMgr">{t('Board manager URL')}</label><input type="text" id="sDirBoardMgr" placeholder={t('(auto-resolved from Autodarts cloud)')} bind:value={cfg.direct.board_manager_url}></div>
+      <Toggle bind:checked={cfg.cameras.enabled} label={t('Dart detection (experimental)')} wide />
+      <p class="note">{t('Reads the darts from the board cameras instead of the board manager. The cameras must not be in use by the board manager. Cannot be switched while a match is running.')}</p>
     </div>
 
     <div class="settings-section">
