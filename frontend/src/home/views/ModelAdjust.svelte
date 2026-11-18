@@ -150,7 +150,7 @@
   }
 
   async function fitAutomatically() {
-    if (!confirm(t('Replace all points with the automatic fit? Points you moved by hand are lost. The board must be empty.'))) return;
+    if (!confirm(t('Replace all points with the automatic calibration? Points you moved manually are lost. The board must be empty.'))) return;
     const res = await apiJson('POST', '/api/detection/model/auto', {});
     if (res.error) { message = t(res.error); return; }
     auto = { fraction: 0, text: '' };
@@ -161,7 +161,7 @@
       auto = st.progress ?? auto;
     }
     auto = null;
-    message = t('The automatic fit moved the points. Look at them, correct what is off and save.');
+    message = t('Auto calibrate moved the points. Check them, correct what is off and save.');
     await load();
   }
 
@@ -169,7 +169,7 @@
     saving = true;
     const res = await apiJson('POST', '/api/detection/model/save', {});
     saving = false;
-    message = res.error ? t(res.error) : t('Saved. The next still picture is taken as the empty board.');
+    message = res.error ? t(res.error) : t('Saved. The next steady camera image is taken as the empty board.');
     await load();
   }
   async function discard() {
@@ -178,9 +178,9 @@
     await load(res);
   }
   async function revert() {
-    if (!confirm(t('Take the previous model back?'))) return;
+    if (!confirm(t('Restore the previous calibration?'))) return;
     const res = await apiJson('POST', '/api/detection/model/revert', {});
-    message = res.error ? t(res.error) : t('The previous model is back.');
+    message = res.error ? t(res.error) : t('The previous calibration is restored.');
     await load();
   }
 
@@ -214,7 +214,7 @@
 </script>
 
 <div class="adjust">
-  <p class="hint">{t('Drag a point onto what it belongs to: the center and the crossings of the wires 20|1, 6|10, 3|19 and 11|14 with the four outer rings. A touch picks the nearest point; the magnifier shows the spot. Scroll wheel or + and − zoom, dragging the picture moves it, arrow keys nudge the chosen point.')}</p>
+  <p class="hint">{t('Drag a point onto what it belongs to: the center and the crossings of the wires 20|1, 6|10, 3|19 and 11|14 with the four outer rings. A touch picks the nearest point; the magnifier shows the spot. Scroll wheel or + and − zoom, dragging the image moves it, arrow keys nudge the chosen point.')}</p>
 
   <div class="bar">
     {#each [0, 1, 2] as c (c)}
@@ -223,9 +223,9 @@
     <span class="gap"></span>
     <button type="button" class="chip" onclick={() => zoomAt(1.5, view.x + view.w / 2, view.y + view.h / 2)}>+</button>
     <button type="button" class="chip" onclick={() => zoomAt(1 / 1.5, view.x + view.w / 2, view.y + view.h / 2)}>−</button>
-    <button type="button" class="chip" onclick={fit}>{t('Fit view')}</button>
-    <button type="button" class="chip" onclick={() => (stamp = Date.now())}>{t('New picture')}</button>
-    <button type="button" class="chip" disabled={!!auto} onclick={fitAutomatically}>{t('Fit automatically')}</button>
+    <button type="button" class="chip" onclick={fit}>{t('Reset zoom')}</button>
+    <button type="button" class="chip" onclick={() => (stamp = Date.now())}>{t('Reload camera')}</button>
+    <button type="button" class="chip" disabled={!!auto} onclick={fitAutomatically}>{t('Auto calibrate')}</button>
   </div>
   {#if auto}
     <div class="progress"><span class="spinner" aria-hidden="true"></span>
@@ -237,7 +237,7 @@
     <div class="stage" bind:this={stage}>
     <canvas bind:this={canvas} aria-hidden="true"></canvas>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <svg bind:this={svg} viewBox="{view.x} {view.y} {view.w} {view.h}" tabindex="0" role="application" aria-label={t('Board model of the camera')}
+    <svg bind:this={svg} viewBox="{view.x} {view.y} {view.w} {view.h}" tabindex="0" role="application" aria-label={t('Calibration of the camera')}
          onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onwheel={wheel} onkeydown={key}>
       {#each RINGS as r (r)}<path d={ringPath(flat, r, state.radii)} class="ring" />{/each}
       {#each WIRES as a (a)}<path d={wirePath(flat, a, state.radii)} class="wire" />{/each}
@@ -260,20 +260,20 @@
     {#if loupe}<canvas bind:this={loupeCanvas} class="loupe" style="left: {loupe.left}px; top: {loupe.top}px; width: {2 * LOUPE_R}px; height: {2 * LOUPE_R}px" aria-hidden="true"></canvas>{/if}
     </div>
   {:else}
-    <p class="muted">{message || t('Waiting for the pictures…')}</p>
+    <p class="muted">{message || t('Waiting for the camera images…')}</p>
   {/if}
 
   {#if rep}
     <pre class="rep">{t('Ring radii (mm)')}: {Object.entries(rep.radii_mm).map(([a, b]) => `${a} → ${b}`).join(', ')}
-{t('Distance of the points to the model (px)')}: {Object.keys(rep.rms_px).map((c) => `${t('Camera')} ${+c + 1} ${rep.rms_px[c]} (max ${rep.max_px[c]})`).join(', ')}
-{t('Moved by hand')}: {Object.keys(state.edited).map((c) => `${t('Camera')} ${+c + 1}: ${state.edited[c].length}`).join(', ')}</pre>
-    {#if rep.unusual.length}<p class="warn">{t('Check the overlay')}: {rep.unusual.join('; ')}</p>{/if}
+{t('Point error (px)')}: {Object.keys(rep.rms_px).map((c) => `${t('Camera')} ${+c + 1} ${rep.rms_px[c]} (max ${rep.max_px[c]})`).join(', ')}
+{t('Moved manually')}: {Object.keys(state.edited).map((c) => `${t('Camera')} ${+c + 1}: ${state.edited[c].length}`).join(', ')}</pre>
+    {#if rep.unusual.length}<p class="warn">{t('Check the radii')}: {rep.unusual.map((u) => t('Ring {ring} mm is {delta} mm from the standard size', { ring: u.ring, delta: (u.delta_mm > 0 ? '+' : '') + u.delta_mm })).join('; ')}</p>{/if}
   {/if}
 
   <div class="bar">
     <button class="btn" disabled={!anyEdited || saving} onclick={save}>{saving ? t('Saving…') : t('Save')}</button>
     <button class="btn" disabled={!anyEdited} onclick={discard}>{t('Discard changes')}</button>
-    <button class="btn" disabled={!state?.can_revert} onclick={revert}>{t('Previous model')}</button>
+    <button class="btn" disabled={!state?.can_revert} onclick={revert}>{t('Previous calibration')}</button>
     <button class="btn" onclick={onclose}>{t('Close')}</button>
     <span class="muted msg">{message}</span>
   </div>

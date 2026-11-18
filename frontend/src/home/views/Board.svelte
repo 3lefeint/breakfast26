@@ -50,9 +50,10 @@
     load();
   }
 
-  const BOARD_STATE = { ready: () => t('Ready'), takeout: () => t('Pull the darts'), blocked: () => t('Blocked: something is in the way'), starting: () => t('Starting'), no_cameras: () => t('No cameras') };
+  const BOARD_STATE = { ready: () => t('Ready'), takeout: () => t('Takeout'), blocked: () => t('Blocked: something is in the way'), starting: () => t('Starting'), no_cameras: () => t('Camera error') };
   const CAMERA_ERROR = { 'in use': () => t('in use by another program'), 'not found': () => t('not found') };
-  const NOT_RUNNING = { no_model: () => t('No board model yet: the dart detection cannot start.') };
+  const EVENT_KIND = { dart: () => t('Dart'), removed: () => t('Dart removed'), moved: () => t('Dart moved'), takeout: () => t('Takeout'), baseline: () => t('Reference'), empty: () => t('Empty board'), unclear: () => t('Unclear'), blocked: () => t('Blocked') };
+  const NOT_RUNNING = { no_model: () => t('Not calibrated yet: the dart detection cannot start.') };
   let cams = $derived(status?.cameras ?? []);
   let board = $derived(status?.board ?? null);
 </script>
@@ -60,7 +61,7 @@
 <PageHeader title={t('Board')} subtitle={t('Cameras and dart detection')} />
 
 {#if !status}
-  <div class="section muted">{t('Waiting for the pictures…')}</div>
+  <div class="section muted">{t('Waiting for the camera images…')}</div>
 {:else if !status.enabled}
   <div class="section muted">{t('The dart detection is off. Switch it on with [cameras] enabled = true in config.toml.')}</div>
 {:else if !status.reachable}
@@ -71,18 +72,18 @@
   <div class="section">
     <div class="state-row">
       <span class="pill" class:ok={board.status === 'ready'} class:warn={board.status === 'blocked' || board.status === 'no_cameras'}>{(BOARD_STATE[board.status] ?? (() => board.status))()}</span>
-      <span class="darts">{t('Darts on the board')}: <b>{board.count}</b> {#if board.throws.length}<span class="muted">({board.throws.join(', ')})</span>{/if}</span>
+      <span class="darts">{t('Darts detected')}: <b>{board.count}</b> {#if board.throws.length}<span class="muted">({board.throws.join(', ')})</span>{/if}</span>
       <span class="spacer"></span>
-      <button class="btn" disabled={busy} onclick={() => post('/api/detection/reset')}>{t('Empty board = now')}</button>
-      <button class="btn" disabled={status.busy} onclick={() => (adjusting = !adjusting)}>{adjusting ? t('Back to the pictures') : t('Adjust by hand')}</button>
+      <button class="btn" disabled={busy} onclick={() => post('/api/detection/reset')}>{t('Reset board')}</button>
+      <button class="btn" disabled={status.busy} onclick={() => (adjusting = !adjusting)}>{adjusting ? t('Back') : t('Manual calibration')}</button>
     </div>
     {#if status.drift && (status.drift.level === 'warn' || status.drift.level === 'bad') && !adjusting}
       <div class="drift" class:bad={status.drift.level === 'bad'} role="alert">
-        <span>{t('The empty board looks different from when the model was made: a camera or the board may have moved.')}
+        <span>{t('The empty board looks different from when it was calibrated: a camera or the board may have moved.')}
           {#each Object.entries(status.drift.cams).filter(([, r]) => r.level === 'warn' || r.level === 'bad') as [c, r] (c)}
             <b>{t('Camera')} {Number(c) + 1}: {r.px} px</b>{' '}
           {/each}</span>
-        <button class="btn" disabled={busy || board.count > 0} onclick={() => post('/api/detection/drift/accept', t('Take the empty board as it is now as the reference? Do this only if the model still fits the pictures.'))}>{t('The model still fits')}</button>
+        <button class="btn" disabled={busy || board.count > 0} onclick={() => post('/api/detection/drift/accept', t('Take the empty board as it is now as the reference? Do this only if the calibration still fits the camera images.'))}>{t('The calibration still fits')}</button>
       </div>
     {/if}
     {#if status.busy && !adjusting}
@@ -110,19 +111,19 @@
   {#if !adjusting}
   <div class="two">
     <div class="section">
-      <div class="section-title">{t('Events')}</div>
+      <div class="section-title">{t('Detected events')}</div>
       <table>
         <tbody>
           {#each status.events.slice(0, 12) as e, i (i)}
-            <tr class={`k-${e.kind}`}><td class="mono">{e.t}</td><td>{e.kind}</td><td>{e.count}</td><td>{e.field ?? ''}</td></tr>
+            <tr class={`k-${e.kind}`}><td class="mono">{e.t}</td><td>{(EVENT_KIND[e.kind] ?? (() => e.kind))()}</td><td>{e.count}</td><td>{e.field ?? ''}</td></tr>
           {/each}
         </tbody>
       </table>
     </div>
     <div class="section">
-      <div class="section-title">{t('Notes')}</div>
+      <div class="section-title">{t('Log')}</div>
       {#each status.notes as n, i (i)}<p class="note"><span class="mono">{n.t}</span> {n.text}</p>{/each}
-      <div class="section-title" style="margin-top:1rem">{t('Load')}</div>
+      <div class="section-title" style="margin-top:1rem">{t('Performance')}</div>
       <p class="note">{status.load.looks_per_s} / s · {status.load.feed_ms} ms</p>
     </div>
   </div>
@@ -131,26 +132,26 @@
     {#if !labels || !labels.looked_at}
       <p class="note muted">{t('No corrections yet. Every tap on a dart to correct or confirm it is counted here.')}</p>
       {#if labels && labels.darts != null}
-        <p class="note">{t('Darts counted')}: <b>{labels.darts}</b> · {t('not looked at')}: <b>{labels.not_looked_at}</b> · {t('entered by hand')}: <b>{labels.unseen}</b></p>
+        <p class="note">{t('Darts counted')}: <b>{labels.darts}</b> · {t('not checked')}: <b>{labels.not_looked_at}</b> · {t('entered manually')}: <b>{labels.unseen}</b></p>
       {/if}
     {:else}
       <p class="note">
-        {t('Looked at')}: <b>{labels.looked_at}</b> · {t('right')}: <b>{labels.right}</b> · {t('wrong')}: <b>{labels.wrong}</b>
+        {t('Checked')}: <b>{labels.looked_at}</b> · {t('right')}: <b>{labels.right}</b> · {t('wrong')}: <b>{labels.wrong}</b>
         {#if labels.wrong_share != null}({Math.round(labels.wrong_share * 100)} %){/if}
-        · {t('Wrong ones that were marked uncertain')}: <b>{labels.wrong_and_flagged}</b> / {labels.wrong}
+        · {t('Wrong but flagged uncertain')}: <b>{labels.wrong_and_flagged}</b> / {labels.wrong}
       </p>
       {#if labels.darts != null}
-        <p class="note">{t('Darts counted')}: <b>{labels.darts}</b> · {t('not looked at')}: <b>{labels.not_looked_at}</b> · {t('entered by hand')}: <b>{labels.unseen}</b></p>
+        <p class="note">{t('Darts counted')}: <b>{labels.darts}</b> · {t('not checked')}: <b>{labels.not_looked_at}</b> · {t('entered manually')}: <b>{labels.unseen}</b></p>
       {/if}
       {#if labels.offset_mm}
-        <p class="note">{t('Distance to the spot that was pressed (mm)')}: {t('mean')} <b>{labels.offset_mm.mean}</b> · {t('median')} <b>{labels.offset_mm.median}</b> · 90 % <b>{labels.offset_mm.p90}</b> · max <b>{labels.offset_mm.max}</b> ({labels.offset_mm.n})
+        <p class="note">{t('Distance to the correction (mm)')}: {t('mean')} <b>{labels.offset_mm.mean}</b> · {t('median')} <b>{labels.offset_mm.median}</b> · 90 % <b>{labels.offset_mm.p90}</b> · max <b>{labels.offset_mm.max}</b> ({labels.offset_mm.n})
           {#if labels.bias_mm}· {t('shift')} x {labels.bias_mm.x}, y {labels.bias_mm.y}{/if}</p>
       {/if}
       {#if Object.keys(labels.mistakes).length}
-        <p class="note">{t('Mistakes')}: {#each Object.entries(labels.mistakes) as [k, n], i (k)}{i ? ' · ' : ''}{(KINDS[k] ?? (() => k))()} <b>{n}</b>{/each}</p>
+        <p class="note">{t('Error types')}: {#each Object.entries(labels.mistakes) as [k, n], i (k)}{i ? ' · ' : ''}{(KINDS[k] ?? (() => k))()} <b>{n}</b>{/each}</p>
       {/if}
       <table>
-        <thead><tr><td class="muted">{t('Distance to the nearest wire')}</td><td class="muted">{t('Looked at')}</td><td class="muted">{t('wrong')}</td></tr></thead>
+        <thead><tr><td class="muted">{t('Distance to wire')}</td><td class="muted">{t('Checked')}</td><td class="muted">{t('wrong')}</td></tr></thead>
         <tbody>
           {#each labels.by_margin as m (m.from_mm)}
             <tr><td>{m.from_mm}{m.to_mm != null ? ` – ${m.to_mm}` : '+'} mm</td><td>{m.looked_at}</td><td>{m.wrong}</td></tr>

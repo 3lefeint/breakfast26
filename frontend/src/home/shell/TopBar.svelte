@@ -28,7 +28,7 @@
         <span class="status" title={t('MQTT')}><span class="dot" class:ok={mqttOk}></span><span class="label">{t('MQTT')}</span></span>
       {/if}
       {#if cameras}
-        <span class="status" title={cameras === 'blocked' ? t('Cameras blocked') : t('Cameras')}><span class="dot" class:ok={cameras === 'ok'} class:warn={cameras === 'warn' || cameras === 'blocked'}></span><span class="label">{cameras === 'blocked' ? t('Cameras blocked') : t('Cameras')}</span></span>
+        <span class="status" title={cameras === 'blocked' ? t('Board blocked') : t('Cameras')}><span class="dot" class:ok={cameras === 'ok'} class:warn={cameras === 'warn' || cameras === 'blocked'}></span><span class="label">{cameras === 'blocked' ? t('Board blocked') : t('Cameras')}</span></span>
       {:else}
         <span class="status" title={t('Autodarts')}><span class="dot" class:ok={autodartsOk}></span><span class="label">{t('Autodarts')}</span></span>
       {/if}
