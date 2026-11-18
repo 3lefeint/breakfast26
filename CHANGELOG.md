@@ -36,6 +36,7 @@
 - The Board page can fix the exposure and the white balance of the cameras of the dart detection (0 keeps the camera's automatic) and shows the brightness of each picture.
 - Service files for running the dart detection on the board host in place of Autodarts: starting one stops the other (the way back to Autodarts), the cameras are found by USB port at every start, and the user of the host may switch without a password.
 - The installed Breakfast of the board host can switch between its own dart detection and Autodarts with one command (`breakfast-mode.sh`, a compose override for the cameras) (#46).
+- Linux installer for the dart detection (`tools/detection_host/install.sh`): fixed camera names by USB port, the compose override, and two desktop shortcuts that start Breakfast with its own dart detection or with the board manager and show a window when it fails; Autodarts version 1 and the user unit of version 2 are switched, the Desktop app has to be quit by hand. The cameras are now `/dev/breakfast-cam0` to `2` (#186).
 
 ### Changed
 - Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)
