@@ -50,6 +50,7 @@
   }
 
   const BOARD_STATE = { ready: () => t('Ready'), takeout: () => t('Pull the darts'), blocked: () => t('Blocked: something is in the way'), starting: () => t('Starting'), no_cameras: () => t('No cameras') };
+  const CAMERA_ERROR = { 'in use': () => t('in use by another program'), 'not found': () => t('not found') };
   const NOT_RUNNING = { no_model: () => t('No board model yet: the dart detection cannot start.') };
   let cams = $derived(status?.cameras ?? []);
   let board = $derived(status?.board ?? null);
@@ -96,7 +97,7 @@
       {#each cams as c, i (i)}
         <figure>
           <img src={`/api/detection/frame/${i}?t=${tick}`} alt={`${t('Camera')} ${i + 1}`}>
-          <figcaption class:bad={c.error}>{t('Camera')} {i + 1}: {c.error ? c.error : `${c.fps} fps`}</figcaption>
+          <figcaption class:bad={c.error}>{t('Camera')} {i + 1}: {c.error ? (CAMERA_ERROR[c.error]?.() ?? c.error) : `${c.fps} fps`}</figcaption>
         </figure>
       {/each}
     </div>
