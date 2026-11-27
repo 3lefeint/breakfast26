@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-27
+
 ### Added
 - Stream Deck: a default layout comes with Breakfast and applies until a layout is saved; the first change of a key saves it as your own, and *Load default layout* under Settings → Stream Deck brings it back (`POST /api/streamdeck/default`).
 - Stream Deck action *Play Random Sound*: plays one sound of the library shorter than 5 seconds in the background, without waiting for or cutting off the calls.
