@@ -68,6 +68,7 @@ HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_TIMEOUT_SECONDS = 5
 SYMBOLS = ("reset", "start", "undo", "next_player", "next_game", "cancel", "sound", "fun", "folder", "back", "page_prev", "page_next")   # drawn by Breakfast, no file needed
 SYMBOL_PREFIX = "symbol:"
+RESET_TO_START = {SYMBOL_PREFIX + "reset": SYMBOL_PREFIX + "start", "icon_reset_board.png": "icon_start_board.png"}   # the picture a Reset Board key shows while the board is stopped
 SHOW_VALUES = ("player", "remaining", "lives", "darts", "round")   # what a display key shows of the game in play
 FLASH_SECONDS = 3
 FLASH_STEP_SECONDS = 0.4
@@ -75,6 +76,7 @@ FLASH_COLOR = "#e6a800"
 IMAGE_NAME = re.compile(r"^\w[\w .\-]{0,78}\.(png|jpe?g|webp)$", re.IGNORECASE)
 MAX_IMAGE_BYTES = 2_000_000
 IMAGE_DIR_NAME = "streamdeck"       # next to config.toml
+ICON_DIR = Path(__file__).parent / "streamdeck_icons"     # the icons that come with Breakfast; a file of the same name in IMAGE_DIR_NAME wins
 PREVIEW_SIZE = (96, 96)
 EDITOR_PREVIEW_SIZE = (216, 216)
 MAX_LAYERS = 8
@@ -414,6 +416,15 @@ def render_key(label, hex_color, size, progress=None, image=None, symbol=None, v
         _draw_label(img, value, ink, (0, 0, w, top), big=True)
         if label:
             _draw_label(img, label, ink, (0, top - 2, w, h))
+    elif image is not None and image.mode == "RGBA":      # an icon with a transparent background: on the color of the key, above the label
+        band = round(h * 0.3) if label else 0
+        pad = round(w * 0.04)
+        area = (w - 2 * pad, h - band - 2 * pad)
+        fitted = image.copy()
+        fitted.thumbnail(area, Image.LANCZOS)
+        img.paste(fitted, (pad + (area[0] - fitted.width) // 2, pad + (area[1] - fitted.height) // 2), fitted)
+        if label:
+            _draw_label(img, label, ink, (0, h - band, w, h))
     elif image is not None:
         frame = max(3, h // 10)
         img.paste(_cover(image, (w - 2 * frame, h - 2 * frame)), (frame, frame))
@@ -461,7 +472,7 @@ def render_design(design, hex_color, size, picture_of, values=None, progress=Non
             if picture is not None:
                 fitted = picture.copy()
                 fitted.thumbnail((side, side), Image.LANCZOS)
-                img.paste(fitted, (round(cx - fitted.width / 2), round(cy - fitted.height / 2)))
+                img.paste(fitted, (round(cx - fitted.width / 2), round(cy - fitted.height / 2)), fitted if fitted.mode == "RGBA" else None)
             elif symbol is not None:
                 _draw_symbol(ImageDraw.Draw(img), symbol, (box[0], box[1], box[0] + side, box[1] + side), ink)
     border = design["border"]
@@ -892,7 +903,7 @@ class StreamDeckService:
         view = {k["key"]: k for k in keys if k.get("page", 0) == self._page and k["key"] < count}
 
         def nav(index, action, label, symbol):
-            view[index] = {"key": index, "action": action, "label": label, "color": NAV_COLOR, "hold": 0, "image": SYMBOL_PREFIX + symbol,
+            view[index] = {"key": index, "action": action, "label": label, "color": NAV_COLOR, "hold": 0, "image": f"icon_{symbol}.png",
                            "show": ""}
         if folder and count > 0:
             nav(0, NAV_BACK, "Back", "back")
@@ -932,12 +943,12 @@ class StreamDeckService:
         view = {}
         for slot, item in enumerate(items[self._page * capacity:(self._page + 1) * capacity], start=1):
             view[slot] = {"key": slot, "hold": 0, "show": "", **item}
-        view[0] = {"key": 0, "action": NAV_BACK, "label": "Back", "color": NAV_COLOR, "hold": 0, "image": SYMBOL_PREFIX + "back", "show": ""}
+        view[0] = {"key": 0, "action": NAV_BACK, "label": "Back", "color": NAV_COLOR, "hold": 0, "image": "icon_back.png", "show": ""}
         if paged and count > 3:
             view[count - 2] = {"key": count - 2, "action": NAV_PREV, "label": "", "color": NAV_COLOR, "hold": 0,
-                               "image": SYMBOL_PREFIX + "page_prev", "show": ""}
+                               "image": "icon_page_prev.png", "show": ""}
             view[count - 1] = {"key": count - 1, "action": NAV_NEXT, "label": f"{self._page + 1}/{pages}", "color": NAV_COLOR, "hold": 0,
-                               "image": SYMBOL_PREFIX + "page_next", "show": ""}
+                               "image": "icon_page_next.png", "show": ""}
         self._virtual_pages = pages
         return view
 
@@ -1022,11 +1033,11 @@ class StreamDeckService:
             changes = {"action": "start_board"}
             if entry["label"] == ACTIONS["reset_board"]:
                 changes["label"] = ACTIONS["start_board"]
-            if entry["image"] == SYMBOL_PREFIX + "reset":
-                changes["image"] = SYMBOL_PREFIX + "start"
+            if entry["image"] in RESET_TO_START:
+                changes["image"] = RESET_TO_START[entry["image"]]
             if entry.get("design"):
                 layers = [{**la, "text": ACTIONS["start_board"]} if la["kind"] == "text" and la["text"] == ACTIONS["reset_board"]
-                          else {**la, "image": SYMBOL_PREFIX + "start"} if la["kind"] == "image" and la["image"] == SYMBOL_PREFIX + "reset"
+                          else {**la, "image": RESET_TO_START[la["image"]]} if la["kind"] == "image" and la["image"] in RESET_TO_START
                           else la for la in entry["design"]["layers"]]
                 changes["design"] = {**entry["design"], "layers": layers}
             return {**entry, **changes}
@@ -1145,6 +1156,11 @@ class StreamDeckService:
     def image_dir(self):
         return Path(self.config_path).parent / IMAGE_DIR_NAME
 
+    def image_path(self, name):
+        """The file of an image name: the uploaded one, else the icon that comes with Breakfast."""
+        own = self.image_dir() / name
+        return own if own.is_file() or not (ICON_DIR / name).is_file() else ICON_DIR / name
+
     def _picture(self, value):
         """(picture, symbol) of an `image` value: a PIL image of the uploaded file, or the name of a symbol. A missing or
         broken file draws the key without a picture."""
@@ -1152,14 +1168,14 @@ class StreamDeckService:
             return None, value[len(SYMBOL_PREFIX):]
         if not value:
             return None, None
-        path = self.image_dir() / value
+        path = self.image_path(value)
         try:
             mtime = path.stat().st_mtime
             cached = self._pictures.get(value)
             if cached is None or cached[0] != mtime:
                 from PIL import Image
                 with Image.open(path) as opened:
-                    cached = self._pictures[value] = (mtime, opened.convert("RGB"))
+                    cached = self._pictures[value] = (mtime, opened.convert("RGBA" if "A" in opened.getbands() or "transparency" in opened.info else "RGB"))
             return cached[1], None
         except Exception:
             self._pictures.pop(value, None)
@@ -1170,6 +1186,10 @@ class StreamDeckService:
         if not folder.is_dir():
             return []
         return sorted(f.name for f in folder.iterdir() if f.is_file() and IMAGE_NAME.match(f.name))
+
+    def icons(self):
+        """The icons that come with Breakfast."""
+        return sorted(f.name for f in ICON_DIR.glob("*") if IMAGE_NAME.match(f.name)) if ICON_DIR.is_dir() else []
 
     def save_image(self, name, data):
         """Store an uploaded picture; raises ValueError with a message for the UI."""
@@ -1352,6 +1372,7 @@ class StreamDeckService:
                 "folder_actions": [{"id": FOLDER_PREFIX + f["id"], "label": f["name"]} for f in self.folders()],
                 "custom_actions": self.actions(),
                 "images": self.images(),
+                "icons": self.icons(),
                 "symbols": list(SYMBOLS),
                 "show_values": list(SHOW_VALUES),
                 "value_tokens": list(VALUE_TOKENS),

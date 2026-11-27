@@ -385,7 +385,7 @@ A key can show a picture: one of the built-in symbols (reset, start, undo, next 
 colored frame or background, and the grid shows the key exactly as the device draws it.
 A key can be set to run only when it is held (a board reset is by default,
 0.8 seconds): it shows a bar filling up while held, and nothing happens when it is let go earlier. The keys follow the board status: green when it is ready to throw, yellow around
-the take-out and while it starts, red when it is stopped or disconnected; a key can also have a fixed color. Each key has a design editor (images and texts placed and sized on a grid, a frame, values of the game in the text), and
+the take-out and while it starts, red when it is stopped or disconnected; a key can also have a fixed color. Each key can show one of the icons that come with Breakfast (one for each action) or an image of your own. Each key has a design editor (images and texts placed and sized on a grid, a frame, values of the game in the text), and
 frames can pulse, blink or chase; *Status rules* put such an effect on every key while the board has a status, for example a
 pulsing red frame while it is stopped. A key can open a folder, which has its own keys and pages. More actions: cancel the
 game, switch the fun mode, play a sound of the library (or a random short one, played beside everything else), and correct a dart of the turn in play (a key per dart opens a

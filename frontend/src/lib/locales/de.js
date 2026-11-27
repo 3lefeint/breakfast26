@@ -1061,6 +1061,7 @@ export default {
   'Image': 'Bild',
   'Symbols': 'Symbole',
   'Your images': 'Eigene Bilder',
+  'Icons': 'Icons',
   'Upload an image': 'Bild hochladen',
   'Delete file': 'Datei löschen',
   'Delete {file}? Keys that show it lose the image.': '{file} löschen? Tasten, die es zeigen, verlieren das Bild.',

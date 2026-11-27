@@ -122,6 +122,14 @@ class TestService:
         assert service.deck.images[0].getpixel((0, 0)) == (0, 0, 0)
         assert service.deck.images[1].getpixel((0, 0)) == (0, 0, 0)
 
+    def test_a_reset_key_with_its_icon_shows_the_start_icon_while_the_board_is_stopped(self, service):
+        service.update(enabled=True, keys=[{"key": 0, "action": "reset_board", "image": "icon_reset_board.png"}])
+        assert service._effective(service.keys()[0])["image"] == "icon_reset_board.png"
+        service.on_board_status("Stopped")
+        assert service._effective(service.keys()[0])["image"] == "icon_start_board.png"
+        service.on_board_status("Throw")
+        assert service._effective(service.keys()[0])["image"] == "icon_reset_board.png"
+
     def test_a_reset_key_becomes_a_start_key_while_the_board_is_stopped(self, service):
         service.update(enabled=True, keys=[{"key": 0, "action": "reset_board", "image": "symbol:reset"}])
         with service._lock:
@@ -632,6 +640,33 @@ class TestRoutes:
         srv, _, path = server
         res = asyncio.run(srv.streamdeck_put(srv.StreamDeckBody(keys=[{"key": 0, "action": "nope"}])))
         assert "unknown action" in res["error"] and "streamdeck" not in cfg_mod.load(path)
+
+    def test_an_icon_with_a_transparent_background_sits_on_the_color_of_the_key(self):
+        pytest.importorskip("PIL")
+        from PIL import Image
+        icon = Image.open(sd.ICON_DIR / "icon_undo.png").convert("RGBA")
+        for color in ("#000000", "#1faa59"):
+            key = sd.render_key("Undo", color, (96, 96), image=icon)
+            assert key.getpixel((1, 1)) == sd._rgb(color)
+        key = sd.render_key("", "#000000", (96, 96), image=icon)
+        assert key.getpixel((1, 1)) == (0, 0, 0)                                   # no tile and no frame of another color
+        assert any(g > 150 > r for r, g, b in (key.getpixel((x, y)) for x in range(20, 76) for y in range(14, 76)))   # the green icon
+
+    def test_the_icons_that_come_with_breakfast_can_be_picked_and_an_upload_of_the_same_name_wins(self, server):
+        import asyncio
+        srv, _, path = server
+
+        class Req:
+            async def body(self):
+                return _png()
+        icons = srv._streamdeck.icons()
+        assert "icon_undo.png" in icons and set(icons) <= {f.name for f in sd.ICON_DIR.iterdir()}
+        assert sd.valid_image("icon_undo.png")
+        assert asyncio.run(srv.streamdeck_image("icon_undo.png")).path == sd.ICON_DIR / "icon_undo.png"
+        assert srv._streamdeck._picture("icon_undo.png")[0] is not None
+        asyncio.run(srv.streamdeck_image_upload(Req(), name="icon_undo.png"))
+        assert asyncio.run(srv.streamdeck_image("icon_undo.png")).path == path.parent / "streamdeck" / "icon_undo.png"
+        assert "icon_undo.png" in srv._streamdeck.icons() and "icon_undo.png" in srv._streamdeck.images()
 
     def test_upload_serve_and_delete_a_picture_over_the_routes(self, server):
         import asyncio

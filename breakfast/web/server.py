@@ -3998,7 +3998,7 @@ async def streamdeck_put(body: StreamDeckBody):
 async def streamdeck_image(name: str):
     if not _streamdeck or not streamdeck_mod.IMAGE_NAME.match(name):
         raise HTTPException(status_code=404)
-    path = _streamdeck.image_dir() / name
+    path = _streamdeck.image_path(name)
     if not path.is_file():
         raise HTTPException(status_code=404)
     return FileResponse(path)
