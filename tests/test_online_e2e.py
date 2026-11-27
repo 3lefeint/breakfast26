@@ -425,10 +425,14 @@ def test_an_x01_turn_can_be_taken_back_and_corrected_at_the_site_that_threw_it(r
     settle(2)
     assert scores(home) == scores(club) == {"anna": 40, "carl": 97}
 
-    club.session.undo()                                    # carl's site takes its turn back
+    club.session.undo()                                    # carl's site takes back his last dart, the turn goes on
     assert _wait(lambda: home.ctrl.game.turn_seq == 1 and club.ctrl.game.turn_seq == 1)
-    assert scores(home) == scores(club) == {"anna": 40, "carl": 100}
+    assert _wait(lambda: scores(home) == scores(club) == {"anna": 40, "carl": 98})
     assert home.ctrl.game.current == club.ctrl.game.current == "carl"
+    club.session.undo()                                    # one dart at a time: a dart in progress stays at its site
+    assert _wait(lambda: scores(club) == {"anna": 40, "carl": 99})
+    club.session.undo()
+    assert _wait(lambda: scores(club) == {"anna": 40, "carl": 100})
     turn("Club", *_throws(5, 1, 3))                        # carl 15, 85 left
     settle(2)
     assert club.ctrl.game.correct_last_dart(2, "S20")      # the third dart was a 20, not a 5

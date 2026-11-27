@@ -197,7 +197,8 @@ class TestService:
         service.start()
         try:
             _wait(lambda: service._deck is fresh)
-            assert first.closed and set(fresh.images) == set(range(6))
+            _wait(lambda: set(fresh.images) == set(range(6)))
+            assert first.closed
         finally:
             service.stop()
 
