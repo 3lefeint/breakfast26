@@ -76,6 +76,7 @@ FLASH_COLOR = "#e6a800"
 IMAGE_NAME = re.compile(r"^\w[\w .\-]{0,78}\.(png|jpe?g|webp)$", re.IGNORECASE)
 MAX_IMAGE_BYTES = 2_000_000
 IMAGE_DIR_NAME = "streamdeck"       # next to config.toml
+DEFAULT_LAYOUT = Path(__file__).parent / "streamdeck_default.json"      # the keys that apply until a layout is saved
 ICON_DIR = Path(__file__).parent / "streamdeck_icons"     # the icons that come with Breakfast; a file of the same name in IMAGE_DIR_NAME wins
 PREVIEW_SIZE = (96, 96)
 EDITOR_PREVIEW_SIZE = (216, 216)
@@ -237,6 +238,15 @@ def clean_folders(folders, custom_ids=()):
         ids.append(folder_id)
         named.append((folder_id, name, folder.get("keys", [])))
     return [{"id": i, "name": n, "keys": clean_keys(k, custom_ids, ids)} for i, n, k in named]
+
+
+def default_keys():
+    """The keys of the layout that comes with Breakfast (empty when the file is missing or not valid)."""
+    try:
+        return clean_keys(json.loads(DEFAULT_LAYOUT.read_text(encoding="utf-8"))["keys"])
+    except (OSError, ValueError, KeyError, TypeError):
+        log.warning("The default Stream Deck layout could not be read")
+        return []
 
 
 def prune_keys(keys, custom_ids, folder_ids):
@@ -721,8 +731,18 @@ class StreamDeckService:
             log.warning("The [streamdeck] folders in config.toml are not valid, ignored")
             return []
 
+    def using_default(self):
+        """True while no layout has been saved: the keys are those of the layout that comes with Breakfast."""
+        return "keys" not in self._cfg()
+
+    def load_default(self):
+        """Replace the keys by those of the layout that comes with Breakfast."""
+        self.update(keys=default_keys())
+
     def keys(self):
         cfg = self._cfg()
+        if "keys" not in cfg:
+            return default_keys()
         try:
             return clean_keys(cfg.get("keys", []), {a["id"] for a in self.actions()}, {f["id"] for f in self.folders()})
         except ValueError:
@@ -1373,6 +1393,7 @@ class StreamDeckService:
                 "custom_actions": self.actions(),
                 "images": self.images(),
                 "icons": self.icons(),
+                "default_layout": self.using_default(),
                 "symbols": list(SYMBOLS),
                 "show_values": list(SHOW_VALUES),
                 "value_tokens": list(VALUE_TOKENS),

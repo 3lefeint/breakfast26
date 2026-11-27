@@ -197,6 +197,16 @@
     draft.image = '';
   }
 
+  async function loadDefault() {
+    if (!data.default_layout && !await confirmDialog(t('Replace the keys of the main layout by the default layout?'))) return;
+    const res = await apiJson('POST', `${URL}/default`);
+    if (res.error) { error = res.error; return; }
+    error = '';
+    data = res;
+    open('');
+    selected = null;
+  }
+
   // ---- custom actions ----
   const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
   const emptyAction = () => ({ id: '', name: '', kind: 'route', method: 'POST', target: '', body: '' });
@@ -270,6 +280,11 @@
     <input type="range" min="0" max="100" value={data.brightness} onchange={setBrightness}>
     <span class="val">{data.brightness} %</span>
   </label>
+
+  <div class="defaultbar">
+    <button type="button" class="act" onclick={loadDefault}>{t('Load default layout')}</button>
+    {#if data.default_layout}<span>{t('The default layout is shown until you change a key.')}</span>{/if}
+  </div>
 
   <div class="folderbar">
     <select value={view.folder} onchange={(e) => open(e.currentTarget.value)} aria-label={t('Folder')}>
@@ -478,6 +493,7 @@
   .device.ok { color: var(--green); }
   .status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 0.9rem; }
   .dot { width: 0.8rem; height: 0.8rem; border-radius: 50%; border: 1px solid var(--glass-border); }
+  .defaultbar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem; }
   .brightness { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem; }
   .brightness input { flex: 0 1 14rem; accent-color: var(--accent); }
   .val { font-size: 0.8rem; min-width: 3rem; }

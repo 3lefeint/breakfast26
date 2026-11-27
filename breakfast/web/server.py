@@ -3994,6 +3994,15 @@ async def streamdeck_put(body: StreamDeckBody):
     return _streamdeck_snapshot()
 
 
+@app.post("/api/streamdeck/default")
+async def streamdeck_default():
+    """Replace the keys by those of the layout that comes with Breakfast."""
+    if not _streamdeck:
+        return {"error": "Stream Deck not available"}
+    _streamdeck.load_default()
+    return _streamdeck_snapshot()
+
+
 @app.get("/api/streamdeck/images/{name}")
 async def streamdeck_image(name: str):
     if not _streamdeck or not streamdeck_mod.IMAGE_NAME.match(name):
