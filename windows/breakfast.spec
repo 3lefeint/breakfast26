@@ -41,6 +41,7 @@ with open(_version_file, "w", encoding="utf-8") as fh:
 datas = [
     (str(root / "breakfast" / "web" / "dist"), "breakfast/web/dist"),   # the output of `npm run build`
     (str(root / "breakfast" / "web" / "static"), "breakfast/web/static"),
+    (str(root / "breakfast" / "streamdeck_icons"), "breakfast/streamdeck_icons"),
     (str(root / "CHANGELOG.md"), "."),
 ]
 datas += [(plan, "tools") for plan in glob.glob(str(root / "tools" / "voicepack_*.toml"))]

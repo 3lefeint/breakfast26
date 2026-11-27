@@ -4,7 +4,7 @@
   // preview), a frame, and the background color. The preview is drawn by Breakfast itself, so it is what the device shows.
   import { onDestroy } from 'svelte';
 
-  let { entry, images, symbols, symbolLabel, valueTokens, onchange, onclose } = $props();
+  let { entry, images, icons, symbols, symbolLabel, valueTokens, onchange, onclose } = $props();
 
   const STEPS = 12;
   const clone = (d) => JSON.parse(JSON.stringify(d));
@@ -151,6 +151,7 @@
             <optgroup label={t('Symbols')}>
               {#each symbols as sym (sym)}<option value={'symbol:' + sym}>{symbolLabel[sym] || sym}</option>{/each}
             </optgroup>
+            <optgroup label={t('Icons')}>{#each icons as f (f)}<option value={f}>{f.replace(/^icon_/, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ')}</option>{/each}</optgroup>
             {#if images.length}
               <optgroup label={t('Your images')}>{#each images as f (f)}<option value={f}>{f}</option>{/each}</optgroup>
             {/if}

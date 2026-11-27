@@ -21,6 +21,13 @@
   const SHOW_LABEL = { player: t('Player on turn'), remaining: t('Remaining score'), lives: t('Lives'),
                        darts: t('Darts in the turn'), round: t('Round') };
   const SOUND = 'sound:';
+  // The icon that belongs to an action: its own file, or the one of its kind (a sound, a folder, dart 1 to 3).
+  const iconOf = (action) => {
+    const kind = action.startsWith(SOUND) ? 'sound' : action.startsWith('folder:') ? 'folder' : action.replace(/:\d$/, '');
+    const file = `icon_${kind}.png`;
+    return data?.icons.includes(file) ? file : '';
+  };
+  const iconLabel = (file) => file.replace(/^icon_/, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ');
   const labelOf = (id) => ACTION_LABEL[id] || (id.startsWith(SOUND) ? id.slice(SOUND.length).replace(/\.[^.]+$/, '') : '') || data?.actions.find((a) => a.id === id)?.label || data?.folder_actions.find((a) => a.id === id)?.label || '';
   const DEFAULT_HOLD = 0.8;
   const BOARD_STATUS_LABEL = { green: t('ready to throw'), yellow: t('takeout or starting'), red: t('stopped'), off: t('unknown') };
@@ -121,10 +128,8 @@
     // A board reset has to be held by default, so it is not run by a press by accident.
     if (!previous && (draft.action === 'reset_board' || draft.action === 'cancel_game')) draft.hold = DEFAULT_HOLD;
     if ((draft.action.startsWith('correct_dart:') || draft.action.startsWith('confirm_dart:')) && draft.label === labelOf(draft.action)) draft.label = 'D' + draft.action.slice(-1);
-    if (draft.action === 'cancel_game' && !draft.image) draft.image = 'symbol:cancel';
-    if (draft.action === 'fun_mode' && !draft.image) draft.image = 'symbol:fun';
-    if ((draft.action.startsWith(SOUND) || draft.action === 'random_sound') && !draft.image) draft.image = 'symbol:sound';
-    if (draft.action.startsWith('folder:') && !draft.image) draft.image = 'symbol:folder';
+    // The key shows the icon of its action; an icon that was set for the previous action follows the new one.
+    if (!draft.image || (previous && draft.image === iconOf(previous.action))) draft.image = iconOf(draft.action);
     await save();
   }
 
@@ -359,6 +364,9 @@
             <optgroup label={t('Symbols')}>
               {#each data.symbols as sym (sym)}<option value={'symbol:' + sym}>{SYMBOL_LABEL[sym]}</option>{/each}
             </optgroup>
+            <optgroup label={t('Icons')}>
+              {#each data.icons as f (f)}<option value={f}>{iconLabel(f)}</option>{/each}
+            </optgroup>
             {#if data.images.length}
               <optgroup label={t('Your images')}>
                 {#each data.images as f (f)}<option value={f}>{f}</option>{/each}
@@ -381,7 +389,7 @@
         </div>
         {#if designing}
           {#key selected}
-            <KeyDesigner entry={{ ...draft, key: selected }} images={data.images} symbols={data.symbols} symbolLabel={SYMBOL_LABEL}
+            <KeyDesigner entry={{ ...draft, key: selected }} images={data.images} icons={data.icons} symbols={data.symbols} symbolLabel={SYMBOL_LABEL}
                          valueTokens={data.value_tokens} onchange={saveDesign} onclose={() => (designing = false)} />
           {/key}
         {/if}
