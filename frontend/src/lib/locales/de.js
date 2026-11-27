@@ -1731,6 +1731,7 @@ export default {
   'Fun Mode': 'Fun-Mode',
   'Fun': 'Fun',
   'Play a sound': 'Sound abspielen',
+  'Play Random Sound': 'Zufälligen Sound abspielen',
   'Pick a route': 'Route wählen',
   'Choose from the routes of Breakfast': 'Aus den Routen von Breakfast wählen',
   'Correct dart 1': 'Dart 1 korrigieren',

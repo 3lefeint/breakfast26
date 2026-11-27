@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Stream Deck action *Play Random Sound*: plays one sound of the library shorter than 5 seconds in the background, without waiting for or cutting off the calls.
 - API: `GET /api/scenes/sounds` lists the sound library without the scenes.
 - SCENES.md is the technical reference for scenes: every node with its fields and limits, the triggers with their facts, the REST routes and examples, so that scenes can be made through the API. The Swagger UI of the API is served at `/docs`, with the routes in groups (Scenes, the games, Players, Stats, Voice pack, Circle, Admin, ...), and the body of a scene is described in `/openapi.json`.
 - Stream Deck display keys show a value of the game in play (the player on turn, remaining score, lives, darts of the turn, round) and flash when an achievement is earned; they are set per key under Settings → Stream Deck (`show`). (#109)

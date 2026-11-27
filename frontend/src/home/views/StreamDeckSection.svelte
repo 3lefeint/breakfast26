@@ -13,7 +13,7 @@
 
   const URL = '/api/streamdeck';
   const ACTION_LABEL = { reset_board: t('Reset Board'), start_board: t('Start Board'), undo: t('Undo'),
-                         next_player: t('Next Player'), next_game: t('Next Game'), cancel_game: t('Cancel Game'), fun_mode: t('Fun Mode'), detect_bouncer: t('Bouncer'), detect_mark: t('Mark'),
+                         next_player: t('Next Player'), next_game: t('Next Game'), cancel_game: t('Cancel Game'), fun_mode: t('Fun Mode'), detect_bouncer: t('Bouncer'), detect_mark: t('Mark'), random_sound: t('Play Random Sound'),
                          'confirm_dart:1': t('Confirm dart 1'), 'confirm_dart:2': t('Confirm dart 2'), 'confirm_dart:3': t('Confirm dart 3'),
                          'correct_dart:1': t('Correct dart 1'), 'correct_dart:2': t('Correct dart 2'), 'correct_dart:3': t('Correct dart 3') };
   const SYMBOL_LABEL = { reset: t('Reset'), start: t('Start'), undo: t('Undo'), next_player: t('Next Player'), next_game: t('Next Game'), cancel: t('Cancel'), sound: t('Sound'), fun: t('Fun'),
@@ -123,7 +123,7 @@
     if ((draft.action.startsWith('correct_dart:') || draft.action.startsWith('confirm_dart:')) && draft.label === labelOf(draft.action)) draft.label = 'D' + draft.action.slice(-1);
     if (draft.action === 'cancel_game' && !draft.image) draft.image = 'symbol:cancel';
     if (draft.action === 'fun_mode' && !draft.image) draft.image = 'symbol:fun';
-    if (draft.action.startsWith(SOUND) && !draft.image) draft.image = 'symbol:sound';
+    if ((draft.action.startsWith(SOUND) || draft.action === 'random_sound') && !draft.image) draft.image = 'symbol:sound';
     if (draft.action.startsWith('folder:') && !draft.image) draft.image = 'symbol:folder';
     await save();
   }

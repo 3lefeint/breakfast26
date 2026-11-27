@@ -7,6 +7,8 @@ for the sound of a key (a file called `nice.mp3` here is not the `nice` call).
 import logging
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -32,6 +34,34 @@ def files(audio) -> list:
     if not path or not path.is_dir():
         return []
     return sorted(p.name for p in path.iterdir() if p.is_file() and p.suffix.lower() == ".mp3")
+
+
+_durations = {}      # (path, modification time) -> seconds
+
+
+def duration(path: Path) -> float | None:
+    """The length of a sound file in seconds, None when it cannot be read (no ffprobe or not a sound)."""
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    if key not in _durations:
+        seconds = None
+        if shutil.which("ffprobe"):
+            try:
+                out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                                     capture_output=True, text=True, timeout=10).stdout.strip()
+                seconds = float(out)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                log.warning("Could not read the length of %s", path.name)
+        _durations[key] = seconds
+    return _durations[key]
+
+
+def short_files(audio, seconds: float) -> list:
+    """The files of the library that are shorter than *seconds*."""
+    path = folder(audio)
+    return [f for f in files(audio) if (d := duration(path / f)) is not None and d < seconds]
 
 
 def used_by(scene_list: list, filename: str) -> list:

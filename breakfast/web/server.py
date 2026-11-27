@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import tempfile
 import threading
@@ -729,6 +730,21 @@ def _play_library_sound(name: str) -> dict:
     return {"ok": True}
 
 
+RANDOM_SOUND_SECONDS = 5
+
+
+def _play_random_sound() -> dict:
+    """Play one sound of the library shorter than RANDOM_SOUND_SECONDS beside everything else: on the ambient channel, so
+    the voice calls neither wait for it nor are cut off by it."""
+    if not _audio_engine:
+        return {"error": "no audio engine"}
+    short = scene_sounds.short_files(_audio_engine, RANDOM_SOUND_SECONDS)
+    if not short:
+        return {"error": "no sound shorter than %d seconds in the library" % RANDOM_SOUND_SECONDS}
+    _audio_engine.play_file(random.choice(short), channel="ambient")
+    return {"ok": True}
+
+
 def _action_routes() -> list:
     """The routes of Breakfast that change something, for the picker of the custom actions of a Stream Deck key."""
     found = set()
@@ -764,6 +780,8 @@ def run_control(action: str) -> dict:
         return _detection_note(action[len("detect_"):])
     if action.startswith("confirm_dart:"):
         return _confirm_dart(action)
+    if action == "random_sound":
+        return _play_random_sound()
     if action.startswith("sound:"):
         return _play_library_sound(action[len("sound:"):])
     if action in _LOCAL_CONTROLS:
