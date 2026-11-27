@@ -2,23 +2,21 @@
 # Copy it next to docker-compose.yml under this name: `docker compose` reads it by itself, and the updater, which runs the same
 # command in that folder, keeps it. It is not tracked in the checkout, so a release does not touch it.
 #
-# The cameras are the stable names of the udev rule that install.sh writes (/dev/breakfast-cam0 to 2, one per USB port), so
-# a changed /dev/videoN after a boot or a new plug does not matter and the container needs no re-creating. Docker follows the links.
-# The container starts only while these three devices exist. The ACL that lets the host user open a Stream Deck exists while that user is
+# The cameras come through the folder /dev/breakfast-video/, which the udev rule that install.sh writes fills with one node per camera,
+# named after its USB port. The container starts with or without cameras and sees one that is plugged in later; which camera is
+# camera 1 to 3 is chosen in Breakfast under Settings. The ACL that lets the host user open a Stream Deck exists while that user is
 # logged in at the host; without it a udev rule for vendor 0fd9 (group plugdev, mode 0660) and `group_add: "46"` are needed.
 #
 # `[cameras] enabled` in data/config.toml says whether Breakfast uses them; breakfast-mode.sh switches that (and Autodarts).
 services:
   breakfast:
-    devices:
-      - /dev/breakfast-cam0:/dev/cam0
-      - /dev/breakfast-cam1:/dev/cam1
-      - /dev/breakfast-cam2:/dev/cam2
     group_add:
       - "44"              # the group `video` of the host: the container runs as the user of the checkout, the camera nodes belong to that group
     volumes:
+      - /dev/breakfast-video:/dev/breakfast-video   # the cameras (a folder, so one that is plugged in later shows up; `/dev` itself is not mounted)
       - /dev/bus/usb:/dev/bus/usb       # a Stream Deck on the host: the real nodes keep their ACL (a `devices:` entry loses it, the container is not root)
     device_cgroup_rules:
+      - 'c 81:* rmw'                    # video4linux: the cameras, also one that is plugged in later
       - 'c 189:* rmw'                   # USB devices, also one that is plugged in later
     ports:
       - "8770:8770"       # diagnostics page of the detection (calibration, live pictures)

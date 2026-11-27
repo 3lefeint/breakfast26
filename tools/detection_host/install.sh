@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Sets up a Linux machine to start Breakfast with its own dart detection or with the board manager: fixed names for the three cameras,
-# the compose override that maps them, the switch script, two desktop shortcuts, and for Autodarts version 1 the polkit rule. Run it as
-# the user of the machine; it asks for the sudo password where it writes below /etc. It starts and stops nothing.
+# Sets up a Linux machine to start Breakfast with its own dart detection or with the board manager: the udev rule that hands the cameras
+# to Breakfast, the compose override, the switch script, two desktop shortcuts, and for Autodarts version 1 the polkit rule. Run it as
+# the user of the machine; it asks for the sudo password where it writes below /etc and /usr/local. It starts and stops nothing.
 #
 #   tools/detection_host/install.sh [APP_DIR]       APP_DIR is the checkout with docker-compose.yml (default ~/apps/breakfast26)
 #
-# The cameras get their names by USB port (a camera moved to another port needs this script again): it asks you to unplug each camera
-# one after the other and plug it in again, and reads the port from what disappeared. Camera 1 is the first position of your board,
-# camera 3 the third. INSTALL_PORTS="1-1.1.1 1-1.1.2 1-1.1.3" gives the three ports and skips the questions.
-# Settings (environment, for tests): BIN_DIR, DESKTOP_DIR, APPS_DIR, UDEV_RULE, POLKIT_RULE, SUDO.
+# The cameras need no questions here: the rule puts every camera into /dev/breakfast-video/, named after its USB port without the bus
+# number (which changes between boots and updates). Which camera is camera 1 to 3 is chosen in Breakfast under Settings.
+# Settings (environment, for tests): BIN_DIR, DESKTOP_DIR, APPS_DIR, UDEV_RULE, VIDEO_HELPER, POLKIT_RULE, SUDO.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -17,60 +16,24 @@ BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 DESKTOP_DIR="${DESKTOP_DIR:-$HOME/Desktop}"
 APPS_DIR="${APPS_DIR:-$HOME/.local/share/applications}"
 UDEV_RULE="${UDEV_RULE:-/etc/udev/rules.d/99-breakfast-cameras.rules}"
+VIDEO_HELPER="${VIDEO_HELPER:-/usr/local/bin/breakfast-video-node}"
 POLKIT_RULE="${POLKIT_RULE:-/etc/polkit-1/rules.d/50-breakfast-detect.rules}"
 SUDO="${SUDO:-sudo}"
 
 [ -f "$APP_DIR/docker-compose.yml" ] || { echo "no docker-compose.yml in $APP_DIR: give the folder of the checkout as the argument" >&2; exit 1; }
 
-video_ports() {       # the USB ports of the cameras that are plugged in now (the video node with index 0 of each)
-  local node
-  for node in /sys/class/video4linux/video*; do
-    [ -e "$node" ] || continue
-    [ "$(cat "$node/index" 2>/dev/null)" = 0 ] || continue
-    basename "$(readlink -f "$node/device/..")"
-  done | sort -u
-}
-
-ask_port() {          # $1 = number of the camera; prints its USB port
-  local before after gone
-  before="$(video_ports)"
-  read -rp "Unplug camera $1 of 3, then press Enter: " _ >&2
-  after="$(video_ports)"
-  gone="$(comm -23 <(echo "$before") <(echo "$after"))"
-  if [ "$(echo "$gone" | grep -c .)" != 1 ]; then
-    echo "expected one camera to disappear, saw: ${gone:-none}" >&2
-    read -rp "Plug it in again, then press Enter: " _ >&2
-    return 1
-  fi
-  read -rp "Plug it in again, then press Enter: " _ >&2
-  echo "$gone"
-}
-
-if [ -n "${INSTALL_PORTS:-}" ]; then
-  read -r -a ports <<< "$INSTALL_PORTS"
-else
-  ports=()
-  for i in 1 2 3; do
-    until port="$(ask_port "$i")"; do echo "again" >&2; done
-    ports+=("$port")
-  done
-fi
-[ "${#ports[@]}" -eq 3 ] || { echo "three ports are needed, got ${#ports[@]}" >&2; exit 1; }
-for p in "${ports[@]}"; do [[ "$p" =~ ^[0-9]+-[0-9.]+$ ]] || { echo "not a USB port: $p" >&2; exit 1; }; done
-[ "$(printf '%s\n' "${ports[@]}" | sort -u | wc -l)" -eq 3 ] || { echo "the three cameras must be on three different ports" >&2; exit 1; }
-
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
 {
-  echo "# Fixed names for the three board cameras, one per USB port. Written by install.sh; run it again when a camera moves to another port."
-  for i in 0 1 2; do
-    echo "SUBSYSTEM==\"video4linux\", ATTR{index}==\"0\", KERNELS==\"${ports[$i]}\", SYMLINK+=\"breakfast-cam$i\""
-  done
+  echo "# Hands the cameras to Breakfast: one node per camera in /dev/breakfast-video/, named after its USB port. Written by install.sh."
+  echo "SUBSYSTEM==\"video4linux\", ATTR{index}==\"0\", ACTION==\"add|change\", RUN+=\"$VIDEO_HELPER add %k %M %m\""
+  echo "SUBSYSTEM==\"video4linux\", ACTION==\"remove\", RUN+=\"$VIDEO_HELPER remove %M %m\""
 } > "$tmp/rule"
+$SUDO install -m 755 "$HERE/breakfast-video-node.sh" "$VIDEO_HELPER"
 $SUDO install -m 644 "$tmp/rule" "$UDEV_RULE"
 $SUDO udevadm control --reload-rules
 $SUDO udevadm trigger --subsystem-match=video4linux
-echo "camera names: $UDEV_RULE (/dev/breakfast-cam0 to 2)"
+echo "cameras: $UDEV_RULE fills /dev/breakfast-video (helper $VIDEO_HELPER); choose them in Breakfast under Settings"
 
 if systemctl cat autodarts.service >/dev/null 2>&1; then      # version 1: a system unit, a normal user needs the rule to start and stop it
   sed "s/BOARD_USER/$(id -un)/" "$HERE/50-breakfast-detect.rules" > "$tmp/polkit"
