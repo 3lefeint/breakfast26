@@ -287,7 +287,7 @@ class TestUndoAndCorrections:
     def test_undo_takes_the_last_turn_back_also_from_the_statistics(self):
         m = Match()
         play(m.game, hit(20, 3), hit(20, 3), hit(20, 3))
-        assert m.game.undo()
+        assert m.game.undo() and m.game.undo() and m.game.undo()       # one dart at a time
         assert m.scores() == {"ana": 501, "bo": 501} and m.game.snapshot()["current_player"] == "ana"
         assert m.turns() == []
         assert m.state.remaining_scores == {"player1": 501, "player2": 501}
@@ -295,6 +295,55 @@ class TestUndoAndCorrections:
         assert m.tracker.computed_session_stats() == {}
         play(m.game, hit(1, 1))
         assert [t["turn"] for t in m.turns()] == [1] and m.turns()[0]["score"] == 1
+
+    def test_undo_takes_back_the_last_dart_of_the_turn_in_progress(self):
+        m = Match()
+        m.game.on_board_state(1, [hit(20, 3)])
+        m.game.on_board_state(2, [hit(20, 3), hit(19, 3)])
+        assert m.game.undo()
+        assert m.scores() == {"ana": 441, "bo": 501} and m.game.snapshot()["current_player"] == "ana"
+        # the dart is still on the board: it is not counted again, the next one is
+        m.game.on_board_state(2, [hit(20, 3), hit(19, 3)])
+        m.game.on_board_state(3, [hit(20, 3), hit(19, 3), hit(5, 1)])
+        assert m.scores()["ana"] == 436
+        pull(m.game)
+        assert [t["score"] for t in m.turns()] == [65] and m.game.snapshot()["current_player"] == "bo"
+
+    def test_undo_of_the_only_dart_leaves_the_turn_empty_and_ending_it_costs_nothing(self):
+        m = Match()
+        m.game.on_board_state(1, [hit(20, 3)])
+        assert m.game.undo()
+        assert m.scores()["ana"] == 501
+        pull(m.game)
+        assert m.turns() == [] and m.game.snapshot()["current_player"] == "ana"
+
+    def test_undo_of_a_dart_entered_by_hand_drops_it(self):
+        m = Match()
+        m.game.correct_current_dart(0, "T20")
+        assert m.scores()["ana"] == 441
+        assert m.game.undo()
+        assert m.scores()["ana"] == 501
+        m.game.on_board_state(1, [hit(5, 1)])
+        assert m.scores()["ana"] == 496
+
+    def test_undo_after_a_turn_goes_on_with_it_without_its_last_dart(self):
+        m = Match()
+        play(m.game, hit(20, 3), hit(20, 3), hit(20, 3))
+        assert m.game.undo()
+        assert m.game.snapshot()["current_player"] == "ana" and m.scores()["ana"] == 381 and m.turns() == []
+        m.game.on_board_state(1, [hit(1, 1)])                       # the third dart comes in at its place
+        assert m.scores()["ana"] == 380
+        pull(m.game)
+        assert [t["score"] for t in m.turns()] == [121] and m.game.snapshot()["current_player"] == "bo"
+
+    def test_undo_of_the_winning_dart_opens_the_match_without_it(self):
+        m = Match(start=100)
+        play(m.game, hit(20, 3), hit(20, 2))
+        assert m.game.snapshot()["state"] == "finished"
+        assert m.game.undo()
+        snap = m.game.snapshot()
+        assert snap["state"] == "playing" and snap["current_player"] == "ana" and m.scores()["ana"] == 40
+        assert m.turns() == []
 
     def test_undo_walks_back_several_turns(self):
         m = Match()
@@ -826,7 +875,8 @@ class TestOnline:
     def game(self, **kw):
         online = FakeOnline()
         kw.setdefault("bull_off", False)
-        game = X01Game(["ana", "bo"], lambda e: None, start=40, start_delay=0, keep_order=True, online=online,
+        kw.setdefault("start", 40)
+        game = X01Game(["ana", "bo"], lambda e: None, start_delay=0, keep_order=True, online=online,
                        local_players=["ana"], **kw)
         game.announce_start()
         return game, online
@@ -912,6 +962,44 @@ class TestOnline:
         assert game.snapshot()["pull_darts"] is True
         assert game.online_local_undo()
         assert game.snapshot()["pull_darts"] is False and game.turn_seq == 0
+
+    def test_a_dart_in_progress_is_taken_back_without_the_relay_and_the_others_are_told(self):
+        game, online = self.game()
+        game.on_board_state(2, [hit(20, 1), hit(5, 1)])
+        online.frames.clear()
+        assert game.online_local_undo()
+        assert online.frames == [("dart", 1, "ana", 1)] and game.scores["ana"] == 40
+        assert game.online_local_undo()
+        assert online.frames[-1] == ("dart", 1, "ana", 0)           # the display of the others is cleared
+        assert not game.online_local_undo()                         # no dart left: the relay takes the turn back
+
+    def test_a_site_that_is_told_of_no_darts_clears_the_turn_it_shows(self):
+        game, online = self.game()
+        game.on_board_state(0, [])
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])                                  # bo is up
+        game.remote_dart("bo", [hit(20, 1), hit(20, 1)])
+        assert game._last_throws
+        game.remote_dart("bo", [])
+        assert game._last_throws == [] and game.scores["bo"] == 40
+
+    def test_the_relay_takes_the_turn_back_and_it_goes_on_here_without_its_last_dart(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(20, 1)])
+        game.on_board_state(2, [hit(20, 1), hit(5, 1)])
+        game.on_board_state(0, [])
+        online.frames.clear()
+        assert game.undo_online()
+        assert game.current == "ana" and game.turn_seq == 0 and len(game._last_throws) == 1
+        assert online.frames[-1] == ("dart", 1, "ana", 1)
+
+    def test_the_relay_takes_the_turn_of_another_site_back_without_opening_it_here(self):
+        game, online = self.game()
+        game.on_board_state(1, [hit(5, 1)])
+        game.on_board_state(0, [])
+        game.remote_turn("bo", [hit(1, 1), hit(1, 1)])
+        assert game.undo_online()
+        assert game.current == "bo" and game._last_throws == []
 
     def test_hash_and_snapshot_tell_about_the_online_match(self):
         game, online = self.game()

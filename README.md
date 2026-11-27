@@ -316,8 +316,9 @@ counts as that player, also for matches stored before. Online play needs a relay
   If a site is lost for good the match can only be ended.
 - **Live:** the darts of a turn in progress show at the other sites as they land, also those set by hand, and every site shows
   the averages of all players.
-- **Undo and corrections:** the last turn can be undone and a dart of it corrected (in Elimination also its total): the site
-  that threw the turn does it, and the other sites play it again.
+- **Undo and corrections:** undo takes back the last dart, and with no dart in the turn the last turn goes on without its last dart; a
+  dart of the last turn can be corrected (in Elimination also its total): the site that threw the turn does it, and the other sites
+  play it again.
 - **Ending:** when the host ends the match or leaves, it ends at every site at once.
 - **Voice chat:** *Voice chat* in the lobby and on the TV view opens a small window: the chat of this match or one of the
   channels of the circle. Either one opens in its own browser tab, on the relay's secure page, directly between the browsers;
