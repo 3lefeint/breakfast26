@@ -42,6 +42,7 @@
 - Settings → Connections has a switch "Dart detection (experimental)" for `[cameras] enabled`; it needs a restart and is refused while a match is running; a camera that the board manager holds shows "in use by another program" and a missing one "not found" (#183).
 
 ### Changed
+- Undo in X01 takes back one dart at a time: the last dart of the turn in progress, a dart still on the board is not counted again; with no dart in the turn, the last turn goes on without its last dart, also the one that won the match (a bot's turn goes as a whole); in an online match the other sites follow (#156).
 - The diagnostics page of the dart detection has the tabs Live, Darts and Problem: Live marks a change in the camera pictures, Darts marks every dart of the turn in its own color on one picture per camera, Problem shows the last blocked or unclear change.
 - The texts of the Board page, the dart detection setup and its settings use one term per function: Auto calibrate, Manual calibration, Reset board, Darts detected, Reload camera, Restore defaults.
 - Admin area: *Remove* on the Sites tab deletes a site with its records, shared scenes, sound files, links, invitations and open matches, for approved and unapproved sites alike; a site that reports back with its old identity resets its connection by itself, keeps its local data and shows the registration form again with a note. (#167)

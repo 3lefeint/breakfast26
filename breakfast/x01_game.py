@@ -355,13 +355,13 @@ class X01Game(TurnGame):
             self._replay_turn()
         self._send_live_darts()
 
-    def _send_live_darts(self):
+    def _send_live_darts(self, clear=False):
         """The darts of the turn in progress go to the other sites of an online match as they change, also those that
         were set by hand (the board's own darts go from _dart_seen)."""
         if not self.online or self._remote or not self.is_local(self.current):
             return
         throws = self._last_turn_throws if self.phase == "bull_off" else self._last_throws
-        if throws:
+        if throws or (clear and self.phase == "playing"):
             self.online.send_dart(self.turn_seq + 1, self.current, throws)
 
     def next_turn(self):
@@ -395,7 +395,7 @@ class X01Game(TurnGame):
         st = self._turn_start
         player = st["current"]
         res = self._result
-        self._push_history(st, turn_recorded=self.stats_db is not None)
+        self._push_history({**st, "throws": list(self._last_throws)}, turn_recorded=self.stats_db is not None)
         self._last_turn_throws = list(self._last_throws)
         self._last_turn_player = player
         thrown = list(self._last_turn_throws)
@@ -670,6 +670,7 @@ class X01Game(TurnGame):
     def _restore(self, snap):
         self._load_state(snap)
         self._turn_start = copy.deepcopy(snap)
+        self._turn_start.pop("throws", None)
         self._result = None
         self._em = self._fresh_em()
         self._last_turn_throws, self._last_turn_player = [], None
@@ -694,9 +695,14 @@ class X01Game(TurnGame):
             return False
         return self._undo()
 
-    def _undo(self):
+    def _undo(self, whole_turn=False):
+        """Take the last dart of the turn in progress back, or the last turn when there is none (or `whole_turn`:
+        the relay took it back) and go on with it without its last dart."""
+        if not whole_turn and self.phase == "playing" and self.state == "playing" and self._current_darts:
+            return self._undo_open_dart_x01()
         if not self._history:
             return False
+        throws = list(self._history[-1].get("throws") or [])
         was_finished = self.state == "finished"
         recorded = bool(self._history[-1].get("turn_recorded"))
         leg_recorded = bool(self._history[-1].get("leg_recorded"))
@@ -704,11 +710,37 @@ class X01Game(TurnGame):
         if self._em["flushed"]:         # the turn in progress already won a leg: it is stored
             self._emit_resync(self._turn_start, undo_stored=True)
         ok = super().undo()
+        if ok:
+            self._last_throws, self._dart_overrides, self._hidden = [], {}, set()
         if ok and state_before.get("match_started"):
             self._emit_resync(self._turn_start, undo_stored=recorded, undo_leg=leg_recorded)
         if ok and was_finished and self.state == "playing":
             self._notify_end(None)
+        if ok and throws and state_before["phase"] == "playing" and self.phase == "playing" \
+                and self.current not in self.bot_levels and (not self.online or self.is_local(self.current)):
+            self._reopen_last_turn(throws[:-1])
         return ok
+
+    def _undo_open_dart_x01(self):
+        """Take the last dart of the turn in progress back and tell what the turn holds now."""
+        self._undo_open_dart()
+        self._silent = True
+        try:
+            self._replay_turn()
+        finally:
+            self._silent = False
+        self._send_live_darts(clear=True)
+        return True
+
+    def _reopen_last_turn(self, throws):
+        """The turn that was walked back goes on as the turn in progress, without its last dart."""
+        self._reopen_turn(throws)
+        self._silent = True
+        try:
+            self._replay_turn()
+        finally:
+            self._silent = False
+        self._open_turn_changed()
 
     def correct_last_dart(self, dart_index, field, point=None):
         """Correct a dart of the last finished turn, also after it ended the match: the game goes back to before
@@ -817,7 +849,18 @@ class X01Game(TurnGame):
 
     def remote_dart(self, player, throws):
         """The darts of a remote player's turn in progress, shown like local ones."""
-        if self.state != "playing" or player != self.current or not throws:
+        if self.state != "playing" or player != self.current:
+            return
+        if not throws:
+            if self.phase == "playing" and self._last_throws:       # the darts of the turn were taken back
+                self._last_throws, self._current_darts, self._dart_overrides = [], [], {}
+                self._prev_count, self._hidden = 0, set()
+                self._silent = True
+                try:
+                    self._replay_turn()
+                finally:
+                    self._silent = False
+                self._show_remote_darts([])
             return
         if self.phase == "bull_off":
             self._remote_bull_off(throws[0], end=False)
@@ -874,7 +917,7 @@ class X01Game(TurnGame):
             return False
         if self.phase == "bull_off" and self._one_dart_taken:
             self._undo()                        # a dart in progress, not a turn the relay knows
-        ok = self._undo()
+        ok = self._undo(whole_turn=True)
         # What the board showed while a remote player was up is not a turn of this game.
         self._prev_count, self._await_pull = 0, False
         self._show_remote_darts([])
@@ -882,11 +925,15 @@ class X01Game(TurnGame):
             self.turn_seq -= 1
             if self.turn_seq >= 1:
                 self.online.send_ack(self.turn_seq, self.state_hash())
+            self._send_live_darts()             # the turn goes on here without its last dart
         return ok
 
     def online_local_undo(self):
-        """An online undo that stays at this site: the dart in progress of the bull-off, which is no turn yet."""
-        if self.online and self.phase == "bull_off" and self._one_dart_taken and self.is_local(self.current):
+        """An online undo that stays at this site: a dart in progress, which is no turn yet."""
+        if not self.online or not self.is_local(self.current):
+            return False
+        if (self.phase == "bull_off" and self._one_dart_taken) or (
+                self.phase == "playing" and self.state == "playing" and self._current_darts):
             return self._undo()
         return False
 

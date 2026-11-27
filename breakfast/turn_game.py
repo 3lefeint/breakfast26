@@ -116,6 +116,7 @@ class TurnGame:
         self._last_throws = []
         self._current_darts = []     # what each dart of the turn in progress is worth
         self._dart_overrides = {}    # dart index -> a dart corrected by tapping
+        self._hidden = set()         # places on the board of darts taken back by undo, ignored until the darts are pulled
         self._turn_snapshot = None   # the state before the last finished turn
         self._history = []           # stack of states before a turn, for undo()
 
@@ -157,6 +158,8 @@ class TurnGame:
 
     def on_board_state(self, count, throws):
         self._board_count = count
+        if count == 0:
+            self._hidden = set()
         if self._await_pull:
             if count == 0:
                 self._await_pull = False
@@ -164,6 +167,13 @@ class TurnGame:
             return
         if self.state != "playing":
             return
+        if self._hidden and count > 0:
+            # A dart that undo took back is still on the board: the game does not see it.
+            throws = [t for i, t in enumerate(throws) if i not in self._hidden]
+            count = len(throws)
+            if count == 0:
+                self._prev_count = 0
+                return
         if count > 0:
             new_vals = [self.value_of(t) for t in throws]
             seen = self._current_darts
@@ -281,6 +291,32 @@ class TurnGame:
         """*turn_recorded*: whether a database row was written for the turn, so that undo()
         knows whether there is one to delete (False without a stats database)."""
         self._history.append({**snapshot, "turn_recorded": turn_recorded})
+
+    def _undo_open_dart(self):
+        """Take the last dart of the turn in progress back. A dart the board reported stays on the board and is
+        ignored until the darts are pulled; one entered by hand just goes. Returns False when the turn has no dart."""
+        n = len(self._current_darts)
+        if self.state != "playing" or not n:
+            return False
+        idx = n - 1
+        board_index = self.board_index(idx)
+        if board_index is not None and self._board_count > 0:
+            self._hidden.add(board_index)
+        self._dart_overrides.pop(idx, None)
+        self._last_throws = self._last_throws[:idx]
+        self._current_darts = self._current_darts[:idx]
+        self._prev_count = max(0, self._prev_count - (1 if board_index is not None else 0))
+        self._publish_turn()
+        self._changed()
+        self._open_turn_changed()
+        log.info("Dart %d taken back", idx + 1)
+        return True
+
+    def _reopen_turn(self, throws):
+        """Put the darts of a turn that was walked back into the turn in progress, as darts the board will not report
+        again."""
+        self._dart_overrides = {i: {**t, "manual": True} for i, t in enumerate(throws)}
+        self._apply_dart_overrides()
 
     def undo(self) -> bool:
         """Walk back the most recently completed turn, reopening a finished game when it is the
