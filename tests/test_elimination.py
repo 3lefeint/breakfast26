@@ -575,17 +575,76 @@ class TestUndo:
         assert game.lives["bob"] == 2
         assert game.current_player == "alice"
 
-        assert game.undo() is True  # undo bob's failed turn
+        assert game.undo() is True  # undo bob's failed turn: it goes on with two darts
         assert game.lives["bob"] == 3
         assert game.current_player == "bob"
         assert game.target == 60
+        assert game.undo() is True and game.undo() is True  # his two darts, one at a time
+        assert game.current_player == "bob"
 
-        assert game.undo() is True  # undo alice's passing turn
+        assert game.undo() is True  # undo alice's passing turn: it goes on with two darts
         assert game.target == 0
         assert game.freipass is True
         assert game.current_player == "alice"
+        assert game.undo() is True and game.undo() is True
 
         assert game.undo() is False  # nothing left
+
+    def test_takes_back_the_last_dart_of_the_turn_in_progress(self):
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+        game.on_board_state(2, [_throw(20, 1), _throw(5, 1)])
+        assert game.undo() is True
+        assert game.snapshot()["current_darts"] == [20] and game.current_player == "alice"
+        game.on_board_state(2, [_throw(20, 1), _throw(5, 1)])     # the dart is still on the board
+        game.on_board_state(3, [_throw(20, 1), _throw(5, 1), _throw(1, 1)])
+        assert game.snapshot()["current_darts"] == [20, 1]
+        game.on_board_state(0, [])
+        assert game.current_player == "bob" and game.target == 21
+
+    def test_the_third_dart_announces_its_outcome_again_after_it_was_taken_back(self):
+        client = FakeMqttClient()
+        game = EliminationGame(["alice", "bob"], 3, client, "autodarts")
+        game.on_board_state(3, [_throw(20, 1)] * 3)
+        game.on_board_state(0, [])                                # alice 60, bob is up
+        game.on_board_state(3, [_throw(1, 1)] * 3)                # bob fails: life lost, announced at the third dart
+        assert game.undo() is True
+        assert game.snapshot()["current_darts"] == [1, 1] and game.lives["bob"] == 3
+        game.on_board_state(0, [])
+        game.on_board_state(1, [_throw(2, 1)])
+        game.on_board_state(2, [_throw(2, 1)] * 2)
+        game.on_board_state(3, [_throw(2, 1)] * 3)
+        assert game._preview_fired
+
+    def test_a_turn_taken_back_goes_on_without_its_last_dart(self):
+        game = EliminationGame(["alice", "bob"], 3, FakeMqttClient(), "autodarts")
+        game.on_board_state(3, [_throw(20, 1), _throw(10, 1), _throw(5, 1)])
+        game.on_board_state(0, [])
+        assert game.undo() is True
+        assert game.current_player == "alice" and game.snapshot()["current_darts"] == [20, 10]
+        game.on_board_state(1, [_throw(1, 1)])                    # the third dart comes in at its place
+        assert game.snapshot()["current_darts"] == [20, 10, 1]
+        game.on_board_state(0, [])
+        assert game.current_player == "bob" and game.target == 31
+
+    def test_a_dart_that_ended_the_match_taken_back_opens_the_match_again(self):
+        game = EliminationGame(["alice", "bob"], 1, FakeMqttClient(), "autodarts")
+        game.on_board_state(3, [_throw(20, 1)] * 3)
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)                # bob loses his last life: alice wins
+        assert game.state == "finished"
+        assert game.undo() is True
+        assert game.state == "playing" and game.current_player == "bob"
+        assert game.snapshot()["current_darts"] == [1, 1]
+
+    def test_a_bots_turn_is_taken_back_as_a_whole(self):
+        game = EliminationGame(["alice", "bot"], 3, FakeMqttClient(), "autodarts")
+        game.bot_players = {"bot"}
+        game.on_board_state(3, [_throw(20, 1)] * 3)
+        game.on_board_state(0, [])
+        game.on_board_state(3, [_throw(1, 1)] * 3)
+        game.on_board_state(0, [])
+        assert game.undo() is True and game.undo() is True        # the bot's turn goes as a whole, then alice's goes on with two darts
+        assert game.current_player == "alice"
 
     def test_is_silent(self):
         audio = FakeAudio()

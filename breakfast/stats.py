@@ -717,6 +717,11 @@ class StatsDB:
         except Exception:
             log.exception("Open turn listener failed for %s", match_id)
 
+    def open_turn_taken_back(self, match_id: str):
+        """A dart of the turn in progress was taken back: an unlock that only the darts before it no longer hold is
+        forgotten, so it is announced again when it is earned again."""
+        self._turn_stored(match_id)
+
     def open_match(self, match_id: str, game_mode: str, points_start: int, tournament_id: str | None = None):
         log.debug("DB write: open_match match_id=%s game_mode=%s points_start=%s tournament_id=%s",
                   match_id, game_mode, points_start, tournament_id)

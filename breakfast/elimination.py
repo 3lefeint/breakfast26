@@ -44,6 +44,7 @@ class EliminationGame(TurnGame):
         self._last_turn_throws = []  # the darts of the last finished turn, for correct_last_dart()
         self._last_turn_player = None
         self._silent = False         # replaying a corrected turn: no calls, no events
+        self.bot_players = set()     # the players the computer plays: an undo takes a whole turn of theirs back
         # Online play (see online.py): `online` sends this site's darts, turns and
         # state hashes to the relay, `local_players` are the players whose turns
         # are thrown at this site's board; None means every player is local.
@@ -244,6 +245,7 @@ class EliminationGame(TurnGame):
             "winner": self.winner,
             "elimination_order": list(self.elimination_order),
             "darts": list(self._current_darts),
+            "throws": list(self._last_throws),
         }
 
     def _end_turn(self):
@@ -309,7 +311,16 @@ class EliminationGame(TurnGame):
 
     def remote_dart(self, player, throws):
         """The darts of a remote player's turn in progress, shown like local ones."""
-        if self.state != "playing" or player != self.current_player or not throws:
+        if self.state != "playing" or player != self.current_player:
+            return
+        if not throws:
+            if self._current_darts:         # the darts of the turn were taken back
+                self._last_throws, self._current_darts, self._dart_overrides = [], [], {}
+                self._prev_count, self._hidden = 0, set()
+                self._outcome_published = self._preview_fired = False
+                self._publish_turn()
+                self._changed()
+                self._show_remote_darts([])
             return
         self._replay(throws)
         self._show_remote_darts(throws)
@@ -527,10 +538,33 @@ class EliminationGame(TurnGame):
         if self.online:
             log.warning("In an online match the undo goes through the relay")
             return False
+        return self._undo()
+
+    def _undo(self, whole_turn=False):
+        """Take the last dart of the turn in progress back, or the last turn when there is none (or `whole_turn`: the
+        relay took it back) and go on with it without its last dart."""
+        if not whole_turn and self.state == "playing" and self._current_darts:
+            return self._undo_open_dart()
+        throws = list(self._history[-1].get("throws") or []) if self._history else []
         undone = super().undo()
         if undone:
             self._last_turn_throws = []
             self._last_turn_player = None
+            if throws and self.current_player not in self.bot_players \
+                    and (not self.online or self.is_local(self.current_player)):
+                self._reopen_turn(throws[:-1])
+                self._publish_turn()
+                self._changed()
+                self._open_turn_changed()
+        return undone
+
+    def _undo_open_dart(self):
+        undone = super()._undo_open_dart()
+        if undone:
+            # The outcome that the third dart announced is gone, the next third dart announces it again.
+            self._outcome_published = self._preview_fired = False
+            if self.stats_db:
+                self.stats_db.open_turn_taken_back(self.match_id)
         return undone
 
     def undo_online(self) -> bool:
@@ -538,14 +572,23 @@ class EliminationGame(TurnGame):
         state hash, so that a site that does not follow shows."""
         if not self.online or self.turn_seq < 1:
             return False
-        undone = super().undo()
+        undone = self._undo(whole_turn=True)
         if undone:
-            self._last_turn_throws = []
-            self._last_turn_player = None
             self.turn_seq -= 1
             if self.turn_seq >= 1:
                 self.online.send_ack(self.turn_seq, self.state_hash())
+            if self._last_throws and self._current_darts:
+                self.online.send_dart(self.turn_seq + 1, self.current_player, self._last_throws)
         return undone
+
+    def online_local_undo(self):
+        """An online undo that stays at this site: a dart of the turn in progress, which is no turn yet."""
+        if self.online and self.state == "playing" and self._current_darts and self.is_local(self.current_player):
+            undone = self._undo()
+            if undone:
+                self.online.send_dart(self.turn_seq + 1, self.current_player, self._last_throws[:len(self._current_darts)])
+            return undone
+        return False
 
     def correct_last_dart(self, dart_index, field, point=None):
         """Correct one dart of the last finished turn, also after it ended the match: the game goes
@@ -702,7 +745,7 @@ class EliminationController(TurnGameController):
         if game.online or game.state != "playing":
             return None
         state = game._snapshot_state(game.current_player)
-        del state["darts"]
+        del state["darts"], state["throws"]
         return {"players": list(game.order), "lives": game.lives_max, "match_id": game.match_id,
                 "bots": dict(self.bots.levels), "state": state}
 
@@ -716,6 +759,7 @@ class EliminationController(TurnGameController):
                 audio=self.audio, on_change=self._on_change, match_id=saved["match_id"],
                 stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db)
             game.scenes = self.scenes
+            game.bot_players = set(bots)
             game._restore(saved["state"])
             self.game = game
         game.announce_start(calls=False)
@@ -795,6 +839,7 @@ class EliminationController(TurnGameController):
                 stats_db=StatsWithoutBots(self.stats_db, bots) if bots and self.stats_db else self.stats_db,
             )
             self.game.scenes = self.scenes
+            self.game.bot_players = set(bots)
         self.game.announce_start()
 
     def _command_start(self, cmd):
