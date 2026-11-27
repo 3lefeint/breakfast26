@@ -665,7 +665,7 @@ class TestRoutes:
 class TestRunControl:
     def test_every_stream_deck_action_is_a_control(self):
         from breakfast.web import server
-        assert set(sd.ACTIONS) == set(server._CONTROLS) | set(server._LOCAL_CONTROLS) | {"fun_mode", "detect_bouncer", "detect_mark"}
+        assert set(sd.ACTIONS) == set(server._CONTROLS) | set(server._LOCAL_CONTROLS) | {"fun_mode", "detect_bouncer", "detect_mark", "random_sound"}
 
     def test_the_cloud_client_runs_the_action(self, monkeypatch):
         from breakfast.web import server
@@ -924,6 +924,16 @@ class TestNewActions:
         monkeypatch.setattr(srv.scene_sounds, "files", lambda audio: ["horn.mp3"])
         assert srv.run_control("sound:horn.mp3") == {"ok": True} and played == ["horn.mp3"]
         assert "error" in srv.run_control("sound:other.mp3") and played == ["horn.mp3"]
+
+    def test_the_random_sound_key_plays_a_short_file_on_the_ambient_channel(self, server, monkeypatch):
+        srv, _, _, _ = server
+        calls = []
+        srv._audio_engine.play_file = lambda name, **kw: calls.append((name, kw))
+        monkeypatch.setattr(srv.scene_sounds, "short_files", lambda audio, seconds: ["a.mp3", "b.mp3"] if seconds == 5 else [])
+        assert srv.run_control("random_sound") == {"ok": True}
+        assert calls[0][0] in ("a.mp3", "b.mp3") and calls[0][1] == {"channel": "ambient"}
+        monkeypatch.setattr(srv.scene_sounds, "short_files", lambda audio, seconds: [])
+        assert "error" in srv.run_control("random_sound") and len(calls) == 1
 
     def test_the_picker_lists_routes_that_change_something_without_the_deck_itself(self, server):
         routes = server[0]._action_routes()

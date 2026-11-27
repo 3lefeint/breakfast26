@@ -37,6 +37,7 @@ ACTIONS = {
     "fun_mode": "Fun Mode",
     "detect_bouncer": "Bouncer",
     "detect_mark": "Mark",
+    "random_sound": "Play Random Sound",
 }
 SOUND_PREFIX = "sound:"
 SOUND_NAME = re.compile(r"^\w[\w .\-()]{0,98}\.(mp3|wav|ogg|m4a|flac|aac)$", re.IGNORECASE)
