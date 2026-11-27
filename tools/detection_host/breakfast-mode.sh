@@ -52,7 +52,7 @@ if start is None:
     while lines and lines[-1] == "":
         lines.pop()
     lines += ["", "[cameras]", f"enabled = {value}", 'dir = "detection"',
-              'devices = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]', "diag_port = 8770", "max_rate = 15", ""]
+              "diag_port = 8770", "max_rate = 15", ""]
 else:
     end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
     at = next((i for i in range(start + 1, end) if re.match(r"\s*enabled\s*=", lines[i])), None)
