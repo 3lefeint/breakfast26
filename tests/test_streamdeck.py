@@ -1,4 +1,5 @@
 """Stream Deck keys: layout checks, status colors, key drawing and the service against a fake device."""
+import logging
 import time
 
 import pytest
@@ -190,8 +191,10 @@ class TestService:
             with service._lock:
                 for _ in range(10):
                     service._draw()
-        lost = [r for r in caplog.records if "lost the device" in r.getMessage()]
-        assert len(lost) == 1 and len(caplog.records) <= sd.LOST_AFTER_FAILURES
+        # a root logger at DEBUG also lets library lines and the connect message in
+        logged = [r for r in caplog.records if r.name == "breakfast.streamdeck" and r.levelno >= logging.WARNING]
+        lost = [r for r in logged if "lost the device" in r.getMessage()]
+        assert len(lost) == 1 and len(logged) <= sd.LOST_AFTER_FAILURES
         fresh = FakeDeck()
         service._enumerate = lambda: [fresh]
         service.start()
