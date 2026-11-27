@@ -1,0 +1,178 @@
+{
+ "keys": [
+  {
+   "key": 0,
+   "action": "reset_board",
+   "label": "",
+   "color": "status",
+   "hold": 0.8,
+   "image": "icon_reset_board.png",
+   "show": ""
+  },
+  {
+   "key": 1,
+   "action": "undo",
+   "label": "",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_undo.png",
+   "show": ""
+  },
+  {
+   "key": 2,
+   "action": "next_player",
+   "label": "",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_next_player.png",
+   "show": "",
+   "design": {
+    "layers": [
+     {
+      "kind": "image",
+      "x": 0.5,
+      "y": 0.5,
+      "image": "icon_next_player.png",
+      "size": 1.3
+     }
+    ],
+    "border": {
+     "color": "#ffffff",
+     "width": 0
+    }
+   }
+  },
+  {
+   "key": 4,
+   "action": "cancel_game",
+   "label": "",
+   "color": "#000000",
+   "hold": 0.8,
+   "image": "icon_cancel_game.png",
+   "show": ""
+  },
+  {
+   "key": 5,
+   "action": "detect_bouncer",
+   "label": "",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_detect_bouncer.png",
+   "show": ""
+  },
+  {
+   "key": 6,
+   "action": "correct_dart:1",
+   "label": "D1",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_correct_dart.png",
+   "show": "",
+   "design": {
+    "layers": [
+     {
+      "kind": "image",
+      "x": 0.5,
+      "y": 0.5,
+      "image": "icon_correct_dart.png",
+      "size": 1.1
+     },
+     {
+      "kind": "text",
+      "x": 0.3333,
+      "y": 0.3333,
+      "text": "D1",
+      "size": 0.4,
+      "color": "#ffffff"
+     }
+    ],
+    "border": {
+     "color": "#ffffff",
+     "width": 0
+    }
+   }
+  },
+  {
+   "key": 7,
+   "action": "correct_dart:2",
+   "label": "D2",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_correct_dart.png",
+   "show": "",
+   "design": {
+    "layers": [
+     {
+      "kind": "image",
+      "x": 0.5,
+      "y": 0.5,
+      "image": "icon_correct_dart.png",
+      "size": 1.1
+     },
+     {
+      "kind": "text",
+      "x": 0.3333,
+      "y": 0.3333,
+      "text": "D2",
+      "size": 0.4,
+      "color": "#ffffff"
+     }
+    ],
+    "border": {
+     "color": "#ffffff",
+     "width": 0
+    }
+   }
+  },
+  {
+   "key": 8,
+   "action": "correct_dart:3",
+   "label": "D3",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_correct_dart.png",
+   "show": "",
+   "design": {
+    "layers": [
+     {
+      "kind": "image",
+      "x": 0.5,
+      "y": 0.5,
+      "image": "icon_correct_dart.png",
+      "size": 1.1
+     },
+     {
+      "kind": "text",
+      "x": 0.25,
+      "y": 0.3333,
+      "text": "D3",
+      "size": 0.4,
+      "color": "#ffffff"
+     }
+    ],
+    "border": {
+     "color": "#ffffff",
+     "width": 0
+    }
+   }
+  },
+  {
+   "key": 10,
+   "action": "random_sound",
+   "label": "",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_random_sound.png",
+   "show": ""
+  },
+  {
+   "key": 11,
+   "action": "fun_mode",
+   "label": "",
+   "color": "#000000",
+   "hold": 0,
+   "image": "icon_fun_mode.png",
+   "show": ""
+  }
+ ]
+}

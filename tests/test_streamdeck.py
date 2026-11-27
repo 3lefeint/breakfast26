@@ -122,6 +122,21 @@ class TestService:
         assert service.deck.images[0].getpixel((0, 0)) == (0, 0, 0)
         assert service.deck.images[1].getpixel((0, 0)) == (0, 0, 0)
 
+    def test_the_default_layout_applies_until_keys_are_saved(self, service):
+        default = sd.default_keys()
+        assert default and all(k["image"] == "" or (sd.ICON_DIR / k["image"]).is_file() for k in default)
+        assert all(layer["image"] == "" or (sd.ICON_DIR / layer["image"]).is_file()
+                   for k in default for layer in (k.get("design") or {"layers": []})["layers"] if layer["kind"] == "image")
+        assert service.keys() == default and service.snapshot()["default_layout"] is True
+        service.update(brightness=40)
+        assert service.keys() == default and service.snapshot()["default_layout"] is True
+        service.update(keys=[{"key": 3, "action": "undo"}])
+        assert [k["key"] for k in service.keys()] == [3] and service.snapshot()["default_layout"] is False
+        service.update(keys=[])
+        assert service.keys() == [] and service.snapshot()["default_layout"] is False
+        service.load_default()
+        assert service.keys() == default and service.snapshot()["default_layout"] is False
+
     def test_a_reset_key_with_its_icon_shows_the_start_icon_while_the_board_is_stopped(self, service):
         service.update(enabled=True, keys=[{"key": 0, "action": "reset_board", "image": "icon_reset_board.png"}])
         assert service._effective(service.keys()[0])["image"] == "icon_reset_board.png"
