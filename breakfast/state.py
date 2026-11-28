@@ -334,12 +334,54 @@ class GameState:
         if event == "busted":
             if player is None:
                 return None
-            player["is_bust"] = True
-            player["turn_active"] = False
             # busted in X01 uses underscore field names (field_name, not fieldName)
             points_left = _to_int(game.get("pointsLeft"), None)
             if points_left is not None:
                 player["remaining"] = points_left
+
+            # Record the dart that busted so the view and MQTT show it like a thrown dart (#182).
+            # The board sends `field_number`/`field_multiplier` and a `dartValue` already worth the
+            # points; a match played in Breakfast sends `fieldNumber`/`fieldMultiplier` and the face
+            # value, so prefer number × multiplier when both are present.
+            dart_number = _to_int(game.get("dartNumber"), 0)
+            field_name = game.get("field_name") or game.get("fieldName")
+            field_number = game.get("field_number")
+            if field_number is None:
+                field_number = game.get("fieldNumber")
+            field_multiplier = game.get("field_multiplier")
+            if field_multiplier is None:
+                field_multiplier = game.get("fieldMultiplier")
+
+            if dart_number and field_name is not None:
+                number = _to_int(field_number, 0)
+                multiplier = _to_int(field_multiplier, 0)
+                dart_value = number * multiplier if number and multiplier else _to_int(game.get("dartValue"), 0)
+
+                if dart_number == 1:
+                    # A bust on the first dart has no per-dart event before it, so the boxes still
+                    # hold the previous turn: clear them first, like dart 1 does.
+                    self._clear_turn(player)
+
+                player["last_field_name"] = field_name
+                player["last_field_number"] = field_number
+                player["last_field_multiplier"] = field_multiplier
+                player["last_dart_number"] = dart_number
+                player["last_dart_value"] = dart_value
+                player["last_is_miss"] = False
+
+                if dart_number == 1:
+                    player["throw1_raw"] = field_name
+                    player["throw1_points"] = dart_value
+                elif dart_number == 2:
+                    player["throw2_raw"] = field_name
+                    player["throw2_points"] = dart_value
+                elif dart_number == 3:
+                    player["throw3_raw"] = field_name
+                    player["throw3_points"] = dart_value
+
+            player["is_bust"] = True
+            player["turn_active"] = False
+            player["turn_score"] = 0
             return {"type": "bust", "mode": self.game_mode}
 
         if event == "darts-pulled":

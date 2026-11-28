@@ -132,7 +132,7 @@
         {#each [1, 2, 3] as n}
           {@const raw = cur[`throw${n}_raw`]}
           {@const pts = cur[`throw${n}_points`]}
-          {@const isBust = cur.is_bust && cur.last_dart_number >= n}
+          {@const isBust = cur.is_bust && cur.last_dart_number === n}
           <button type="button" class="dart-box {dartBoxClass(raw, pts, isBust)}" class:correctable={canCorrect} class:uncertain={raw != null && boardDarts[n - 1]?.uncertain}
                   onclick={() => openCorrect(n)}>
             <div class="dlabel">D{n}</div>

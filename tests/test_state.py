@@ -18,9 +18,15 @@ def ev_dart1(value=60, points_left=441, player="alice", player_index=0):
                      "type": "segment"}}
 
 
-def ev_busted(player="alice", player_index=0, points_left=501):
+def ev_busted(player="alice", player_index=0, points_left=501, dart_number=0,
+              dart_value=0, field_name=None, field_number=None, field_multiplier=None):
+    game = {"pointsLeft": points_left}
+    if dart_number:
+        game.update(dartNumber=str(dart_number), dartValue=str(dart_value),
+                    field_name=field_name, field_number=field_number,
+                    field_multiplier=field_multiplier)
     return {"event": "busted", "player": player, "playerIndex": player_index,
-            "playerIsBot": False, "game": {"pointsLeft": points_left}}
+            "playerIsBot": False, "game": game}
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
@@ -93,6 +99,62 @@ class TestGameState:
         result = gs.update(ev_busted())
         assert result is not None
         assert result["type"] == "bust"
+
+    def test_bust_on_first_dart_clears_the_previous_turn_and_fills_d1(self):
+        gs = GameState()
+        gs.update(ev_match_started())
+        gs.update(ev_dart1(value=60, points_left=441))  # previous turn's D1 still in its box
+        gs.update(ev_busted(points_left=441, dart_number=1, dart_value=60,
+                            field_name="t20", field_number=20, field_multiplier=3))
+        cur = gs.players[0]
+        assert cur["is_bust"] is True
+        assert cur["turn_score"] == 0
+        assert cur["throw1_raw"] == "t20" and cur["throw1_points"] == 60
+        assert cur["throw2_raw"] is None and cur["throw3_raw"] is None
+        assert cur["last_dart_number"] == 1
+        assert cur["last_field_name"] == "t20"
+        assert cur["last_is_miss"] is False
+
+    def test_bust_on_second_dart_keeps_the_first_dart_and_fills_d2(self):
+        gs = GameState()
+        gs.update(ev_match_started())
+        gs.update(ev_dart1(value=60, points_left=441))
+        gs.update(ev_busted(points_left=441, dart_number=2, dart_value=60,
+                            field_name="t20", field_number=20, field_multiplier=3))
+        cur = gs.players[0]
+        assert cur["throw1_raw"] == "T20" and cur["throw1_points"] == 60
+        assert cur["throw2_raw"] == "t20" and cur["throw2_points"] == 60
+        assert cur["throw3_raw"] is None
+        assert cur["turn_score"] == 0
+        assert cur["last_dart_number"] == 2
+
+    def test_bust_on_third_dart_fills_d3(self):
+        gs = GameState()
+        gs.update(ev_match_started())
+        gs.update(ev_dart1(value=60, points_left=441))
+        dart2 = ev_dart1(value=20, points_left=421)
+        dart2["event"] = "dart2-thrown"
+        dart2["game"].update(dartNumber=2, fieldName="S20", dartValue=20)
+        gs.update(dart2)
+        gs.update(ev_busted(points_left=421, dart_number=3, dart_value=60,
+                            field_name="t20", field_number=20, field_multiplier=3))
+        cur = gs.players[0]
+        assert cur["throw1_raw"] == "T20" and cur["throw1_points"] == 60
+        assert cur["throw2_raw"] == "S20" and cur["throw2_points"] == 20
+        assert cur["throw3_raw"] == "t20" and cur["throw3_points"] == 60
+        assert cur["turn_score"] == 0
+        assert cur["last_dart_number"] == 3
+
+    def test_bust_without_a_dart_changes_no_box(self):
+        gs = GameState()
+        gs.update(ev_match_started())
+        gs.update(ev_dart1(value=60, points_left=441))
+        gs.update(ev_busted(points_left=441))
+        cur = gs.players[0]
+        assert cur["is_bust"] is True
+        assert cur["turn_score"] == 0
+        assert cur["throw1_raw"] == "T20" and cur["throw1_points"] == 60
+        assert cur["throw2_raw"] is None and cur["throw3_raw"] is None
 
     def test_snapshot_is_copy(self):
         gs = GameState()
