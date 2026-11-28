@@ -278,13 +278,39 @@ class TestGame:
         play(game, big(1), big(2), big(3))
         play(game, big(4), MISS, MISS)
         game.finish_early()
-        assert game.undo() is True and game.state == "playing"
+        assert game.undo() is True and game.state == "playing"       # the last turn goes on with two darts
         assert db._conn.execute("SELECT ended_at FROM matches").fetchone()[0] is None
+        assert game.thrown == 3 and game.snapshot()["thrown"] == 5
+        assert game.undo() is True and game.undo() is True           # its darts, one at a time
         assert game.snapshot()["thrown"] == 3
-        assert game.undo() is True and game.snapshot()["thrown"] == 0
+        assert game.undo() is True and game.thrown == 0              # the first turn goes on with two darts
         assert db._conn.execute("SELECT COUNT(*) FROM warm_up_darts").fetchone()[0] == 0
         assert db._conn.execute("SELECT COUNT(*) FROM dart_positions").fetchone()[0] == 0
+        assert game.undo() is True and game.undo() is True
         assert game.undo() is False
+
+    def test_undo_takes_back_the_last_dart_of_the_turn_in_progress(self):
+        game = new_game()
+        game.on_board_state(2, [big(1), MISS])
+        assert game.undo() is True
+        assert game.snapshot()["thrown"] == 1 and game.snapshot()["position"] == 1
+        game.on_board_state(2, [big(1), MISS])                       # the dart is still on the board
+        assert game.snapshot()["thrown"] == 1
+        game.on_board_state(3, [big(1), MISS, big(2)])
+        assert game.snapshot()["thrown"] == 2 and game.snapshot()["position"] == 2
+        game.on_board_state(0, [])
+        assert game.thrown == 2
+
+    def test_a_turn_taken_back_goes_on_without_its_last_dart(self, db):
+        game = new_game(db)
+        play(game, big(1), big(2), big(3))
+        assert game.undo() is True
+        assert game.thrown == 0 and game.snapshot()["position"] == 2 and game.snapshot()["thrown"] == 2
+        assert db._conn.execute("SELECT COUNT(*) FROM warm_up_darts").fetchone()[0] == 0
+        game.on_board_state(1, [big(3)])                             # the third dart comes in at its place
+        assert game.snapshot()["position"] == 3
+        game.on_board_state(0, [])
+        assert game.thrown == 3 and game.progress.pos == 3
 
     def test_a_player_is_needed(self):
         with pytest.raises(ValueError):
@@ -430,6 +456,8 @@ class TestServer:
         assert c.post("/api/warm-up/finish").json() == {"ok": True} and wu.game is None
         c.post("/api/warm-up/start", json={"player": "ana"})
         play(wu.game, big(1), MISS, MISS)
+        assert c.post("/api/warm-up/undo").json() == {"ok": True}         # the turn goes on with two darts
+        assert c.post("/api/warm-up/undo").json() == {"ok": True}
         assert c.post("/api/warm-up/undo").json() == {"ok": True}
         assert "nothing to undo" in c.post("/api/warm-up/undo").json()["error"]
         wu.game.on_board_state(1, [MISS])
