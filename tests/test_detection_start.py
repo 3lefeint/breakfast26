@@ -129,3 +129,12 @@ def test_no_default_fits_one_machine_only():
     for name in ("config.toml.example", "docker-compose.detection.yml", "tools/detection_deploy.sh"):
         text = (ROOT / name).read_text()
         assert "pci-0000" not in text and "/dev/video1" not in text, name
+
+
+def test_the_cameras_come_from_the_ports_then_the_devices_then_the_default_names(monkeypatch):
+    from breakfast.detection import devices
+    monkeypatch.setattr(devices, "VIDEO_DIR", "/video")
+    assert devices.device_paths({"ports": ["1.1.1", "1.1.2", "1.1.3"], "devices": ["/dev/a"]}) == ["/video/1.1.1", "/video/1.1.2", "/video/1.1.3"]
+    assert devices.device_paths({"devices": ["/dev/a", "/dev/b", "/dev/c"]}) == ["/dev/a", "/dev/b", "/dev/c"]
+    assert devices.device_paths({"ports": ["1.1.1", "1.1.1", "1.1.3"]}) == devices.DEFAULT_DEVICES
+    assert devices.device_paths({}) == devices.DEFAULT_DEVICES

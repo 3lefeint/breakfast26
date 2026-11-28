@@ -232,3 +232,59 @@ def test_a_confirm_key_asks_the_worker_only_for_a_dart_in_doubt(worker_port):
     assert server.run_control("confirm_dart:2") == {"ok": True} and ("POST", "/api/confirm?index=1") in CALLS
     assert server.run_control("confirm_dart:4")["error"] == "bad dart confirmation"
     server.wire(None, None)
+
+
+@pytest.fixture
+def camera_folder(tmp_path, monkeypatch):
+    """A folder of cameras like the one the udev rule fills (two are plugged in) and a config file to save the choice in."""
+    from breakfast.detection import devices
+    folder = tmp_path / "video"
+    folder.mkdir()
+    for port in ("1.1.1", "1.1.3"):
+        (folder / port).write_text("")
+    monkeypatch.setattr(devices, "VIDEO_DIR", str(folder))
+    monkeypatch.setattr(devices, "snapshot", lambda path: b"\xff\xd8" + path.encode() if path.endswith("1.1.1") else None)
+    config = tmp_path / "config.toml"
+    config.write_text("")
+    server.wire(GameState(), EliminationController(FakeMqttPub(), "autodarts"), config_path=str(config))
+    yield TestClient(server.app), config
+    server.wire(None, None)
+
+
+def test_the_cameras_are_listed_with_the_ones_plugged_in_and_empty_slots_without_a_choice(camera_folder):
+    c, _ = camera_folder
+    assert c.get("/api/detection/cameras").json() == {"slots": [{"index": i, "port": None, "found": False} for i in range(3)], "found": ["1.1.1", "1.1.3"]}
+    assert c.get("/api/config").json()["cameras"]["ports"] is None
+
+
+def test_a_saved_choice_shows_which_camera_is_missing(camera_folder):
+    c, config = camera_folder
+    assert c.patch("/api/config", json={"cameras": {"ports": ["1.1.1", "1.1.2", "1.1.3"]}}).json() == {"saved": True, "restart_required": ["cameras.ports"]}
+    assert "1.1.2" in config.read_text()
+    assert c.get("/api/config").json()["cameras"]["ports"] == ["1.1.1", "1.1.2", "1.1.3"]
+    slots = c.get("/api/detection/cameras").json()["slots"]
+    assert [(s["port"], s["found"]) for s in slots] == [("1.1.1", True), ("1.1.2", False), ("1.1.3", True)]
+
+
+@pytest.mark.parametrize("ports", [["1.1.1", "1.1.1", "1.1.3"], ["1.1.1", "1.1.3"], ["1.1.1", "x", "1.1.3"], "1.1.1"])
+def test_a_choice_that_is_not_three_different_ports_is_refused(camera_folder, ports):
+    c, config = camera_folder
+    assert c.patch("/api/config", json={"cameras": {"ports": ports}}).json() == {"saved": False, "error": "Choose three different cameras"}
+    assert config.read_text() == ""
+
+
+def test_a_camera_picture_comes_from_the_device_and_only_for_cameras_that_are_there(camera_folder):
+    c, _ = camera_folder
+    ok = c.get("/api/detection/cameras/frame/1.1.1")
+    assert ok.status_code == 200 and ok.content.startswith(b"\xff\xd8") and ok.headers["cache-control"] == "no-store"
+    assert c.get("/api/detection/cameras/frame/1.1.3").status_code == 503        # present but cannot be opened
+    assert c.get("/api/detection/cameras/frame/1.1.2").status_code == 404        # not plugged in
+    assert c.get("/api/detection/cameras/frame/..%2Fetc").status_code == 404
+
+
+def test_a_camera_the_running_detection_has_is_shown_from_its_picture(camera_folder, worker_port):
+    c, _ = camera_folder
+    c.patch("/api/config", json={"cameras": {"ports": ["1.1.3", "1.1.1", "1.1.5"]}})
+    server.wire(GameState(), EliminationController(FakeMqttPub(), "autodarts"), detection_port=worker_port, config_path=str(camera_folder[1]))
+    r = c.get("/api/detection/cameras/frame/1.1.1")
+    assert r.status_code == 200 and ("GET", "/frame/1.jpg?raw=1") in CALLS

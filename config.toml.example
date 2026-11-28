@@ -160,7 +160,8 @@ events = false    # true: log each game event (dart-thrown etc.) at INFO level
 # [cameras]
 # enabled = false
 # dir = "detection"            # folder (under the data folder) with calib_model.json and the pictures of the events
-# devices = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]    # the capture nodes of the three cameras (default: the names the compose files give them in the container)
+# ports = ["1.1.1", "1.1.2", "1.1.3"]    # the three cameras by USB port, in the order of the board (set on the Settings page; Linux board host with the udev rule of tools/detection_host)
+# devices = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]    # the capture nodes of the three cameras when there are no ports (default: the names older compose files give them in the container)
 # diag_port = 8770             # diagnostics page: live pictures, last events, calibration (0 = off)
 # keep_sessions = 10           # sessions of event pictures kept (the oldest are removed at the start) ...
 # events_max_gb = 2.0          # ... and the most they may take together
