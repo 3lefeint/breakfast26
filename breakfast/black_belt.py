@@ -124,11 +124,11 @@ class BlackBeltGame(TurnGame):
             self._current_darts, self._last_throws, self._dart_overrides = [], [], {}
             return
         self._turn_snapshot = self._snapshot_state(self.player)
-        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
         values = list(self._current_darts)
         self._publish_last_turn(values)
         records = self.progress.play(throws)
         counted = throws[:len(records)]
+        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None, throws=counted)
         if self.stats_db:
             self.stats_db.insert_black_belt_turn(
                 self.match_id, self.player, records, positions=dart_positions(counted))
@@ -184,6 +184,11 @@ class BlackBeltGame(TurnGame):
         self.turns = snap["turns"]
         self.state = snap["state"]
         self.result = snap["result"]
+
+    def undo(self):
+        """Take the last dart of the turn in progress back, or with no dart in the turn the last turn goes on without
+        its last dart, also the one that ended the run."""
+        return self._undo_by_dart()
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
