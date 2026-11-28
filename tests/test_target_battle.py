@@ -288,6 +288,47 @@ class TestUndoAndCorrection:
         game.undo()
         assert (game.state, game.winners, game.current_player) == ("playing", [], "bo")
 
+    def test_undo_takes_back_the_last_dart_of_the_turn_in_progress(self):
+        game = new_game(players=("ana", "bo"))
+        game.on_board_state(2, [hit(20, 3), hit(20, 1)])
+        assert game.undo() is True
+        assert game.snapshot()["current_darts"] == [3] and game.current_player == "ana"
+        game.on_board_state(2, [hit(20, 3), hit(20, 1)])        # the dart is still on the board
+        assert game.snapshot()["current_darts"] == [3]
+        game.on_board_state(3, [hit(20, 3), hit(20, 1), MISS])
+        assert game.snapshot()["current_darts"] == [3, 0]
+        game.on_board_state(0, [])
+        assert (game.current_player, scores(game)) == ("bo", {"ana": 3, "bo": 0})
+
+    def test_a_turn_taken_back_goes_on_without_its_last_dart(self):
+        game = new_game(players=("ana", "bo"))
+        play(game, hit(20, 3), hit(20, 2), hit(20, 1))
+        assert scores(game)["ana"] == 6
+        assert game.undo() is True
+        assert game.current_player == "ana" and game.snapshot()["current_darts"] == [3, 2]
+        game.on_board_state(1, [hit(20, 1)])                    # the third dart comes in at its place
+        assert game.snapshot()["current_darts"] == [3, 2, 1]
+        game.on_board_state(0, [])
+        assert (game.current_player, scores(game)["ana"]) == ("bo", 6)
+
+    def test_a_turn_taken_back_goes_on_when_it_ended_the_game(self):
+        game = new_game(players=("ana", "bo"), rounds=1, targets=[20])
+        play(game, hit(20, 1))
+        play(game, hit(20, 3), hit(20, 2))
+        assert game.state == "finished"
+        assert game.undo() is True
+        assert (game.state, game.winners, game.current_player) == ("playing", [], "bo")
+        assert game.snapshot()["current_darts"] == [3]
+
+    def test_the_points_of_a_turn_are_called_when_it_ends_after_the_third_dart_was_taken_back(self, timers):
+        game, audio = with_audio(players=("ana", "bo"), targets=[20, 20])
+        timers[0].fire(); heard(audio)
+        game.on_board_state(3, [hit(20, 1), MISS, hit(20, 3)])
+        assert heard(audio) == ["4"]
+        assert game.undo() is True
+        game.on_board_state(0, [])                              # the two darts that are left end the turn
+        assert heard(audio)[0] == "1"
+
     def test_correcting_a_total_scores_the_turn_again(self):
         game = new_game(players=("ana", "bo"))
         play(game, hit(20, 3))
