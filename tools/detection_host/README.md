@@ -7,7 +7,7 @@ choice a service switch.
 |------|---------|--------------|
 | `breakfast-detect-host.sh` | `/usr/local/bin/` | finds the cameras by USB port and creates the stack (`start`), takes it down (`stop`) |
 | `breakfast-detect.service` | `/etc/systemd/system/` | the stack as a service; `Conflicts=autodarts.service` makes starting one stop the other |
-| `50-breakfast-detect.rules` | `/etc/polkit-1/rules.d/` | the board host user may start and stop these two units without a password |
+| `50-breakfast-detect.rules` | `/etc/polkit-1/rules.d/` | the board host user may start and stop these two units and enable and disable unit files without a password |
 
 Install (as root, once):
 
@@ -37,14 +37,14 @@ The stack above is a test stack with its own data. For the Breakfast that is ins
 | file | goes to | what it does |
 |------|---------|--------------|
 | `docker-compose.override.yml` | next to `docker-compose.yml` of the checkout | builds the image with the detection and mounts the folder `/dev/breakfast-video/` that the udev rule of `install.sh` fills with one node per camera (named after its USB port, so the numbers of `/dev/videoN` do not matter; the container starts without cameras and sees one plugged in later), the group `video` and the USB bus (a Stream Deck on the host). Which camera is camera 1 to 3 is chosen in Breakfast under Settings |
-| `breakfast-mode.sh` | `/usr/local/bin/` | `own`: stop Autodarts, `[cameras] enabled = true`, restart Breakfast; `autodarts`: the other way round; `status` |
+| `breakfast-mode.sh` | `/usr/local/bin/` | `own`: stop and disable Autodarts, `[cameras] enabled = true`, restart Breakfast; `autodarts`: the other way round (enable and start Autodarts); `status` (also shows whether Autodarts starts at boot) |
 
 Switch (as the host user, with the polkit rule above; refuses while a match is running, `--force` overrides):
 
     breakfast-mode.sh own
     breakfast-mode.sh autodarts
 
-The stats.db and the rest of the config stay as they are, only `enabled` of `[cameras]` changes (the section is added the first time). Rollout steps:
+The mode chosen last is also the mode after a reboot: the Autodarts unit is disabled with `own` and enabled again with `autodarts`. The stats.db and the rest of the config stay as they are, only `enabled` of `[cameras]` changes (the section is added the first time). Rollout steps:
 copy the two files, build the image with the code of this branch (`docker compose up -d --build`), then `breakfast-mode.sh own`.
 
 ### Installer and desktop shortcuts
@@ -54,4 +54,4 @@ it writes the udev rule and its helper that put every camera into `/dev/breakfas
 `breakfast-mode.sh` and `breakfast-mode-shortcut.sh` in `~/.local/bin`, writes the polkit rule for Autodarts version 1 and creates two
 desktop shortcuts, "Breakfast (own dart detection)" and "Breakfast (board manager)". The shortcuts show a window (kdialog, zenity or
 xmessage) when something fails. Autodarts version 1 is switched through its system unit, version 2 headless through its user unit; with the
-Desktop app of version 2 there is no unit and the shortcut says to quit or start the app yourself.
+Desktop app of version 2 there is no unit and the shortcut says to quit or start the app and to set its autostart yourself. After an update of the polkit rule run `install.sh` again.
