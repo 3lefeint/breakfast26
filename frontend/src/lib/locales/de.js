@@ -663,7 +663,6 @@ export default {
   'Undo the last turn and resume the run?': 'Den letzten Zug rückgängig machen und den Lauf fortsetzen?',
   'Undo the winning turn and resume the match?': 'Den Gewinnzug rückgängig machen und das Spiel fortsetzen?',
   'End the run now and keep the darts thrown?': 'Den Lauf jetzt beenden und die geworfenen Darts behalten?',
-  'Undo the last completed turn?': 'Den letzten abgeschlossenen Zug rückgängig machen?',
   'Leave the online match?': 'Das Online-Spiel verlassen?',
   'End the run now and keep the darts thrown as practice?': 'Den Lauf jetzt beenden und die geworfenen Darts als Training behalten?',
   'Clear the current match locally? Only do this if it looks stuck/abandoned — this does not touch the match on the Autodarts side.': 'Das aktuelle Spiel lokal löschen? Mach das nur, wenn es hängt oder verlassen aussieht – das Spiel auf der Autodarts-Seite wird nicht angetastet.',

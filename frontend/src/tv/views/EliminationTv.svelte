@@ -84,7 +84,6 @@
     await api('POST', `/api/detection/${what}`, {});
   }
   async function undo() {
-    if (!await confirmDialog(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/elimination/undo');
   }
 </script>

@@ -66,7 +66,6 @@
   }
 
   async function undo() {
-    if (!await confirmDialog(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/killer/undo');
   }
 </script>
