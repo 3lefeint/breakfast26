@@ -75,7 +75,9 @@ def test_undo_and_stop(client):
     c.post("/api/field-training/start", json=START)
     play(ft.game, hit(20, 3), hit(20, 1), hit(20, 1))
     assert c.post("/api/field-training/undo").json() == {"ok": True}
-    assert ft.game.snapshot()["thrown"] == 0
+    assert ft.game.snapshot()["thrown"] == 0                 # the turn goes on with two darts
+    assert c.post("/api/field-training/undo").json() == {"ok": True}
+    assert c.post("/api/field-training/undo").json() == {"ok": True}
     assert "nothing to undo" in c.post("/api/field-training/undo").json()["error"]
     c.post("/api/field-training/stop")
     assert server._build_payload()["field_training"] == {"active": False}

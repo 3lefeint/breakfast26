@@ -132,7 +132,7 @@ class FieldTrainingGame(TurnGame):
             self._current_darts, self._last_throws, self._dart_overrides = [], [], {}
             return
         self._turn_snapshot = self._snapshot_state(self.player)
-        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
+        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None, throws=throws)
         self._publish_last_turn(values)
         hits = {m: sum(1 for v in values if v == m) for m in (1, 2, 3)}
         if self.stats_db:
@@ -214,6 +214,11 @@ class FieldTrainingGame(TurnGame):
         self.state = snap["state"]
         self.completed = snap["completed"]
         self.result = snap["result"]
+
+    def undo(self):
+        """Take the last dart of the turn in progress back, or with no dart in the turn the last turn goes on without
+        its last dart, also the one that ended the run."""
+        return self._undo_by_dart()
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
