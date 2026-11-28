@@ -287,10 +287,14 @@ class TurnGame:
 
     # ── undo ─────────────────────────────────────────────────────────────────
 
-    def _push_history(self, snapshot, turn_recorded):
+    def _push_history(self, snapshot, turn_recorded, throws=None):
         """*turn_recorded*: whether a database row was written for the turn, so that undo()
-        knows whether there is one to delete (False without a stats database)."""
-        self._history.append({**snapshot, "turn_recorded": turn_recorded})
+        knows whether there is one to delete (False without a stats database). *throws*: the darts that
+        counted in the turn, for a game that takes them back one at a time (see _undo_by_dart())."""
+        entry = {**snapshot, "turn_recorded": turn_recorded}
+        if throws is not None:
+            entry["throws"] = list(throws)
+        self._history.append(entry)
 
     def _undo_open_dart(self):
         """Take the last dart of the turn in progress back. A dart the board reported stays on the board and is
@@ -306,11 +310,30 @@ class TurnGame:
         self._last_throws = self._last_throws[:idx]
         self._current_darts = self._current_darts[:idx]
         self._prev_count = max(0, self._prev_count - (1 if board_index is not None else 0))
+        self._dart_taken_back()
         self._publish_turn()
         self._changed()
         self._open_turn_changed()
         log.info("Dart %d taken back", idx + 1)
         return True
+
+    def _dart_taken_back(self):
+        """A game that works out more from the darts of the turn in progress than their values takes them back here."""
+
+    def _undo_by_dart(self):
+        """Undo for a game that takes one dart back at a time: the last dart of the turn in progress, or with no dart
+        in the turn the last turn goes on without its last dart (also the one that ended the game). Needs the darts of
+        a turn in its history entry (`throws` of _push_history())."""
+        if self.state == "playing" and self._current_darts:
+            return self._undo_open_dart()
+        throws = list(self._history[-1].get("throws") or []) if self._history else []
+        undone = TurnGame.undo(self)
+        if undone and throws:
+            self._reopen_turn(throws[:-1])
+            self._publish_turn()
+            self._changed()
+            self._open_turn_changed()
+        return undone
 
     def _reopen_turn(self, throws):
         """Put the darts of a turn that was walked back into the turn in progress, as darts the board will not report

@@ -312,11 +312,82 @@ class TestUndo:
         play(game, hit(5, 2), hit(5, 2), hit(5, 2))
         assert game.snapshot()["state"] == "finished"
         assert game.undo()
-        assert game.snapshot()["state"] == "playing" and lives(game)["bo"] == 3
+        assert game.snapshot()["state"] == "playing" and lives(game)["bo"] == 1     # it goes on with two darts
+        assert game.snapshot()["current_player"] == "ana" and len(game.snapshot()["darts"]) == 2
 
     def test_undo_with_nothing_to_undo(self):
         game, _ = new_game()
         assert game.undo() is False
+
+    def test_undo_takes_back_the_last_dart_of_the_turn_in_progress(self):
+        game, _ = new_game()
+        play(game, hit(20, 2))
+        play(game, MISS)
+        game.on_board_state(1, [hit(5, 2)])
+        game.on_board_state(2, [hit(5, 2), hit(5, 2)])
+        assert lives(game)["bo"] == 1
+        assert game.undo()
+        assert lives(game)["bo"] == 2
+        assert len(game.snapshot()["darts"]) == 1 and game.snapshot()["current_player"] == "ana"
+        game.on_board_state(2, [hit(5, 2), hit(5, 2)])           # the dart is still on the board: it is not seen
+        assert lives(game)["bo"] == 2
+        game.on_board_state(3, [hit(5, 2), hit(5, 2), hit(1, 1)])
+        assert lives(game)["bo"] == 2 and len(game.snapshot()["darts"]) == 2
+        game.on_board_state(0, [])
+        assert game.snapshot()["current_player"] == "bo"
+
+    def test_a_turn_taken_back_goes_on_without_its_last_dart(self):
+        game, client = new_game()
+        play(game, hit(20, 2))
+        play(game, MISS)
+        play(game, hit(5, 2), hit(5, 2), hit(1, 1))
+        assert lives(game)["bo"] == 1 and game.snapshot()["current_player"] == "bo"
+        play(game, MISS)                                         # bo
+        shown = len(client.events("hit"))
+        assert game.undo()                                       # bo's turn
+        assert game.snapshot()["current_player"] == "bo" and game.snapshot()["darts"] == []
+        assert game.undo()                                       # ana's turn goes on with two darts
+        assert game.snapshot()["current_player"] == "ana" and len(game.snapshot()["darts"]) == 2
+        assert lives(game)["bo"] == 1
+        assert len(client.events("hit")) == shown                # what the two darts did is not announced again
+        game.on_board_state(1, [hit(1, 1)])                      # the third dart comes in at its place
+        assert len(game.snapshot()["darts"]) == 3
+        game.on_board_state(0, [])
+        assert game.snapshot()["current_player"] == "bo" and lives(game)["bo"] == 1
+
+    def test_a_dart_taken_back_announces_what_the_next_dart_does_again(self):
+        game, client = new_game()
+        play(game, hit(20, 2))
+        play(game, MISS)
+        game.on_board_state(1, [hit(5, 2)])
+        assert len(client.events("hit")) == 1
+        assert game.undo()
+        game.on_board_state(0, [])
+        game.on_board_state(1, [hit(5, 2)])
+        assert len(client.events("hit")) == 2
+
+    def test_a_dart_that_ended_the_game_taken_back_opens_the_game_again(self):
+        game, _ = new_game()
+        play(game, hit(20, 2))
+        play(game, MISS)
+        game.on_board_state(1, [hit(5, 2)])
+        game.on_board_state(2, [hit(5, 2)] * 2)
+        game.on_board_state(3, [hit(5, 2)] * 3)
+        assert game.snapshot()["state"] == "finished"
+        assert game.undo()
+        assert game.snapshot()["state"] == "playing" and lives(game)["bo"] == 1
+        assert not player(game, "bo")["out"] and game.snapshot()["winner"] is None
+
+    def test_a_bots_turn_is_taken_back_as_a_whole(self):
+        game, _ = new_game()
+        game.bot_players = {"ana"}
+        play(game, hit(20, 2))
+        play(game, MISS)
+        play(game, hit(5, 2), hit(5, 2))
+        assert lives(game)["bo"] == 1
+        assert game.undo()
+        assert lives(game)["bo"] == 3 and game.snapshot()["current_player"] == "ana"
+        assert game.snapshot()["darts"] == []
 
     def test_undo_takes_back_the_killer_status(self):
         game, _ = new_game()

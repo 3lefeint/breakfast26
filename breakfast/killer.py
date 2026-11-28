@@ -102,6 +102,7 @@ class KillerGame(TurnGame):
         self._last_turn_player = None
         self._silent = False             # a correction of a finished turn makes no calls
         self._one_dart_taken = False     # before the game: the dart of this visit has counted
+        self.bot_players = set()         # the players the computer plays: an undo takes a whole turn of theirs back
         if self.stats_db:
             self.stats_db.open_match(self.match_id, self.MODE, LIVES)
             self.stats_db.record_killer_setup(self.match_id, self.own_goal, self.singles)
@@ -303,9 +304,10 @@ class KillerGame(TurnGame):
         self._pre = snap["pre"]
         self._current = snap["player"]
 
-    def _replay_turn(self):
+    def _replay_turn(self, quiet=False):
         """Work out what the darts of the turn in progress did, from the start of the turn. A dart
-        that leaves one player ends the game and the darts after it do not count."""
+        that leaves one player ends the game and the darts after it do not count. *quiet*: the events are not
+        announced, the turn only goes on from darts that were announced when they landed."""
         self._load_state(self._turn_start)
         self.turn_events = []
         player = self._current
@@ -315,7 +317,7 @@ class KillerGame(TurnGame):
                 break
         if len(self.active) <= 1:
             self._declare_winner()
-        self._announce_new_events()
+        self._announce_new_events(quiet)
         if self.state == "finished":
             self._complete_turn(list(self._last_throws))
         else:
@@ -328,12 +330,14 @@ class KillerGame(TurnGame):
         for place, name in enumerate(reversed(self.elimination_order), start=2):
             self.placements[name] = place
 
-    def _announce_new_events(self):
+    def _announce_new_events(self, quiet=False):
         new = []
         for event in self.turn_events:
             key = (event["kind"], event["dart"], event["victim"])
             if key not in self._published_events:
                 self._published_events.add(key)
+                if quiet:
+                    continue
                 self._publish_event(event["kind"], **{k: v for k, v in event.items() if k != "kind"})
                 new.append(event)
         if new and self.audio and not self._silent:
@@ -453,7 +457,7 @@ class KillerGame(TurnGame):
         """Record the turn as played and move on, or finish the game when it decided it."""
         player = self._turn_start["player"]
         self._turn_snapshot = self._turn_start
-        self._push_history(self._turn_start, turn_recorded=self.stats_db is not None)
+        self._push_history(self._turn_start, turn_recorded=self.stats_db is not None, throws=throws)
         self._last_turn_throws = throws
         self._last_turn_events = list(self.turn_events)
         self._last_turn_player = player
@@ -521,6 +525,33 @@ class KillerGame(TurnGame):
         self._last_turn_throws = []
         self._last_turn_events = []
         self._last_turn_player = None
+
+    def undo(self):
+        """Take the last dart of the turn in progress back, or with no dart in the turn the last turn goes on without
+        its last dart, also the one that ended the game. A bot's turn goes as a whole."""
+        last = self._history[-1] if self._history else None
+        if last and last.get("player") in self.bot_players and not (self.state == "playing" and self._current_darts):
+            return super().undo()
+        return self._undo_by_dart()
+
+    def _undo_open_dart(self):
+        undone = super()._undo_open_dart()
+        if undone and self.stats_db:
+            self.stats_db.open_turn_taken_back(self.match_id)
+        return undone
+
+    def _dart_taken_back(self):
+        """What the darts that are left did, worked out again without announcing it, and the events of the dart that
+        is gone are announced again when a dart does the same."""
+        if self.phase == "playing":
+            self._published_events = set()
+            self._replay_turn(quiet=True)
+
+    def _reopen_turn(self, throws):
+        """The last turn goes on with *throws*, the darts that stay, and the game with them."""
+        super()._reopen_turn(throws)
+        self._published_events = set()
+        self._replay_turn(quiet=True)
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
@@ -671,6 +702,7 @@ class KillerController(TurnGameController):
         game._restore(saved["state"])
         with self._lock:
             self.bots.set_bots(bots)
+            game.bot_players = set(bots)
             self.game = game
         game.announce_start(calls=False)
         return game
@@ -688,6 +720,7 @@ class KillerController(TurnGameController):
             colors=assign_colors(players, chosen))
         with self._lock:
             self.bots.set_bots(bots)
+            game.bot_players = set(bots)
             self.game = game
         game.announce_start()
 
