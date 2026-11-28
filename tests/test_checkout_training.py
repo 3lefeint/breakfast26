@@ -154,6 +154,39 @@ class TestCorrections:
         assert g.results == [] and g.score == 40 and drawn != 40 or g.score == 40
         assert db._conn.execute("SELECT COUNT(*) FROM checkout_training_turns").fetchone()[0] == 0
 
+    def test_undo_takes_back_the_last_dart_of_the_attempt_in_progress(self):
+        g = game(100)
+        g.on_board_state(2, [th("T20"), th("S20")])
+        assert g.snapshot()["live"]["rest"] == 20
+        assert g.undo() is True
+        assert g.snapshot()["live"] == {"darts": 1, "state": "open", "rest": 40}
+        g.on_board_state(2, [th("T20"), th("S20")])                # the dart is still on the board
+        assert g.snapshot()["live"]["rest"] == 40
+        g.on_board_state(3, [th("T20"), th("S20"), th("D20")])
+        assert g.snapshot()["live"] == {"darts": 2, "state": "finished", "rest": 0}
+        g.on_board_state(0, [])
+        assert g.results[0]["success"] is True and g.results[0]["darts"] == 2
+
+    def test_an_attempt_taken_back_goes_on_without_its_last_dart(self):
+        db = StatsDB(":memory:")
+        g = game(170, attempts=3, db=db)
+        attempt(g, "T20", "T20", "S1")
+        assert g.results[0]["success"] is False
+        assert g.undo() is True
+        assert g.results == [] and g.score == 170
+        assert g.snapshot()["live"] == {"darts": 2, "state": "open", "rest": 50}
+        assert db._conn.execute("SELECT COUNT(*) FROM checkout_training_turns").fetchone()[0] == 0
+        g.on_board_state(1, [th("50")])                            # the third dart comes in at its place
+        g.on_board_state(0, [])
+        assert g.results[0]["success"] is True and g.results[0]["darts"] == 3
+
+    def test_the_dart_that_finished_the_attempt_is_the_one_taken_back(self):
+        g = game(100)
+        attempt(g, "T20", "D20", "S1")                             # the last dart came after the finish
+        assert g.results[0]["success"] is True and g.results[0]["darts"] == 2
+        assert g.undo() is True
+        assert g.snapshot()["live"] == {"darts": 1, "state": "open", "rest": 40}
+
     def test_undoing_the_last_attempt_reopens_a_finished_run(self):
         db = StatsDB(":memory:")
         g = game(40, attempts=1, db=db)

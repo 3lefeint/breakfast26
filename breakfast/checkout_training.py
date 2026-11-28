@@ -102,7 +102,7 @@ class CheckoutTrainingGame(TurnGame):
         used, state = outcome(self.score, fields)
         success = state == "finished"
         self._turn_snapshot = self._snapshot_state(self.player)
-        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
+        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None, throws=throws[:used])
         self._publish_last_turn(list(self._current_darts)[:DARTS])
         if self.stats_db:
             self.stats_db.insert_checkout_training_turn(
@@ -166,6 +166,11 @@ class CheckoutTrainingGame(TurnGame):
         self.state = snap["state"]
         self.completed = snap["completed"]
         self.result = snap["result"]
+
+    def undo(self):
+        """Take the last dart of the attempt in progress back, or with no dart in the attempt the last attempt goes on
+        without its last dart, also the one that ended the run."""
+        return self._undo_by_dart()
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
