@@ -20,7 +20,7 @@ own account and needs no other add-on.
 - [Online play](#online-play): play one Elimination or X01 match together with players at other locations
 - [Circle of friends](#circle-of-friends): installations of a group of friends share their matches and talk in voice chat channels, so a player has his statistics and achievements wherever he plays
 - [Usage reports](#usage-reports): optional anonymous usage and error reports, off by default
-- [Stream Deck](#stream-deck): keys that reset or start the board and show its status, optional
+- [Stream Deck](#stream-deck): keys of an Elgato Stream Deck or an Ulanzi D200H that reset or start the board and show its status, optional
 - [MQTT output](#mqtt) for LED strips and Home Assistant, optional
 - [Installation](#installation) on Windows, with Docker or from source, with [self-update](#updates)
 - [Settings](#web-ui) in the browser, English or German interface
@@ -371,7 +371,7 @@ messages. **Show what is sent** lists the queued and the recently sent reports. 
 
 ### Stream Deck
 
-A Stream Deck plugged into the computer that runs Breakfast can reset the board with one key press, for example when
+A Stream Deck (Elgato) or an Ulanzi D200H plugged into the computer that runs Breakfast can reset the board with one key press, for example when
 it hangs after the take-out. Breakfast drives the device over USB itself, no other software is needed. Switch it on
 under Settings → Stream Deck, click a key in the grid and pick its action (reset board, start board, undo, next
 player, next game), label and color. Besides these, a *custom action* calls a route of Breakfast (any path under `/api/`) or a web address (for example a
@@ -391,15 +391,17 @@ frames can pulse, blink or chase; *Status rules* put such an effect on every key
 pulsing red frame while it is stopped. A key can open a folder, which has its own keys and pages. More actions: cancel the
 game, switch the fun mode, play a sound of the library (or a random short one, played beside everything else), and correct a dart of the turn in play (a key per dart opens a
 menu: miss, single, double or triple, then the number; the dart is set to the center of the field, as with the correction
-on the TV view). The page
+on the TV view). The Ulanzi D200H has 13 keys and a wide key next to them, which the grid shows double width; the wide key
+is well suited for a display key. The page
 works without a device (it shows a 15-key grid) so the layout can be prepared first. The layout is stored in
 `[streamdeck]` of `config.toml`.
 
-- **Native Linux**: install the system library `libhidapi-libusb0` and `pip install -r requirements-streamdeck.txt`.
-  A rule for the device lets a normal user open it: put
+- **Native Linux**: for an Elgato Stream Deck install the system library `libhidapi-libusb0`; for both devices run
+  `pip install -r requirements-streamdeck.txt`. A rule for the device lets a normal user open it: put
   `SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", MODE="0666"` into `/etc/udev/rules.d/50-streamdeck.rules`, then
-  `sudo udevadm control --reload-rules` and plug the device in again.
-- **Docker**: the image has the library; uncomment `devices` in `docker-compose.yml` to pass the USB bus through.
+  `sudo udevadm control --reload-rules` and plug the device in again. For the Ulanzi D200H copy
+  `tools/99-ulanzi.rules` to `/etc/udev/rules.d/` instead (same commands afterwards).
+- **Docker**: the image has the libraries; uncomment `devices` in `docker-compose.yml` to pass the USB bus through.
 - Windows is not supported yet.
 
 ### MQTT

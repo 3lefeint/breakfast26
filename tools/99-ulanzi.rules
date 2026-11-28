@@ -1,0 +1,4 @@
+# Lets a normal user open the Ulanzi D200H (vendor 2207, product 0019). Copy to /etc/udev/rules.d/, then
+# `sudo udevadm control --reload-rules` and plug the device in again.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2207", ATTRS{idProduct}=="0019", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2207", ATTRS{idProduct}=="0019", MODE="0666"
