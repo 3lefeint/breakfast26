@@ -189,7 +189,7 @@ class TargetBattleGame(TurnGame):
         points = sum(self._current_darts)
         throws = list(self._last_throws)
         self._turn_snapshot = self._snapshot_state(player)
-        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None)
+        self._push_history(self._turn_snapshot, turn_recorded=self.stats_db is not None, throws=throws)
         self._publish_last_turn(self._current_darts)
         if self.audio and not self._score_called:
             self.audio.play(str(points))
@@ -310,6 +310,19 @@ class TargetBattleGame(TurnGame):
         self._round_started = time.monotonic() - 3600     # an old round again: no wheel
         self._calls_token += 1
         self._score_called = False
+
+    def undo(self):
+        """Take the last dart of the turn in progress back, or with no dart in the turn the last turn goes on without
+        its last dart, also the one that ended the game."""
+        return self._undo_by_dart()
+
+    def _undo_open_dart(self):
+        undone = super()._undo_open_dart()
+        if undone:
+            self._score_called = False      # the third dart calls the score again
+            if self.stats_db:
+                self.stats_db.open_turn_taken_back(self.match_id)
+        return undone
 
     def _forget_stored_turn(self, snap, was_finished):
         if was_finished:
