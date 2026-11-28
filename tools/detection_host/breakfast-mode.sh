@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Switches the Breakfast of the board host between its own dart detection and Autodarts.
 #
-#   breakfast-mode.sh own         stop Autodarts, `[cameras] enabled = true`, restart Breakfast: it reads the cameras itself
-#   breakfast-mode.sh autodarts   `[cameras] enabled = false`, restart Breakfast, start Autodarts: the way it was before
-#   breakfast-mode.sh status      what the config, Autodarts and the container say now
+#   breakfast-mode.sh own         stop and disable Autodarts, `[cameras] enabled = true`, restart Breakfast: it reads the cameras itself
+#   breakfast-mode.sh autodarts   `[cameras] enabled = false`, restart Breakfast, enable and start Autodarts: the way it was before
+#   breakfast-mode.sh status      what the config, Autodarts (running, and whether it starts at boot) and the container say now
 #   --force                       switch although a match is running (a restart ends it, the match lives in memory)
 #
 # `own` needs the board model in data/detection/calib_model.json (copy it, together with tracker_settings.json, from the stack that was
 # calibrated). Only the one line `enabled` of `[cameras]` in data/config.toml is changed (the section is added when it is missing); the config is
 # copied to config.toml.before-mode first. The stats.db is not touched. Autodarts is started and stopped through systemd: as the
 # system unit of version 1 (the polkit rule of tools/detection_host/README.md allows it for the user of the host) or as the user unit of
-# version 2 headless. With the Desktop app of version 2 there is no unit: the script says so and the user quits and starts the app himself.
+# version 2 headless. The unit is also disabled and enabled, so the mode chosen last is the mode after a reboot. With the Desktop app of
+# version 2 there is no unit: the script says so and the user quits, starts and sets the autostart of the app himself.
 # Settings (environment): APP_DIR (default ~/apps/breakfast26), CONTAINER (breakfast), API (http://127.0.0.1:8080), AUTODARTS (autodarts.service),
 # AUTODARTS_SCOPE (system, user or none; default: the one that has the unit).
 set -euo pipefail
@@ -73,11 +74,16 @@ autodarts_scope() {   # system, user or none (no unit: the Desktop app)
   else echo none; fi
 }
 
-autodarts() {         # $1 = stop | start | is-active
+autodarts() {         # $1 = stop | start | enable | disable | is-active | is-enabled
   case "$(autodarts_scope)" in
     system) systemctl "$1" "$AUTODARTS" ;;
     user)   systemctl --user "$1" "$AUTODARTS" ;;
-    none)   [ "$1" = is-active ] && echo "no service" || echo "note: Autodarts has no service here: quit or start the Autodarts app yourself" ;;
+    none)
+      case "$1" in
+        is-active|is-enabled) echo "no service" ;;
+        enable|disable) ;;
+        *) echo "note: Autodarts has no service here: quit or start the Autodarts app and set its autostart yourself" ;;
+      esac ;;
   esac
 }
 
@@ -104,6 +110,7 @@ case "$mode" in
     [ -f "$APP_DIR/data/detection/calib_model.json" ] || { echo "no board model at $APP_DIR/data/detection/calib_model.json: copy it there first (the detection cannot start without it)" >&2; exit 1; }
     guard
     autodarts stop                       # the cameras are free only after this
+    autodarts disable                    # and stay free after a reboot
     set_cameras true
     docker restart "$CONTAINER" >/dev/null
     echo "own dart detection: Autodarts stopped, $CONTAINER restarted with [cameras] enabled = true"
@@ -113,12 +120,14 @@ case "$mode" in
     guard
     set_cameras false
     docker restart "$CONTAINER" >/dev/null   # lets go of the cameras
+    autodarts enable
     autodarts start
     echo "Autodarts: [cameras] enabled = false, $CONTAINER restarted, Autodarts started"
     ;;
   status)
     echo "config:     [cameras] enabled = $(cameras_flag)"
     echo "autodarts:  $(autodarts is-active || true)"
+    echo "at boot:    $(autodarts is-enabled || true)"
     echo "container:  $(docker inspect -f '{{.State.Status}} since {{.State.StartedAt}}' "$CONTAINER" 2>/dev/null || echo missing)"
     ;;
   *)

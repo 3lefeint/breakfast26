@@ -42,7 +42,7 @@ def test_own_stops_autodarts_sets_the_flag_and_restarts_breakfast(host):
     env, config, log, _ = host
     out = run(env, "own")
     assert out.returncode == 0, out.stderr
-    assert calls(log) == ["systemctl stop autodarts.service", "docker restart breakfast"]       # the cameras are free before Breakfast opens them
+    assert calls(log) == ["systemctl stop autodarts.service", "systemctl disable autodarts.service", "docker restart breakfast"]       # the cameras are free before Breakfast opens them
     assert "[cameras]\nenabled = true\n" in config.read_text() and 'diag_port = 8770' in config.read_text() and "max_rate = 15" in config.read_text()
     assert config.read_text().startswith(CONFIG.rstrip("\n"))                                    # the rest of the file stays as it was
     assert (config.parent / "config.toml.before-mode").read_text() == CONFIG
@@ -53,7 +53,7 @@ def test_autodarts_sets_the_flag_back_restarts_breakfast_and_then_starts_autodar
     run(env, "own")
     log.unlink()
     assert run(env, "autodarts").returncode == 0
-    assert calls(log) == ["docker restart breakfast", "systemctl start autodarts.service"]
+    assert calls(log) == ["docker restart breakfast", "systemctl enable autodarts.service", "systemctl start autodarts.service"]
     assert "enabled = false" in config.read_text() and "enabled = true" not in config.read_text()
 
 
@@ -95,6 +95,21 @@ def test_status_reports_the_flag(host):
     assert "enabled = true" in run(env, "status").stdout
 
 
+def test_status_reports_whether_autodarts_starts_at_boot(host):
+    env, *_ = host
+    bin_dir = Path(env["PATH"].split(":")[0])
+    (bin_dir / "systemctl").write_text('#!/bin/sh\n[ "$1" = is-enabled ] && { echo disabled; exit 1; }\necho active\n')
+    assert "at boot:    disabled" in run(env, "status").stdout
+    env["AUTODARTS_SCOPE"] = "none"
+    assert "at boot:    no service" in run(env, "status").stdout
+
+
+def test_the_polkit_rule_allows_enabling_and_disabling_for_the_board_user_only():
+    rule = SCRIPT.with_name("50-breakfast-detect.rules").read_text()
+    assert "org.freedesktop.systemd1.manage-unit-files" in rule and "org.freedesktop.systemd1.reload-daemon" in rule
+    assert 'subject.user != "BOARD_USER"' in rule
+
+
 def test_a_missing_config_changes_nothing_and_a_bad_word_prints_the_usage(host):
     env, config, log, _ = host
     config.unlink()
@@ -124,14 +139,15 @@ def test_a_user_unit_of_autodarts_is_stopped_and_started_with_the_user_flag(host
     assert run(env, "own").returncode == 0
     run(env, "autodarts")
     assert [c for c in calls(log) if "autodarts.service" in c] == \
-        ["systemctl --user stop autodarts.service", "systemctl --user start autodarts.service"]
+        ["systemctl --user stop autodarts.service", "systemctl --user disable autodarts.service",
+         "systemctl --user enable autodarts.service", "systemctl --user start autodarts.service"]
 
 
 def test_without_a_unit_the_script_says_the_app_must_be_quit_by_hand_and_goes_on(host):
     env, config, log, _ = host
     env["AUTODARTS_SCOPE"] = "none"
     out = run(env, "own")
-    assert out.returncode == 0 and "note: Autodarts has no service here" in out.stdout
+    assert out.returncode == 0 and out.stdout.count("note: Autodarts has no service here") == 1 and "autostart" in out.stdout
     assert calls(log) == ["docker restart breakfast"] and "enabled = true" in config.read_text()
 
 
@@ -198,7 +214,7 @@ def test_the_installer_writes_the_rule_the_helper_the_scripts_and_both_shortcuts
     helper = str(tmp_path / "video-node")
     assert f'RUN+="{helper} add %k %M %m"' in rules and f'RUN+="{helper} remove %M %m"' in rules and os.access(helper, os.X_OK)
     assert "udevadm control --reload-rules" in log.read_text()
-    assert "subject.user ==" in (tmp_path / "polkit.rules").read_text() and "BOARD_USER" not in (tmp_path / "polkit.rules").read_text()
+    assert "subject.user != " in (tmp_path / "polkit.rules").read_text() and "BOARD_USER" not in (tmp_path / "polkit.rules").read_text()
     assert (app / "docker-compose.override.yml").read_text() == OVERRIDE.read_text()
     for name in ("breakfast-mode.sh", "breakfast-mode-shortcut.sh"):
         assert os.access(home / ".local" / "bin" / name, os.X_OK)

@@ -8,6 +8,9 @@
 ### Changed
 - Linux installer: the cameras reach the container through the folder `/dev/breakfast-video/`, which the udev rule fills with one node per camera, named after its USB port without the bus number. The container starts with or without cameras and sees one that is plugged in later; the installer no longer asks to unplug them. (#197)
 
+### Fixed
+- Linux installer: switching to the own dart detection also disables the board manager service and switching back enables it again, so the mode chosen last is the mode after a reboot; `breakfast-mode.sh status` shows whether it starts at boot. Run `install.sh` again to update the polkit rule. (#198)
+
 ## [1.16.0] - 2026-11-27
 
 ### Added
