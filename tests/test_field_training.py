@@ -150,8 +150,44 @@ def test_undo_walks_back_a_turn_and_reopens_a_finished_run(db):
     assert db._conn.execute("SELECT ended_at FROM matches").fetchone()[0] is None
     assert db._conn.execute("SELECT COUNT(*) FROM field_training_turns").fetchone()[0] == 1
     assert db._conn.execute("SELECT COUNT(*) FROM dart_positions").fetchone()[0] == 3
-    assert game.undo() is True and game.snapshot()["thrown"] == 0
+    assert game.undo() is True and game.snapshot()["thrown"] == 0     # the first turn goes on with two darts
+    assert game.undo() is True and game.undo() is True                # its darts, one at a time
     assert game.undo() is False
+
+
+def test_undo_takes_back_the_last_dart_of_the_turn_in_progress():
+    game = new_game(darts=6)
+    game.on_board_state(2, [hit(20, 3), hit(20, 1)])
+    assert game.undo() is True
+    assert game.snapshot()["current_darts"] == [3]
+    game.on_board_state(2, [hit(20, 3), hit(20, 1)])          # the dart is still on the board
+    assert game.snapshot()["current_darts"] == [3]
+    game.on_board_state(3, [hit(20, 3), hit(20, 1), MISS])
+    assert game.snapshot()["current_darts"] == [3, 0]
+    game.on_board_state(0, [])
+    assert game.snapshot()["thrown"] == 2 and game.snapshot()["points"] == 3
+
+
+def test_a_turn_taken_back_goes_on_without_its_last_dart(db):
+    game = new_game(darts=6, db=db)
+    play(game, hit(20, 3), hit(20, 2), hit(20, 1))
+    assert game.undo() is True
+    snap = game.snapshot()
+    assert snap["thrown"] == 0 and snap["points"] == 0 and snap["current_darts"] == [3, 2]
+    assert db._conn.execute("SELECT COUNT(*) FROM field_training_turns").fetchone()[0] == 0
+    game.on_board_state(1, [hit(20, 1)])                      # the third dart comes in at its place
+    assert game.snapshot()["current_darts"] == [3, 2, 1]
+    game.on_board_state(0, [])
+    assert game.snapshot()["thrown"] == 3 and game.snapshot()["points"] == 6
+
+
+def test_the_darts_over_the_limit_do_not_count_when_taking_a_dart_back():
+    game = new_game(darts=4)
+    play(game, hit(20, 1), hit(20, 1), hit(20, 1))
+    play(game, hit(20, 3), hit(20, 2), hit(20, 1))              # only the first of these is left in the run
+    assert game.state == "finished" and game.snapshot()["thrown"] == 4
+    assert game.undo() is True
+    assert game.state == "playing" and game.snapshot()["thrown"] == 3 and game.snapshot()["current_darts"] == []
 
 
 def test_a_dart_corrected_by_tapping_is_what_counts():
