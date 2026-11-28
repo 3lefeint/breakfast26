@@ -31,6 +31,7 @@ from breakfast import scenes_default as scenes_default_mod
 from breakfast.bot import X01_LEVELS
 from breakfast import achievements as ach_mod
 from breakfast import config as cfg_mod
+from breakfast.detection import devices as camera_devices
 from breakfast import changelog as changelog_mod
 from breakfast import joke as joke_mod
 from breakfast import known_players as kp
@@ -864,6 +865,31 @@ async def detection_frame(cam: int, raw: bool = False):
         return Response(status_code=404)
     code, body, ctype = await asyncio.to_thread(_detection_call, "GET", f"/frame/{cam}.jpg" + ("?raw=1" if raw else ""))
     return Response(content=body, status_code=code, media_type=ctype, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/detection/cameras")
+async def detection_cameras():
+    """The three cameras of the board by USB port (`[cameras] ports`, empty slots without it) and the cameras that are plugged in now.
+    Works without the detection running: it reads the config and the folder the udev rule fills."""
+    ports = (cfg_mod.load(_config_path).get("cameras", {}).get("ports") if _config_path else None)
+    ports = ports if camera_devices.valid_ports(ports) else [None, None, None]
+    plugged = await asyncio.to_thread(camera_devices.found)
+    return {"slots": [{"index": i, "port": p, "found": p in plugged} for i, p in enumerate(ports)], "found": plugged}
+
+
+@app.get("/api/detection/cameras/frame/{port}")
+async def detection_camera_frame(port: str):
+    """A picture of the camera on a USB port (for choosing the cameras): the running detection's picture when it has the camera,
+    else one taken from the device."""
+    if not camera_devices.PORT_RE.match(port) or port not in await asyncio.to_thread(camera_devices.found):
+        return Response(status_code=404)
+    ports = (cfg_mod.load(_config_path).get("cameras", {}).get("ports") if _config_path else None)
+    if _detection_port and camera_devices.valid_ports(ports) and port in ports:
+        code, body, ctype = await asyncio.to_thread(_detection_call, "GET", f"/frame/{ports.index(port)}.jpg?raw=1")
+        if code == 200:
+            return Response(content=body, media_type=ctype, headers={"Cache-Control": "no-store"})
+    jpg = await asyncio.to_thread(camera_devices.snapshot, camera_devices.path_of(port))
+    return Response(content=jpg, media_type="image/jpeg", headers={"Cache-Control": "no-store"}) if jpg else Response(status_code=503)
 
 
 @app.post("/api/detection/reset")
@@ -2601,7 +2627,8 @@ async def get_config():
             "enabled": raw.get("telemetry", {}).get("enabled") is True,
             "url": raw.get("telemetry", {}).get("url"),
         },
-        "cameras": {"enabled": raw.get("cameras", {}).get("enabled") is True},
+        "cameras": {"enabled": raw.get("cameras", {}).get("enabled") is True,
+                    "ports": raw.get("cameras", {}).get("ports") if camera_devices.valid_ports(raw.get("cameras", {}).get("ports")) else None},
         "updates": {"check": raw.get("updates", {}).get("check") is not False,
                     "auto_install": raw.get("updates", {}).get("auto_install") is True},
         "runtime_fields": list(cfg_mod.RUNTIME_FIELDS),
@@ -2654,6 +2681,10 @@ async def patch_config(body: dict):
         problem = _bad_look_value(key, value)
         if problem:
             return {"saved": False, "error": problem}
+
+    ports = updates.get("cameras", {}).get("ports")
+    if ports is not None and not camera_devices.valid_ports(ports):
+        return {"saved": False, "error": "Choose three different cameras"}
 
     if "cameras.enabled" in changed_non_runtime and _running_game():
         return {"saved": False, "error": "The dart detection cannot be switched while a match is running"}

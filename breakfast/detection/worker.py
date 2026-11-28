@@ -14,14 +14,14 @@ from pathlib import Path
 
 import cv2
 
-from breakfast.detection import calibration, debug, detector, drift, labels, setup, tuning
+from breakfast.detection import calibration, debug, detector, devices, drift, labels, setup, tuning
 from breakfast.detection.cameras import CameraGroup
 from breakfast.detection.clips import ClipRecorder
 from breakfast.detection.geometry import BoardModel
 from breakfast.detection.tracker import BoardTracker, Settings
 
 log = logging.getLogger("breakfast.detection")
-DEFAULT_DEVICES = ["/dev/cam0", "/dev/cam1", "/dev/cam2"]     # the names the compose files give the cameras inside the container
+DEFAULT_DEVICES = devices.DEFAULT_DEVICES
 MODEL_WAIT_S = 2.0                      # how often a missing board model is looked for again
 KEEP_BUNDLES = 600                      # event folders kept per session
 
@@ -45,7 +45,7 @@ class Worker:
         self.settings_path = self.base / "tracker_settings.json"
         tuning.apply(self.settings, tuning.load(self.settings_path))        # what was set on the Board page wins over config.toml
         self.tracker = BoardTracker(self.model, self.settings)
-        self.cams = CameraGroup(cfg.get("devices") or DEFAULT_DEVICES, cfg.get("width", 800), cfg.get("height", 600), cfg.get("fps", 30))
+        self.cams = CameraGroup(devices.device_paths(cfg), cfg.get("width", 800), cfg.get("height", 600), cfg.get("fps", 30))
         self._push_controls()
         self.cams.start()
         self.session = self.base / "events" / datetime.now().strftime("session-%Y%m%d-%H%M%S")
