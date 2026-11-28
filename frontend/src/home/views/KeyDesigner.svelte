@@ -4,7 +4,7 @@
   // preview), a frame, and the background color. The preview is drawn by Breakfast itself, so it is what the device shows.
   import { onDestroy } from 'svelte';
 
-  let { entry, images, icons, symbols, symbolLabel, valueTokens, onchange, onclose } = $props();
+  let { wide = false, entry, images, icons, symbols, symbolLabel, valueTokens, onchange, onclose } = $props();
 
   const STEPS = 12;
   const clone = (d) => JSON.parse(JSON.stringify(d));
@@ -108,7 +108,7 @@
   </div>
 
   <div class="stage">
-    <div class="preview" bind:this={box} onpointermove={drag} onpointerup={up} role="presentation">
+    <div class="preview" class:wide bind:this={box} onpointermove={drag} onpointerup={up} role="presentation">
       {#if previewUrl}<img src={previewUrl} alt="" draggable="false">{/if}
       {#if snap}
         <div class="raster" style="background-size: calc(100% / {STEPS}) calc(100% / {STEPS});"></div>
@@ -191,6 +191,7 @@
   .editor-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .stage { display: flex; gap: 1rem; flex-wrap: wrap; }
   .preview { position: relative; width: 216px; height: 216px; flex: none; border: 1px solid var(--glass-border); touch-action: none; user-select: none; }
+  .preview.wide { width: min(100%, 505px); height: auto; aspect-ratio: 458 / 196; }
   .preview img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .raster {
     position: absolute; inset: 0; pointer-events: none;

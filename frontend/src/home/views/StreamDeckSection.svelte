@@ -58,7 +58,9 @@
     return true;
   }
 
-  let keyCount = $derived(data ? data.rows * data.cols : 0);
+  let keyCount = $derived(data ? (data.key_count ?? data.rows * data.cols) : 0);
+  // a wide key of the device (the one of an Ulanzi D200H) is as wide as two keys of the grid
+  const wideKeys = $derived(data?.wide || []);
   // ---- folders and pages: the grid shows one page of the main layout or of a folder ----
   let view = $state({ folder: '', page: 0 });
   let extraPages = $state(1);
@@ -75,6 +77,7 @@
   };
   let cells = $derived(data ? Array.from({ length: keyCount }, (_, i) => current.find((k) => k.key === i && (k.page || 0) === view.page)
     || { key: i, empty: true, reserved: reservedLabel(i) }) : []);
+  let shownCells = $derived(cells.filter((c) => !wideKeys.includes(c.key - 1)));
   const folderName = $derived(data?.folders.find((f) => f.id === view.folder)?.name || '');
   let newFolder = $state('');
 
@@ -307,8 +310,8 @@
   </div>
 
   <div class="grid" style="grid-template-columns: repeat({data.cols}, minmax(0, 1fr));" class:dim={!data.connected}>
-    {#each cells as c (c.key)}
-      <button type="button" class="key" class:selected={selected === c.key} class:empty={c.empty} class:reserved={c.reserved} disabled={!!c.reserved}
+    {#each shownCells as c (c.key)}
+      <button type="button" class="key" class:wide={wideKeys.includes(c.key)} class:selected={selected === c.key} class:empty={c.empty} class:reserved={c.reserved} disabled={!!c.reserved}
               style={c.empty ? '' : `background: ${c.shown}; color: ${textColor(c.shown)};`}
               onclick={() => select(c.key)} aria-label={t('Key {n}', { n: c.key + 1 })}>
         {#if c.reserved}{c.reserved}
@@ -404,7 +407,7 @@
         </div>
         {#if designing}
           {#key selected}
-            <KeyDesigner entry={{ ...draft, key: selected }} images={data.images} icons={data.icons} symbols={data.symbols} symbolLabel={SYMBOL_LABEL}
+            <KeyDesigner wide={wideKeys.includes(selected)} entry={{ ...draft, key: selected }} images={data.images} icons={data.icons} symbols={data.symbols} symbolLabel={SYMBOL_LABEL}
                          valueTokens={data.value_tokens} onchange={saveDesign} onclose={() => (designing = false)} />
           {/key}
         {/if}
@@ -509,6 +512,7 @@
   .folderbar input { flex: 1; min-width: 6rem; }
   .pages { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
   .pages .on { border-color: var(--accent); color: var(--text); }
+  .key.wide { grid-column: span 2; aspect-ratio: auto; }
   .key.reserved { opacity: 0.55; cursor: default; font-size: 0.75rem; }
   .key.empty { color: var(--muted); font-weight: 400; }
   .key:hover { border-color: var(--accent); }

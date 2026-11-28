@@ -1,7 +1,8 @@
 """Stream Deck at the board: keys that run board controls and show the board status.
 
-The device is driven over USB by Breakfast itself (python-elgato-streamdeck), so no other software has to run next to
-it. The layout lives in `[streamdeck]` of config.toml: `enabled`, `brightness` and `keys`, a list of
+The device is driven over USB by Breakfast itself (python-elgato-streamdeck for an Elgato Stream Deck, `ulanzi.py` for an
+Ulanzi D200H), so no other software has to run next to it. A device offers the calls this service uses; the optional ones
+(`to_native`, `key_size`, `wide_keys`) are for a device whose keys differ in size or take another image format. The layout lives in `[streamdeck]` of config.toml: `enabled`, `brightness` and `keys`, a list of
 `{key, action, label, color, hold, image, show}` (key counts from 0; color is `status` to follow the board or a `#rrggbb` value;
 `hold` is the seconds the key has to be held to run its action, 0 runs it on the press; `image` is empty, a symbol
 of Breakfast (`symbol:undo`) or a png, jpg or webp file uploaded into the `streamdeck` folder next to config.toml; `show`
@@ -24,6 +25,7 @@ import uuid
 from pathlib import Path
 
 from breakfast import config as cfg_mod
+from breakfast import ulanzi
 
 log = logging.getLogger(__name__)
 
@@ -476,7 +478,7 @@ def render_design(design, hex_color, size, picture_of, values=None, progress=Non
                 color = ink if layer["color"] == "auto" else _rgb(layer["color"])
                 _draw_text_at(img, text, cx, cy, max(6, round(layer["size"] * h)), color)
         else:
-            side = max(4, round(layer["size"] * w))
+            side = max(4, round(layer["size"] * min(w, h)))
             picture, symbol = picture_of(layer["image"])
             box = (round(cx - side / 2), round(cy - side / 2))
             if picture is not None:
@@ -640,23 +642,49 @@ def _wrap(draw, words, font, width):
 
 
 def library_available():
-    """True when the USB library and Pillow can be imported (the HID backend itself is only known at enumerate)."""
+    """True when Pillow and a USB library for one of the supported devices can be imported (the HID backend itself is only
+    known at enumerate)."""
     try:
         import PIL  # noqa: F401
+    except Exception:
+        return False
+    try:
         import StreamDeck  # noqa: F401
         return True
     except Exception:
-        return False
+        return ulanzi.available()
 
 
 def _enumerate_decks():
-    from StreamDeck.DeviceManager import DeviceManager
-    return DeviceManager().enumerate()
+    """The Stream Decks and Ulanzi D200H that are plugged in. The error of the Stream Deck library (no HID backend) is only
+    raised when nothing was found and the other library cannot be loaded either."""
+    decks, error = [], None
+    try:
+        from StreamDeck.DeviceManager import DeviceManager
+        decks = list(DeviceManager().enumerate())
+    except Exception as e:
+        error = e
+    decks += ulanzi.enumerate_decks()
+    if not decks and error is not None and not ulanzi.available():
+        raise error
+    return decks
 
 
 def _to_native(deck, image):
+    if hasattr(deck, "to_native"):
+        return deck.to_native(image)
     from StreamDeck.ImageHelpers import PILHelper
     return PILHelper.to_native_key_format(deck, image)
+
+
+def _key_size(deck, index):
+    """The size of the picture of one key: a device whose keys differ (the wide key of a D200H) says so."""
+    return deck.key_size(index) if hasattr(deck, "key_size") else deck.key_image_format()["size"]
+
+
+def wide_size(height):
+    """The size of the picture of the wide key of a D200H, `height` pixels high."""
+    return (round(height * ulanzi.WIDE_SIZE[0] / ulanzi.WIDE_SIZE[1]), height)
 
 
 class StreamDeckService:
@@ -697,6 +725,7 @@ class StreamDeckService:
         self._effect_drawn = {}             # key -> what its effect looked like when it was drawn last
         self._holds = {}                    # key -> Event that cancels the hold of a key being held
         self._hold_step = HOLD_STEP_SECONDS
+        self._wide = ()                     # the keys of the device that are as wide as two (remembered after it is unplugged)
         self.board_status = None
 
     # ---- config ----
@@ -865,6 +894,7 @@ class StreamDeckService:
         deck.set_brightness(self.brightness())
         deck.set_key_callback(self._on_key)
         self._deck = deck
+        self._wide = tuple(deck.wide_keys()) if hasattr(deck, "wide_keys") else ()
         self._error = None
         log.info("Stream Deck connected: %s", deck.deck_type())
         self._draw()
@@ -1027,7 +1057,7 @@ class StreamDeckService:
         deck = self._deck
         if deck is None or self._lost:
             return
-        size = deck.key_image_format()["size"]
+        size = _key_size(deck, index)
         now = time.monotonic()
         effect = self._effect_for(entry)
         self._effect_drawn[index] = effect_signature(effect, now) if effect else None
@@ -1262,20 +1292,26 @@ class StreamDeckService:
             return None
         self.refresh_values()
         out = io.BytesIO()
-        self._render(entry, PREVIEW_SIZE).save(out, "PNG")
+        self._render(entry, self._preview_size(key, PREVIEW_SIZE)).save(out, "PNG")
         return out.getvalue()
+
+    def _preview_size(self, key, size):
+        """The size of a preview: wide for a wide key of the device, so that it has the shape of the key."""
+        return wide_size(size[1]) if key in self._wide else size
 
     def preview_entry(self, entry, size=EDITOR_PREVIEW_SIZE):
         """The PNG of a key that is still being edited (not saved), as the device would draw it now. Raises ValueError."""
         clean = clean_keys([{**entry, "key": 0}], {a["id"] for a in self.actions()})[0]
         self.refresh_values()
         out = io.BytesIO()
-        self._render(clean, size).save(out, "PNG")
+        key = entry.get("key")
+        self._render(clean, self._preview_size(key, size) if isinstance(key, int) else size).save(out, "PNG")
         return out.getvalue()
 
     def _on_key(self, deck, key, pressed):
         with self._lock:
             held = self._holds.pop(key, None)
+            log.debug("Stream Deck key %d %s, hold running: %s (t=%.3f)", key, "down" if pressed else "up", held is not None, time.monotonic())
             if held:
                 held.set()                 # the key was let go before the hold was over, or pressed again
                 self._draw_key(key, self._view_keys().get(key))
@@ -1320,6 +1356,7 @@ class StreamDeckService:
                 return
             self._holds.pop(key, None)
             self._draw_key(key, entry)
+        log.debug("Stream Deck key %d: hold of %.1f s is over after %.2f s (t=%.3f)", key, entry["hold"], time.monotonic() - start, time.monotonic())
         self._run_action(key, entry)
 
     def _run_action(self, key, entry):
@@ -1382,6 +1419,8 @@ class StreamDeckService:
                 "model": deck.deck_type() if deck is not None else None,
                 "rows": rows,
                 "cols": cols,
+                "key_count": deck.key_count() if deck is not None else rows * cols,
+                "wide": list(self._wide),
                 "brightness": self.brightness(),
                 "board_status": self.board_status,
                 "status_color": status_color(self.board_status),
