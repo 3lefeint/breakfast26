@@ -1,5 +1,4 @@
 <script>
-  import { confirmDialog } from '../../lib/confirm.js';
   import { navigate } from '../../lib/router.js';
   import { t } from '../../lib/i18n.js';
   // The tournament on the TV between the matches: the whole bracket with the match that is next outlined,
@@ -24,7 +23,6 @@
   });
 
   async function undo() {
-    if (!await confirmDialog(t('Undo the last completed turn?'))) return;
     await api('POST', '/api/x01/undo');
   }
 
