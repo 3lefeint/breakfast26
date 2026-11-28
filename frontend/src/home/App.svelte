@@ -87,6 +87,24 @@
     }
   });
 
+  // A camera that is missing while the dart detection is on is announced once per page load, not in the TV view and not on the
+  // settings page itself; OK leads to the camera settings. It waits a few seconds, so a camera that is just being found does not count.
+  const CAMERA_WAIT_MS = 5000;
+  let cameraNoticeDone = false;
+  let cameraTimer = null;
+  const cameraMissing = $derived($gameState.detection?.enabled === true && ($gameState.detection.cameras ?? []).some((c) => c.error === 'not found'));
+
+  $effect(() => {
+    clearTimeout(cameraTimer);
+    if (!cameraMissing || cameraNoticeDone || $route === 'tv' || $route.startsWith('settings')) return;
+    cameraTimer = setTimeout(async () => {
+      cameraNoticeDone = true;
+      await alertDialog(t('Camera missing: the dart detection needs all three cameras. OK opens the camera settings.'));
+      location.hash = '#settings/connections';
+    }, CAMERA_WAIT_MS);
+    return () => clearTimeout(cameraTimer);
+  });
+
   // A newer release is announced once with a notice in the corner: not in the TV view, not while a game is running, and
   // not again for a version that was dismissed (remembered in this browser).
   const DISMISSED_KEY = 'breakfast.update-dismissed';

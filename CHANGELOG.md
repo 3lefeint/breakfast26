@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- The cameras of the dart detection are named by USB port in `[cameras] ports` instead of `/dev/videoN`; `GET /api/detection/cameras` lists the three cameras and the ones plugged in, with a picture of each. (#197)
+- The cameras of the dart detection are named by USB port in `[cameras] ports` instead of `/dev/videoN`; `GET /api/detection/cameras` lists the three cameras and the ones plugged in, with a picture of each. The settings page lets you choose which camera is camera 1 to 3, and a pop-up on opening Breakfast with the detection on tells when a camera is missing. (#197)
 
 ### Changed
 - Linux installer: the cameras reach the container through the folder `/dev/breakfast-video/`, which the udev rule fills with one node per camera, named after its USB port without the bus number. The container starts with or without cameras and sees one that is plugged in later; the installer no longer asks to unplug them. (#197)
