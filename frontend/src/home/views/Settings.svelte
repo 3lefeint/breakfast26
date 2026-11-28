@@ -1,4 +1,5 @@
 <script>
+  import CameraSettings from './CameraSettings.svelte';
   import { confirmDialog, alertDialog } from '../../lib/confirm.js';
   import { t } from '../../lib/i18n.js';
   // The settings page: config form (logging/mqtt/stats/web/direct/audio/caller), the look, voice-pack
@@ -45,7 +46,7 @@
     record: { file: '' },
     online: { relay_url: '', site_name: '' },
     telemetry: { enabled: false, url: '' },
-    cameras: { enabled: false },
+    cameras: { enabled: false, ports: null },
     updates: { check: true, auto_install: false },
     // Read-only — not part of the editable form/save flow, set directly in
     // config.toml. Only gates whether the Dev tab below is shown at all.
@@ -416,6 +417,7 @@
     addIfDiffers('mqtt', 'enabled', cfg.mqtt.enabled);
     addIfDiffers('telemetry', 'enabled', cfg.telemetry.enabled);
     addIfDiffers('cameras', 'enabled', cfg.cameras.enabled);
+    if (cfg.cameras.ports && JSON.stringify(cfg.cameras.ports) !== JSON.stringify(loadedCfg.cameras?.ports)) (updates.cameras ??= {}).ports = cfg.cameras.ports;
     addIfDiffers('updates', 'check', cfg.updates.check);
     addIfDiffers('updates', 'auto_install', cfg.updates.auto_install);
     addIfDiffers('web', 'joke_of_the_day', cfg.web.joke_of_the_day);
@@ -460,7 +462,7 @@
     'caller.turn_total': t('Call turn total'), 'caller.checkout_limit': t('Repeat same Checkout limit'),
     'caller.announce_change': t('Call player change'), 'caller.call_player': t('Call player names'),
     'caller.ambient_volume': t('Ambient volume (0 = off)'), 'caller.call_misses': t('Call a Miss'), 'caller.fun': t('Fun mode'),
-    'cameras.enabled': t('Dart detection (experimental)'),
+    'cameras.enabled': t('Dart detection (experimental)'), 'cameras.ports': t('Board cameras'),
     'record.file': t('Recording file'), 'web.port': t('Web UI port'),
   };
   const labelOf = (key) => KEY_LABELS[key] ?? key;
@@ -957,6 +959,7 @@
       <div class="settings-row"><label for="sDirBoardMgr">{t('Board manager URL')}</label><input type="text" id="sDirBoardMgr" placeholder={t('(auto-resolved from Autodarts cloud)')} bind:value={cfg.direct.board_manager_url}></div>
       <Toggle bind:checked={cfg.cameras.enabled} label={t('Dart detection (experimental)')} wide />
       <p class="note">{t('Reads the darts from the board cameras instead of the board manager. The cameras must not be in use by the board manager. Cannot be switched while a match is running.')}</p>
+      {#if cfg.cameras.enabled}<CameraSettings bind:ports={cfg.cameras.ports} />{/if}
     </div>
 
     <div class="settings-section">
